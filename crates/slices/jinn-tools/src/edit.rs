@@ -90,7 +90,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
         let args = match parse_args(&call.arguments) {
             Ok(v) => v,
-            Err(e) => return unprefixed_failure(&call, e),
+            Err(e) => return unprefixed_failure(&call, e.to_string()),
         };
 
         if args.file_path.is_empty() {
@@ -186,8 +186,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             None => restored,
         };
 
-        if let Err(msg) = write_atomic(&resolved, &final_content, orig_mode.as_ref()).await {
-            return unprefixed_failure(&call, msg);
+        if let Err(report) = write_atomic(&resolved, &final_content, orig_mode.as_ref()).await {
+            return unprefixed_failure(&call, report.to_string());
         }
 
         // Build a cat -n snippet of the changed region for chaining.
@@ -210,7 +210,9 @@ async fn write_atomic(
     resolved: &Path,
     content: &str,
     orig_mode: Option<&std::fs::Permissions>,
-) -> Result<(), String> {
+) -> Result<(), error_stack::Report<EditWriteError>> {
+    use error_stack::IntoReport as _;
+
     let file_name = resolved
         .file_name()
         .map_or_else(|| std::ffi::OsString::from("file"), ToOwned::to_owned);
@@ -219,25 +221,30 @@ async fn write_atomic(
 
     let tmp_path = resolved.with_file_name(tmp_name);
     if let Err(e) = tokio::fs::write(&tmp_path, content).await {
-        return Err(format!(
-            "failed to write temp file '{}': {e}",
-            tmp_path.display()
-        ));
+        return Err(EditWriteError::TempWrite {
+            path: tmp_path.display().to_string(),
+            detail: e.to_string(),
+        }
+        .into_report());
     }
 
     if let Some(mode) = orig_mode
         && let Err(e) = std::fs::set_permissions(&tmp_path, mode.clone())
     {
         let _ = std::fs::remove_file(&tmp_path);
-        return Err(format!("failed to set permissions on temp file: {e}"));
+        return Err(EditWriteError::SetPermissions {
+            detail: e.to_string(),
+        }
+        .into_report());
     }
 
     if let Err(e) = std::fs::rename(&tmp_path, resolved) {
         let _ = std::fs::remove_file(&tmp_path);
-        return Err(format!(
-            "failed to rename temp file to '{}': {e}",
-            resolved.display()
-        ));
+        return Err(EditWriteError::Rename {
+            path: resolved.display().to_string(),
+            detail: e.to_string(),
+        }
+        .into_report());
     }
     Ok(())
 }
@@ -251,20 +258,70 @@ struct EditArgs {
     replace_all: bool,
 }
 
+/// Why the edit call's arguments could not be parsed.
+///
+/// The call boundary renders the message into tool-result prose; a `Report`'s
+/// `Display` prints only the outermost context, so each variant's message
+/// stands alone.
+#[derive(Debug, wherror::Error)]
+pub enum EditArgsError {
+    /// The call's JSON arguments were malformed.
+    #[error("failed to parse arguments: {detail}")]
+    InvalidArguments {
+        /// The parser's complaint.
+        detail: String,
+    },
+    /// The arguments used the removed `edits` array shape.
+    #[error(
+        "the `edits` array format is no longer supported; call edit with \
+             `file_path`, `old_string`, `new_string`, and optional `replace_all`"
+    )]
+    EditsArrayRemoved,
+}
+
+/// Why an edit could not be committed to disk.
+///
+/// The call boundary renders the message into tool-result prose; a `Report`'s
+/// `Display` prints only the outermost context, so each variant's message
+/// stands alone.
+#[derive(Debug, wherror::Error)]
+pub enum EditWriteError {
+    /// The temp file could not be written.
+    #[error("failed to write temp file '{path}': {detail}")]
+    TempWrite {
+        /// The temp path.
+        path: String,
+        /// The filesystem's complaint.
+        detail: String,
+    },
+    /// The original file's permissions could not be applied to the temp file.
+    #[error("failed to set permissions on temp file: {detail}")]
+    SetPermissions {
+        /// The filesystem's complaint.
+        detail: String,
+    },
+    /// The temp file could not be renamed over the target.
+    #[error("failed to rename temp file to '{path}': {detail}")]
+    Rename {
+        /// The target path.
+        path: String,
+        /// The filesystem's complaint.
+        detail: String,
+    },
+}
+
 /// Parses the arguments from the tool call JSON.
 ///
 /// Accepts `path`, `oldText`, and `newText` as aliases for `file_path`,
 /// `old_string`, and `new_string`.
-fn parse_args(raw: &str) -> Result<EditArgs, String> {
+fn parse_args(raw: &str) -> Result<EditArgs, error_stack::Report<EditArgsError>> {
     let v: serde_json::Value =
-        serde_json::from_str(raw).map_err(|e| format!("failed to parse arguments: {e}"))?;
+        serde_json::from_str(raw).map_err(|e| EditArgsError::InvalidArguments {
+            detail: e.to_string(),
+        })?;
 
     if v.get("edits").is_some_and(serde_json::Value::is_array) {
-        return Err(concat!(
-            "the `edits` array format is no longer supported; call edit with ",
-            "`file_path`, `old_string`, `new_string`, and optional `replace_all`"
-        )
-        .to_owned());
+        return Err(EditArgsError::EditsArrayRemoved.into());
     }
 
     let field = |primary: &str, alias: &str| {
@@ -349,8 +406,8 @@ mod tests {
 
     fn make_call(file_path: &str, old_string: &str, new_string: &str) -> ToolCall {
         ToolCall {
-            id: "call_edit".to_owned(),
-            name: "edit".to_owned(),
+            id: "call_edit".into(),
+            name: "edit".into(),
             arguments: serde_json::json!({
                 "file_path": file_path,
                 "old_string": old_string,
@@ -447,8 +504,8 @@ mod tests {
 
         // When replacing with replace_all.
         let call = ToolCall {
-            id: "call_ra".to_owned(),
-            name: "edit".to_owned(),
+            id: "call_ra".into(),
+            name: "edit".into(),
             arguments: serde_json::json!({
                 "file_path": file_path.to_string_lossy(),
                 "old_string": "count",
@@ -502,8 +559,8 @@ mod tests {
 
         // When calling with path/oldText/newText aliases.
         let call = ToolCall {
-            id: "call_alias".to_owned(),
-            name: "edit".to_owned(),
+            id: "call_alias".into(),
+            name: "edit".into(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
                 "oldText": "world",
@@ -601,8 +658,8 @@ mod tests {
 
         // When calling with the legacy edits[] shape.
         let call = ToolCall {
-            id: "call_legacy".to_owned(),
-            name: "edit".to_owned(),
+            id: "call_legacy".into(),
+            name: "edit".into(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
                 "edits": [{"op": "replace", "pos": "1#xx", "lines": ["x"]}]
@@ -668,7 +725,7 @@ mod tests {
     async fn execute_returns_error_on_bad_json() {
         // Given an edit call with invalid JSON.
         let call = ToolCall {
-            id: "call_bad".to_owned(),
+            id: "call_bad".into(),
             name: "edit".to_owned(),
             arguments: "not json".to_owned(),
         };
@@ -819,7 +876,7 @@ mod tests {
         let path_str = file_path.to_string_lossy().into_owned();
 
         let write_call = ToolCall {
-            id: "call_race_write".to_owned(),
+            id: "call_race_write".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "file_path": path_str,

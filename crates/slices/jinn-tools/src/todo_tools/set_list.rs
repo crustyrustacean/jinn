@@ -128,7 +128,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         };
         let phases_arr = match super::task_payload::normalize_array(phases_val, "phases") {
             Ok(entries) => entries,
-            Err(msg) => return tool_error(&call, &msg),
+            Err(report) => return tool_error(&call, &report.to_string()),
         };
 
         // Parse into declarative phase inputs (bare strings → Pending; objects
@@ -139,7 +139,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             let parsed = super::task_payload::parse_phases_array(&phases_arr);
             match parsed {
                 Ok(inputs) => inputs,
-                Err(msg) => return tool_error(&call, &msg),
+                Err(report) => return tool_error(&call, &report.to_string()),
             }
         };
 
@@ -250,8 +250,8 @@ mod tests {
     /// Builds a `todo_set_list` call carrying a raw `phases` value.
     fn set_list_call(phases: serde_json::Value) -> ToolCall {
         ToolCall {
-            id: "call-1".to_owned(),
-            name: "todo_set_list".to_owned(),
+            id: "call-1".into(),
+            name: "todo_set_list".into(),
             arguments: serde_json::json!({ "phases": phases }).to_string(),
         }
     }
@@ -391,8 +391,8 @@ mod tests {
         // Given a payload with no 'phases' key at all.
         let (state, session_id) = setup_with_existing_list();
         let call = ToolCall {
-            id: "call-1".to_owned(),
-            name: "todo_set_list".to_owned(),
+            id: "call-1".into(),
+            name: "todo_set_list".into(),
             arguments: serde_json::json!({}).to_string(),
         };
 
@@ -417,8 +417,8 @@ mod tests {
         // Given arguments that are not valid JSON.
         let (state, session_id) = setup_with_existing_list();
         let call = ToolCall {
-            id: "call-1".to_owned(),
-            name: "todo_set_list".to_owned(),
+            id: "call-1".into(),
+            name: "todo_set_list".into(),
             arguments: "not json".to_owned(),
         };
 
@@ -550,8 +550,8 @@ mod tests {
         // Given a session that already holds an "Old Phase" list.
         let (state, session_id) = setup_with_existing_list();
         let call = ToolCall {
-            id: "call-1".to_owned(),
-            name: "todo_set_list".to_owned(),
+            id: "call-1".into(),
+            name: "todo_set_list".into(),
             arguments: serde_json::json!({
                 "phases": [
                     { "description": "Research", "tasks": ["Read docs", "Call API"] },
@@ -584,7 +584,7 @@ mod tests {
         // Given a session that already holds an "Old Phase" list.
         let (state, session_id) = setup_with_existing_list();
         let call = ToolCall {
-            id: "call-1".to_owned(),
+            id: "call-1".into(),
             name: "todo_set_list".to_owned(),
             arguments: serde_json::json!({
                 "phases": [
@@ -609,7 +609,7 @@ mod tests {
         // Given a session that already holds an "Old Phase" list.
         let (state, session_id) = setup_with_existing_list();
         let call = ToolCall {
-            id: "call-1".to_owned(),
+            id: "call-1".into(),
             name: "todo_set_list".to_owned(),
             arguments: serde_json::json!({ "phases": [] }).to_string(),
         };
@@ -641,7 +641,7 @@ mod tests {
             r.session.active_session_id().clone()
         };
         let call = ToolCall {
-            id: "call-1".to_owned(),
+            id: "call-1".into(),
             name: "todo_set_list".to_owned(),
             arguments: serde_json::json!({ "phases": [] }).to_string(),
         };
@@ -671,7 +671,7 @@ mod tests {
 
         // When clearing the list via the tool.
         let call = ToolCall {
-            id: "call-1".to_owned(),
+            id: "call-1".into(),
             name: "todo_set_list".to_owned(),
             arguments: serde_json::json!({ "phases": [] }).to_string(),
         };
@@ -695,7 +695,7 @@ mod tests {
         // Given a session that already holds an "Old Phase" list.
         let (state, session_id) = setup_with_existing_list();
         let call = ToolCall {
-            id: "call-1".to_owned(),
+            id: "call-1".into(),
             name: "todo_set_list".to_owned(),
             arguments: serde_json::json!({
                 "phases": [
@@ -723,7 +723,7 @@ mod tests {
     fn set_list_requires_state() {
         // Given a tool context with no application state.
         let call = ToolCall {
-            id: "call-1".to_owned(),
+            id: "call-1".into(),
             name: "todo_set_list".to_owned(),
             arguments: serde_json::json!({
                 "phases": [{ "description": "Test" }]
@@ -746,7 +746,7 @@ mod tests {
         // Given a session that already holds an "Old Phase" list.
         let (state, session_id) = setup_with_existing_list();
         let call = ToolCall {
-            id: "call-1".to_owned(),
+            id: "call-1".into(),
             name: "todo_set_list".to_owned(),
             arguments: serde_json::json!({
                 "phases": [
@@ -776,7 +776,7 @@ mod tests {
         // Given a payload authoring tasks as bare strings.
         let (state, session_id) = setup_with_existing_list();
         let call = ToolCall {
-            id: "call-1".to_owned(),
+            id: "call-1".into(),
             name: "todo_set_list".to_owned(),
             arguments: serde_json::json!({
                 "phases": [{ "description": "Build", "tasks": ["Write code"] }]
@@ -803,7 +803,7 @@ mod tests {
         // Given a payload declaring completed and cancelled statuses.
         let (state, session_id) = setup_with_existing_list();
         let call = ToolCall {
-            id: "call-1".to_owned(),
+            id: "call-1".into(),
             name: "todo_set_list".to_owned(),
             arguments: serde_json::json!({
                 "phases": [{ "description": "Build", "tasks": [
@@ -838,7 +838,7 @@ mod tests {
         // Given a payload declaring a status jinn cannot represent.
         let (state, session_id) = setup_with_existing_list();
         let call = ToolCall {
-            id: "call-1".to_owned(),
+            id: "call-1".into(),
             name: "todo_set_list".to_owned(),
             arguments: serde_json::json!({
                 "phases": [{ "description": "Build", "tasks": [
@@ -881,7 +881,7 @@ mod tests {
         // task tooling reaches for.
         let (state, session_id) = setup_with_existing_list();
         let call = ToolCall {
-            id: "call-1".to_owned(),
+            id: "call-1".into(),
             name: "todo_set_list".to_owned(),
             arguments: serde_json::json!({
                 "phases": [{ "description": "Build", "tasks": [
@@ -981,7 +981,7 @@ mod tests {
 
         // When replacing the list.
         let call = ToolCall {
-            id: "call-1".to_owned(),
+            id: "call-1".into(),
             name: "todo_set_list".to_owned(),
             arguments: serde_json::json!({
                 "phases": [

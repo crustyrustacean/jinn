@@ -673,7 +673,7 @@ mod tests {
     /// Builds a tool call the provider requests from the model.
     fn tool_call(id: &str, name: &str, arguments: &str) -> jinn_core_types::tool_types::ToolCall {
         jinn_core_types::tool_types::ToolCall {
-            id: id.to_owned(),
+            id: id.to_owned().into(),
             name: name.to_owned(),
             arguments: arguments.to_owned(),
         }
@@ -2834,7 +2834,7 @@ mod tests {
         // Given a char-counting counter, content, and one tool call.
         let counter = CharCounter;
         let tool_calls = vec![jinn_core_types::tool_types::ToolCall {
-            id: "tc-1".to_owned(),
+            id: "tc-1".into(),
             name: "bash".to_owned(),
             arguments: "ls".to_owned(),
         }];

@@ -295,6 +295,10 @@ pub fn render_html(doc: &ExportDocument) -> String {
 pub struct HtmlExport;
 
 impl ExportFormat for HtmlExport {
+    fn name(&self) -> &'static str {
+        "html"
+    }
+
     fn extension(&self) -> &'static str {
         "html"
     }

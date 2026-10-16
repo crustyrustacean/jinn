@@ -160,7 +160,7 @@ fn entry(ordinal: usize, kind: ChatEntry) -> TranscriptEntry {
 
 fn window(entries: Vec<TranscriptEntry>) -> TranscriptWindow {
     TranscriptWindow {
-        session_id: "0199aaaa-0000-7000-8000-000000000009".to_owned(),
+        session_id: SessionId::try_from_string("0199aaaa-0000-7000-8000-000000000009").unwrap(),
         title: Some("migrate auth flow".to_owned()),
         total_entries: 1_204,
         entries,
@@ -174,9 +174,9 @@ fn ctx_with(store: StubStore) -> (ToolContext, std::sync::Arc<StubStore>) {
         config: jinn_config::testutil::config_layer(""),
         timeout: None,
         state: None,
-        session_id: Some(SessionId::from(
-            "0199aaaa-0000-7000-8000-000000000001".to_owned(),
-        )),
+        session_id: Some(
+            SessionId::try_from_string("0199aaaa-0000-7000-8000-000000000001").unwrap(),
+        ),
         app_paths: AppPaths::new_in(std::path::Path::new("/tmp")),
         bus: None,
         max_output_lines: None,
@@ -194,7 +194,7 @@ fn ctx_with(store: StubStore) -> (ToolContext, std::sync::Arc<StubStore>) {
 
 async fn run(ctx: ToolContext, args: serde_json::Value) -> ToolResult {
     let call = ToolCall {
-        id: "call-1".to_owned(),
+        id: "call-1".into(),
         name: "session_fetch".to_owned(),
         arguments: args.to_string(),
     };
@@ -359,13 +359,14 @@ async fn unknown_session_or_anchor_is_a_legible_error() {
     // Given a stub store that returns no window.
     let (ctx, _stub) = ctx_with(StubStore::default());
 
-    // When fetching by entry id.
+    // When fetching by a non-UUID entry id.
     let result = run(ctx, serde_json::json!({ "entry_id": "e-1" })).await;
 
-    // Then the error points back at search and mentions the session.
+    // Then the error refuses the id and points back at search: a malformed
+    // id is a malformed call, never silently resolved to nothing.
     assert!(!result.success);
     assert!(
-        result.content.contains("not found") && result.content.contains("session_search"),
+        result.content.contains("invalid entry_id") && result.content.contains("session_search"),
         "{}",
         result.content
     );
@@ -435,9 +436,9 @@ async fn outer_truncated_result_carries_full_content() {
             config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state: None,
-            session_id: Some(SessionId::from(
-                "0199aaaa-0000-7000-8000-000000000001".to_owned(),
-            )),
+            session_id: Some(
+                SessionId::try_from_string("0199aaaa-0000-7000-8000-000000000001").unwrap(),
+            ),
             app_paths: AppPaths::new_in(std::path::Path::new("/tmp")),
             bus: None,
             max_output_lines: Some(10),

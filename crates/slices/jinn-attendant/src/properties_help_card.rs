@@ -113,7 +113,7 @@ fn help_body(field: PropertyField, theme: &jinn_theme::Theme) -> Vec<Line<'stati
             Line::from(""),
             line(
                 "<prior report>",
-                "replacement token you can optionally add to the see template",
+                "replacement token you can optionally add to the seed template",
             ),
         ],
     }

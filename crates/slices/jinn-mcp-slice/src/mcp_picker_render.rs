@@ -108,7 +108,7 @@ pub fn mcp_server_row(entry: &McpServerEntry, ctx: &RowCtx<'_>) -> Line<'static>
 
     // Separator and description in dim style.
     let desc_style = dim_style(ctx.is_selected, &entry.theme);
-    let sep_span = Span::styled(" \u{2014} ".to_owned(), desc_style);
+    let sep_span = Span::styled(" - ".to_owned(), desc_style);
     let desc_spans = jinn_selection_widget::highlight_text_with_bg(
         &entry.description,
         desc_style,
@@ -169,7 +169,7 @@ fn tools_preview(entry: &McpServerEntry) -> Vec<Line<'static>> {
             Line::from(vec![
                 Span::styled(name.clone(), Style::default().fg(entry.theme.primary_text)),
                 Span::styled(
-                    format!(" \u{2014} {desc}"),
+                    format!(" - {desc}"),
                     Style::default().fg(entry.theme.muted_text),
                 ),
             ])

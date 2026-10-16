@@ -61,6 +61,10 @@ jinn-selection-widget = { workspace = true }
 [dev-dependencies]
 jinn-testutil = { workspace = true }
 
+# The work-time tests spawn the monitor actor — the cell's only writer — so a
+# restore publish is observed landing in the cell the way production folds it.
+jinn-work-time = { workspace = true }
+
 uuid = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }

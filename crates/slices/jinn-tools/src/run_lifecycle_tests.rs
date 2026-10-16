@@ -28,7 +28,7 @@ use crate::tool_types::ToolContext;
 /// Builds a tool call with the given JSON arguments.
 fn call(arguments: &str) -> ToolCall {
     ToolCall {
-        id: "tc_lc_1".to_owned(),
+        id: "tc_lc_1".into(),
         name: "run_lifecycle".to_owned(),
         arguments: arguments.to_owned(),
     }
@@ -146,7 +146,7 @@ fn missing_argument_fails_naming_the_placeholder() {
 
     // Then it fails naming <dir>.
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("<dir>"));
+    assert!(result.unwrap_err().to_string().contains("<dir>"));
 }
 
 #[rstest::rstest]
@@ -584,10 +584,16 @@ async fn path_source_resolves_the_named_entry_and_publishes_the_same_shape() {
 
     // When the tool runs setup by path, answered by the completion event.
     let tool = tokio::spawn(execute(
-        call(&format!(
-            r#"{{"script":"stage","path":"{}","action":"setup","session_id":"{id}","args":{{"dir":"wt"}}}}"#,
-            path.display()
-        )),
+        call(
+            &serde_json::json!({
+                "script": "stage",
+                "path": path.display().to_string(),
+                "action": "setup",
+                "session_id": id.to_string(),
+                "args": { "dir": "wt" }
+            })
+            .to_string(),
+        ),
         tool_ctx,
     ));
     tokio::time::sleep(Duration::from_millis(150)).await;
@@ -698,10 +704,16 @@ async fn an_unparseable_path_file_fails_naming_the_file() {
 
     // When the tool runs with that path.
     let result = execute(
-        call(&format!(
-            r#"{{"script":"stage","path":"{}","action":"setup","session_id":"{id}","args":{{}}}}"#,
-            path.display()
-        )),
+        call(
+            &serde_json::json!({
+                "script": "stage",
+                "path": path.display().to_string(),
+                "action": "setup",
+                "session_id": id.to_string(),
+                "args": {}
+            })
+            .to_string(),
+        ),
         tool_ctx,
     )
     .await;
@@ -732,10 +744,16 @@ async fn a_name_missing_from_the_path_file_fails_naming_the_file_and_entries() {
     // When the tool runs with a script name the file does not define —
     // and the user's jinn.toml DOES define (the config carries "stage").
     let result = execute(
-        call(&format!(
-            r#"{{"script":"nope","path":"{}","action":"setup","session_id":"{id}","args":{{}}}}"#,
-            path.display()
-        )),
+        call(
+            &serde_json::json!({
+                "script": "nope",
+                "path": path.display().to_string(),
+                "action": "setup",
+                "session_id": id.to_string(),
+                "args": {}
+            })
+            .to_string(),
+        ),
         tool_ctx,
     )
     .await;
@@ -771,10 +789,16 @@ async fn an_entry_without_the_requested_half_fails() {
 
     // When the tool runs the entry's setup.
     let result = execute(
-        call(&format!(
-            r#"{{"script":"solo","path":"{}","action":"setup","session_id":"{id}","args":{{}}}}"#,
-            path.display()
-        )),
+        call(
+            &serde_json::json!({
+                "script": "solo",
+                "path": path.display().to_string(),
+                "action": "setup",
+                "session_id": id.to_string(),
+                "args": {}
+            })
+            .to_string(),
+        ),
         tool_ctx,
     )
     .await;
@@ -803,10 +827,16 @@ async fn a_builtin_entry_is_refused_through_the_path_source_too() {
 
     // When the tool runs that entry.
     let result = execute(
-        call(&format!(
-            r#"{{"script":"built","path":"{}","action":"setup","session_id":"{id}","args":{{}}}}"#,
-            path.display()
-        )),
+        call(
+            &serde_json::json!({
+                "script": "built",
+                "path": path.display().to_string(),
+                "action": "setup",
+                "session_id": id.to_string(),
+                "args": {}
+            })
+            .to_string(),
+        ),
         tool_ctx,
     )
     .await;
@@ -828,10 +858,16 @@ async fn path_with_blank_script_refuses_naming_the_requirement() {
 
     // When the tool runs with that blank name and the path present.
     let result = execute(
-        call(&format!(
-            r#"{{"script":"","path":"{}","action":"setup","session_id":"{id}","args":{{}}}}"#,
-            path.display()
-        )),
+        call(
+            &serde_json::json!({
+                "script": "",
+                "path": path.display().to_string(),
+                "action": "setup",
+                "session_id": id.to_string(),
+                "args": {}
+            })
+            .to_string(),
+        ),
         tool_ctx,
     )
     .await;
@@ -889,10 +925,16 @@ async fn teardown_replays_even_when_the_call_carries_a_path() {
     // When the tool runs teardown carrying that path and the file's entry
     // name, answered by the finish event.
     let tool = tokio::spawn(execute(
-        call(&format!(
-            r#"{{"script":"stage","path":"{}","action":"teardown","session_id":"{id}","args":{{"dir":"wt"}}}}"#,
-            path.display()
-        )),
+        call(
+            &serde_json::json!({
+                "script": "stage",
+                "path": path.display().to_string(),
+                "action": "teardown",
+                "session_id": id.to_string(),
+                "args": { "dir": "wt" }
+            })
+            .to_string(),
+        ),
         tool_ctx,
     ));
     tokio::time::sleep(Duration::from_millis(150)).await;

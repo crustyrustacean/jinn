@@ -107,7 +107,7 @@ impl GeminiStreamParser {
             .to_owned();
         let args = fc.get("args").cloned().unwrap_or(serde_json::Value::Null);
         let arguments = serde_json::to_string(&args).unwrap_or_default();
-        let id = format!("call_{name}");
+        let id = jinn_core_types::ToolCallId::new(format!("call_{name}"));
 
         Some(vec![
             StreamEvent::ToolUseStart {

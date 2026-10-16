@@ -554,7 +554,7 @@ fn pinned_skill_result_keeps_whole_loop_through_worker_exclude() {
 /// sequence contract (mirrors the tripwire's invariant).
 fn sequence_is_valid(messages: &[LlmMessage]) -> bool {
     use std::collections::HashSet;
-    let mut open: Option<HashSet<String>> = None;
+    let mut open: Option<HashSet<jinn_core_types::ToolCallId>> = None;
     for message in messages {
         match message {
             LlmMessage::Assistant {
@@ -564,7 +564,8 @@ fn sequence_is_valid(messages: &[LlmMessage]) -> bool {
                 if open.is_some() {
                     return false;
                 }
-                let ids: HashSet<String> = calls.iter().map(|c| c.id.clone()).collect();
+                let ids: HashSet<jinn_core_types::ToolCallId> =
+                    calls.iter().map(|c| c.id.clone()).collect();
                 if ids.len() != calls.len() {
                     return false;
                 }

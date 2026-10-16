@@ -14,6 +14,7 @@ use std::time::Duration;
 use crate::tool_types::ToolContext;
 use crate::tool_types::failed;
 use jinn_core_types::SessionId;
+use jinn_core_types::ToolCallId;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_kernel::common::process_kill::kill_process_tree;
 use jinn_kernel::common::services::bus_service::BusService;
@@ -143,7 +144,7 @@ async fn flush_buffer(
     buffer: &str,
     bus: Option<&BusService>,
     session_id: Option<&SessionId>,
-    tool_call_id: &str,
+    tool_call_id: &ToolCallId,
 ) {
     emit_stream_event(
         bus,
@@ -151,7 +152,7 @@ async fn flush_buffer(
         ToolExecutionOutput {
             kind: ToolOutputKind::default(),
             session_id: session_id.cloned().unwrap_or_default(),
-            tool_call_id: tool_call_id.to_owned(),
+            tool_call_id: tool_call_id.clone(),
             output: buffer.to_owned(),
         },
     )
@@ -179,7 +180,7 @@ async fn emit_stream_event(
 fn format_exit_result(
     exit_result: &Result<std::process::ExitStatus, std::io::Error>,
     accumulated: &str,
-    tool_call_id: String,
+    tool_call_id: ToolCallId,
     tool_name: String,
     max_lines: usize,
     max_bytes: usize,
@@ -327,7 +328,7 @@ impl StreamingBatcher {
         &mut self,
         bus: Option<&BusService>,
         session_id: Option<&SessionId>,
-        tool_call_id: &str,
+        tool_call_id: &ToolCallId,
     ) {
         if self.buffer.is_empty() {
             return;
@@ -348,7 +349,7 @@ async fn read_child_output_and_wait(
     accumulated: &mut String,
     bus: Option<&BusService>,
     session_id: Option<&SessionId>,
-    tool_call_id: &str,
+    tool_call_id: &ToolCallId,
 ) -> Result<std::process::ExitStatus, std::io::Error> {
     // WHY tokio::sync::mpsc HERE, NOT kanal:
     // kanal's `ReceiveStream` used inside `tokio::select!` has a known
@@ -572,8 +573,8 @@ mod tests {
     async fn execute_returns_stdout() {
         // Given a bash tool call that echoes text.
         let call = ToolCall {
-            id: "call_1".to_owned(),
-            name: "bash".to_owned(),
+            id: "call_1".into(),
+            name: "bash".into(),
             arguments: serde_json::json!({
                 "command": "echo hello world"
             })
@@ -584,7 +585,7 @@ mod tests {
         let result = execute(call, test_ctx()).await;
 
         // Then the result contains the echoed output.
-        assert_eq!(result.tool_call_id, "call_1");
+        assert_eq!(result.tool_call_id.as_str(), "call_1");
         assert!(result.success);
         assert!(result.content.contains("hello world"));
     }
@@ -594,8 +595,8 @@ mod tests {
     async fn execute_runs_through_bash_not_fish_or_dash() {
         // Given a bash tool call using brace expansion (rejected by fish and dash).
         let call = ToolCall {
-            id: "call_bash".to_owned(),
-            name: "bash".to_owned(),
+            id: "call_bash".into(),
+            name: "bash".into(),
             arguments: serde_json::json!({
                 "command": "echo {1..3}"
             })
@@ -616,7 +617,7 @@ mod tests {
     async fn execute_captures_stderr() {
         // Given a bash tool call that writes to stderr.
         let call = ToolCall {
-            id: "call_2".to_owned(),
+            id: ToolCallId::from("call_2"),
             name: "bash".to_owned(),
             arguments: serde_json::json!({
                 "command": "echo error >&2"
@@ -637,7 +638,7 @@ mod tests {
     async fn execute_reports_nonzero_exit() {
         // Given a bash tool call that exits with code 1.
         let call = ToolCall {
-            id: "call_3".to_owned(),
+            id: ToolCallId::from("call_3"),
             name: "bash".to_owned(),
             arguments: serde_json::json!({
                 "command": "exit 1"
@@ -690,7 +691,7 @@ mod tests {
         };
 
         let call = ToolCall {
-            id: "call_4".to_owned(),
+            id: ToolCallId::from("call_4"),
             name: "bash".to_owned(),
             arguments: serde_json::json!({
                 "command": pwd_command
@@ -716,7 +717,7 @@ mod tests {
     async fn execute_returns_error_on_empty_command() {
         // Given a bash tool call with an empty command.
         let call = ToolCall {
-            id: "call_5".to_owned(),
+            id: ToolCallId::from("call_5"),
             name: "bash".to_owned(),
             arguments: serde_json::json!({
                 "command": ""
@@ -737,8 +738,8 @@ mod tests {
     async fn execute_returns_error_on_bad_json() {
         // Given a bash tool call with invalid JSON.
         let call = ToolCall {
-            id: "call_6".to_owned(),
-            name: "bash".to_owned(),
+            id: "call_6".into(),
+            name: "bash".into(),
             arguments: "not json".to_owned(),
         };
 
@@ -756,8 +757,8 @@ mod tests {
     async fn execute_child_has_no_controlling_tty() {
         // Given a bash tool call that tries to open the controlling tty.
         let call = ToolCall {
-            id: "call_tty".to_owned(),
-            name: "bash".to_owned(),
+            id: "call_tty".into(),
+            name: "bash".into(),
             arguments: serde_json::json!({
                 "command": "exec 3>/dev/tty"
             })
@@ -781,7 +782,7 @@ mod tests {
     async fn execute_child_runs_in_new_session() {
         // Given a bash tool call reporting its session id.
         let call = ToolCall {
-            id: "call_sid".to_owned(),
+            id: "call_sid".into(),
             name: "bash".to_owned(),
             arguments: serde_json::json!({
                 "command": "ps -o sid= -p $$"
@@ -822,7 +823,7 @@ mod tests {
         // Given no timeout in the context.
         let ctx = test_ctx(); // timeout: None
         let call = ToolCall {
-            id: "call_no_to".to_owned(),
+            id: "call_no_to".into(),
             name: "bash".to_owned(),
             arguments: serde_json::json!({"command": "echo hi"}).to_string(),
         };
@@ -910,7 +911,7 @@ mod tests {
         // When repeatedly dropping the bash future mid-stream via timeout.
         for i in 0..ITERATIONS {
             let call = ToolCall {
-                id: format!("call_cancel_{i}"),
+                id: ToolCallId::from(format!("call_cancel_{i}")),
                 name: "bash".to_owned(),
                 arguments: serde_json::json!({ "command": "yes" }).to_string(),
             };
@@ -1044,7 +1045,11 @@ mod tests {
 
         // When flushing an empty buffer.
         batcher
-            .flush(Some(&bus), Some(&session_id), "test_call")
+            .flush(
+                Some(&bus),
+                Some(&session_id),
+                &ToolCallId::from("test_call"),
+            )
             .await;
 
         // Then no ToolExecutionOutput is emitted.
@@ -1065,7 +1070,11 @@ mod tests {
 
         // When flushing the buffer.
         batcher
-            .flush(Some(&bus), Some(&session_id), "test_call")
+            .flush(
+                Some(&bus),
+                Some(&session_id),
+                &ToolCallId::from("test_call"),
+            )
             .await;
 
         // Then exactly one ToolExecutionOutput is emitted containing both lines.
@@ -1111,7 +1120,7 @@ mod tests {
         let result = format_exit_result(
             &exit_result,
             "hello world\n",
-            "call_1".to_owned(),
+            ToolCallId::from("call_1"),
             "bash".to_owned(),
             DEFAULT_MAX_LINES,
             DEFAULT_MAX_BYTES,
@@ -1136,7 +1145,7 @@ mod tests {
         let result = format_exit_result(
             &exit_result,
             "some output\n",
-            "call_2".to_owned(),
+            ToolCallId::from("call_2"),
             "bash".to_owned(),
             DEFAULT_MAX_LINES,
             DEFAULT_MAX_BYTES,
@@ -1161,7 +1170,7 @@ mod tests {
         let result = format_exit_result(
             &exit_result,
             "",
-            "call_3".to_owned(),
+            ToolCallId::from("call_3"),
             "bash".to_owned(),
             DEFAULT_MAX_LINES,
             DEFAULT_MAX_BYTES,
@@ -1183,7 +1192,7 @@ mod tests {
         let result = format_exit_result(
             &exit_result,
             "",
-            "call_4".to_owned(),
+            ToolCallId::from("call_4"),
             "bash".to_owned(),
             DEFAULT_MAX_LINES,
             DEFAULT_MAX_BYTES,
@@ -1206,7 +1215,7 @@ mod tests {
         let result = format_exit_result(
             &exit_result,
             "no trailing newline",
-            "call_5".to_owned(),
+            ToolCallId::from("call_5"),
             "bash".to_owned(),
             DEFAULT_MAX_LINES,
             DEFAULT_MAX_BYTES,

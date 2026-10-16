@@ -30,6 +30,8 @@
 
 use std::collections::BTreeMap;
 
+use error_stack::Report;
+
 use crate::lifecycle_completion_listener_actor::{
     AwaitKind, LifecycleCompletion, LifecycleCompletionListenerActor,
     LifecycleCompletionListenerDeps,
@@ -44,6 +46,115 @@ use jinn_preferences_config::schemas::{LifecycleCommand, SessionLifecycle};
 use jinn_session_lifecycle_msg::LifecycleScriptState;
 use jinn_session_lifecycle_msg::command_template::CommandTemplate;
 use jinn_session_lifecycle_msg::command_template::Param;
+
+/// Why a lifecycle script could not be resolved, read, or rendered.
+///
+/// Variants carry everything the model needs in their message: the tool
+/// boundary renders a failure as tool-result prose, and a `Report`'s
+/// `Display` prints only the outermost context.
+#[derive(Debug, wherror::Error)]
+pub enum LifecycleError {
+    /// The configuration's lifecycle section could not be read.
+    #[error("cannot read lifecycle scripts: {detail}")]
+    ConfigRead {
+        /// The reader's complaint.
+        detail: String,
+    },
+    /// No script of this name is defined in the configuration.
+    #[error("unknown lifecycle script \"{name}\"; known: {known}")]
+    UnknownScript {
+        /// The refused name.
+        name: String,
+        /// The configured script names, comma-joined.
+        known: String,
+    },
+    /// The lifecycle file could not be read.
+    #[error("cannot read {file}: {detail}")]
+    FileRead {
+        /// The resolved file path.
+        file: String,
+        /// The filesystem's complaint.
+        detail: String,
+    },
+    /// The lifecycle file is not a valid lifecycle document.
+    #[error("{file}: {detail}")]
+    Malformed {
+        /// The resolved file path.
+        file: String,
+        /// The parser's complaint.
+        detail: String,
+    },
+    /// The file defines no script of this name.
+    #[error("{file}: no lifecycle script named \"{name}\"; the file defines: {known}")]
+    ScriptNotInFile {
+        /// The resolved file path.
+        file: String,
+        /// The refused name.
+        name: String,
+        /// The names the file defines, comma-joined.
+        known: String,
+    },
+    /// The requested half is a builtin command, which this tool does not run.
+    #[error("lifecycle script \"{name}\" uses a builtin {action}, which this tool does not run")]
+    BuiltinCommand {
+        /// The script's name.
+        name: String,
+        /// The requested half: setup or teardown.
+        action: String,
+    },
+    /// The script defines no command for the requested half.
+    #[error("lifecycle script \"{name}\" defines no {action} command")]
+    MissingCommand {
+        /// The script's name.
+        name: String,
+        /// The requested half: setup or teardown.
+        action: String,
+    },
+    /// A placeholder in the template has no supplied value.
+    #[error("missing argument for placeholder <{name}>; the script names: {known}")]
+    MissingPlaceholderArg {
+        /// The placeholder's name.
+        name: String,
+        /// Every named placeholder, comma-joined.
+        known: String,
+    },
+    /// The template uses a positional placeholder.
+    #[error(
+        "script uses positional placeholder ${n}; this tool supplies named arguments \
+             keyed by placeholder name"
+    )]
+    PositionalParam {
+        /// The positional index.
+        n: usize,
+    },
+    /// The template uses a splat placeholder.
+    #[error("script uses a splat placeholder; this tool supplies named arguments")]
+    SplatParam,
+    /// The template could not be rendered with the supplied values.
+    #[error("cannot render lifecycle command: {detail}")]
+    Render {
+        /// The renderer's complaint.
+        detail: String,
+    },
+    /// The tool call's arguments were malformed.
+    #[error("malformed tool arguments: {detail}")]
+    MalformedArguments {
+        /// The parser's complaint.
+        detail: String,
+    },
+    /// A map argument entry was not a string.
+    #[error("argument \"{key}\" must be a string")]
+    ArgumentNotAString {
+        /// The offending key.
+        key: String,
+    },
+    /// A required argument was missing.
+    #[error("missing required argument: {key}")]
+    MissingArgument {
+        /// The missing key.
+        key: String,
+    },
+}
 use jinn_session_lifecycle_msg::{RunSessionSetup, RunSessionTeardown};
 
 /// The `run_lifecycle` tool definition.
@@ -207,7 +318,7 @@ async fn run_setup(
     };
     let args = match map_argument(&call, "args") {
         Ok(args) => args,
-        Err(reason) => return tool_error(&call, &reason),
+        Err(reason) => return tool_error(&call, &reason.to_string()),
     };
 
     // Resolve the script and render the command before touching state. The
@@ -218,16 +329,16 @@ async fn run_setup(
         Some(path) => match resolve_from_path(&path, &ctx, &script_name, &action, AwaitKind::Setup)
         {
             Ok(resolved) => resolved,
-            Err(reason) => return tool_error(&call, &reason),
+            Err(reason) => return tool_error(&call, &reason.to_string()),
         },
         None => match resolve_from_config(&ctx, &script_name, &action, AwaitKind::Setup) {
             Ok(resolved) => resolved,
-            Err(reason) => return tool_error(&call, &reason),
+            Err(reason) => return tool_error(&call, &reason.to_string()),
         },
     };
     let command = match render_command(&raw_command, &args) {
         Ok(rendered) => rendered,
-        Err(reason) => return tool_error(&call, &reason),
+        Err(reason) => return tool_error(&call, &reason.to_string()),
     };
 
     // State gate before the stamp: setup only from a session that has run
@@ -442,20 +553,23 @@ fn resolve_from_config(
     script_name: &str,
     action: &str,
     kind: AwaitKind,
-) -> Result<(String, Option<String>), String> {
-    let scripts = ctx
-        .config
-        .get_list::<SessionLifecycle>()
-        .map_err(|error| format!("cannot read lifecycle scripts: {error}"))?;
+) -> Result<(String, Option<String>), Report<LifecycleError>> {
+    let scripts =
+        ctx.config
+            .get_list::<SessionLifecycle>()
+            .map_err(|error| LifecycleError::ConfigRead {
+                detail: error.to_string(),
+            })?;
     let Some(script) = scripts.iter().find(|s| s.name == script_name) else {
-        return Err(format!(
-            "unknown lifecycle script \"{script_name}\"; known: {}",
-            scripts
+        return Err(LifecycleError::UnknownScript {
+            name: script_name.to_owned(),
+            known: scripts
                 .iter()
                 .map(|s| s.name.as_str())
                 .collect::<Vec<_>>()
-                .join(", ")
-        ));
+                .join(", "),
+        }
+        .into());
     };
     half_of(script, script_name, action, kind).map(|raw| (raw.to_owned(), None))
 }
@@ -470,23 +584,30 @@ fn resolve_from_path(
     script_name: &str,
     action: &str,
     kind: AwaitKind,
-) -> Result<(String, Option<String>), String> {
+) -> Result<(String, Option<String>), Report<LifecycleError>> {
     let resolved = crate::tool_paths::resolve_path(path, &ctx.cwd);
     let source = resolved.display().to_string();
-    let text = std::fs::read_to_string(&resolved)
-        .map_err(|error| format!("cannot read {source}: {error}"))?;
+    let text = std::fs::read_to_string(&resolved).map_err(|error| LifecycleError::FileRead {
+        file: source.clone(),
+        detail: error.to_string(),
+    })?;
     let scripts =
         jinn_preferences_config::schemas::session_lifecycle::parse_lifecycle_document(&text)
-            .map_err(|error| format!("{source}: {error}"))?;
+            .map_err(|error| LifecycleError::Malformed {
+                file: source.clone(),
+                detail: error.to_string(),
+            })?;
     let Some(script) = scripts.iter().find(|s| s.name == script_name) else {
-        return Err(format!(
-            "{source}: no lifecycle script named \"{script_name}\"; the file defines: {}",
-            scripts
+        return Err(LifecycleError::ScriptNotInFile {
+            file: source,
+            name: script_name.to_owned(),
+            known: scripts
                 .iter()
                 .map(|s| s.name.as_str())
                 .collect::<Vec<_>>()
-                .join(", ")
-        ));
+                .join(", "),
+        }
+        .into());
     };
     half_of(script, script_name, action, kind).map(|raw| (raw.to_owned(), Some(source)))
 }
@@ -498,20 +619,23 @@ fn half_of<'a>(
     script_name: &str,
     action: &str,
     kind: AwaitKind,
-) -> Result<&'a str, String> {
+) -> Result<&'a str, Report<LifecycleError>> {
     let half = match kind {
         AwaitKind::Setup => script.setup.as_ref(),
         AwaitKind::Teardown => script.teardown.as_ref(),
     };
     match half {
         Some(LifecycleCommand::Shell(cmd)) => Ok(cmd.as_str()),
-        Some(LifecycleCommand::Builtin(_)) => Err(format!(
-            "lifecycle script \"{script_name}\" uses a builtin {action}, \
-             which this tool does not run"
-        )),
-        None => Err(format!(
-            "lifecycle script \"{script_name}\" defines no {action} command"
-        )),
+        Some(LifecycleCommand::Builtin(_)) => Err(LifecycleError::BuiltinCommand {
+            name: script_name.to_owned(),
+            action: action.to_owned(),
+        }
+        .into()),
+        None => Err(LifecycleError::MissingCommand {
+            name: script_name.to_owned(),
+            action: action.to_owned(),
+        }
+        .into()),
     }
 }
 
@@ -522,12 +646,22 @@ fn half_of<'a>(
 /// one-pass scan (emitted output is never re-scanned, so a value carrying a
 /// later placeholder's shape is inert) lives in the contract crate, and both
 /// the tool's setup render and the teardown replay go through it.
-pub(crate) fn render_command(raw: &str, args: &BTreeMap<String, String>) -> Result<String, String> {
+///
+/// # Errors
+///
+/// Returns an error when a template names a placeholder the supplied
+/// arguments do not carry, or when the contract render fails.
+pub(crate) fn render_command(
+    raw: &str,
+    args: &BTreeMap<String, String>,
+) -> Result<String, Report<LifecycleError>> {
     let template = CommandTemplate::parse(raw);
     validate_named_params(&template, args)?;
-    template
-        .render_named(args)
-        .map_err(|error| error.to_string())
+    template.render_named(args).map_err(|error| {
+        error_stack::Report::new(LifecycleError::Render {
+            detail: error.to_string(),
+        })
+    })
 }
 
 /// Validates that every placeholder in `template` is covered by `args`, and
@@ -539,14 +673,14 @@ pub(crate) fn render_command(raw: &str, args: &BTreeMap<String, String>) -> Resu
 fn validate_named_params(
     template: &CommandTemplate,
     args: &BTreeMap<String, String>,
-) -> Result<(), String> {
+) -> Result<(), Report<LifecycleError>> {
     for param in template.params() {
         match param {
             Param::Named(name) => {
                 if !args.contains_key(name) {
-                    return Err(format!(
-                        "missing argument for placeholder <{name}>; the script names: {}",
-                        template
+                    return Err(LifecycleError::MissingPlaceholderArg {
+                        name: name.clone(),
+                        known: template
                             .params()
                             .iter()
                             .filter_map(|p| match p {
@@ -554,21 +688,16 @@ fn validate_named_params(
                                 _ => None,
                             })
                             .collect::<Vec<_>>()
-                            .join(", ")
-                    ));
+                            .join(", "),
+                    }
+                    .into());
                 }
             }
             Param::Positional(n) => {
-                return Err(format!(
-                    "script uses positional placeholder ${n}; this tool supplies named \
-                     arguments keyed by placeholder name"
-                ));
+                return Err(LifecycleError::PositionalParam { n: *n }.into());
             }
             Param::Splat => {
-                return Err(
-                    "script uses a splat placeholder; this tool supplies named arguments"
-                        .to_owned(),
-                );
+                return Err(LifecycleError::SplatParam.into());
             }
         }
     }
@@ -604,9 +733,15 @@ fn string_argument(call: &ToolCall, key: &str) -> Option<String> {
 }
 
 /// Reads one string-map argument from the call's JSON arguments.
-fn map_argument(call: &ToolCall, key: &str) -> Result<BTreeMap<String, String>, String> {
-    let value: serde_json::Value = serde_json::from_str(&call.arguments)
-        .map_err(|error| format!("malformed tool arguments: {error}"))?;
+fn map_argument(
+    call: &ToolCall,
+    key: &str,
+) -> Result<BTreeMap<String, String>, Report<LifecycleError>> {
+    let value: serde_json::Value = serde_json::from_str(&call.arguments).map_err(|error| {
+        LifecycleError::MalformedArguments {
+            detail: error.to_string(),
+        }
+    })?;
     match value.get(key) {
         Some(serde_json::Value::Object(map)) => {
             let mut args = BTreeMap::new();
@@ -615,12 +750,17 @@ fn map_argument(call: &ToolCall, key: &str) -> Result<BTreeMap<String, String>, 
                     Some(s) => {
                         args.insert(k.clone(), s.to_owned());
                     }
-                    None => return Err(format!("argument \"{k}\" must be a string")),
+                    None => {
+                        return Err(LifecycleError::ArgumentNotAString { key: k.clone() }.into());
+                    }
                 }
             }
             Ok(args)
         }
-        _ => Err(format!("missing required argument: {key}")),
+        _ => Err(LifecycleError::MissingArgument {
+            key: key.to_owned(),
+        }
+        .into()),
     }
 }
 

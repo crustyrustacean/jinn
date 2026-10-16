@@ -10,6 +10,7 @@ use std::process::Stdio;
 
 use crate::tool_types::ToolContext;
 use crate::tool_types::failed;
+use jinn_core_types::ToolCallId;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 
 use jinn_tools_msg::truncation::{
@@ -73,7 +74,7 @@ fn parse_args(raw: &str) -> Result<GrepArgs, serde_json::Error> {
 fn format_output(
     content: &str,
     success: bool,
-    tool_call_id: String,
+    tool_call_id: ToolCallId,
     tool_name: String,
     max_lines: usize,
     max_bytes: usize,
@@ -269,8 +270,8 @@ mod tests {
 
     fn tool_call(pattern: &str) -> ToolCall {
         ToolCall {
-            id: "call_1".to_owned(),
-            name: "grep".to_owned(),
+            id: "call_1".into(),
+            name: "grep".into(),
             arguments: serde_json::json!({ "pattern": pattern }).to_string(),
         }
     }
@@ -285,8 +286,8 @@ mod tests {
             }
         }
         ToolCall {
-            id: "call_1".to_owned(),
-            name: "grep".to_owned(),
+            id: "call_1".into(),
+            name: "grep".into(),
             arguments: args.to_string(),
         }
     }
@@ -403,8 +404,8 @@ mod tests {
         std::fs::write(dir.path().join("sample.txt"), "hello\n").expect("write file");
 
         let call = ToolCall {
-            id: "call_err".to_owned(),
-            name: "grep".to_owned(),
+            id: "call_err".into(),
+            name: "grep".into(),
             arguments: serde_json::json!({ "pattern": "[" }).to_string(),
         };
         let ctx = test_ctx_with_cwd(dir.path().to_owned());
@@ -421,8 +422,8 @@ mod tests {
     async fn execute_returns_error_on_empty_pattern() {
         // Given a grep tool call with an empty pattern.
         let call = ToolCall {
-            id: "call_empty".to_owned(),
-            name: "grep".to_owned(),
+            id: "call_empty".into(),
+            name: "grep".into(),
             arguments: serde_json::json!({ "pattern": "" }).to_string(),
         };
 
@@ -439,7 +440,7 @@ mod tests {
     async fn execute_returns_error_on_bad_json() {
         // Given a grep tool call with invalid JSON.
         let call = ToolCall {
-            id: "call_bad".to_owned(),
+            id: "call_bad".into(),
             name: "grep".to_owned(),
             arguments: "not json".to_owned(),
         };
@@ -522,7 +523,7 @@ mod tests {
         let result = format_output(
             &content,
             true,
-            "id".to_owned(),
+            jinn_core_types::ToolCallId::from("id"),
             "grep".to_owned(),
             DEFAULT_MAX_LINES,
             DEFAULT_MAX_BYTES,
@@ -547,7 +548,7 @@ mod tests {
         let result = format_output(
             &content,
             true,
-            "id".to_owned(),
+            jinn_core_types::ToolCallId::from("id"),
             "grep".to_owned(),
             10,
             DEFAULT_MAX_BYTES,

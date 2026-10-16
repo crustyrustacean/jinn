@@ -166,7 +166,7 @@ impl StreamResponseParser {
                 state.started = true;
                 results.push(StreamEvent::ToolUseStart {
                     index,
-                    id: state.id.clone(),
+                    id: jinn_core_types::ToolCallId::from(state.id.clone()),
                     name: state.name.clone(),
                 });
             }
@@ -197,7 +197,7 @@ impl StreamResponseParser {
                 results.push(StreamEvent::ToolUseComplete {
                     index: idx,
                     tool_call: ToolCall {
-                        id: state.id,
+                        id: jinn_core_types::ToolCallId::from(state.id),
                         name: state.name,
                         arguments: state.arguments_buffer,
                     },
@@ -455,7 +455,7 @@ mod tests {
             events[0],
             StreamEvent::ToolUseStart {
                 index: 0,
-                id: "call_1".to_owned(),
+                id: "call_1".into(),
                 name: "get_weather".to_owned(),
             }
         );
@@ -509,32 +509,49 @@ mod tests {
         ));
     }
 
+    /// Primes a parser with a streamed tool call: start, arguments, finish.
+    fn parser_with_finished_tool_call() -> StreamResponseParser {
+        let mut parser = StreamResponseParser::new();
+        let start_json = r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"echo","arguments":""}}]},"finish_reason":null}]}"#;
+        parser.parse_data(start_json);
+        let args_json = r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"x\":1}"}}]},"finish_reason":null}]}"#;
+        parser.parse_data(args_json);
+        let finish_json =
+            r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#;
+        parser.parse_data(finish_json);
+        parser
+    }
+
     #[rstest::rstest]
-    fn finish_reason_tool_calls_produces_complete_and_done() {
+    fn finish_reason_tool_calls_emits_one_complete_carrying_the_call() {
         // Given a parser primed with a tool call and its arguments.
-        // When the finish chunk is parsed, [DONE] is then sent.
-        // Then a single ToolUseComplete is emitted, and [DONE] flushes the
-        // pending Done.
         let mut parser = StreamResponseParser::new();
         let start_json = r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"echo","arguments":""}}]},"finish_reason":null}]}"#;
         parser.parse_data(start_json);
         let args_json = r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"x\":1}"}}]},"finish_reason":null}]}"#;
         parser.parse_data(args_json);
 
-        // When parsing the finish chunk.
+        // When the finish chunk is parsed.
         let finish_json =
             r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#;
         let events = parser.parse_data(finish_json);
 
         // Then a single ToolUseComplete event carries the assembled call.
-        // ToolUseComplete is emitted immediately; Done is deferred.
         assert_eq!(events.len(), 1);
         assert!(
             matches!(&events[0], StreamEvent::ToolUseComplete { index: 0, tool_call } if tool_call.name == "echo" && tool_call.arguments == "{\"x\":1}")
         );
+    }
 
-        // And [DONE] flushes the pending Done.
+    #[rstest::rstest]
+    fn done_sentinel_after_tool_calls_flushes_pending_done() {
+        // Given a parser primed with a finished tool call whose Done is deferred.
+        let mut parser = parser_with_finished_tool_call();
+
+        // When the [DONE] sentinel arrives.
         let done_events = parser.handle_done();
+
+        // Then exactly one Done event with the ToolUse stop reason is flushed.
         assert_eq!(done_events.len(), 1);
         assert!(matches!(
             &done_events[0],

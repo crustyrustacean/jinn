@@ -267,12 +267,9 @@ async fn failing_session_does_not_block_rest_of_batch() {
             let ids = [good_a.clone(), good_b.clone()];
             async move {
                 let outcome = search_all(&store).await;
-                let hit_sessions: std::collections::HashSet<&str> =
-                    outcome.hits.iter().map(|h| h.session_id.as_str()).collect();
-                ids.iter()
-                    .filter(|id| hit_sessions.contains(id.to_string().as_str()))
-                    .count()
-                    == ids.len()
+                let hit_sessions: std::collections::HashSet<jinn_core_types::SessionId> =
+                    outcome.hits.iter().map(|h| h.session_id.clone()).collect();
+                ids.iter().filter(|id| hit_sessions.contains(*id)).count() == ids.len()
             }
         })
         .await
@@ -286,7 +283,7 @@ async fn failing_session_does_not_block_rest_of_batch() {
     let poisoned_hits = outcome
         .hits
         .iter()
-        .filter(|h| h.session_id == poisoned.to_string())
+        .filter(|h| h.session_id == poisoned)
         .count();
     assert_eq!(poisoned_hits, 0, "poisoned session must not be indexed");
 }
@@ -753,7 +750,11 @@ async fn failing_session_still_publishes_progress() {
         .save(&needle_session(&SessionId::new()))
         .await
         .expect("save");
-    create_reindex_tripwire(&store, &SessionId::from(store_dirty_id(&store).await)).await;
+    create_reindex_tripwire(
+        &store,
+        &SessionId::try_from_string(&store_dirty_id(&store).await).unwrap(),
+    )
+    .await;
 
     // When the actor runs its startup drain.
     let _path = crate::search_index_actor::SearchIndexActor::spawn(

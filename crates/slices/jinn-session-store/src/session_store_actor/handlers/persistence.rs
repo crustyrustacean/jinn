@@ -1,62 +1,40 @@
 //! Session snapshot persistence.
+//!
+//! The stamped-save flow itself lives in the kernel
+//! ([`jinn_kernel::common::session_persistence`]) — the one flow every
+//! durable write routes through, shared with the session-turn actor. This
+//! module is the store actor's delegations into it.
 
 use jinn_core_types::SessionId;
 use jinn_core_types::WorkingInterval;
 use jinn_session_store_msg::PersistSession;
 
 use crate::session_store_actor::SessionStoreActor;
-use crate::working_time;
 
 impl SessionStoreActor {
-    /// Saves a coherent snapshot of the current session to the store.
-    ///
-    /// The write lock is held only for the cheap timestamp mutation. The
-    /// follow-up read lock captures durable state before store I/O runs.
+    /// Saves a coherent snapshot of the current session to the store,
+    /// stamped with the work-time cell's current record.
     pub(crate) async fn save_active_session(&self, session_id: &SessionId) {
-        let services = self.services.clone();
-        let state = self.state.clone();
-        let requested_id = session_id.clone();
-        let logged_id = session_id.clone();
+        self.save_active_session_stamping(session_id, None).await;
+    }
 
-        // Read the working intervals out of the work-time cell before the
-        // blocking capture, so a running turn's open interval is written as
-        // open and closes on load rather than being frozen at save time.
-        let working = self.working_intervals(session_id);
-        let snapshot = tokio::task::spawn_blocking(move || {
-            {
-                state.with_session(|view| {
-                    if let Some(session) = view.session.map().get_mut(&requested_id) {
-                        session.touch();
-                    }
-                });
-            }
-            let state = state.read();
-            state
-                .session
-                .get(&requested_id)
-                .filter(|session| session.is_persistable())
-                .map(jinn_session_state::ChatSessionState::capture_snapshot)
-        })
-        .await
-        .unwrap_or_else(|error| {
-            tracing::warn!(?error, "spawn_blocking panicked during session save");
-            None
-        });
-
-        let Some(mut snapshot) = snapshot else { return };
-
-        // Stamped here rather than read off the session core: the intervals
-        // live in the work-time slice's cell, and the core deliberately does
-        // not carry them, so there is exactly one copy and one writer.
-        snapshot.metadata.working_intervals = working;
-
-        if let Err(error) = services.session_store.save(&snapshot).await {
-            tracing::warn!(
-                session_id = ?logged_id,
-                ?error,
-                "failed to persist session"
-            );
-        }
+    /// Saves the session, stamping `override_intervals` onto the snapshot in
+    /// place of the work-time cell's current record.
+    ///
+    /// The one caller is the load path's reactivation write — see the kernel
+    /// flow's doc for why the override is load-bearing.
+    pub(crate) async fn save_active_session_stamping(
+        &self,
+        session_id: &SessionId,
+        override_intervals: Option<Vec<WorkingInterval>>,
+    ) {
+        jinn_kernel::common::session_persistence::save_session_stamped(
+            &self.services,
+            &self.state,
+            session_id,
+            override_intervals,
+        )
+        .await;
     }
 
     /// Persists the requested session immediately.
@@ -69,6 +47,6 @@ impl SessionStoreActor {
     /// A read only. The monitor is the single writer, and this is one of the
     /// two points where a copy is stamped for durable storage.
     pub(crate) fn working_intervals(&self, session_id: &SessionId) -> Vec<WorkingInterval> {
-        working_time::working_intervals(&self.services, session_id)
+        jinn_kernel::common::session_persistence::working_intervals(&self.services, session_id)
     }
 }

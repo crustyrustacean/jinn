@@ -128,7 +128,7 @@ impl SidebarSection for PinsSection {
         };
         let lines = if pinned.is_empty() {
             vec![Line::from(vec![Span::styled(
-                " Pinned Context \u{2014} 0",
+                " Pinned Context - 0",
                 Style::default()
                     .fg(state.frontend.theme.primary_text)
                     .add_modifier(Modifier::BOLD),

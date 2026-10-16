@@ -75,6 +75,10 @@ impl FakeHost {
 }
 
 impl PickerHost for FakeHost {
+    fn name(&self) -> &'static str {
+        "fake"
+    }
+
     fn config(&self) -> &jinn_config::ConfigLayer {
         jinn_config::empty_config_layer()
     }

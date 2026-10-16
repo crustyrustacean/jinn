@@ -51,7 +51,7 @@ async fn call_bash(harness: &TestHarness, session_id: &SessionId) -> ToolResult 
         .publish(ExecuteToolBatch {
             session_id: session_id.clone(),
             tool_calls: vec![ToolCall {
-                id: "tc-1".to_owned(),
+                id: "tc-1".into(),
                 name: "bash".to_owned(),
                 arguments: r#"{"command":"echo should-not-run"}"#.to_owned(),
             }],
@@ -191,7 +191,7 @@ async fn a_glob_withholding_a_whole_mcp_server_refuses_its_tools() {
         .publish(ExecuteToolBatch {
             session_id: session_id.clone(),
             tool_calls: vec![ToolCall {
-                id: "tc-mcp".to_owned(),
+                id: "tc-mcp".into(),
                 name: "mcp__github__create_pr".to_owned(),
                 arguments: "{}".to_owned(),
             }],

@@ -183,7 +183,7 @@ fn streaming_state_cleared_on_finish() {
     }
     m.active_tool_call_indices_mut().insert(0, 10);
     m.active_tool_result_indices_mut()
-        .insert("tc_1".to_owned(), 12);
+        .insert(jinn_core_types::ToolCallId::from("tc_1"), 12);
 
     // When stream finishes.
     m.on_stream_completed_finished().expect("should succeed");
@@ -408,7 +408,7 @@ fn cancel_returns_streaming_data() {
     m.active_tool_call_indices_mut().insert(0, 10);
     m.active_tool_call_indices_mut().insert(1, 11);
     m.active_tool_result_indices_mut()
-        .insert("tc_a".to_owned(), 20);
+        .insert(jinn_core_types::ToolCallId::from("tc_a"), 20);
 
     // When cancel is called.
     let result = m.cancel().expect("cancel should succeed");
@@ -532,7 +532,7 @@ fn rewind_from_streaming_drops_streaming_indices() {
     m.set_streaming_thinking_entry_index(2);
     m.streaming_tool_call_indices_mut().insert(0, 3);
     m.streaming_tool_result_indices_mut()
-        .insert("tc-1".to_owned(), 4);
+        .insert(jinn_core_types::ToolCallId::from("tc-1"), 4);
 
     // When rewinding for a stall retry.
     m.on_retry_rewind().expect("rewind from Streaming");
@@ -603,7 +603,7 @@ fn tool_call_registration_is_cleared_when_the_turn_ends() {
     let mut m = streaming_machine();
     m.active_tool_call_indices_mut().insert(0, 3);
     m.active_tool_result_indices_mut()
-        .insert("tc-1".to_owned(), 4);
+        .insert(jinn_core_types::ToolCallId::from("tc-1"), 4);
 
     // When the stream finishes and the session returns to Idle.
     m.on_stream_completed_finished()

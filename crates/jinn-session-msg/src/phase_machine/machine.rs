@@ -94,7 +94,7 @@ pub struct SessionPhaseMachine {
     /// for the ordinary case (the stream ended in `ToolUse` before the batch
     /// ran) and in `Streaming` only when a batch overlaps a live stream, so a
     /// phase-local copy lost whichever registrations did not share its phase.
-    streaming_tool_result_indices: HashMap<String, usize>,
+    streaming_tool_result_indices: HashMap<jinn_core_types::ToolCallId, usize>,
 }
 
 impl SessionPhaseMachine {
@@ -263,12 +263,14 @@ impl SessionPhaseMachine {
     ///
     /// Same read as [`Self::active_tool_result_indices`]. Returns empty when no
     /// turn is in flight.
-    pub fn streaming_tool_result_indices(&self) -> &HashMap<String, usize> {
+    pub fn streaming_tool_result_indices(&self) -> &HashMap<jinn_core_types::ToolCallId, usize> {
         &self.streaming_tool_result_indices
     }
 
     /// Mutable access to the tool-result tracking map. Always available.
-    pub fn streaming_tool_result_indices_mut(&mut self) -> &mut HashMap<String, usize> {
+    pub fn streaming_tool_result_indices_mut(
+        &mut self,
+    ) -> &mut HashMap<jinn_core_types::ToolCallId, usize> {
         &mut self.streaming_tool_result_indices
     }
 
@@ -280,12 +282,14 @@ impl SessionPhaseMachine {
     /// registrations did not share its phase.
     ///
     /// Returns empty when no turn is in flight.
-    pub fn active_tool_result_indices(&self) -> &HashMap<String, usize> {
+    pub fn active_tool_result_indices(&self) -> &HashMap<jinn_core_types::ToolCallId, usize> {
         &self.streaming_tool_result_indices
     }
 
     /// Mutable access to the tool-result tracking map. Always available.
-    pub fn active_tool_result_indices_mut(&mut self) -> &mut HashMap<String, usize> {
+    pub fn active_tool_result_indices_mut(
+        &mut self,
+    ) -> &mut HashMap<jinn_core_types::ToolCallId, usize> {
         &mut self.streaming_tool_result_indices
     }
 

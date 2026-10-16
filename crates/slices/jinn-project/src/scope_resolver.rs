@@ -17,6 +17,9 @@ use jinn_core_types::SessionId;
 /// user's fuzzy selections instead. Downstream code consumes `Vec<SessionId>`
 /// and is resolver-agnostic.
 pub trait ProjectScopeResolver {
+    /// The resolver's name for logging and diagnostics.
+    fn name(&self) -> &'static str;
+
     /// Returns the ids of `candidates` that belong to the project corpus.
     fn resolve(&self, anchor: &ScopeAnchor, candidates: &[CandidateSession]) -> Vec<SessionId>;
 }
@@ -54,6 +57,10 @@ pub struct CandidateSession {
 pub struct CwdTreeScopeResolver;
 
 impl ProjectScopeResolver for CwdTreeScopeResolver {
+    fn name(&self) -> &'static str {
+        "cwd-tree"
+    }
+
     fn resolve(&self, anchor: &ScopeAnchor, candidates: &[CandidateSession]) -> Vec<SessionId> {
         let cutoff = window_cutoff_unix(anchor.window_days, anchor.now_unix);
         let mut acc = ScopeAccumulator::default();
@@ -192,7 +199,7 @@ mod tests {
     /// Deterministically maps a mnemonic tag (e.g. "s-a", "s-child") to a valid
     /// `SessionId` (a `Uuid` newtype).
     fn sid(tag: &str) -> SessionId {
-        SessionId::from(uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, tag.as_bytes()).to_string())
+        SessionId::new_v5_tag(tag)
     }
 
     fn cand(id: &str, cwd: &str, parent: Option<&str>, updated_at_unix: i64) -> CandidateSession {

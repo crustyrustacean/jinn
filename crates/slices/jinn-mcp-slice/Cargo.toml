@@ -30,6 +30,7 @@ jiff = { workspace = true }
 libc = "0.2"
 jinn-core-types = { workspace = true }
 error-stack = { workspace = true }
+wherror = { workspace = true }
 parking_lot = { workspace = true }
 tokio = { workspace = true }
 

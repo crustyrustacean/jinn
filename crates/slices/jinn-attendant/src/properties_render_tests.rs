@@ -865,16 +865,30 @@ fn template_window_never_overwrites_the_popup_border(
 
 #[rstest::rstest]
 #[test]
-fn color_tests_style_map_counts_the_new_key() {
-    // Given the default theme.
-
-    // When building its style map.
+fn color_tests_style_map_carries_the_new_key() {
+    // Given the default theme's style map.
     let map = jinn_theme::default_theme().style_map();
 
     // When reading the entry for the new key.
     let entry = map.get("attendant_option_active");
 
-    // Then it is present and resolves to the active green.
+    // Then it is present.
+    assert!(
+        entry.is_some(),
+        "attendant_option_active must be in the style map"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn color_tests_style_map_resolves_the_new_key_to_the_active_green() {
+    // Given the default theme's style map.
+    let map = jinn_theme::default_theme().style_map();
+
+    // When reading the entry for the new key.
+    let entry = map.get("attendant_option_active");
+
+    // Then it resolves to the active green.
     assert_eq!(
         entry.map(|style| style.fg),
         Some(Some(Color::LightGreen)),

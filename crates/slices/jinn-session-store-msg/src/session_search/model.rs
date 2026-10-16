@@ -4,7 +4,7 @@
 //! `session_fetch`) and the store backends. Params are plain data; outcomes
 //! carry everything the formatter needs so formatting stays a pure function.
 
-use jinn_core_types::ChatEntry;
+use jinn_core_types::{ChatEntry, ChatEntryId, SessionId};
 use serde::{Deserialize, Serialize};
 
 /// A role filter / role label for a searchable entry.
@@ -97,7 +97,7 @@ pub struct SearchParams {
     pub query: String,
     /// Session ids to search within. Empty means "no restriction" (all
     /// sessions), which keeps the SQL simple when scope is `all`.
-    pub session_ids: Vec<String>,
+    pub session_ids: Vec<SessionId>,
     /// Roles to include. Empty means every indexed role.
     pub roles: Vec<SearchableRole>,
     /// Inclusive lower bound on entry timestamps (RFC3339).
@@ -112,9 +112,9 @@ pub struct SearchParams {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchHit {
     /// Session the hit belongs to.
-    pub session_id: String,
+    pub session_id: SessionId,
     /// Stable entry id — the address `session_fetch` drills into.
-    pub entry_id: String,
+    pub entry_id: ChatEntryId,
     /// Role label of the indexed entry.
     pub role: String,
     /// FTS5 `snippet()` fragment with matches wrapped in `<<` `>>`.
@@ -132,7 +132,7 @@ pub struct SearchOutcome {
     pub total_matches: u64,
     /// Matches per session, descending by count. Reveals sessions beyond the
     /// returned hits so the agent can re-search with a narrower scope.
-    pub per_session: Vec<(String, u64)>,
+    pub per_session: Vec<(SessionId, u64)>,
     /// The top-N ranked hits.
     pub hits: Vec<SearchHit>,
 }
@@ -155,7 +155,7 @@ pub struct TranscriptEntry {
 #[derive(Debug, Clone)]
 pub struct TranscriptWindow {
     /// The session this window came from.
-    pub session_id: String,
+    pub session_id: SessionId,
     /// Session title at fetch time.
     pub title: Option<String>,
     /// Total entries in the session (for the `entries lo–hi of total` header).

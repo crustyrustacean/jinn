@@ -393,8 +393,9 @@ impl SessionDiscoveryWorker {
                     .await;
                     ResourceOutcome::Done(count, None)
                 }
-                Ok(Err(error)) => {
-                    tracing::warn!("failed to rescan prompt templates: {error:?}");
+                Ok(Err(report)) => {
+                    tracing::warn!("failed to rescan prompt templates: {report:?}");
+                    let error = report.to_string();
                     publish(
                         &system,
                         PromptTemplatesLoaded {

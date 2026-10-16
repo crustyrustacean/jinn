@@ -61,7 +61,7 @@ struct CallInfo {
     /// The entry ID of the ToolCall.
     entry_id: jinn_core_types::ChatEntryId,
     /// The tool_call_id used to match ToolCall → ToolResult.
-    tool_call_id: String,
+    tool_call_id: jinn_core_types::ToolCallId,
 }
 
 /// Todo auto-prune worker.
@@ -91,12 +91,15 @@ fn collect_all_todo_pairs(
     history: &[ChatEntry],
 ) -> (
     Vec<CallInfo>,
-    HashMap<String, (usize, jinn_core_types::ChatEntryId)>,
+    HashMap<jinn_core_types::ToolCallId, (usize, jinn_core_types::ChatEntryId)>,
 ) {
     // ToolCalls in history order — their position determines which are "oldest".
     let mut calls: Vec<CallInfo> = Vec::new();
     // ToolResults keyed by tool_call_id — one result per call.
-    let mut result_map: HashMap<String, (usize, jinn_core_types::ChatEntryId)> = HashMap::new();
+    let mut result_map: HashMap<
+        jinn_core_types::ToolCallId,
+        (usize, jinn_core_types::ChatEntryId),
+    > = HashMap::new();
 
     for (i, entry) in history.iter().enumerate() {
         match &entry.kind {
@@ -129,7 +132,7 @@ fn collect_all_todo_pairs(
 fn build_prune_mutations(
     history: &[ChatEntry],
     calls: &[CallInfo],
-    result_map: &HashMap<String, (usize, jinn_core_types::ChatEntryId)>,
+    result_map: &HashMap<jinn_core_types::ToolCallId, (usize, jinn_core_types::ChatEntryId)>,
     min_age: usize,
     worker_name: &str,
     protect_latest: bool,
@@ -178,7 +181,7 @@ fn build_prune_mutations(
 fn include_latest_pair(
     history: &[ChatEntry],
     calls: &[CallInfo],
-    result_map: &HashMap<String, (usize, jinn_core_types::ChatEntryId)>,
+    result_map: &HashMap<jinn_core_types::ToolCallId, (usize, jinn_core_types::ChatEntryId)>,
     worker_name: &str,
 ) -> Vec<HistoryMutation> {
     let Some(latest) = calls.last() else {
@@ -221,7 +224,7 @@ fn may_force_include(entry: &ChatEntry) -> bool {
 fn prune_superseded_pair(
     history: &[ChatEntry],
     previous: &CallInfo,
-    result_map: &HashMap<String, (usize, jinn_core_types::ChatEntryId)>,
+    result_map: &HashMap<jinn_core_types::ToolCallId, (usize, jinn_core_types::ChatEntryId)>,
     worker_name: &str,
 ) -> Vec<HistoryMutation> {
     let call_half = history
@@ -259,7 +262,7 @@ fn todo_worker_include(entry: &ChatEntry, worker_name: &str) -> bool {
 fn prune_older_pairs(
     history: &[ChatEntry],
     calls: &[CallInfo],
-    result_map: &HashMap<String, (usize, jinn_core_types::ChatEntryId)>,
+    result_map: &HashMap<jinn_core_types::ToolCallId, (usize, jinn_core_types::ChatEntryId)>,
     min_age: usize,
     worker_name: &str,
     count: usize,
@@ -321,11 +324,7 @@ impl TodoAutoPruneWorker {
 
 #[async_trait::async_trait]
 impl HistoryWorker for TodoAutoPruneWorker {
-    #[expect(
-        clippy::unnecessary_literal_bound,
-        reason = "lifetime elision makes bound redundant"
-    )]
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "auto-prune-todo"
     }
 

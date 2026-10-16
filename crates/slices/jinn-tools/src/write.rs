@@ -166,8 +166,8 @@ mod tests {
         let file_path = dir.path().join("output.txt");
 
         let call = ToolCall {
-            id: "call_1".to_owned(),
-            name: "write".to_owned(),
+            id: "call_1".into(),
+            name: "write".into(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
                 "content": "hello from write"
@@ -179,7 +179,7 @@ mod tests {
         let result = execute(call, test_ctx()).await;
 
         // Then the result indicates success.
-        assert_eq!(result.tool_call_id, "call_1");
+        assert_eq!(result.tool_call_id.as_str(), "call_1");
         assert!(result.success, "expected success, got: {}", result.content);
         assert!(result.content.contains("wrote 16 bytes"));
     }
@@ -192,8 +192,8 @@ mod tests {
         let file_path = dir.path().join("output.txt");
 
         let call = ToolCall {
-            id: "call_1".to_owned(),
-            name: "write".to_owned(),
+            id: "call_1".into(),
+            name: "write".into(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
                 "content": "hello from write"
@@ -217,8 +217,8 @@ mod tests {
         let file_path = dir.path().join("nested").join("deep").join("file.txt");
 
         let call = ToolCall {
-            id: "call_2".to_owned(),
-            name: "write".to_owned(),
+            id: "call_2".into(),
+            name: "write".into(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
                 "content": "nested content"
@@ -246,8 +246,8 @@ mod tests {
         std::fs::write(&file_path, "old content").expect("write existing file");
 
         let call = ToolCall {
-            id: "call_3".to_owned(),
-            name: "write".to_owned(),
+            id: "call_3".into(),
+            name: "write".into(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
                 "content": "new content"
@@ -271,7 +271,7 @@ mod tests {
     async fn execute_returns_error_on_bad_json() {
         // Given a write call with invalid JSON.
         let call = ToolCall {
-            id: "call_4".to_owned(),
+            id: "call_4".into(),
             name: "write".to_owned(),
             arguments: "not json".to_owned(),
         };
@@ -310,7 +310,7 @@ mod tests {
         };
 
         let call = ToolCall {
-            id: "call_5".to_owned(),
+            id: "call_5".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": "relative.txt",
@@ -429,7 +429,7 @@ mod tests {
         let file_path = dir.path().join("empty.txt");
 
         let call = ToolCall {
-            id: "call_e1".to_owned(),
+            id: "call_e1".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -458,7 +458,7 @@ mod tests {
         let original = "line1\nline2\ttab";
 
         let call = ToolCall {
-            id: "call_e2".to_owned(),
+            id: "call_e2".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -485,7 +485,7 @@ mod tests {
         let original = r#"he said "hello\""#;
 
         let call = ToolCall {
-            id: "call_e3".to_owned(),
+            id: "call_e3".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -512,7 +512,7 @@ mod tests {
         let original = "HashMap<String, Vec<usize>>";
 
         let call = ToolCall {
-            id: "call_e4".to_owned(),
+            id: "call_e4".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -539,7 +539,7 @@ mod tests {
         let original = "foo & bar < baz";
 
         let call = ToolCall {
-            id: "call_e5".to_owned(),
+            id: "call_e5".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -566,7 +566,7 @@ mod tests {
         let original = r"C:\Users\test\file.txt";
 
         let call = ToolCall {
-            id: "call_e6".to_owned(),
+            id: "call_e6".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -593,7 +593,7 @@ mod tests {
         let original = "line1\r\nline2\nline3";
 
         let call = ToolCall {
-            id: "call_e7".to_owned(),
+            id: "call_e7".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -620,7 +620,7 @@ mod tests {
         let original = "before\0after";
 
         let call = ToolCall {
-            id: "call_e8".to_owned(),
+            id: "call_e8".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -647,7 +647,7 @@ mod tests {
         let original = "Hello \u{1F30D}\u{1F980}\u{1F389}";
 
         let call = ToolCall {
-            id: "call_e9".to_owned(),
+            id: "call_e9".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -674,7 +674,7 @@ mod tests {
         let original = "\u{4F60}\u{597D}\u{4E16}\u{754C}";
 
         let call = ToolCall {
-            id: "call_e10".to_owned(),
+            id: "call_e10".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -701,7 +701,7 @@ mod tests {
         let original = "e\u{0301}";
 
         let call = ToolCall {
-            id: "call_e11".to_owned(),
+            id: "call_e11".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -728,7 +728,7 @@ mod tests {
         let original = "x".repeat(1_000_000);
 
         let call = ToolCall {
-            id: "call_e12".to_owned(),
+            id: "call_e12".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -757,7 +757,7 @@ mod tests {
         let file_path = dir.path().join("my file.txt");
 
         let call = ToolCall {
-            id: "call_p1".to_owned(),
+            id: "call_p1".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -783,7 +783,7 @@ mod tests {
         let file_path = dir.path().join("\u{30D5}\u{30A1}\u{30A4}\u{30EB}.txt");
 
         let call = ToolCall {
-            id: "call_p2".to_owned(),
+            id: "call_p2".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -816,7 +816,7 @@ mod tests {
             .join("f.txt");
 
         let call = ToolCall {
-            id: "call_p3".to_owned(),
+            id: "call_p3".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -860,7 +860,7 @@ mod tests {
         };
 
         let call = ToolCall {
-            id: "call_p4".to_owned(),
+            id: "call_p4".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": "./local.txt",
@@ -907,7 +907,7 @@ mod tests {
         };
 
         let call = ToolCall {
-            id: "call_p5".to_owned(),
+            id: "call_p5".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -936,7 +936,7 @@ mod tests {
         let content = "hello";
 
         let call = ToolCall {
-            id: "call_b1".to_owned(),
+            id: "call_b1".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -967,7 +967,7 @@ mod tests {
         let content = "\u{1F389}"; // 🎉 - 4 bytes in UTF-8
 
         let call = ToolCall {
-            id: "call_b2".to_owned(),
+            id: "call_b2".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
@@ -998,8 +998,8 @@ mod tests {
         let content = "Hello \u{1F30D}"; // Hello + space + 🌍 = 5 + 1 + 4 = 10 bytes
 
         let call = ToolCall {
-            id: "call_b3".to_owned(),
-            name: "write".to_owned(),
+            id: "call_b3".into(),
+            name: "write".into(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
                 "content": content
@@ -1032,8 +1032,8 @@ mod tests {
             .chain(std::iter::repeat_n("x\n", 50))
             .collect::<String>();
         let call = ToolCall {
-            id: "rep_50".to_owned(),
-            name: "write".to_owned(),
+            id: "rep_50".into(),
+            name: "write".into(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
                 "content": content,
@@ -1063,8 +1063,8 @@ mod tests {
             .chain(std::iter::repeat_n("x\n", 49))
             .collect::<String>();
         let call = ToolCall {
-            id: "rep_49".to_owned(),
-            name: "write".to_owned(),
+            id: "rep_49".into(),
+            name: "write".into(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
                 "content": content,

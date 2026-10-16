@@ -172,7 +172,7 @@ impl SessionStore for StubStore {
 
 fn summary(id: &str, title: &str, project: Option<&str>) -> SessionSummary {
     SessionSummary {
-        session_id: SessionId::from(id.to_owned()),
+        session_id: SessionId::try_from_string(id).unwrap(),
         title: title.to_owned(),
         updated_at: jiff::Timestamp::now(),
         created_at: jiff::Timestamp::now(),
@@ -190,8 +190,8 @@ fn hit(
     excluded: bool,
 ) -> jinn_session_store_msg::SearchHit {
     jinn_session_store_msg::SearchHit {
-        session_id: session_id.to_owned(),
-        entry_id: entry_id.to_owned(),
+        session_id: SessionId::try_from_string(session_id).unwrap(),
+        entry_id: ChatEntryId::new_v5_tag(entry_id),
         role: role.to_owned(),
         snippet: snippet.to_owned(),
         entry_ts: "2026-09-08T14:30:00Z".to_owned(),
@@ -233,7 +233,7 @@ fn stub_ctx(
 
 async fn run(ctx: ToolContext, args: serde_json::Value) -> ToolResult {
     let call = ToolCall {
-        id: "call-1".to_owned(),
+        id: "call-1".into(),
         name: "session_search".to_owned(),
         arguments: args.to_string(),
     };
@@ -243,11 +243,19 @@ async fn run(ctx: ToolContext, args: serde_json::Value) -> ToolResult {
 const CURRENT: &str = "0199aaaa-0000-7000-8000-000000000001";
 const OTHER: &str = "0199aaaa-0000-7000-8000-000000000002";
 
+fn current_id() -> SessionId {
+    SessionId::try_from_string(CURRENT).unwrap()
+}
+
+fn other_id() -> SessionId {
+    SessionId::try_from_string(OTHER).unwrap()
+}
+
 #[rstest::rstest]
 #[tokio::test]
 async fn missing_query_is_rejected() {
     // Given a tool context.
-    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(SessionId::from(CURRENT.to_owned())));
+    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(current_id()));
 
     // When searching without a query.
     let result = run(ctx, serde_json::json!({})).await;
@@ -265,7 +273,7 @@ async fn missing_query_is_rejected() {
 #[tokio::test]
 async fn blank_query_is_rejected() {
     // Given a tool context.
-    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(SessionId::from(CURRENT.to_owned())));
+    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(current_id()));
 
     // When searching with a whitespace-only query.
     let result = run(ctx, serde_json::json!({ "query": "   " })).await;
@@ -287,7 +295,7 @@ async fn invalid_json_arguments_are_rejected() {
 
     // When invoking with malformed JSON.
     let call = ToolCall {
-        id: "call-1".to_owned(),
+        id: "call-1".into(),
         name: "session_search".to_owned(),
         arguments: "{not json".to_owned(),
     };
@@ -306,14 +314,14 @@ async fn invalid_json_arguments_are_rejected() {
 #[tokio::test]
 async fn omitted_scope_searches_current_session() {
     // Given a stub store and a current session.
-    let (ctx, stub) = stub_ctx(StubStore::new(), Some(SessionId::from(CURRENT.to_owned())));
+    let (ctx, stub) = stub_ctx(StubStore::new(), Some(current_id()));
 
     // When searching with no scope.
     run(ctx, serde_json::json!({ "query": "needle" })).await;
 
     // Then the search was scoped to the calling session.
     let params = stub.last_params().expect("search ran");
-    assert_eq!(params.session_ids, vec![CURRENT.to_owned()]);
+    assert_eq!(params.session_ids, vec![current_id()]);
 }
 
 #[rstest::rstest]
@@ -343,7 +351,7 @@ async fn all_scope_searches_every_session() {
             summary(CURRENT, "one", None),
             summary(OTHER, "two", None),
         ]),
-        Some(SessionId::from(CURRENT.to_owned())),
+        Some(current_id()),
     );
 
     // When searching with scope "all".
@@ -357,7 +365,7 @@ async fn all_scope_searches_every_session() {
     let params = stub.last_params().expect("search ran");
     let mut ids = params.session_ids.clone();
     ids.sort();
-    assert_eq!(ids, vec![CURRENT.to_owned(), OTHER.to_owned()]);
+    assert_eq!(ids, vec![current_id(), other_id()]);
 }
 
 #[rstest::rstest]
@@ -369,7 +377,7 @@ async fn project_scope_matches_project_name_case_insensitively() {
             summary(CURRENT, "one", Some("/home/j/session-search")),
             summary(OTHER, "two", Some("/home/j/other-proj")),
         ]),
-        Some(SessionId::from(CURRENT.to_owned())),
+        Some(current_id()),
     );
 
     // When searching with a differently-cased project name.
@@ -381,7 +389,7 @@ async fn project_scope_matches_project_name_case_insensitively() {
 
     // Then only the matching project's session was searched.
     let params = stub.last_params().expect("search ran");
-    assert_eq!(params.session_ids, vec![CURRENT.to_owned()]);
+    assert_eq!(params.session_ids, vec![current_id()]);
 }
 
 #[rstest::rstest]
@@ -418,7 +426,7 @@ async fn unknown_project_name_lists_known_projects() {
 #[tokio::test]
 async fn invalid_scope_value_is_rejected() {
     // Given a tool context.
-    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(SessionId::from(CURRENT.to_owned())));
+    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(current_id()));
 
     // When searching with an unrecognized scope.
     let result = run(
@@ -440,7 +448,7 @@ async fn invalid_scope_value_is_rejected() {
 #[tokio::test]
 async fn explicit_session_id_overrides_scope() {
     // Given a stub store with the current session set.
-    let (ctx, stub) = stub_ctx(StubStore::new(), Some(SessionId::from(CURRENT.to_owned())));
+    let (ctx, stub) = stub_ctx(StubStore::new(), Some(current_id()));
 
     // When searching with an explicit other session id.
     run(
@@ -451,14 +459,14 @@ async fn explicit_session_id_overrides_scope() {
 
     // Then only the explicit session was searched.
     let params = stub.last_params().expect("search ran");
-    assert_eq!(params.session_ids, vec![OTHER.to_owned()]);
+    assert_eq!(params.session_ids, vec![other_id()]);
 }
 
 #[rstest::rstest]
 #[tokio::test]
 async fn default_fields_are_assistant_and_user() {
     // Given a stub store.
-    let (ctx, stub) = stub_ctx(StubStore::new(), Some(SessionId::from(CURRENT.to_owned())));
+    let (ctx, stub) = stub_ctx(StubStore::new(), Some(current_id()));
 
     // When searching without fields.
     run(ctx, serde_json::json!({ "query": "n" })).await;
@@ -475,7 +483,7 @@ async fn default_fields_are_assistant_and_user() {
 #[tokio::test]
 async fn fields_opt_in_tool_result_is_passed_through() {
     // Given a stub store.
-    let (ctx, stub) = stub_ctx(StubStore::new(), Some(SessionId::from(CURRENT.to_owned())));
+    let (ctx, stub) = stub_ctx(StubStore::new(), Some(current_id()));
 
     // When searching with fields [tool_result].
     run(
@@ -493,7 +501,7 @@ async fn fields_opt_in_tool_result_is_passed_through() {
 #[tokio::test]
 async fn actor_field_is_rejected_as_never_indexed() {
     // Given a tool context.
-    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(SessionId::from(CURRENT.to_owned())));
+    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(current_id()));
 
     // When searching with fields including actor.
     let result = run(
@@ -528,7 +536,7 @@ fn limit_is_clamped_into_allowed_range(#[case] requested: u64, #[case] expected:
 #[tokio::test]
 async fn invalid_since_date_is_rejected() {
     // Given a tool context.
-    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(SessionId::from(CURRENT.to_owned())));
+    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(current_id()));
 
     // When searching with a malformed since date.
     let result = run(
@@ -550,7 +558,7 @@ async fn invalid_since_date_is_rejected() {
 #[tokio::test]
 async fn date_only_since_is_accepted_as_utc() {
     // Given a stub store.
-    let (ctx, stub) = stub_ctx(StubStore::new(), Some(SessionId::from(CURRENT.to_owned())));
+    let (ctx, stub) = stub_ctx(StubStore::new(), Some(current_id()));
 
     // When searching with a date-only since.
     run(
@@ -569,10 +577,7 @@ async fn date_only_since_is_accepted_as_utc() {
 #[tokio::test]
 async fn search_failure_surfaced_verbatim() {
     // Given a stub store whose search fails with an fts5 message.
-    let (ctx, _stub) = stub_ctx(
-        StubStore::new().failing(),
-        Some(SessionId::from(CURRENT.to_owned())),
-    );
+    let (ctx, _stub) = stub_ctx(StubStore::new().failing(), Some(current_id()));
 
     // When searching with a syntactically invalid query.
     let result = run(ctx, serde_json::json!({ "query": "AND (" })).await;
@@ -620,7 +625,7 @@ async fn missing_session_store_fails_gracefully() {
 #[tokio::test]
 async fn zero_matches_renders_no_match_header() {
     // Given a stub store returning an empty outcome.
-    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(SessionId::from(CURRENT.to_owned())));
+    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(current_id()));
 
     // When searching.
     let result = run(ctx, serde_json::json!({ "query": "zzz" })).await;
@@ -636,7 +641,7 @@ async fn outcome_renders_header_legend_rollup_and_hits() {
     // Given a stub store returning two hits across two sessions.
     let outcome = SearchOutcome {
         total_matches: 47,
-        per_session: vec![(CURRENT.to_owned(), 41), (OTHER.to_owned(), 6)],
+        per_session: vec![(current_id(), 41), (other_id(), 6)],
         hits: vec![
             hit(
                 CURRENT,
@@ -653,7 +658,7 @@ async fn outcome_renders_header_legend_rollup_and_hits() {
             summary(CURRENT, "migrate auth flow", None),
             summary(OTHER, "session search", None),
         ]),
-        Some(SessionId::from(CURRENT.to_owned())),
+        Some(current_id()),
     );
 
     // When searching.
@@ -675,7 +680,7 @@ async fn outcome_renders_header_legend_rollup_and_hits() {
         result.content
     );
     assert!(
-        lines[3].contains("`e-1`")
+        lines[3].contains(&format!("`{}`", ChatEntryId::new_v5_tag("e-1")))
             && lines[3].contains("assistant")
             && lines[3].contains("<<rowid mapping>>"),
         "{}",
@@ -694,7 +699,7 @@ async fn multiline_snippet_is_collapsed_to_one_line() {
     // Given an outcome whose snippet contains newlines and pipes.
     let outcome = SearchOutcome {
         total_matches: 1,
-        per_session: vec![(CURRENT.to_owned(), 1)],
+        per_session: vec![(current_id(), 1)],
         hits: vec![hit(
             CURRENT,
             "e-1",
@@ -707,7 +712,7 @@ async fn multiline_snippet_is_collapsed_to_one_line() {
         StubStore::new()
             .with_outcome(outcome)
             .with_summaries(vec![summary(CURRENT, "t", None)]),
-        Some(SessionId::from(CURRENT.to_owned())),
+        Some(current_id()),
     );
 
     // When searching.
@@ -717,7 +722,7 @@ async fn multiline_snippet_is_collapsed_to_one_line() {
     let hit_lines: Vec<&str> = result
         .content
         .lines()
-        .filter(|l| l.contains("`e-1`"))
+        .filter(|l| l.contains(&format!("`{}`", ChatEntryId::new_v5_tag("e-1"))))
         .collect();
     assert_eq!(hit_lines.len(), 1);
     assert!(hit_lines[0].contains("line one line two | three <<needle>>"));

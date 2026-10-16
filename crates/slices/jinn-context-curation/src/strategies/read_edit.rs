@@ -100,11 +100,7 @@ pub struct ReadEditAutoPruneWorker {
 
 #[async_trait::async_trait]
 impl HistoryWorker for ReadEditAutoPruneWorker {
-    #[expect(
-        clippy::unnecessary_literal_bound,
-        reason = "lifetime elision makes bound redundant"
-    )]
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "auto-prune-read-edit"
     }
 

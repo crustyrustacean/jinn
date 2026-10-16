@@ -35,32 +35,46 @@ pub(crate) fn text_block_lines(
     let text = super::shared::strip_ansi(text);
     let mut lines = render_markdown(&text, ctx.content_width, &ctx.theme);
 
-    // Build a lookup from a raw token body to its render color. Resolution
-    // happens once at enqueue; this is a frozen result the render reads.
-    let token_colors: Vec<(String, Color)> = attached_and_degraded_colors(outcome, ctx);
+    recolor_at_tokens(&mut lines, outcome, ctx);
+    apply_block_background(&mut lines, ctx.content_width, block_bg);
 
-    // Recolor each `@raw` occurrence within the rendered spans. Coloring is
-    // best-effort: a token that can't be split cleanly out of a span is left
-    // as-is (the line is never corrupted).
-    for line in &mut lines {
-        color_at_path_tokens(&mut line.spans, &token_colors);
-    }
-
-    // Apply the block background to every line and pad to full width.
+    // Blank padding rows above and below, carrying the block background.
     let bg = Style::default().bg(block_bg);
-    for line in &mut lines {
-        // Patch each span to include the block background while preserving
-        // inline markdown styling (bold, code, etc.).
-        for span in &mut line.spans {
-            span.style = span.style.patch(bg);
-        }
-        pad_line_to_width(line, ctx.content_width, bg);
-    }
-
-    // Add padding above and below with the block background.
     let pad_line = Line::from(Span::styled(" ".repeat(ctx.content_width as usize), bg));
     pad_entry_with(&mut lines, Pad::Both, pad_line);
     lines
+}
+
+/// Recolors each `@raw` occurrence within the rendered spans. Coloring is
+/// best-effort: a token that can't be split cleanly out of a span is left
+/// as-is (the line is never corrupted).
+fn recolor_at_tokens(
+    lines: &mut [Line<'static>],
+    outcome: &AttachmentOutcome,
+    ctx: &RenderContext,
+) {
+    // Resolution happens once at enqueue; this is a frozen result the
+    // render reads.
+    let token_colors: Vec<(String, Color)> = attached_and_degraded_colors(outcome, ctx);
+    for line in lines {
+        color_at_path_tokens(&mut line.spans, &token_colors);
+    }
+}
+
+/// Patches every span to carry the block background — preserving inline
+/// markdown styling (bold, code, etc.) — and pads each line to full width.
+fn apply_block_background(
+    lines: &mut [Line<'static>],
+    content_width: u16,
+    block_bg: ratatui::style::Color,
+) {
+    let bg = Style::default().bg(block_bg);
+    for line in lines {
+        for span in &mut line.spans {
+            span.style = span.style.patch(bg);
+        }
+        pad_line_to_width(line, content_width, bg);
+    }
 }
 
 /// Returns `(raw_token_body, color)` pairs: green for attached, red for

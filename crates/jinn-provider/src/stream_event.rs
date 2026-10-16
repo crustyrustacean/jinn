@@ -77,7 +77,7 @@ pub enum StreamEvent {
         /// The index of this content block in the response.
         index: usize,
         /// The unique ID for this tool call (assigned by the LLM provider).
-        id: String,
+        id: jinn_core_types::ToolCallId,
         /// The name of the tool being called.
         name: String,
     },

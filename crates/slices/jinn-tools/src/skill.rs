@@ -33,34 +33,74 @@ pub fn definition() -> ToolDefinition {
     }
 }
 
+/// Why a skill could not be resolved from the session's discovered set.
+///
+/// Variants carry everything the model needs in their message: the tool
+/// boundary renders a failure as tool-result prose, and a `Report`'s
+/// `Display` prints only the outermost context.
+#[derive(Debug, wherror::Error)]
+pub enum SkillResolveError {
+    /// No application state in the tool context.
+    #[error("cannot resolve skill '{name}': no state available")]
+    NoState {
+        /// The requested skill's name.
+        name: String,
+    },
+    /// No session id in the tool context.
+    #[error("cannot resolve skill '{name}': no session in context")]
+    NoSession {
+        /// The requested skill's name.
+        name: String,
+    },
+    /// The calling session is absent from state.
+    #[error("cannot resolve skill '{name}': session not found")]
+    SessionNotFound {
+        /// The requested skill's name.
+        name: String,
+    },
+    /// The skill exists somewhere but this session never discovered it.
+    #[error(
+        "skill '{name}' was not discovered for this session. It may have been \
+             removed or never scanned."
+    )]
+    NotDiscovered {
+        /// The requested skill's name.
+        name: String,
+    },
+}
+
 /// Resolves a skill from the session's discovered set.
 ///
-/// Returns `Err` with a user-facing message if state/session is unavailable or
-/// the skill was not discovered for this session. This avoids re-deriving the
-/// path from the global skills dir, which would break for project-local skills.
-fn resolve_skill(ctx: &ToolContext, name: &str) -> Result<Skill, String> {
+/// This avoids re-deriving the path from the global skills dir, which would
+/// break for project-local skills.
+///
+/// # Errors
+///
+/// Returns [`SkillResolveError`] when state/session is unavailable or the
+/// skill was not discovered for this session.
+fn resolve_skill(
+    ctx: &ToolContext,
+    name: &str,
+) -> Result<Skill, error_stack::Report<SkillResolveError>> {
+    use error_stack::IntoReport as _;
+
+    let name = name.to_owned();
     let Some(state) = ctx.state.as_ref() else {
-        return Err(format!("cannot resolve skill '{name}': no state available"));
+        return Err(SkillResolveError::NoState { name }.into_report());
     };
     let Some(session_id) = ctx.session_id.as_ref() else {
-        return Err(format!(
-            "cannot resolve skill '{name}': no session in context"
-        ));
+        return Err(SkillResolveError::NoSession { name }.into_report());
     };
     let guard = state.read();
     let Some(session) = guard.session.get(session_id) else {
-        return Err(format!("cannot resolve skill '{name}': session not found"));
+        return Err(SkillResolveError::SessionNotFound { name }.into_report());
     };
     session
         .discovered_skills()
         .iter()
         .find(|s| s.name == name)
         .cloned()
-        .ok_or_else(|| {
-            format!(
-                "skill '{name}' was not discovered for this session. It may have been removed or never scanned."
-            )
-        })
+        .ok_or_else(|| SkillResolveError::NotDiscovered { name }.into_report())
 }
 
 /// Executes the `skill` built-in tool.
@@ -120,8 +160,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         // and fails clearly if the skill was not discovered for this session.
         let skill = match resolve_skill(&ctx, &name) {
             Ok(s) => s,
-            Err(msg) => {
-                return unprefixed_failure(&call, msg);
+            Err(report) => {
+                return unprefixed_failure(&call, report.to_string());
             }
         };
 
@@ -206,8 +246,8 @@ mod tests {
     /// Builds a `skill` call for the named skill.
     fn skill_call(name: &str) -> ToolCall {
         ToolCall {
-            id: "call_1".to_owned(),
-            name: "skill".to_owned(),
+            id: "call_1".into(),
+            name: "skill".into(),
             arguments: serde_json::json!({ "name": name }).to_string(),
         }
     }
@@ -400,8 +440,8 @@ mod tests {
     async fn execute_returns_error_on_empty_name() {
         // Given a call with empty name.
         let call = ToolCall {
-            id: "call_1".to_owned(),
-            name: "skill".to_owned(),
+            id: "call_1".into(),
+            name: "skill".into(),
             arguments: serde_json::json!({"name": ""}).to_string(),
         };
 
@@ -418,8 +458,8 @@ mod tests {
     async fn execute_returns_error_on_bad_json() {
         // Given a call with invalid JSON.
         let call = ToolCall {
-            id: "call_1".to_owned(),
-            name: "skill".to_owned(),
+            id: "call_1".into(),
+            name: "skill".into(),
             arguments: "not json".to_owned(),
         };
 
@@ -541,8 +581,8 @@ mod tests {
         }
 
         let call = ToolCall {
-            id: "call_1".to_owned(),
-            name: "skill".to_owned(),
+            id: "call_1".into(),
+            name: "skill".into(),
             arguments: serde_json::json!({"name": "web-coder"}).to_string(),
         };
 
@@ -602,7 +642,7 @@ mod tests {
         }
 
         let call = ToolCall {
-            id: "call_1".to_owned(),
+            id: "call_1".into(),
             name: "skill".to_owned(),
             arguments: serde_json::json!({"name": "web-coder"}).to_string(),
         };

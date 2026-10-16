@@ -249,11 +249,7 @@ fn build_prune_mutations(
 
 #[async_trait::async_trait]
 impl HistoryWorker for RegexAutoPruneWorker {
-    #[expect(
-        clippy::unnecessary_literal_bound,
-        reason = "lifetime elision makes bound redundant"
-    )]
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "auto-prune-regex"
     }
 

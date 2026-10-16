@@ -26,6 +26,65 @@ const MAX_TAIL: u64 = 100;
 /// Soft per-entry render cap before elision.
 const MAX_ENTRY_CHARS: usize = 2_000;
 
+/// Why a `session_fetch` call could not run.
+///
+/// Variants carry everything the model needs in their message: the tool
+/// boundary renders a failure as tool-result prose, and a `Report`'s
+/// `Display` prints only the outermost context.
+#[derive(Debug, wherror::Error)]
+pub enum SessionFetchError {
+    /// The call's JSON arguments were malformed.
+    #[error("invalid JSON arguments: {detail}")]
+    InvalidArguments {
+        /// The parser's complaint.
+        detail: String,
+    },
+    /// A numeric argument was not a positive integer.
+    #[error("{name} must be a positive integer")]
+    InvalidNumber {
+        /// The argument's name.
+        name: &'static str,
+    },
+    /// The `session_id` argument was not a UUID.
+    #[error(
+        "invalid session_id `{id}`: not a UUID — copy the id verbatim from a \
+             session_search hit or the session list"
+    )]
+    InvalidSessionId {
+        /// The raw string the caller passed.
+        id: String,
+    },
+    /// No `session_id` was passed and no session is current.
+    #[error("no session_id given and no current session")]
+    NoCurrentSession,
+    /// The store refused the fetch.
+    #[error("session store failed: {detail}")]
+    Store {
+        /// The store's report.
+        detail: String,
+    },
+    /// The `entry_id` argument was neither a rendered position nor a UUID.
+    #[error(
+        "invalid entry_id `{id}`: not a UUID — copy the id verbatim from a \
+             session_search hit, or omit entry_id to read the tail of the session"
+    )]
+    InvalidEntryId {
+        /// The raw string the caller passed.
+        id: String,
+    },
+    /// The `entry_id` was a rendered `[position]` label, not an entry id.
+    #[error(
+        "entry_id must be the entry id from a session_search hit, not the [position] \
+             label this tool prints. Got {got:?}, which is a rendered position: \
+             positions shift as a session grows, so they are not addresses. Omit \
+             entry_id to read the tail of the session instead."
+    )]
+    PositionalLabel {
+        /// The raw string the caller passed.
+        got: String,
+    },
+}
+
 /// Returns the tool definition for the `session_fetch` built-in tool.
 #[must_use]
 pub fn definition() -> ToolDefinition {
@@ -96,9 +155,13 @@ fn is_rendered_position(value: &str) -> bool {
 }
 
 /// Parses and validates raw JSON arguments.
-fn parse_args(raw: &str) -> Result<(Option<String>, FetchMode), String> {
+fn parse_args(
+    raw: &str,
+) -> Result<(Option<String>, FetchMode), error_stack::Report<SessionFetchError>> {
     let args: serde_json::Value =
-        serde_json::from_str(raw).map_err(|e| format!("invalid JSON arguments: {e}"))?;
+        serde_json::from_str(raw).map_err(|e| SessionFetchError::InvalidArguments {
+            detail: e.to_string(),
+        })?;
 
     let session_id = args
         .get("session_id")
@@ -120,17 +183,14 @@ fn parse_args(raw: &str) -> Result<(Option<String>, FetchMode), String> {
             // which is how a fetch of "entry 0" once returned a confident
             // window of the wrong transcript. Refuse it by name instead.
             if is_rendered_position(&entry_id) {
-                return Err(format!(
-                    "entry_id must be the entry id from a session_search hit, not the [position] \
-                     label this tool prints. Got {entry_id:?}, which is a rendered position: \
-                     positions shift as a session grows, so they are not addresses. Omit \
-                     entry_id to read the tail of the session instead."
-                ));
+                return Err(SessionFetchError::PositionalLabel { got: entry_id }.into());
             }
             let context = match args.get("context") {
                 None | Some(serde_json::Value::Null) => DEFAULT_CONTEXT,
                 Some(v) => {
-                    let n = v.as_u64().ok_or("context must be a positive integer")?;
+                    let n = v
+                        .as_u64()
+                        .ok_or(SessionFetchError::InvalidNumber { name: "context" })?;
                     n.clamp(1, MAX_CONTEXT)
                 }
             };
@@ -141,7 +201,9 @@ fn parse_args(raw: &str) -> Result<(Option<String>, FetchMode), String> {
             let limit = match args.get("limit") {
                 None | Some(serde_json::Value::Null) => DEFAULT_TAIL,
                 Some(v) => {
-                    let n = v.as_u64().ok_or("limit must be a positive integer")?;
+                    let n = v
+                        .as_u64()
+                        .ok_or(SessionFetchError::InvalidNumber { name: "limit" })?;
                     n.clamp(1, MAX_TAIL)
                 }
             };
@@ -154,16 +216,20 @@ fn parse_args(raw: &str) -> Result<(Option<String>, FetchMode), String> {
 }
 
 /// Resolves which session to read: explicit id or the current session.
+///
+/// An explicit id arrives as raw tool-argument text, so it is parsed
+/// strictly: a malformed id is a malformed call, not a panic.
 fn resolve_session(
     explicit: Option<String>,
     current: Option<&SessionId>,
-) -> Result<SessionId, String> {
+) -> Result<SessionId, error_stack::Report<SessionFetchError>> {
     if let Some(id) = explicit {
-        return Ok(SessionId::from(id));
+        return SessionId::try_from_string(&id)
+            .ok_or_else(|| SessionFetchError::InvalidSessionId { id }.into());
     }
     current
         .cloned()
-        .ok_or_else(|| "no session_id given and no current session".to_owned())
+        .ok_or(SessionFetchError::NoCurrentSession.into())
 }
 
 /// Renders a fetched window as transcript text.
@@ -251,7 +317,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
         let args = match parse_args(&args_str) {
             Ok(v) => v,
-            Err(e) => return fail(e),
+            Err(e) => return fail(e.to_string()),
         };
 
         let Some(store) = ctx.session_store else {
@@ -260,20 +326,42 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
         let session_id = match resolve_session(args.0.clone(), ctx.session_id.as_ref()) {
             Ok(id) => id,
-            Err(e) => return fail(e),
+            Err(e) => return fail(e.to_string()),
         };
 
         let window = match &args.1 {
             FetchMode::Anchored { entry_id, context } => {
-                let anchor = jinn_kernel::protocol::ChatEntryId::from(entry_id.clone());
+                let Some(anchor) = jinn_kernel::protocol::ChatEntryId::try_from_string(entry_id)
+                else {
+                    return fail(
+                        SessionFetchError::InvalidEntryId {
+                            id: entry_id.clone(),
+                        }
+                        .to_string(),
+                    );
+                };
                 match store.fetch_window(&session_id, &anchor, *context).await {
                     Ok(v) => v,
-                    Err(e) => return fail(format!("{e:?}")),
+                    Err(e) => {
+                        return fail(
+                            SessionFetchError::Store {
+                                detail: format!("{e:?}"),
+                            }
+                            .to_string(),
+                        );
+                    }
                 }
             }
             FetchMode::Tail { limit } => match store.fetch_tail(&session_id, *limit).await {
                 Ok(v) => v,
-                Err(e) => return fail(format!("{e:?}")),
+                Err(e) => {
+                    return fail(
+                        SessionFetchError::Store {
+                            detail: format!("{e:?}"),
+                        }
+                        .to_string(),
+                    );
+                }
             },
         };
 

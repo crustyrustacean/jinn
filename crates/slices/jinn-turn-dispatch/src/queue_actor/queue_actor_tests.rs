@@ -1247,17 +1247,17 @@ async fn dispatch_turn_refused_when_cancel_lands_mid_assemble() {
     assert!(audit.of_type::<PersistSession>().is_empty());
 }
 
-#[rstest::rstest]
-#[tokio::test]
-async fn readmission_refuses_after_cancel_but_admits_when_generation_live() {
-    // Given a live generation minted with a stamp, and the exact stamp it
-    // was admitted with — the one the queue actor re-asks with at publish.
-    let (actor, state, _audit) = create_actor().await;
-    let sid = session_id();
+/// Mints a live generation for `sid` and returns the stamp it was minted
+/// with — the stamp the queue actor re-asks with at publish.
+async fn minted_generation_stamp(
+    actor: &QueueActor,
+    state: &State,
+    sid: &SessionId,
+) -> jiff::Timestamp {
     let stamp = jiff::Timestamp::now();
     {
         let mut state = state.write();
-        state.session_mut_or_create(&sid).begin_sending();
+        state.session_mut_or_create(sid).begin_sending();
     }
     let minted = jinn_kernel::common::phase_command::apply_phase(
         &actor.services,
@@ -1270,6 +1270,16 @@ async fn readmission_refuses_after_cancel_but_admits_when_generation_live() {
     .await
     .expect("phase actor is spawned by the test helpers");
     assert!(minted.admitted, "fresh turn mints");
+    stamp
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn readmission_admits_when_generation_still_live() {
+    // Given a live generation minted with a stamp.
+    let (actor, state, _audit) = create_actor().await;
+    let sid = session_id();
+    let stamp = minted_generation_stamp(&actor, &state, &sid).await;
 
     // When re-asking admission with the same stamp while the generation
     // is still live (no cancel between the asks — the healthy dispatch).
@@ -1283,6 +1293,15 @@ async fn readmission_refuses_after_cancel_but_admits_when_generation_live() {
         live.admitted,
         "re-admission with no cancel must admit the live generation"
     );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn readmission_refuses_after_cancel_kills_the_generation() {
+    // Given a live generation minted with a stamp.
+    let (actor, state, _audit) = create_actor().await;
+    let sid = session_id();
+    let stamp = minted_generation_stamp(&actor, &state, &sid).await;
 
     // When a cancel lands (the watchdog's trip) and the re-ask follows.
     let cancelled = jinn_session_turn::phase_actor::cancel_turn(&actor.services, &sid)

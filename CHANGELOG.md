@@ -2,6 +2,15 @@
 
 ## (development)
 
+- These stream rules should now trigger less often:
+  - no-interactive-editor
+  - no-interactive-pater
+  - no-tail-follow
+  - no-interactive-dbg
+  - no-interactive-fossil-stash
+
+## 2026-10-15 v1.7.0
+
 - Entire session trees can now be loaded using `<c-enter>` keybind in the session picker.
 - Add `tell_session` tool for intersession communication.
   - Intersession messages now use a dark lavender color with standard white text + Markdown rendering.

@@ -19,6 +19,7 @@ use futures::FutureExt;
 
 use crate::interactive_term::StreamCtx;
 use crate::tool_types::ToolContext;
+use jinn_core_types::ToolCallId;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_term_msg::TermExitInfo;
 use jinn_term_msg::command::{SendTermOutcome, TermScreen};
@@ -184,7 +185,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 }
 
 /// Formats the already-exited outcome: exit summary ahead of the screen.
-fn format_exited(tool_call_id: &str, tool_name: &str, screen: &TermScreen) -> ToolResult {
+fn format_exited(tool_call_id: &ToolCallId, tool_name: &str, screen: &TermScreen) -> ToolResult {
     let code = screen
         .exited
         .as_ref()

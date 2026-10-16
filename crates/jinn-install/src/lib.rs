@@ -419,6 +419,44 @@ mod tests {
         // When installing defaults.
         let report = env.run(false);
 
+        // Then the nested skill keeps its `<name>/SKILL.md` structure.
+        let outcome = outcome_for(&report.outcomes, "simple-task-loop/SKILL.md");
+        assert!(
+            matches!(outcome, InstallOutcome::Created(_)),
+            "skill should be Created"
+        );
+        // And the file exists at the nested path.
+        assert!(outcome.path().is_file());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn install_creates_micro_task_loop_skill() {
+        // Given destinations with no existing skills.
+        let env = TestEnv::fresh();
+
+        // When installing defaults.
+        let report = env.run(false);
+
+        // Then the micro-task-loop skill was created under the skills root.
+        let outcome = outcome_for(&report.outcomes, "micro-task-loop/SKILL.md");
+        assert!(
+            matches!(outcome, InstallOutcome::Created(_)),
+            "skill should be Created"
+        );
+        // And the file exists at the nested path.
+        assert!(outcome.path().is_file());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn install_preserves_jinn_usage_skill_subdir() {
+        // Given destinations with no existing skills.
+        let env = TestEnv::fresh();
+
+        // When installing defaults.
+        let report = env.run(false);
+
         // Then the stable bundled skill keeps its `<name>/SKILL.md`
         // structure — `jinn-usage` is one of the resources guaranteed to
         // ship, nested under its own directory.

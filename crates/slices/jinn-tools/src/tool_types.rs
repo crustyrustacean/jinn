@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use jinn_core_types::SessionId;
+use jinn_core_types::ToolCallId;
 use jinn_core_types::tool_types::{ToolCall, ToolResult};
 use jinn_kernel::common::services::bus_service::BusService;
 use jinn_kernel::common::state::State;
@@ -30,9 +31,9 @@ pub fn tool_error(call: &ToolCall, msg: &str) -> ToolResult {
 /// [`tool_error`] for a tool that has already destructured its call and holds
 /// only the two ids a result needs to answer it.
 #[must_use]
-pub fn failed_result(tool_call_id: &str, name: &str, msg: &str) -> ToolResult {
+pub fn failed_result(tool_call_id: &ToolCallId, name: &str, msg: &str) -> ToolResult {
     ToolResult {
-        tool_call_id: tool_call_id.to_owned(),
+        tool_call_id: tool_call_id.clone(),
         name: name.to_owned(),
         content: format!("Error: {msg}"),
         success: false,
@@ -71,7 +72,7 @@ pub fn unprefixed_failure(call: &ToolCall, content: impl Into<String>) -> ToolRe
 /// destructured.
 #[must_use]
 pub fn failed(
-    tool_call_id: impl Into<String>,
+    tool_call_id: impl Into<jinn_core_types::ToolCallId>,
     name: impl Into<String>,
     content: impl Into<String>,
 ) -> ToolResult {

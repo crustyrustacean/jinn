@@ -86,7 +86,7 @@ fn sample_entry() -> ChatEntry {
 
 fn sample_tool_result() -> ToolResult {
     ToolResult {
-        tool_call_id: "tc_probe".to_owned(),
+        tool_call_id: "tc_probe".into(),
         name: "probe".to_owned(),
         content: "probe output".to_owned(),
         success: true,

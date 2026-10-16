@@ -11,7 +11,7 @@
 //! purely structural lookups; the suppression of protected entries happens at
 //! mutation-emission time in each strategy's own `build_prune_mutations`.
 
-use jinn_core_types::{ChatEntry, ChatEntryId, ChatEntryKind};
+use jinn_core_types::{ChatEntry, ChatEntryId, ChatEntryKind, ToolCallId};
 
 /// Tool names that modify files.
 pub(super) const MODIFY_TOOLS: &[&str] = &["edit", "write"];
@@ -40,7 +40,7 @@ pub(super) fn extract_path_from_arguments(arguments: &str) -> Option<String> {
 pub(super) fn find_matching_result(
     history: &[ChatEntry],
     call_idx: usize,
-    tool_call_id: &str,
+    tool_call_id: &ToolCallId,
 ) -> Option<(ChatEntryId, usize)> {
     // ToolResults appear after their ToolCall, so scan forward only.
     for (j, entry) in history.iter().enumerate().skip(call_idx + 1) {

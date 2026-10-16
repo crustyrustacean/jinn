@@ -151,6 +151,33 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     })
 }
 
+/// Why an attendant file could not be loaded as exactly one named entry.
+///
+/// Variants carry everything the model needs in their message: the tool
+/// boundary renders a failure as tool-result prose, and a `Report`'s
+/// `Display` prints only the outermost context.
+#[derive(Debug, wherror::Error)]
+pub enum AttendantParseError {
+    /// The parsed entry carried no name.
+    #[error("attendant entry has no name")]
+    NoName,
+    /// The file names no entry at all.
+    #[error("the file names no attendant entry")]
+    EmptyFile,
+    /// The file carries several entries where exactly one is required.
+    #[error("the file carries {count} entries; load them one file per attendant")]
+    MultipleEntries {
+        /// How many entries the file carried.
+        count: usize,
+    },
+    /// The file matched none of the three accepted document shapes.
+    #[error("not a valid attendant entry: {detail}")]
+    NotAnEntry {
+        /// The parser's complaint.
+        detail: String,
+    },
+}
+
 /// Parses an attendant file in any of the three shapes such a file might
 /// reasonably carry: the full document shape jinn.toml uses
 /// (`[[attendant.entry]]`, which nests the array under an `attendant`
@@ -158,10 +185,17 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 /// own description promise), the flat single-entry document
 /// (`{ entry = [ ... ] }`), or one bare entry's keys. All converge on
 /// exactly one entry; anything else is refused with the reason.
-pub(crate) fn parse_attendant_entry(text: &str) -> Result<AttendantEntryConfig, String> {
+///
+/// # Errors
+///
+/// Returns [`AttendantParseError`] naming why the file is not exactly one
+/// named entry.
+pub(crate) fn parse_attendant_entry(
+    text: &str,
+) -> Result<AttendantEntryConfig, error_stack::Report<AttendantParseError>> {
     if let Ok(entry) = toml::from_str::<AttendantEntryConfig>(text) {
         if entry.name.trim().is_empty() {
-            return Err("attendant entry has no name".to_owned());
+            return Err(AttendantParseError::NoName.into());
         }
         return Ok(entry);
     }
@@ -182,24 +216,29 @@ pub(crate) fn parse_attendant_entry(text: &str) -> Result<AttendantEntryConfig, 
     }
     match toml::from_str::<Wrapped>(text) {
         Ok(wrapped) => one_entry(&wrapped.entry),
-        Err(error) => Err(format!("not a valid attendant entry: {error}")),
+        Err(error) => Err(AttendantParseError::NotAnEntry {
+            detail: error.to_string(),
+        }
+        .into()),
     }
 }
 
 /// Requires exactly one named entry from a parsed entry list.
-fn one_entry(entries: &[AttendantEntryConfig]) -> Result<AttendantEntryConfig, String> {
+fn one_entry(
+    entries: &[AttendantEntryConfig],
+) -> Result<AttendantEntryConfig, error_stack::Report<AttendantParseError>> {
     match entries {
         [one] => {
             if one.name.trim().is_empty() {
-                return Err("attendant entry has no name".to_owned());
+                return Err(AttendantParseError::NoName.into());
             }
             Ok(one.clone())
         }
-        [] => Err("the file names no attendant entry".to_owned()),
-        _ => Err(format!(
-            "the file carries {} entries; load them one file per attendant",
-            entries.len()
-        )),
+        [] => Err(AttendantParseError::EmptyFile.into()),
+        _ => Err(AttendantParseError::MultipleEntries {
+            count: entries.len(),
+        }
+        .into()),
     }
 }
 

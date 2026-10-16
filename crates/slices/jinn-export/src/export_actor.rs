@@ -21,6 +21,7 @@
 use std::path::Path;
 use std::path::PathBuf;
 
+use error_stack::{IntoReport as _, Report};
 use jinn_core_types::SessionId;
 use jinn_core_types::chat_entry::ChatEntry;
 use jinn_export_msg::ExportCompleted;
@@ -45,6 +46,41 @@ use crate::path::resolve_export_path;
 
 /// The export actor's static trouper path.
 pub const EXPORT_PATH: &str = "export";
+
+/// Why an export could not be written.
+///
+/// Variants carry everything the chat entry renders in their message: the
+/// actor pushes the `Report`'s `Display` into the failure entry, and it
+/// prints only the outermost context.
+#[derive(Debug, wherror::Error)]
+pub enum ExportWriteError {
+    /// The destination argument could not be resolved to a path.
+    #[error("cannot resolve export destination: {reason}")]
+    ResolvePath {
+        /// What the user can do about it, in one sentence.
+        reason: String,
+    },
+    /// The destination's extension names no writer this slice has.
+    #[error("{reason}")]
+    UnsupportedExtension {
+        /// A ready-to-render sentence naming the supported extensions.
+        reason: String,
+    },
+    /// The rendered file could not be written.
+    #[error("cannot write {path}: {detail}")]
+    Write {
+        /// The destination path.
+        path: String,
+        /// The filesystem's complaint.
+        detail: String,
+    },
+    /// The blocking worker panicked before producing a result.
+    #[error("export worker panicked: {detail}")]
+    WorkerPanicked {
+        /// The panic payload.
+        detail: String,
+    },
+}
 
 /// Dependencies for [`ExportActor`].
 #[derive(Clone)]
@@ -139,7 +175,7 @@ impl ExportActor {
                 });
             }
             Err(reason) => {
-                Self::report_error(&msg.session_id, &reason, ctx);
+                Self::report_error(&msg.session_id, &reason.to_string(), ctx);
             }
         }
     }
@@ -153,7 +189,7 @@ impl ExportActor {
         &self,
         msg: &ExportSessionToFile,
         snapshot: SessionSnapshot,
-    ) -> Result<PathBuf, String> {
+    ) -> Result<PathBuf, Report<ExportWriteError>> {
         let requested = msg.path.clone();
         let job = RenderJob {
             argument: requested.to_string_lossy().to_string(),
@@ -162,7 +198,12 @@ impl ExportActor {
         };
         tokio::task::spawn_blocking(move || render_and_write_blocking(&job))
             .await
-            .unwrap_or_else(|e| Err(format!("export worker panicked: {e}")))
+            .map_err(|e| {
+                ExportWriteError::WorkerPanicked {
+                    detail: e.to_string(),
+                }
+                .into_report()
+            })?
     }
 
     /// Pushes a transient entry naming the written file.
@@ -217,14 +258,29 @@ fn written_notice(path: &Path) -> String {
 }
 
 /// Renders and writes one export. Runs on a blocking worker.
-fn render_and_write_blocking(job: &RenderJob) -> Result<PathBuf, String> {
-    let path = resolve_export_path(&job.argument, &job.cwd).map_err(|e| e.reason)?;
+///
+/// # Errors
+///
+/// Returns [`ExportWriteError`] naming the failed stage: path resolution,
+/// an unwritable extension, or the write itself.
+fn render_and_write_blocking(job: &RenderJob) -> Result<PathBuf, Report<ExportWriteError>> {
+    let path = resolve_export_path(&job.argument, &job.cwd)
+        .map_err(|e| Report::new(ExportWriteError::ResolvePath { reason: e.reason }))?;
     let Some(format) = format_for_path(&path) else {
         // Refused before any write: no partial file is left behind.
-        return Err(unsupported_extension_error(&path).reason);
+        let unsupported = unsupported_extension_error(&path);
+        return Err(Report::new(ExportWriteError::UnsupportedExtension {
+            reason: unsupported.reason,
+        }));
     };
     let rendered = format.render(&job.document);
-    std::fs::write(&path, rendered).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    std::fs::write(&path, rendered).map_err(|e| {
+        ExportWriteError::Write {
+            path: path.display().to_string(),
+            detail: e.to_string(),
+        }
+        .into_report()
+    })?;
     Ok(path)
 }
 
@@ -312,7 +368,9 @@ mod tests {
         let result = render_and_write_blocking(&job("out.pdf", dir.path()));
 
         // Then it is refused with the exporter wording, and nothing is written.
-        let reason = result.expect_err("pdf is not a supported export format");
+        let reason = result
+            .expect_err("pdf is not a supported export format")
+            .to_string();
         assert!(reason.starts_with("no exporter for .pdf"), "was: {reason}");
         assert!(!dir.path().join("out.pdf").exists());
     }
@@ -350,7 +408,7 @@ mod tests {
         let result = render_and_write_blocking(&job("chat.txt", dir.path()));
 
         // Then the user is told there is no exporter for it.
-        let reason = result.expect_err("txt has no exporter");
+        let reason = result.expect_err("txt has no exporter").to_string();
         assert!(reason.starts_with("no exporter for .txt"), "was: {reason}");
         assert!(!dir.path().join("chat.txt").exists());
     }
@@ -379,7 +437,9 @@ mod tests {
         let result = render_and_write_blocking(&job("blocker/out.html", dir.path()));
 
         // Then the failure names the path that could not be written.
-        let reason = result.expect_err("writing under a file must fail");
+        let reason = result
+            .expect_err("writing under a file must fail")
+            .to_string();
         assert!(reason.contains("blocker/out.html"), "was: {reason}");
     }
 }

@@ -108,6 +108,10 @@ pub fn render_markdown_document(doc: &ExportDocument) -> String {
 pub struct MarkdownExport;
 
 impl ExportFormat for MarkdownExport {
+    fn name(&self) -> &'static str {
+        "markdown"
+    }
+
     fn extension(&self) -> &'static str {
         "md"
     }

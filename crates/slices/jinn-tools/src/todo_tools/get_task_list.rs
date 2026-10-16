@@ -125,8 +125,8 @@ mod tests {
             r.session.active_session_id().clone()
         };
         let call = ToolCall {
-            id: "call-1".to_owned(),
-            name: "todo_get_list".to_owned(),
+            id: "call-1".into(),
+            name: "todo_get_list".into(),
             arguments: "{}".to_owned(),
         };
         let ctx = make_context(Some(state), Some(session_id));
@@ -158,8 +158,8 @@ mod tests {
             }]);
         }
         let call = ToolCall {
-            id: "call-1".to_owned(),
-            name: "todo_get_list".to_owned(),
+            id: "call-1".into(),
+            name: "todo_get_list".into(),
             arguments: "{}".to_owned(),
         };
         let ctx = make_context(Some(state), Some(session_id));
@@ -192,8 +192,8 @@ mod tests {
             }]);
         }
         let call = ToolCall {
-            id: "call-1".to_owned(),
-            name: "todo_get_list".to_owned(),
+            id: "call-1".into(),
+            name: "todo_get_list".into(),
             arguments: "{}".to_owned(),
         };
         let ctx = make_context(Some(state), Some(session_id));
@@ -215,8 +215,8 @@ mod tests {
     fn get_task_list_requires_state() {
         // Given a tool context with no application state.
         let call = ToolCall {
-            id: "call-1".to_owned(),
-            name: "todo_get_list".to_owned(),
+            id: "call-1".into(),
+            name: "todo_get_list".into(),
             arguments: "{}".to_owned(),
         };
         let ctx = make_context(None, Some(SessionId::new()));

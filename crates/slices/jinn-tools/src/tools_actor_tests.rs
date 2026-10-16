@@ -166,8 +166,8 @@ async fn orchestrator_completes_builtin_bash_batch_dispatched_over_the_bus() {
         .publish(ExecuteToolBatch {
             session_id: session_id.clone(),
             tool_calls: vec![ToolCall {
-                id: "tc-bash-1".to_owned(),
-                name: "bash".to_owned(),
+                id: "tc-bash-1".into(),
+                name: "bash".into(),
                 arguments: r#"{"command":"echo fabric-loop-ok"}"#.to_owned(),
             }],
             dispatched_at: jiff::Timestamp::now(),
@@ -263,8 +263,8 @@ async fn tool_batch_completed_over_the_bus_continues_the_tool_loop() {
         .publish(ExecuteToolBatch {
             session_id: session_id.clone(),
             tool_calls: vec![ToolCall {
-                id: "tc-bash-2".to_owned(),
-                name: "bash".to_owned(),
+                id: "tc-bash-2".into(),
+                name: "bash".into(),
                 arguments: r#"{"command":"echo loop-continues"}"#.to_owned(),
             }],
             dispatched_at: jiff::Timestamp::now(),
@@ -311,8 +311,8 @@ async fn registered_session_scoped_actor_tool_completes_its_batch() {
         .publish(ExecuteToolBatch {
             session_id: session_id.clone(),
             tool_calls: vec![ToolCall {
-                id: "tc-mcp-1".to_owned(),
-                name: "mcp__stub__echo".to_owned(),
+                id: "tc-mcp-1".into(),
+                name: "mcp__stub__echo".into(),
                 arguments: r#"{"x":1}"#.to_owned(),
             }],
             dispatched_at: jiff::Timestamp::now(),

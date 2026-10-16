@@ -744,16 +744,19 @@ negative = ['cat .bashrc', 'cat ~/.zshrc', 'rg TODO src/']
 # source: SWE-agent/SWE-agent sweagent/tools/tools.py blocklist
 #   (vim/vi/emacs/nano), reshaped for the JSON envelope: the buffer starts
 #   with the {"command":" head, not the command, so the anchor admits the
-#   envelope head and compound separators instead of `^`.
+#   envelope head and compound separators instead of `^`. The separator
+#   requires mandatory whitespace after it ([;&|][ \t]+): with \s* a bare
+#   `|` inside a quoted script (regex alternation like `a|nano`) matched
+#   as a command separator and fired on script CONTENT, not commands.
 # license: MIT (SWE-agent/SWE-agent)
 [[stream_rules.entry]]
 name = 'no-interactive-editor'
 description = 'an interactive editor blocks the non-interactive tool call until it times out'
-conditions = ['(?:"command"\s*:\s*"|[;&|]\s*)(?:vim|vi|emacs|nano)\b']
+conditions = ['(?:"command"\s*:\s*"|[;&|][ \t]+)(?:vim|vi|emacs|nano)\b']
 scopes = ['tool:bash']
 body = 'That editor is interactive and blocks this non-interactive call until it times out. Read the file and change it with the edit tools instead.'
 positive = ['vim src/main.rs', 'nano /etc/hosts', 'echo x && emacs daemon', 'vi notes.txt']
-negative = ['echo vim', 'systemctl status vim', 'EDITOR=vim git commit', 'nvim --headless']
+negative = ['echo vim', 'systemctl status vim', 'EDITOR=vim git commit', 'nvim --headless', 'python3 -c "re.sub(r.(a|nano)., .., s)"']
 
 # source: SWE-agent/SWE-agent sweagent/tools/tools.py blocklist (less),
 #   reshaped for the JSON envelope as in no-interactive-editor.
@@ -761,7 +764,7 @@ negative = ['echo vim', 'systemctl status vim', 'EDITOR=vim git commit', 'nvim -
 [[stream_rules.entry]]
 name = 'no-interactive-pager'
 description = 'a full-screen pager blocks the non-interactive tool call until it times out'
-conditions = ['(?:"command"\s*:\s*"|[;&|]\s*)less\b']
+conditions = ['(?:"command"\s*:\s*"|[;&|][ \t]+)less\b']
 scopes = ['tool:bash']
 body = 'That pager is interactive and blocks this call until it times out. Print the file directly, or grep the part you need.'
 positive = ['less large.log', 'echo x && less app.log']
@@ -773,7 +776,7 @@ negative = ['echo less', 'ls -la && cat README.md', 'grep -rn lesscode src/']
 [[stream_rules.entry]]
 name = 'no-tail-follow'
 description = 'tail -f never exits, blocking the tool call until it times out'
-conditions = ['(?:"command"\s*:\s*"|[;&|]\s*)tail\s+-f\b']
+conditions = ['(?:"command"\s*:\s*"|[;&|][ \t]+)tail\s+-f\b']
 scopes = ['tool:bash']
 body = 'tail -f follows forever and blocks this call until it times out. Read the last N lines with `tail -n` instead.'
 positive = ['tail -f app.log', 'echo x && tail -f /var/log/syslog']
@@ -786,7 +789,7 @@ negative = ['tail -n 50 app.log', 'grep -rn tail src/', 'journalctl -n 50']
 [[stream_rules.entry]]
 name = 'no-interactive-gdb'
 description = 'gdb with a target blocks the non-interactive tool call until it times out'
-conditions = ['(?:"command"\s*:\s*"|[;&|]\s*)gdb\s+[^;&|\s-]']
+conditions = ['(?:"command"\s*:\s*"|[;&|][ \t]+)gdb\s+[^;&|\s-]']
 scopes = ['tool:bash']
 body = 'That gdb invocation is interactive and blocks this call until it times out. Use batch mode (`gdb -batch -ex ...`) or a non-interactive debugger integration.'
 positive = ['gdb ./a.out', 'gdb target/debug/jinn']
@@ -810,7 +813,7 @@ negative = ['gdb --version', 'rust-gdb --batch -ex run target/debug/app']
 [[stream_rules.entry]]
 name = 'no-interactive-fossil-stash'
 description = 'a bare fossil stash defaults to interactive mode and blocks the tool call'
-conditions = ['(?:"command"\s*:\s*"|[;&|]\s*)fossil stash(?:$|(?:(?:\s+-|\s*[;&|]|")))']
+conditions = ['(?:"command"\s*:\s*"|[;&|][ \t]+)fossil stash(?:$|(?:(?:\s+-|\s*[;&|]|")))']
 scopes = ['tool:bash']
 body = 'That `fossil stash` is interactive: without a subcommand fossil opens a prompt, and this tool call cannot answer one -- it blocks until timeout. Stash non-interactively with a message: `fossil stash save -m "<what and why>"`. (`fossil stash list|show|pop|drop` are also non-interactive.)'
 positive = ['fossil stash', 'fossil stash -m "wip"', 'cd /repo && fossil stash', 'fossil stash && fossil status', 'fossil stash; fossil status']

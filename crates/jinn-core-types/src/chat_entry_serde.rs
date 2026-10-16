@@ -130,7 +130,7 @@ impl Serialize for ChatEntryKind {
                 map.serialize_entry(
                     "ToolCall",
                     &ToolCallData {
-                        id: id.clone(),
+                        id: id.as_str().to_owned(),
                         name: name.clone(),
                         arguments: arguments.clone(),
                         child_session: child_session.clone(),
@@ -167,7 +167,7 @@ impl Serialize for ChatEntryKind {
                 map.serialize_entry(
                     "ToolResult",
                     &ToolResultData {
-                        id: id.clone(),
+                        id: id.as_str().to_owned(),
                         name: name.clone(),
                         content: content.clone(),
                         status: *status,
@@ -340,7 +340,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                         }
                         let data: ToolCallData = map.next_value()?;
                         Ok(ChatEntryKind::ToolCall {
-                            id: data.id,
+                            id: crate::ToolCallId::from(data.id),
                             name: data.name,
                             arguments: data.arguments,
                             child_session: data.child_session,
@@ -373,7 +373,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                         let value: serde_json::Value = map.next_value()?;
                         let result = serde_json::from_value::<ToolResultDataNew>(value.clone())
                             .map(|data| ChatEntryKind::ToolResult {
-                                id: data.id,
+                                id: crate::ToolCallId::from(data.id),
                                 name: data.name,
                                 content: data.content,
                                 status: data.status,
@@ -385,7 +385,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             .or_else(|_| {
                                 serde_json::from_value::<ToolResultDataOld>(value).map(|data| {
                                     ChatEntryKind::ToolResult {
-                                        id: data.id,
+                                        id: crate::ToolCallId::from(data.id),
                                         name: data.name,
                                         content: data.content,
                                         is_alert: false,

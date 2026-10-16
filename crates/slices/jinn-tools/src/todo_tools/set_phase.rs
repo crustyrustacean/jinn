@@ -113,7 +113,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         // payload error aborts before task list state is touched.
         let phase_input = match super::task_payload::parse_phase_body(&args, "phase") {
             Ok(input) => input,
-            Err(msg) => return tool_error(&call, &msg),
+            Err(report) => return tool_error(&call, &report.to_string()),
         };
 
         let phase_description = phase_input.description.clone();
@@ -231,7 +231,7 @@ mod tests {
 
     fn set_phase_call(description: &str, tasks: serde_json::Value) -> ToolCall {
         ToolCall {
-            id: "call-1".to_owned(),
+            id: "call-1".into(),
             name: "todo_set_phase".to_owned(),
             arguments: serde_json::json!({ "description": description, "tasks": tasks })
                 .to_string(),

@@ -18,6 +18,18 @@ impl SessionId {
         Self(Uuid::now_v7())
     }
 
+    /// Derives a deterministic session id from a mnemonic tag.
+    ///
+    /// Tests and project-scope resolution use this to map a stable label
+    /// ("s-a", "s-child") to a stable, valid id without a random source.
+    #[must_use]
+    pub fn new_v5_tag(tag: &str) -> Self {
+        Self(uuid::Uuid::new_v5(
+            &uuid::Uuid::NAMESPACE_URL,
+            tag.as_bytes(),
+        ))
+    }
+
     /// Parses a session ID from its string form without panicking.
     ///
     /// For untrusted input (e.g. a serialized message payload): an unparseable
@@ -32,16 +44,6 @@ impl SessionId {
 impl Default for SessionId {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl From<String> for SessionId {
-    #[expect(
-        clippy::expect_used,
-        reason = "From is infallible. Should be caught by testing."
-    )]
-    fn from(id: String) -> Self {
-        Self(Uuid::parse_str(&id).expect("invalid UUID format (programming error)"))
     }
 }
 

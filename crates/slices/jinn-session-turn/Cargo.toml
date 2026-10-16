@@ -39,6 +39,9 @@ trouper = { workspace = true }
 
 [dev-dependencies]
 jinn-testutil = { workspace = true }
+# Tests seed the work-time cell to assert the stamped save. Dev-only on
+# purpose: the actor itself reaches intervals solely through the kernel flow.
+jinn-work-time-msg = { workspace = true }
 
 rstest = { workspace = true }
 # Test-only: the tool-call delta refusal is asserted through a captured
