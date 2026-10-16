@@ -104,7 +104,7 @@ Almost all of the "system prompt" / prefix can be configured, with the main driv
 
 ### etc
 
-- Standard agent harness-y things like `AGENTS.md`, `~/.agents` skill discovery, custom prompts, MCP server support, subagents/tasks, usage display.
+- Standard agent harness-y things like `AGENTS.md`, `~/.agents` skill discovery, custom prompts, MCP server support, subagents/tasks, concurrent execution, intersession messaging, usage display.
 - Subagents/tasks are regular sessions that are linked together in a tree, so you can steer an in-progress subagent or fork a new session from it.
 
 ## Usage
@@ -153,47 +153,6 @@ While in the sidebar, you can use hold `shift` to move up and down an entire sec
 Prompts are inserted using `#foo` where `foo` is the name of the prompt. You will get a popup with your available prompts as soon as you type `#`. You can use the arrow keys to select a prompt.
 
 Prompts are only expanded when they get sent to the model and will always show up as `#foo` in the chat input and in the history. If you want to edit the contents of a prompt _before_ sending, type `#foo#`. As soon as the second `#` is typed, the prompt will be fully expanded in the chat input and you can edit it before sending (this does _not_ change the on-disk prompt).
-
-### Lifecycle Scripts
-
-`jinn` can associate "lifecycle" scripts with sessions. These scripts run when a new session is created (via `<leader>sp` or `<leader>sl`) and when it's closed (via `xx` on the sidebar). They are used to checkout branches and set up an environment on a new session, and also merge + cleanup when closing the session.
-
-You can use any number of `<foo>` tokens in the scripts and their values will be prompted for interactively on session creation, saved to the session, and then re-used during teardown.
-
-The [default config](./crates/jinn-preferences-config/src/default_jinn.toml) has both `git` and `fossil` preconfigured. You'll need to make sure your directory structure matches below, otherwise you'll need to write your own scripts.
-
-```toml
-# Git
-#
-# Project directory should be a parent folder of the repo:
-#
-# my_project/        <-- configured as the project directory in jinn
-#    repo/           <-- your actual repo
-#       .git/
-#    worktrees_will_go_here_as_siblings/
-#       .git/
-#
-[[session_lifecycle]]
-name = "git worktree"
-description = "Open a git worktree + branch"
-setup_command = "cd <repo> && git worktree add -b <branch> ../<branch> && cd .. && echo $(pwd)/<branch>"
-teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git commit -q -m "auto-commit at teardown") && git merge main && cd ../<repo> && git merge --squash <branch> && (git diff --cached --quiet || git commit -q -m "Merge <branch>") && git worktree remove ../<branch> && git branch -D <branch>'"""
-
-# Fossil
-#
-# Project directory should be a parent folder of the repo:
-#
-# my_project/        <-- configured as the project directory in jinn
-#    repo.fossil
-#    checkouts_will_go_here_as_siblings/
-#       .fslckout
-#
-[[session_lifecycle]]
-name = "fossil branch checkout"
-description = "Open a new checkout + branch"
-setup_command = "mkdir <branch> && cd <branch> && fossil open ../<repo>.fossil && fossil commit -m 'Open <branch>' --branch <branch> --allow-empty && echo ./<branch>"
-teardown_command = "fossil merge trunk --force && fossil addremove && fossil commit -m 'Bring in latest trunk' && fossil update trunk && fossil merge <branch> && fossil addremove && fossil commit -m 'Merge <branch>' && fossil branch close <branch> && cd .. && rm -rfv <branch>"
-```
 
 ## Agentic Coding
 
@@ -289,6 +248,47 @@ jinn is configured via the files in the `~/.config/jinn` directory:
 - `themes/` - color themes
 - `personas/` - personas
 - `prompts/` - custom prompts
+
+### Lifecycle Scripts
+
+`jinn` can associate "lifecycle" scripts with sessions. These scripts run when a new session is created (via `<leader>sp` or `<leader>sl`) and when it's closed (via `xx` on the sidebar). They are used to checkout branches and set up an environment on a new session, and also merge + cleanup when closing the session.
+
+You can use any number of `<foo>` tokens in the scripts and their values will be prompted for interactively on session creation, saved to the session, and then re-used during teardown.
+
+The [default config](./crates/jinn-preferences-config/src/default_jinn.toml) has both `git` and `fossil` preconfigured. You'll need to make sure your directory structure matches below, otherwise you'll need to write your own scripts.
+
+```toml
+# Git
+#
+# Project directory should be a parent folder of the repo:
+#
+# my_project/        <-- configured as the project directory in jinn
+#    repo/           <-- your actual repo
+#       .git/
+#    worktrees_will_go_here_as_siblings/
+#       .git/
+#
+[[session_lifecycle]]
+name = "git worktree"
+description = "Open a git worktree + branch"
+setup_command = "cd <repo> && git worktree add -b <branch> ../<branch> && cd .. && echo $(pwd)/<branch>"
+teardown_command = """bash -c 'git add -A && (git diff --cached --quiet || git commit -q -m "auto-commit at teardown") && git merge main && cd ../<repo> && git merge --squash <branch> && (git diff --cached --quiet || git commit -q -m "Merge <branch>") && git worktree remove ../<branch> && git branch -D <branch>'"""
+
+# Fossil
+#
+# Project directory should be a parent folder of the repo:
+#
+# my_project/        <-- configured as the project directory in jinn
+#    repo.fossil
+#    checkouts_will_go_here_as_siblings/
+#       .fslckout
+#
+[[session_lifecycle]]
+name = "fossil branch checkout"
+description = "Open a new checkout + branch"
+setup_command = "mkdir <branch> && cd <branch> && fossil open ../<repo>.fossil && fossil commit -m 'Open <branch>' --branch <branch> --allow-empty && echo ./<branch>"
+teardown_command = "fossil merge trunk --force && fossil addremove && fossil commit -m 'Bring in latest trunk' && fossil update trunk && fossil merge <branch> && fossil addremove && fossil commit -m 'Merge <branch>' && fossil branch close <branch> && cd .. && rm -rfv <branch>"
+```
 
 ### System Prompt
 
@@ -454,6 +454,6 @@ Lots of inspiration from other projects went into the design of `jinn`:
 
 This project includes third-party software under separate licenses. See [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES) for details.
 
-The model-market popup's performance data (the Epoch Capabilities Index) comes from [Epoch AI](https://epoch.ai/benchmarks/use-this-data), used under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); a bundled snapshot ships in `crates/slices/jinn-model-market/src/seed/`, and the required attribution text is in [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES).
+The OpenRouter model search performance data (the Epoch Capabilities Index) comes from [Epoch AI](https://epoch.ai/benchmarks/use-this-data), used under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); a bundled snapshot ships in `crates/slices/jinn-model-market/src/seed/`, see [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES).
 
 Copyright 2026 Jayson Lennon.
