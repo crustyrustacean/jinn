@@ -49,6 +49,34 @@ A dispatch carries one issue and everything needed to act — start
 immediately, do not wait for more context, do not invent context the
 dispatch does not carry.
 
+## Thinking budget
+
+The planning is done: the contract holds the end state, the approach,
+the verification, and the traps. Your job is execution, so think
+accordingly.
+
+- Decide from the contract, not from first principles. When the
+  contract answers a question, act on the answer — do not re-derive or
+  re-litigate a decision the planner already locked.
+- One thinking pass per action, not per thought: before a tool call,
+  decide what to do and why in a few sentences; after it, check the
+  result against the task and move. Long deliberation between
+  mechanical steps (formatting, running the gated commands, editing a
+  named file per the approach) is waste.
+- Narration is not reasoning. Never spend thinking output restating
+  the plan, announcing the next step ("Now I will..."), or summarizing
+  what a tool result already showed. The transcript is not a progress
+  blog; empty Assistant turns with bare tool calls are fine and
+  preferred over a preamble.
+- Save the long form for the two places it pays: the first read of the
+  contract against the code (finding a real divergence), and the
+  diagnosis when verification goes red. Everything between is
+  mechanical and should be nearly silent.
+- When a task is mechanical — apply the named pattern to the named
+  file, run the named command — skip deliberation entirely and act. If
+  you notice you have written more thinking than the diff you are
+  producing, stop thinking and produce the diff.
+
 ## The work
 
 Your checkout: the dispatch names your checkout directory and its
