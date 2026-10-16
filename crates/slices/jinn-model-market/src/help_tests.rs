@@ -1,6 +1,6 @@
 //! Tests for the `?` help card: the widget-level visibility contract,
 //! the TestBackend render, and the attribution Epoch AI's license
-//! requires — checked in the card *and* in the shipped license file.
+//! requires — checked in the shipped license file.
 
 #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
@@ -10,7 +10,6 @@ use ratatui::layout::Rect;
 
 use super::help_lines;
 use super::market_help_card;
-use super::source_section;
 use super::wrap_line;
 
 /// A popup frame with room for the card below it: a terminal, the
@@ -163,7 +162,9 @@ fn drawn_card_renders_its_border_title_and_sections() {
     .expect("test terminal");
     terminal.draw(|f| card.draw(f)).expect("draw");
 
-    // Then the screen carries the border, the title, and every section.
+    // Then the screen carries the border, the title, and exactly the
+    // two sections the card documents — no key inventory, no status
+    // line, no data-sources prose.
     let text: String = terminal
         .backend()
         .buffer()
@@ -172,19 +173,19 @@ fn drawn_card_renders_its_border_title_and_sections() {
         .map(ratatui::buffer::Cell::symbol)
         .collect();
     assert!(text.contains("Model Market help"), "title, got: {text:?}");
-    for section in [
-        "Columns",
-        "Keys",
-        "Detail pane",
-        "Status line",
-        "Data sources",
-    ] {
+    for section in ["Columns", "Detail pane"] {
         assert!(text.contains(section), "section {section}, got: {text:?}");
+    }
+    for gone in ["Keys", "Status line", "Data sources", "<leader>so", "[m]"] {
+        assert!(
+            !text.contains(gone),
+            "the card must not carry {gone:?}, got: {text:?}"
+        );
     }
 }
 
 #[rstest::rstest]
-fn drawn_card_documents_the_columns_flags_and_keys() {
+fn drawn_card_documents_the_columns_and_flags() {
     // Given a visible help card over a tall frame so the whole card is
     // on screen.
     let ui = MarketUiState {
@@ -202,8 +203,7 @@ fn drawn_card_documents_the_columns_flags_and_keys() {
     .expect("test terminal");
     terminal.draw(|f| card.draw(f)).expect("draw");
 
-    // Then the rendered text names every column, both sort-mix facts,
-    // the flag glyphs, and the keys the popup honors.
+    // Then the rendered text names every column and the flag glyphs.
     let text: String = terminal
         .backend()
         .buffer()
@@ -212,32 +212,10 @@ fn drawn_card_documents_the_columns_flags_and_keys() {
         .map(ratatui::buffer::Cell::symbol)
         .collect();
     for fact in [
-        "MODEL", "IN/M", "OUT/M", "CACHE/M", "PROJ", "ECI", "FLAGS", "\u{2020}", "f", "#", "j/k",
-        "<pgup>", "<c-r>", "?",
+        "MODEL", "IN/M", "OUT/M", "CACHE/M", "PROJ", "ECI", "FLAGS", "\u{2020}", "#",
     ] {
         assert!(text.contains(fact), "card must document {fact:?}");
     }
-}
-
-#[rstest::rstest]
-fn card_credits_epoch_ai_and_the_license() {
-    // Given the card's authored lines.
-    let theme = default_theme();
-    let lines = source_section(&theme);
-    let text: String = lines
-        .iter()
-        .flat_map(|line| line.spans.iter())
-        .map(|span| span.content.to_string())
-        .collect();
-
-    // Then the data-sources section names Epoch AI and CC BY 4.0.
-    assert!(text.contains("Epoch AI"), "credit, got: {text:?}");
-    assert!(text.contains("CC BY 4.0"), "license, got: {text:?}");
-    // And the source URL.
-    assert!(
-        text.contains("https://epoch.ai/benchmarks/use-this-data"),
-        "source URL, got: {text:?}"
-    );
 }
 
 #[rstest::rstest]
@@ -336,24 +314,5 @@ fn help_lines_render_within_a_reasonable_popup_width() {
             len <= usize::from(text_width),
             "row of {len} exceeds text width {text_width}: {row:?}"
         );
-    }
-}
-
-#[rstest::rstest]
-fn mix_preset_summary_matches_the_cycle_constant() {
-    // Given the presets the `m` key cycles.
-    // When the card summarizes them.
-    let summary = super::mix_preset_summary();
-
-    // Then every preset appears in the status line's own short form —
-    // the card cannot advertise a mix the constant does not carry.
-    for (input, hit, output) in jinn_model_market_msg::MIX_PRESETS {
-        let fragment = format!(
-            "{}k in @{}% cache",
-            input / 1_000,
-            (hit * 100.0).round() as u32
-        );
-        assert!(summary.contains(&fragment), "{fragment} in {summary:?}");
-        assert!(summary.contains(&format!("{}k out", output / 1_000)));
     }
 }

@@ -1,11 +1,11 @@
 //! The model-market popup's overlay rendering: the centered full-table
-//! geometry, the table itself, the filter bar, the status line, the
+//! geometry, the table itself, the filter line, the status line, the
 //! keybind footer, the highlighted model's detail pane, and the `?`
 //! help card the view draws below itself while it is toggled on.
 //!
 //! The render pass reads the cells only — no IO, no actor pokes, no
-//! messages published from render. PROJ is computed here from the live
-//! mix so `m` re-sorts the table on the next frame with no refetch.
+//! messages published from render. PROJ is computed here from the
+//! fixed [`PROJECTION_MIX`] the `-msg` crate names.
 //!
 //! The table's shape has one source of truth: [`MARKET_COLUMNS`]. The
 //! header, every data row, and the layout constraints all derive from
@@ -16,6 +16,7 @@ use std::ops::Range;
 use jinn_model_market_msg::MarketDataState;
 use jinn_model_market_msg::MarketDetail;
 use jinn_model_market_msg::MarketUiState;
+use jinn_model_market_msg::PROJECTION_MIX;
 use jinn_model_market_msg::SortColumn;
 use jinn_slices::RenderFacts;
 use jinn_theme::Theme;
@@ -45,8 +46,12 @@ use crate::ui_state;
 /// pane can never swallow the table whole.
 const TABLE_KEEP_ROWS: u16 = 4;
 /// The rows the status line and footer occupy at the popup's bottom —
-/// the pane's floor sits above them.
+/// the pane's floor sits above them, and the table's own rect ends
+/// above them so the selection highlight can never render underneath.
 const STATUS_ROWS: u16 = 2;
+/// The rows the filter line and its separator occupy at the popup's
+/// top, above the table's header.
+const FILTER_ROWS: u16 = 2;
 
 #[cfg(test)]
 #[path = "view_tests.rs"]
@@ -78,34 +83,36 @@ struct MarketColumn {
 /// renders beside the ECI column it annotates.
 const MARKET_COLUMNS: &[MarketColumn] = &[
     MarketColumn {
-        header: "PROJ \u{a2}",
+        header: "PROJ",
         sort: SortColumn::Proj,
         keyed: true,
-        width: 9,
+        width: 10,
         cell: |row, _ui, _theme| {
-            let mix = MarketUiState::default().active_mix();
-            Line::from(format::cents(ui_state::projected_cents(row, mix)))
+            Line::from(format::dollars(ui_state::projected_cents(
+                row,
+                PROJECTION_MIX,
+            )))
         },
     },
     MarketColumn {
         header: "IN/M",
         sort: SortColumn::In,
         keyed: true,
-        width: 9,
+        width: 10,
         cell: |row, _ui, _theme| Line::from(format::price_per_million(row.prompt_price)),
     },
     MarketColumn {
         header: "OUT/M",
         sort: SortColumn::Out,
         keyed: true,
-        width: 9,
+        width: 10,
         cell: |row, _ui, _theme| Line::from(format::price_per_million(row.completion_price)),
     },
     MarketColumn {
         header: "CACHE/M",
         sort: SortColumn::Cache,
         keyed: true,
-        width: 9,
+        width: 10,
         cell: |row, _ui, _theme| Line::from(format::cache_column(row.cache_read_price)),
     },
     MarketColumn {
@@ -145,8 +152,9 @@ pub fn market_overlay_rect(area: &Rect) -> Option<Rect> {
     Some(Rect::new(x, y, width, height))
 }
 
-/// Draws the popup for one frame: table, filter bar, status line,
-/// footer, then the `?` help card when it is toggled on.
+/// Draws the popup for one frame: the opaque surface, the filter line,
+/// the table, the status line, the footer, then the `?` help card when
+/// it is toggled on.
 pub fn render_market_popup(frame: &mut Frame<'_>, area: Rect, facts: &RenderFacts) {
     let Some(ui_cell) = facts
         .slices
@@ -189,13 +197,15 @@ pub fn render_market_popup(frame: &mut Frame<'_>, area: Rect, facts: &RenderFact
     let ui = ui_cell.read();
     let data = data_cell.read();
 
-    // The focused filter bar lives in the block title; the plain title
-    // shows otherwise.
-    let title = if ui.filter_focused {
-        filter_title(&ui.filter)
-    } else {
-        " Model Market ".to_owned()
-    };
+    // The popup is an opaque overlay: nothing behind it may bleed
+    // through, so the surface is cleared before anything draws into it
+    // (the selection widget's render order).
+    frame.render_widget(Clear, area);
+
+    // The block draws alone — the table renders inside its inner area
+    // without a block of its own, because the table's rect excludes the
+    // status rows the block would otherwise hand it. The title is
+    // always the popup's name; the filter lives on its own line inside.
     let border = if ui.filter_focused {
         theme.picker_highlight_bg
     } else {
@@ -204,15 +214,54 @@ pub fn render_market_popup(frame: &mut Frame<'_>, area: Rect, facts: &RenderFact
     let block = Block::default()
         .borders(Borders::ALL)
         .title(Span::styled(
-            title,
+            " Model Market ",
             Style::default()
                 .fg(theme.popup_title)
                 .add_modifier(Modifier::BOLD),
         ))
         .border_style(Style::default().fg(border));
+    frame.render_widget(&block, area);
     let inner = block.inner(area);
 
-    let header = header_row(&ui);
+    // The filter line: the typed text with a cursor block while it is
+    // focused, the same text without the cursor while it is not. Drawn
+    // before the table so the table's auto-scroll can never repaint it.
+    let filter_style = if ui.filter_focused {
+        Style::default().fg(theme.primary_text)
+    } else {
+        Style::default().fg(theme.muted_text)
+    };
+    let cursor = if ui.filter_focused { "\u{2588}" } else { "" };
+    let filter_line = Rect::new(inner.x, inner.y, inner.width, 1);
+    frame.render_widget(
+        Line::from(Span::styled(
+            format!(" filter: {}{cursor}", ui.filter),
+            filter_style,
+        )),
+        filter_line,
+    );
+    let separator_area = Rect::new(inner.x, inner.y + 1, inner.width, 1);
+    frame.render_widget(
+        Line::from(Span::styled(
+            "\u{2500}".repeat(usize::from(inner.width)),
+            Style::default().fg(theme.muted_text),
+        )),
+        separator_area,
+    );
+
+    // The table renders without its block into the rect between the
+    // filter's separator and the status rows. Scoping `TableState`'s
+    // auto-scroll to exactly the visible rows is what keeps the
+    // selection highlight above the status line on long lists — the
+    // full-area rect let auto-scroll park the highlight under rows the
+    // status line and footer paint over afterwards.
+    let table_area = Rect::new(
+        inner.x,
+        inner.y + FILTER_ROWS,
+        inner.width,
+        inner.height.saturating_sub(FILTER_ROWS + STATUS_ROWS),
+    );
+    let header = header_row(&ui, &theme);
     let rows: Vec<Row<'static>> = visible
         .iter()
         .enumerate()
@@ -224,13 +273,12 @@ pub fn render_market_popup(frame: &mut Frame<'_>, area: Rect, facts: &RenderFact
         MARKET_COLUMNS.iter().map(|c| Constraint::Length(c.width)),
     )
     .header(header)
-    .block(block)
     .column_spacing(1);
 
     // The highlighted row stays inside the visible window the paging
     // keys clamp against.
     let mut table_state = TableState::default().with_selected(Some(ui.selection));
-    frame.render_stateful_widget(table, area, &mut table_state);
+    frame.render_stateful_widget(table, table_area, &mut table_state);
 
     // The detail pane is the highlighted row's second region under the
     // table — the contract's sketch. It draws before the status line
@@ -240,7 +288,7 @@ pub fn render_market_popup(frame: &mut Frame<'_>, area: Rect, facts: &RenderFact
         render_detail_pane(frame, inner, detail, *eci, &theme);
     }
 
-    render_status_line(frame, inner, &ui, &data, &theme);
+    render_status_line(frame, inner, &data, &theme);
     render_footer(frame, inner, &theme);
 
     // The help card draws last, over the table behind it — the same
@@ -251,12 +299,16 @@ pub fn render_market_popup(frame: &mut Frame<'_>, area: Rect, facts: &RenderFact
     }
 }
 
-/// The table header row, with the active sort column marked.
+/// The table header row, with the active sort column marked and
+/// highlighted.
 ///
 /// Derived from [`MARKET_COLUMNS`] so a header cannot sit over the
 /// wrong data column, and the marker cannot land on a display-only
-/// column.
-fn header_row(ui: &MarketUiState) -> Row<'static> {
+/// column. The sorted column's cell — name and arrow together — wears
+/// the focus pairing: background `focus_accent`, foreground
+/// `gutter_bg` (the sidebar's own background), so the sorted column
+/// reads at a glance; the rest stay plain bold.
+fn header_row(ui: &MarketUiState, theme: &Theme) -> Row<'static> {
     let marker = if ui.sort_desc {
         " \u{2193}"
     } else {
@@ -265,12 +317,21 @@ fn header_row(ui: &MarketUiState) -> Row<'static> {
     let cells: Vec<Cell<'static>> = MARKET_COLUMNS
         .iter()
         .map(|col| {
-            let text = if col.keyed && col.sort == ui.sort_col {
+            let sorted = col.keyed && col.sort == ui.sort_col;
+            let text = if sorted {
                 format!("{}{marker}", col.header)
             } else {
                 col.header.to_owned()
             };
-            Cell::from(text).style(Style::default().add_modifier(Modifier::BOLD))
+            let style = if sorted {
+                Style::default()
+                    .fg(theme.gutter_bg)
+                    .bg(theme.focus_accent)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().add_modifier(Modifier::BOLD)
+            };
+            Cell::from(text).style(style)
         })
         .collect();
     Row::new(cells)
@@ -387,17 +448,10 @@ fn flags_column(row: &jinn_model_market_msg::MarketRow) -> String {
     flags
 }
 
-/// The status line, drawn on the popup's bottom-inner row: the three
-/// "updated X ago" stamps (rendered from the stamps, no network), the
-/// active mix with its `m` hint, the epoch source, and the
-/// degraded-mode/error line.
-fn render_status_line(
-    frame: &mut Frame<'_>,
-    inner: Rect,
-    ui: &MarketUiState,
-    data: &MarketDataState,
-    theme: &Theme,
-) {
+/// The status line, drawn on the popup's bottom-inner row: the
+/// "updated X ago" stamps (rendered from the stamps, no network) and
+/// the degraded-mode/error line.
+fn render_status_line(frame: &mut Frame<'_>, inner: Rect, data: &MarketDataState, theme: &Theme) {
     let status_y = inner.y + inner.height.saturating_sub(2);
     let status_area = Rect::new(inner.x, status_y, inner.width, 1);
     let muted = Style::default().fg(theme.muted_text);
@@ -409,24 +463,12 @@ fn render_status_line(
             muted,
         ));
     }
-    if let Some(stamp) = data.epoch_fetched_at {
-        spans.push(Span::styled(
-            format!("epoch {} \u{b7} ", format::age_stamp(stamp)),
-            muted,
-        ));
-    }
     if let Some(stamp) = data.endpoints_fetched_at {
         spans.push(Span::styled(
             format!("endpoints {} \u{b7} ", format::age_stamp(stamp)),
             muted,
         ));
     }
-    spans.push(Span::styled(format::mix_summary(ui), muted));
-    spans.push(Span::styled(" \u{b7} [m] adjust", muted));
-    spans.push(Span::styled(
-        format!(" \u{b7} epoch: {}", data.epoch_source.label()),
-        muted,
-    ));
     if data.models_loading || data.endpoints_loading || data.epoch_loading {
         spans.push(Span::styled(" \u{b7} loading\u{2026}", muted));
     }
@@ -441,11 +483,12 @@ fn render_status_line(
 
 /// The keybind footer on the popup's last inner row, rendered from
 /// [`MARKET_BINDINGS`] — the same table the bind test checks, so the
-/// footer cannot advertise a key the popup does not bind.
+/// footer cannot advertise a key the popup does not bind. The picker
+/// pairing: keys in `accent_action`, labels in `muted_text`.
 fn render_footer(frame: &mut Frame<'_>, inner: Rect, theme: &Theme) {
     let footer_y = inner.y + inner.height.saturating_sub(1);
     let footer_area = Rect::new(inner.x, footer_y, inner.width, 1);
-    let key_style = Style::default().fg(theme.popup_title);
+    let key_style = Style::default().fg(theme.accent_action);
     let desc_style = Style::default().fg(theme.muted_text);
     let mut spans = Vec::new();
     for (idx, (key, desc)) in MARKET_BINDINGS.iter().enumerate() {
@@ -641,11 +684,12 @@ fn header_line(detail: &MarketDetail, theme: &Theme) -> Line<'static> {
 }
 
 /// The popup's result-row count for a frame of the given size: the popup
-/// height less both borders, the header, the status line, and the
-/// footer. At least 1, so paging never windows against zero.
+/// height less both borders, the filter line, its separator, the
+/// header, the status line, and the footer. At least 1, so paging never
+/// windows against zero.
 #[must_use]
 pub fn results_viewport(popup: Rect) -> usize {
-    block_inner(popup).saturating_sub(3).max(1) as usize
+    block_inner(popup).saturating_sub(5).max(1) as usize
 }
 
 /// The popup's inner area: the rect less its border. Shared by the
@@ -653,11 +697,4 @@ pub fn results_viewport(popup: Rect) -> usize {
 /// chrome.
 fn block_inner(popup: Rect) -> u16 {
     popup.height.saturating_sub(2)
-}
-
-/// The focused filter's block title: the text plus a cursor block, so
-/// focus is visible even with an empty filter.
-#[must_use]
-pub fn filter_title(filter: &str) -> String {
-    format!(" filter: {filter}\u{2588} ")
 }

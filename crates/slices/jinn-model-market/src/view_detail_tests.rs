@@ -139,7 +139,7 @@ fn pane_renders_the_highlighted_model_endpoint_rows() {
         "the endpoint renders name and tag, got: {text:?}"
     );
     assert!(
-        text.contains("IN $1.20/M") && text.contains("OUT $4.50/M"),
+        text.contains("IN $1.2000/M") && text.contains("OUT $4.5000/M"),
         "the endpoint's prices render, got: {text:?}"
     );
     assert!(
@@ -277,7 +277,7 @@ fn pane_renders_pricing_override_rows() {
     // Then the override renders its own row in the ">Nk ctx" shape.
     let text = buffer_text(&buffer);
     assert!(
-        text.contains(">200k ctx: in $6.00/M / out $12.0/M / cch \u{2014}"),
+        text.contains(">200k ctx: in $6.0000/M / out $12.0000/M / cch \u{2014}"),
         "the override row renders, got: {text:?}"
     );
 }
@@ -304,7 +304,7 @@ fn pane_renders_a_thresholdless_override_as_a_wildcard_row() {
     // a thresholdless override must not be silently dropped.
     let text = buffer_text(&buffer);
     assert!(
-        text.contains("*: in $6.00/M / out $12.0/M / cch \u{2014}"),
+        text.contains("*: in $6.0000/M / out $12.0000/M / cch \u{2014}"),
         "the thresholdless override renders as a wildcard row, got: {text:?}"
     );
 }
@@ -333,7 +333,7 @@ fn page_down_keeps_the_selected_row_above_the_detail_pane() {
     let viewport = harness.ui.read().results_viewport;
     assert!(viewport > 0, "a frame measured the paging window");
     let rows = harness.data.read().rows.len();
-    let landed = viewport.min(rows - 1);
+    let landed = viewport.min(rows - 1).saturating_sub(1);
     harness.ui.update(|s| s.selection = landed);
     harness.data.update(|d| {
         if let Some(detail) = &mut d.detail {

@@ -12,10 +12,16 @@
 //!   rows (`<up>`/`<down>` plus their `j`/`k` twins);
 //! - every printable character is a hook case: with the filter focused
 //!   it types into the filter; with the table focused, `f`/`i` focus
-//!   the filter, `?` toggles the help card, and `h`/`l`/`s`/`m` run
-//!   their sort/mix actions. If those were rows, route dispatch would
+//!   the filter, `?` toggles the help card, and `h`/`l`/`s` run their
+//!   sort actions. If those were rows, route dispatch would
 //!   consume them before the hook and typing "mistral" into a focused
-//!   filter would flip sorts and cycle mixes instead of filtering.
+//!   filter would flip sorts instead of filtering.
+//!
+//! Focus lives *inside* the row actions: the rows fire wherever focus
+//! is, so `<enter>` and `<esc>` branch on [`MarketUiState::
+//! filter_focused`](jinn_model_market_msg::MarketUiState::filter_focused)
+//! themselves — a focused filter turns ENTER into "accept the filter"
+//! and ESC into "clear the filter".
 
 use std::sync::Arc;
 
@@ -89,8 +95,7 @@ pub const MARKET_BINDINGS: &[(&str, &str)] = &[
     ("<c-r>", "refresh"),
     ("h", "col \u{2190}"),
     ("l", "col \u{2192}"),
-    ("s", "dir"),
-    ("m", "mix"),
+    ("s", "sort"),
     ("f", "filter"),
     ("?", "help"),
 ];
@@ -261,7 +266,7 @@ enum Nav {
 ///   (and serves the editing intents);
 /// - with the table focused: `f`/`i` focus the filter, `?` toggles the
 ///   help card, `j`/`k` move the selection, `h`/`l` cycle the sort
-///   column, `s` flips the sort direction, `m` cycles the mix preset;
+///   column, `s` flips the sort direction;
 /// - returns `None` otherwise — the key does nothing.
 pub fn register_market_input_hook(routes: &KeyRoutes, ui: &MarketUiCell, data: &MarketDataCell) {
     let owned_ui = ui.clone();
@@ -329,8 +334,8 @@ enum CharAction {
 
 /// Classifies one character and runs its table-mode action.
 ///
-/// Table-focused `h`/`l`/`s`/`m` mutate the sort/mix cell exactly as
-/// their pre-hook-route ancestors did; `j`/`k` navigate because the
+/// Table-focused `h`/`l`/`s` mutate the sort cell exactly as their
+/// pre-hook-route ancestors did; `j`/`k` navigate because the
 /// keymap's insert-char catch-all owns those keys in this scope.
 fn table_char_action(ui: &MarketUiCell, data: &MarketDataCell, ch: char) -> CharAction {
     if ui.read().filter_focused {
@@ -373,10 +378,6 @@ fn table_char_action(ui: &MarketUiCell, data: &MarketDataCell, ch: char) -> Char
             ui.update(|s| s.sort_desc = !s.sort_desc);
             CharAction::Acted
         }
-        'm' => {
-            ui.update(MarketUiState::cycle_mix);
-            CharAction::Acted
-        }
         _ => CharAction::Unclaimed,
     }
 }
@@ -395,23 +396,28 @@ fn open_market(
     IntentResult::new_message(FetchModels).with_scope_signal(ScopeSignal::Push(market_ui_scope()))
 }
 
-/// `<esc>`: focused filter hands focus back; otherwise the popup closes.
+/// `<esc>`: a focused filter clears — text emptied, selection reset,
+/// focus back on the table; the popup stays open. Table-focused, the
+/// popup closes.
 fn escape_market(
     _ctx: &mut ActionCtx<'_>,
     ui: &MarketUiCell,
     _data: &MarketDataCell,
 ) -> IntentResult {
-    let was_focused = ui.read().filter_focused;
-    if was_focused {
+    if ui.read().filter_focused {
         ui.update(|s| {
+            s.filter.clear();
             s.filter_focused = false;
+            s.selection = 0;
         });
         return IntentResult::empty();
     }
     IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(market_ui_scope()))
 }
 
-/// ENTER: publish the confirm triple — `ProviderSwitch` for the
+/// ENTER: a focused filter accepts — focus returns to the table with
+/// the typed filter still applied and the popup still open. Table
+/// focused, the confirm triple publishes — `ProviderSwitch` for the
 /// highlighted row, `UpdateAppState::SetLastModel` to seed the global
 /// default, and the scope pop. No highlighted row, no-op.
 fn confirm_market(
@@ -419,6 +425,10 @@ fn confirm_market(
     ui: &MarketUiCell,
     data: &MarketDataCell,
 ) -> IntentResult {
+    if ui.read().filter_focused {
+        ui.update(|s| s.filter_focused = false);
+        return IntentResult::empty();
+    }
     let highlighted = highlighted(ui, data);
     let Some(row) = highlighted else {
         return IntentResult::empty();

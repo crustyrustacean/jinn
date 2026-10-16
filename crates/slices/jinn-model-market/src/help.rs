@@ -4,20 +4,17 @@
 //! `?` flips [`MarketUiState::help_visible`] (the input hook owns the
 //! key); while it is set the popup's view places this card below itself
 //! and draws it: Clear, then the bordered card surface, then the text.
-//! The card documents everything the popup puts on screen — every
-//! column and flag glyph, the projection's mix presets, every keybind,
-//! the detail-pane fields, the "updated X ago" stamps — and credits the
-//! performance data's source.
+//! The card documents the table's columns and the detail pane's fields
+//! — the on-screen facts, not the key inventory (the footer carries
+//! that).
 //!
 //! The shape follows the attendant's properties help card: a
 //! variable-height document measured against the popup's inner width,
 //! wrapped here (the card must know its height before it can be
 //! placed), and painted with theme-semantic colors — explanation text
-//! in the theme's text colors, key and column names in the accent the
-//! table itself wears, the card's surface the theme's info-popup
-//! background.
+//! in the theme's text colors, column names in the accent the table
+//! itself wears, the card's surface the theme's info-popup background.
 
-use jinn_model_market_msg::MIX_PRESETS;
 use jinn_model_market_msg::MarketUiState;
 use jinn_theme::Theme;
 use ratatui::Frame;
@@ -87,24 +84,6 @@ fn section(title: &str, theme: &Theme) -> Vec<Line<'static>> {
     ]
 }
 
-/// The presets `m` cycles, in the status line's short form, rendered
-/// from the same constant the cycle reads — the card cannot drift from
-/// the behavior.
-fn mix_preset_summary() -> String {
-    let presets: Vec<String> = MIX_PRESETS
-        .iter()
-        .map(|(input, hit, output)| {
-            format!(
-                "{}k in @{}% cache \u{b7} {}k out",
-                input / 1_000,
-                (hit * 100.0).round() as u32,
-                output / 1_000
-            )
-        })
-        .collect();
-    presets.join(" / ")
-}
-
 /// The Columns section: every header the table renders, and the rule
 /// each column's `—` states.
 fn column_section(theme: &Theme) -> Vec<Line<'static>> {
@@ -129,13 +108,11 @@ fn column_section(theme: &Theme) -> Vec<Line<'static>> {
             theme,
         ),
         entry(
-            "PROJ \u{a2}",
-            &format!(
-                "projected \u{a2}/turn under the active mix: \
-                 I\u{b7}(hit\u{b7}cache + (1\u{2212}hit)\u{b7}prompt) + O\u{b7}completion, \
-                 recomputed every frame so m re-sorts live. Presets: {}.",
-                mix_preset_summary()
-            ),
+            "PROJ",
+            "projected $/turn under the fixed mix (10M input tokens, 98% cache hit, \
+             50k output tokens; a cache miss bills at the prompt price): \
+             I\u{b7}(hit\u{b7}cache + (1\u{2212}hit)\u{b7}prompt) + O\u{b7}completion, \
+             recomputed every frame.",
             theme,
         ),
         entry(
@@ -150,64 +127,6 @@ fn column_section(theme: &Theme) -> Vec<Line<'static>> {
              # no ECI data for this model.",
             theme,
         ),
-    ]);
-    lines
-}
-
-/// The Keys section: every keybind the popup honors, in the footer's
-/// order, with the arrow keys it binds quietly listed beside their
-/// `j`/`k` twins.
-fn key_section(theme: &Theme) -> Vec<Line<'static>> {
-    let mut lines = section("Keys", theme);
-    lines.extend([
-        entry(
-            "<leader>so",
-            "open the market from any normal-mode scope.",
-            theme,
-        ),
-        entry(
-            "j/k, \u{2191}/\u{2193}",
-            "move the highlight; the detail pane follows.",
-            theme,
-        ),
-        entry(
-            "<pgup>/<pgdn>",
-            "page the highlight by one viewport.",
-            theme,
-        ),
-        entry(
-            "h/l",
-            "move the sort column: PROJ, IN/M, OUT/M, CACHE/M, ECI, MODEL.",
-            theme,
-        ),
-        entry("s", "flip the sort direction.", theme),
-        entry(
-            "m",
-            "cycle the cost-mix preset (the status line shows the active one); \
-             PROJ and the row order re-sort live.",
-            theme,
-        ),
-        entry(
-            "f/i",
-            "focus the filter bar; typing fuzzy-narrows the rows.",
-            theme,
-        ),
-        entry(
-            "<esc>",
-            "hand focus back to the table from the filter; close the popup from the table.",
-            theme,
-        ),
-        entry(
-            "<enter>",
-            "switch the session to the highlighted model.",
-            theme,
-        ),
-        entry(
-            "<c-r>",
-            "drop every cache — models, endpoints, epoch — and refetch everything.",
-            theme,
-        ),
-        entry("?", "toggle this help.", theme),
     ]);
     lines
 }
@@ -254,65 +173,8 @@ fn detail_section(theme: &Theme) -> Vec<Line<'static>> {
     lines
 }
 
-/// The Status line section: the freshness stamps and the degraded-mode
-/// notes.
-fn status_section(theme: &Theme) -> Vec<Line<'static>> {
-    let mut lines = section("Status line", theme);
-    lines.extend([
-        entry(
-            "updated X ago",
-            "freshness of the models list, the epoch data, and the endpoint detail — \
-             rendered from cache stamps at draw time, never the network.",
-            theme,
-        ),
-        entry(
-            "mix",
-            "the active cost-mix preset, with [m] adjust beside it.",
-            theme,
-        ),
-        entry(
-            "epoch: seed/downloaded/none",
-            "where the ECI data came from: the snapshot shipped with jinn, a fresh \
-             download, or nothing.",
-            theme,
-        ),
-        note(
-            "Loading and error notes appear here too — a failed fetch never blanks \
-             the table.",
-            theme,
-        ),
-    ]);
-    lines
-}
-
-/// The Data sources section: who the performance data comes from, under
-/// which license, with the attribution Epoch AI requires.
-fn source_section(theme: &Theme) -> Vec<Line<'static>> {
-    let mut lines = section("Data sources", theme);
-    lines.extend([
-        entry(
-            "Epoch AI (CC BY 4.0)",
-            "performance data — the ECI and its confidence intervals. \
-             https://epoch.ai/benchmarks/use-this-data",
-            theme,
-        ),
-        note(
-            "The seed CSVs compiled into jinn are Epoch's snapshot; <c-r> re-downloads \
-             current data. Required attribution, verbatim:",
-            theme,
-        ),
-        note(
-            "Epoch AI, 'Capabilities & benchmarking'. Published online at epoch.ai. \
-             Retrieved from 'https://epoch.ai/benchmarks/use-this-data' [online resource]. \
-             Accessed 15 Oct 2026.",
-            theme,
-        ),
-    ]);
-    lines
-}
-
-/// The card's text: its title, then one section per thing the popup
-/// puts on screen. Authored unwrapped; [`market_help_card`] wraps it to
+/// The card's text: its title, then one section per on-screen area the
+/// card documents. Authored unwrapped; [`market_help_card`] wraps it to
 /// the card's inner width.
 fn help_lines(theme: &Theme) -> Vec<Line<'static>> {
     let mut lines = vec![Line::from(Span::styled(
@@ -320,10 +182,7 @@ fn help_lines(theme: &Theme) -> Vec<Line<'static>> {
         name_style(theme).add_modifier(Modifier::BOLD),
     ))];
     lines.extend(column_section(theme));
-    lines.extend(key_section(theme));
     lines.extend(detail_section(theme));
-    lines.extend(status_section(theme));
-    lines.extend(source_section(theme));
     lines
 }
 
