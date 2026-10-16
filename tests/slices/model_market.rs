@@ -1633,16 +1633,20 @@ fn status_line_shows_the_stamps_but_no_mix_no_epoch() {
     let buffer = render_to_buffer(&wired, 120, 40);
     let status = row_text(&buffer, popup.y + popup.height - 3, popup.width);
 
-    // Then the status line carries the models and endpoints stamps.
+    // Then the status line carries the models stamp.
     assert!(
-        status.contains("models updated 2m ago") && status.contains("endpoints 2m ago"),
-        "status shows the kept stamps, got: {status:?}"
+        status.contains("models updated 2m ago"),
+        "status shows the kept stamp, got: {status:?}"
     );
     // And none of the retired indicators: no mix, no m hint, no epoch
-    // source, no epoch freshness stamp.
+    // source, no epoch freshness stamp, no endpoints stamp.
     assert!(
         !status.contains("mix:"),
         "status shows no mix, got: {status:?}"
+    );
+    assert!(
+        !status.contains("endpoints "),
+        "status shows no endpoints stamp, got: {status:?}"
     );
     assert!(
         !status.contains("[m] adjust"),

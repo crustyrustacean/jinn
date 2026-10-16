@@ -712,12 +712,6 @@ fn render_status_line(frame: &mut Frame<'_>, inner: Rect, data: &MarketDataState
             muted,
         ));
     }
-    if let Some(stamp) = data.endpoints_fetched_at {
-        spans.push(Span::styled(
-            format!("endpoints {} \u{b7} ", format::age_stamp(stamp)),
-            muted,
-        ));
-    }
     if data.models_loading || data.endpoints_loading || data.epoch_loading {
         spans.push(Span::styled(" \u{b7} loading\u{2026}", muted));
     }
