@@ -25,7 +25,7 @@ they approve.
 the QA brief are your scheduled contacts; they are not the only ones.
 The human can read any implementor's session live and message any
 session directly — including attendants. A message that arrives in
-*your* session is a directive; an implementor reports human messages
+_your_ session is a directive; an implementor reports human messages
 it received in its next report. Treat both as authoritative.
 
 **Human sequencing remarks are quality guidance, not scheduling
@@ -61,7 +61,7 @@ planning, or triaged. Then do the QA brief (step 5).
 **Ending the turn is the whole waiting mechanism.** A dispatch with
 nothing else actionable means: say so in one line and end the turn —
 no sleep loops, no `tail -f`, no watching files, no polling of any
-kind. Queued reports cannot arrive mid-turn; they arrive *because* the
+kind. Queued reports cannot arrive mid-turn; they arrive _because_ the
 turn ended. The only loop that exists is stage 1, re-entered when a
 report wakes you.
 
@@ -86,13 +86,14 @@ never committed; an existing one is this cycle's backlog):
 ---
 id = 1
 title = "the issue in one line"
-status = "triage"        # triage | open | planning | dispatched | done | parent | closed
+status = "triage" # triage | open | planning | dispatched | done | parent | closed
 # parent = 1            # parent issue id; absent on top-level issues
 # blocked-by = [2, 3]   # issue ids that must close first; absent when nothing blocks
 # assignee = "<session-id>"  # absent when unassigned
 ---
 
 # <title>
+
 <goal, approach when known, verification>
 ```
 
@@ -142,9 +143,9 @@ same-file issues serialize because parallel teardowns would fight.
 
 ## Appendix D — the roles
 
-- **Planner** (`attendants/planner.toml`, preserve, manual): one dispatch per issue before any implementor exists. Reads the issue, reads `.agents/RECORD.md` once (exploration fuel, not a constraint — the code is the authority), investigates, saves an execution plan to `.plans/<issue-id>-<slug>/execution-plan.md` in your checkout: end state (checkable facts), context (orientation, files-to-read, functions, impacted tests, task-specific), files to touch, approach, verification (exact commands), surprises & discoveries (findings with evidence). Reports `READY <issue-id>-<slug> <execution-plan-path>` (with a `record:` line for stale/proposed record entries) or `BLOCKED` (issue contradicts itself, or end state unreachable — never capability doubt). Writes nothing else, edits no code.
-- **Implementor** (`attendants/implementor.toml`, preserve, attached on demand, labeled `implementor-<issue-number>` via `set_name`): works its issue in its own checkout on its own branch, stamps the execution plan as its task list first, exploration bounded by the execution plan's files-to-touch list, verifies per the execution plan, commits on its branch. Reports `DONE` / `BLOCKED` with verification results and execution plan divergences. Never lands its own work, never touches the tracker, never spawns anything.
-- **Reviewer** (`attendants/reviewer.toml`, preserve, manual): one dispatch per DONE report, before any teardown. Reads the execution plan then the branch diff through the repository file (no checkout). Judges: end state delivered? tests that can fail? scope matches files-to-touch? report honest? Reports `APPROVE <issue-id>-<slug>` / `REJECT <issue-id>-<slug>` + findings. Never edits anything.
+- **Planner** (`attendants/planner.toml`, preserve, manual): create only one planner attendant and re-use it throughout the run, dispatching issues/goals to it to generate new execution plans. Reads the issue, reads `.agents/RECORD.md` once (exploration fuel, not a constraint — the code is the authority), investigates, saves an execution plan to `.plans/<issue-id>-<slug>/execution-plan.md` in your checkout: end state (checkable facts), context (orientation, files-to-read, functions, impacted tests, task-specific), files to touch, approach, verification (exact commands), surprises & discoveries (findings with evidence). Reports `READY <issue-id>-<slug> <execution-plan-path>` (with a `record:` line for stale/proposed record entries) or `BLOCKED` (issue contradicts itself, or end state unreachable — never capability doubt). Writes nothing else, edits no code.
+- **Implementor** (`attendants/implementor.toml`, preserve, attached on demand, labeled `implementor-<issue-number>` via `set_name`): create per issue/slug and works its issue in its own checkout on its own branch, stamps the execution plan as its task list first, exploration bounded by the execution plan's files-to-touch list, verifies per the execution plan, commits on its branch. Reports `DONE` / `BLOCKED` with verification results and execution plan divergences. Never lands its own work, never touches the tracker, never spawns anything. Delegate REJECTED reviews to the same implementor so it can apply a fix with minimal context usage.
+- **Reviewer** (`attendants/reviewer.toml`, preserve, manual): create only one reviewer attendant and re-use it throughout the rune, dispatching to it once per DONE report, before any teardown. Reads the execution plan then the branch diff through the repository file (no checkout). Judges: end state delivered? tests that can fail? scope matches files-to-touch? report honest? Reports `APPROVE <issue-id>-<slug>` / `REJECT <issue-id>-<slug>` + findings. Never edits anything.
 
 Dispatches are always self-contained — issue path, execution plan path,
 absolute paths, expected report format — paste paths, never retype

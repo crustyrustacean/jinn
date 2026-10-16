@@ -1,6 +1,6 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
-## (development)
+## 2026-10-16 v1.8.0
 
 - These stream rule violations should now trigger less often:
   - no-interactive-editor
@@ -12,6 +12,7 @@
 - Multi-pane pickers now clamp the viewport when scrolling long content (previously it was possible to scroll content out of the picker area).
 - Add `set_name` arg to `load_attendant` tool so attendants can be named at spawn time.
 - Add OpenRouter model picker.
+- Many changes to `autdev` workflow. Should use less tokens and name implementors.
 
 ## 2026-10-15 v1.7.0
 
