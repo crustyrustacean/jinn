@@ -115,7 +115,7 @@ fn hidden_help_draws_no_card_pixels() {
     // Then no help card text is anywhere on the screen.
     let text = buffer_text(&buffer);
     assert!(
-        !text.contains("Model Market help"),
+        !text.contains("Search OpenRouter Models help"),
         "a hidden help must not draw, got: {text:?}"
     );
 }
@@ -135,7 +135,7 @@ fn visible_help_draws_the_card_below_the_popup() {
     // one row inside that.
     let title_row = row_text(&buffer, popup.y + popup.height + 1, popup.width);
     assert!(
-        title_row.contains("Model Market help"),
+        title_row.contains("Search OpenRouter Models help"),
         "the card draws below the popup, got: {title_row:?}"
     );
 }
@@ -155,7 +155,7 @@ fn visible_help_over_a_full_height_popup_still_reaches_the_screen() {
     // Then the card's fallback placement still puts its text on screen.
     let text = buffer_text(&buffer);
     assert!(
-        text.contains("Model Market help"),
+        text.contains("Search OpenRouter Models help"),
         "the card falls back to the terminal top, got: {text:?}"
     );
 }
@@ -290,7 +290,7 @@ fn focused_filter_renders_its_own_line_and_the_title_stays_plain() {
     // never renders into the titlebar.
     let title = row_text(&buffer, popup.y, popup.width);
     assert!(
-        title.contains(" Model Market "),
+        title.contains(" Search OpenRouter Models "),
         "the title stays plain, got: {title:?}"
     );
     assert!(

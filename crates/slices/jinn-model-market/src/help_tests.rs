@@ -172,7 +172,10 @@ fn drawn_card_renders_its_border_title_and_sections() {
         .iter()
         .map(ratatui::buffer::Cell::symbol)
         .collect();
-    assert!(text.contains("Model Market help"), "title, got: {text:?}");
+    assert!(
+        text.contains("Search OpenRouter Models help"),
+        "title, got: {text:?}"
+    );
     for section in ["Columns", "Detail mode"] {
         assert!(text.contains(section), "section {section}, got: {text:?}");
     }

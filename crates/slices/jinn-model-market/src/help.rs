@@ -194,7 +194,7 @@ fn detail_section(theme: &Theme) -> Vec<Line<'static>> {
 /// the card's inner width.
 fn help_lines(theme: &Theme) -> Vec<Line<'static>> {
     let mut lines = vec![Line::from(Span::styled(
-        "Model Market help",
+        "Search OpenRouter Models help",
         name_style(theme).add_modifier(Modifier::BOLD),
     ))];
     lines.extend(column_section(theme));
@@ -204,7 +204,7 @@ fn help_lines(theme: &Theme) -> Vec<Line<'static>> {
 
 /// The card's frame: the market popup's own accent around its text.
 ///
-/// The border says *this box is about the model market* before a word
+/// The border says *this box is about the search* before a word
 /// of it is read, and it keeps the card from bleeding into the table
 /// behind it. The block carries the card's surface as well as its edge,
 /// for the same reason every row restates the surface: a `Paragraph`

@@ -320,7 +320,7 @@ fn title_in_detail_mode_carries_the_model_in_focus_accent() {
     // Then the title reads the prefix and the model name, the
     // `openrouter/` prefix stripped.
     assert!(
-        title.contains(" Model Market ") && title.contains("\u{b7} a/model"),
+        title.contains(" Search OpenRouter Models ") && title.contains("\u{b7} a/model"),
         "the title carries the model, got: {title:?}"
     );
     // And the model-name cells wear the focus accent while the prefix
@@ -369,7 +369,7 @@ fn the_title_stays_plain_in_table_mode() {
     // Then the title is exactly the popup's name — no separator dot —
     // and every title cell wears the popup title color.
     assert!(
-        title.contains(" Model Market "),
+        title.contains(" Search OpenRouter Models "),
         "the plain title renders, got: {title:?}"
     );
     assert!(!title.contains('\u{b7}'), "no model suffix, got: {title:?}");

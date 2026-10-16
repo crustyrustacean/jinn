@@ -178,7 +178,7 @@ pub fn attach_market_rows(routes: &KeyRoutes, ui: &MarketUiCell, data: &MarketDa
         feature: "model-market",
         outcome: RouteOutcome::Action {
             action: "open-model-market",
-            display: "model market",
+            display: "search openrouter models",
             run: action(ui, data, open_market),
         },
     });

@@ -381,7 +381,7 @@ fn key_event_notation(notation: &str) -> jinn_kernel::KeyEvent {
 fn j_and_k_move_the_highlight() {
     // Given a seeded table, table focused.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
 
     // When `j` arrives as the insert-char intent the keymap's catch-all
@@ -402,7 +402,7 @@ fn j_and_k_move_the_highlight() {
 fn h_l_s_while_the_filter_is_focused_type_instead_of_firing() {
     // Given an open popup with the filter focused, PROJ ascending.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     wired.ui().update(|s| s.filter_focused = true);
 
     // When "hls" is typed.
@@ -423,7 +423,7 @@ fn h_l_s_while_the_filter_is_focused_type_instead_of_firing() {
 fn h_l_s_fire_when_the_table_is_focused() {
     // Given an open popup, table focused.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
 
     // When `l`, `h`, and `s` each arrive.
     wired.handle(edit_intent("insert-char", 'l'));
@@ -442,7 +442,7 @@ fn h_l_s_fire_when_the_table_is_focused() {
 fn m_does_nothing_when_the_table_is_focused() {
     // Given an open popup, table focused.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     let before = wired.ui().read().clone();
 
     // When `m` arrives.
@@ -485,7 +485,7 @@ fn open_resets_ui_state_and_pushes_the_scope() {
     });
 
     // When the opener fires.
-    let result = wired.press("open-model-market", "model market");
+    let result = wired.press("open-model-market", "search openrouter models");
 
     // Then the UI cell is back to the opener defaults: table focused,
     // filter empty, PROJ ascending.
@@ -508,7 +508,7 @@ fn open_resets_ui_state_and_pushes_the_scope() {
 fn esc_in_table_mode_pops_the_scope() {
     // Given an open popup with the table focused.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
 
     // When ESC fires with the filter unfocused.
     wired.press("close-model-market", "close");
@@ -521,7 +521,7 @@ fn esc_in_table_mode_pops_the_scope() {
 fn esc_in_filter_mode_clears_the_filter_and_returns_focus_to_the_table() {
     // Given an open popup with the filter focused and text typed.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
     wired.ui().update(|s| {
         s.filter_focused = true;
@@ -549,7 +549,7 @@ fn esc_clearing_a_focused_filter_publishes_nothing() {
     // Given an open popup with the filter focused, "small" narrowing
     // the seeded table to one row.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
     wired.ui().update(|s| {
         s.filter_focused = true;
@@ -574,7 +574,7 @@ fn esc_clearing_a_focused_filter_publishes_nothing() {
 fn f_focuses_the_filter_from_the_table() {
     // Given an open popup, table focused.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
 
     // When `f` arrives as the editing intent the keymap's catch-all
     // mints.
@@ -590,7 +590,7 @@ fn f_focuses_the_filter_from_the_table() {
 fn i_also_focuses_the_filter_from_the_table() {
     // Given an open popup, table focused.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
 
     // When `i` arrives.
     wired.handle(edit_intent("insert-char", 'i'));
@@ -603,7 +603,7 @@ fn i_also_focuses_the_filter_from_the_table() {
 fn typing_while_filter_focused_inserts_into_the_filter() {
     // Given an open popup with the filter focused.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     wired.ui().update(|s| s.filter_focused = true);
 
     // When a character arrives.
@@ -620,7 +620,7 @@ fn typing_while_filter_focused_inserts_into_the_filter() {
 fn f_types_into_a_focused_filter_instead_of_refocusing() {
     // Given an open popup with the filter focused.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     wired.ui().update(|s| s.filter_focused = true);
 
     // When `f` arrives.
@@ -634,7 +634,7 @@ fn f_types_into_a_focused_filter_instead_of_refocusing() {
 fn unclaimed_characters_fall_through_the_hook() {
     // Given an open popup, table focused.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
 
     // When an unclaimed character arrives (`z`).
     wired.handle(edit_intent("insert-char", 'z'));
@@ -649,7 +649,7 @@ fn unclaimed_characters_fall_through_the_hook() {
 fn backspace_edits_a_focused_filter() {
     // Given a focused filter holding "son".
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     wired.ui().update(|s| {
         s.filter_focused = true;
         s.filter = "son".to_owned();
@@ -666,7 +666,7 @@ fn backspace_edits_a_focused_filter() {
 fn paste_into_a_focused_filter_appends_the_text() {
     // Given an open popup with the filter focused and holding "so".
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     wired.ui().update(|s| {
         s.filter_focused = true;
         s.filter = "so".to_owned();
@@ -686,7 +686,7 @@ fn paste_into_a_focused_filter_appends_the_text() {
 fn paste_while_the_table_is_focused_is_declined() {
     // Given an open popup, table focused.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
 
     // When a bracketed paste arrives.
     wired.handle(paste_intent("sonnet"));
@@ -705,7 +705,7 @@ fn enter_from_table_mode_opens_detail_and_publishes_one_fetch() {
     // Given a seeded table with the first row highlighted, no detail
     // loaded.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
 
     // When ENTER fires.
@@ -737,7 +737,7 @@ fn enter_into_a_cached_detail_publishes_nothing() {
     // Given a seeded table whose highlighted row's detail is already in
     // the data cell.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
     wired.data().update(|d| {
         d.detail = Some(jinn_model_market_msg::MarketDetail {
@@ -799,7 +799,7 @@ fn detail_fixture(wired: &mut Wired) {
 /// landed, and the table-side state the round trip preserves seeded
 /// alongside.
 fn drill_in(wired: &mut Wired) {
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(wired);
     detail_fixture(wired);
     // Enter detail with the detail already cached (publishes nothing).
@@ -1000,7 +1000,7 @@ fn backspace_in_detail_mode_returns_to_the_table() {
 fn backspace_in_table_mode_still_declines() {
     // Given table mode with the filter unfocused.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
 
     // When delete-backward arrives.
@@ -1118,7 +1118,7 @@ fn detail_sort_cycles_the_eight_columns_and_the_highlight_follows() {
 fn sort_column_cycles_l_through_all_six_columns() {
     // Given an open popup (PROJ by default).
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
 
     // When `l` fires five times (a hook case — the keymap's
     // insert-char catch-all owns it in this scope).
@@ -1137,7 +1137,7 @@ fn sort_column_cycles_l_through_all_six_columns() {
 fn sort_direction_toggles_s() {
     // Given an open popup (ascending by default).
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
 
     // When `s` fires (a hook case).
     wired.handle(edit_intent("insert-char", 's'));
@@ -1153,7 +1153,7 @@ fn sort_direction_toggles_s() {
 fn navigation_moves_and_clamps_at_the_table_end() {
     // Given a seeded two-row table.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
 
     // When moving down twice.
@@ -1178,7 +1178,7 @@ fn j_clamps_against_the_live_filtered_count_not_the_viewport() {
     // Given a two-row table filtered down to both rows, with the
     // measured viewport (10) larger than the filtered list.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
     wired.ui().update(|s| s.results_viewport = 10);
     assert_eq!(wired.ui().read().results_viewport, 10);
@@ -1209,7 +1209,7 @@ fn j_clamps_against_the_live_filtered_count_not_the_viewport() {
 fn navigation_publishes_nothing() {
     // Given a seeded table with no detail loaded.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
 
     // When moving down.
@@ -1226,7 +1226,7 @@ fn navigation_publishes_nothing() {
 fn hook_j_moves_without_publishing() {
     // Given a seeded table with no detail loaded, table focused.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
 
     // When `j` arrives as the insert-char intent the keymap's catch-all
@@ -1266,7 +1266,7 @@ fn sort_keys_publish_nothing(#[case] key: char) {
     // Given a table whose default highlight (`z/dear`, cheapest PROJ)
     // every sort key reorders away, no detail loaded.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     reorder_fixture(&mut wired);
 
     // When the sort key arrives as the insert-char intent the keymap's
@@ -1288,7 +1288,7 @@ fn sort_keys_publish_nothing(#[case] key: char) {
 fn typing_into_a_focused_filter_publishes_nothing() {
     // Given a seeded table with the filter focused.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
     wired.ui().update(|s| s.filter_focused = true);
 
@@ -1305,7 +1305,7 @@ fn typing_into_a_focused_filter_publishes_nothing() {
 fn question_mark_toggles_the_help_card() {
     // Given an open popup, table focused.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
 
     // When `?` arrives.
     wired.handle(edit_intent("insert-char", '?'));
@@ -1321,7 +1321,7 @@ fn question_mark_toggles_the_help_card() {
 fn question_mark_types_while_the_filter_is_focused() {
     // Given an open popup with the filter focused.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     wired.ui().update(|s| s.filter_focused = true);
 
     // When `?` arrives.
@@ -1392,7 +1392,7 @@ fn i_in_detail_mode_does_not_focus_the_filter() {
 fn ctrl_r_publishes_refresh_all() {
     // Given an open popup.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
 
     // When <c-r> fires.
     let result = wired.press("refresh-model-market", "refresh all");
@@ -1407,7 +1407,7 @@ fn ctrl_r_publishes_refresh_all() {
 fn clock_renders_from_stamp_without_network() {
     // Given a data cell stamped two minutes in the past.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
     wired.data().update(|d| {
         d.models_fetched_at = Some(jiff::Timestamp::now() - jiff::Span::new().minutes(2));
@@ -1478,7 +1478,7 @@ fn table_headers_align_over_their_data_columns() {
     // Given a seeded table with distinct prices per column, table
     // focused.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
     wired.data().update(|d| {
         if let Some(first) = d.rows.first_mut() {
@@ -1534,7 +1534,7 @@ fn table_headers_align_over_their_data_columns() {
 fn footer_renders_the_advertised_keys() {
     // Given an open popup.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
 
     // When the popup renders.
@@ -1567,7 +1567,7 @@ fn footer_renders_the_advertised_keys() {
 fn focused_filter_shows_a_visible_filter_line() {
     // Given an open popup with the filter focused and text typed.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     wired.ui().update(|s| {
         s.filter_focused = true;
         s.filter = "son".to_owned();
@@ -1592,7 +1592,7 @@ fn focused_filter_shows_a_visible_filter_line() {
         "the focused filter line shows a cursor, got: {filter_line:?}"
     );
     assert!(
-        title.contains(" Model Market "),
+        title.contains(" Search OpenRouter Models "),
         "the title stays plain, got: {title:?}"
     );
     assert!(
@@ -1618,7 +1618,7 @@ fn status_line_shows_the_stamps_but_no_mix_no_epoch() {
     // Given an open popup over a seeded table with stamps two minutes
     // old.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
     wired.data().update(|d| {
         let stamp = jiff::Timestamp::now() - jiff::Span::new().minutes(2);
@@ -1662,7 +1662,7 @@ fn status_line_shows_the_stamps_but_no_mix_no_epoch() {
 fn filter_matches_are_highlighted_in_the_model_column() {
     // Given an open popup filtered down to one row.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
     wired.ui().update(|s| s.filter = "small".to_owned());
 
@@ -1719,7 +1719,7 @@ fn multi_term_filter_narrows_the_table() {
     // multi-term filter that only `a/small` can satisfy — typed through
     // the real hook: `f` focuses, then the letters.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
     wired.handle(edit_intent("insert-char", 'f'));
     assert!(wired.ui().read().filter_focused, "`f` focused the filter");
@@ -1757,7 +1757,7 @@ fn multi_term_filter_narrows_the_table() {
 fn footer_advertises_s_sort_and_no_m() {
     // Given an open popup.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
 
     // When the popup renders (a wide frame — the footer is a long line
     // and `s sort` sits past where 120 columns truncate it).
@@ -1790,7 +1790,7 @@ fn footer_advertises_s_sort_and_no_m() {
 fn sorted_header_cell_carries_the_focus_pairing() {
     // Given an open popup with the default sort (PROJ ascending).
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
 
     // When the popup renders.
@@ -1853,7 +1853,7 @@ fn sorted_header_cell_carries_the_focus_pairing() {
 fn footer_keys_wear_the_picker_pairing() {
     // Given an open popup.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
 
     // When the popup renders.
     let area = ratatui::layout::Rect::new(0, 0, 120, 40);
@@ -1899,7 +1899,7 @@ fn highlight_on_a_long_list_never_parks_under_the_status_rows() {
     // viewport — the auto-scroll territory the full-area rect used to
     // window wrongly.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     wired.data().update(|d| {
         d.rows = (0..50)
             .map(|i| {
@@ -2019,7 +2019,7 @@ fn detail_loading_renders_a_loading_line_and_no_header() {
     // Given detail mode pinned while the data cell holds detail for
     // another model.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
     wired
         .ui()
@@ -2068,7 +2068,7 @@ fn title_in_detail_mode_carries_the_model_in_focus_accent() {
     // Then the title reads the prefix and the model name, the
     // `openrouter/` prefix stripped.
     assert!(
-        title.contains(" Model Market ") && title.contains("\u{b7} a/small"),
+        title.contains(" Search OpenRouter Models ") && title.contains("\u{b7} a/small"),
         "the title carries the model, got: {title:?}"
     );
 
@@ -2105,7 +2105,7 @@ fn title_in_detail_mode_carries_the_model_in_focus_accent() {
 fn filter_glyph_renders_gt_with_and_without_the_cursor() {
     // Given an open popup with filter text, once focused and once not.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     seeded(&mut wired);
     wired.ui().update(|s| {
         s.filter = "sonnet".to_owned();
@@ -2178,7 +2178,7 @@ fn table_mode_uses_the_full_height_after_the_pane_gone() {
     // the round trip back to table mode — enough rows to overflow the
     // viewport.
     let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
+    wired.press("open-model-market", "search openrouter models");
     wired.data().update(|d| {
         d.rows = (0..80)
             .map(|i| {
