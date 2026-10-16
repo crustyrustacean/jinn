@@ -12,6 +12,7 @@ use jinn_model_market_msg::MarketDataState;
 use jinn_model_market_msg::MarketEndpointRow;
 use jinn_model_market_msg::MarketRow;
 use jinn_model_market_msg::MarketUiState;
+use jinn_model_market_msg::MixSource;
 use jinn_model_market_msg::PROJECTION_MIX;
 use jinn_model_market_msg::SortColumn;
 use std::ops::Range;
@@ -97,15 +98,45 @@ pub fn projected_cents_for(
     (input + output) * 100.0
 }
 
+/// The mix the projection runs under: the shipped constant for
+/// [`MixSource::Fixed`], the session tree's measured usage for
+/// [`MixSource::Usage`].
+///
+/// The usage derivation mirrors the status bar's tree aggregate: input =
+/// effective sent (provider-reported prompt tokens, local estimates as
+/// fallback), output = received, cache hit = cached over measured. A
+/// tree with no measured requests cannot derive a mix (every value
+/// would be zero, projecting every model to $0.00), so it falls back to
+/// the fixed constant — the toggle stays honest about ranking by
+/// something.
+#[must_use]
+pub fn resolve_mix(source: MixSource, usage: Option<(u64, u64, u64, u64)>) -> (u32, f64, u32) {
+    let Some((effective_sent, total_received, cached_total, measured_sent)) = usage else {
+        return PROJECTION_MIX;
+    };
+    match source {
+        MixSource::Fixed => PROJECTION_MIX,
+        MixSource::Usage if measured_sent == 0 => PROJECTION_MIX,
+        MixSource::Usage => {
+            let cache_hit = cached_total as f64 / measured_sent.max(1) as f64;
+            (
+                u32::try_from(effective_sent).unwrap_or(u32::MAX),
+                cache_hit.clamp(0.0, 1.0),
+                u32::try_from(total_received).unwrap_or(u32::MAX),
+            )
+        }
+    }
+}
+
 /// The sort key for one row.
 ///
 /// `None` sorts after every value in either direction — an unmatched ECI
 /// or an unpriced cache must not jump to the top when the user flips to
 /// descending.
 #[must_use]
-pub fn sort_key(row: &MarketRow, col: SortColumn) -> Option<f64> {
+pub fn sort_key(row: &MarketRow, col: SortColumn, mix: (u32, f64, u32)) -> Option<f64> {
     match col {
-        SortColumn::Proj => Some(projected_cents(row, PROJECTION_MIX)),
+        SortColumn::Proj => Some(projected_cents(row, mix)),
         SortColumn::In => Some(row.prompt_price),
         SortColumn::Out => Some(row.completion_price),
         SortColumn::Cache => row.cache_read_price,
@@ -198,7 +229,7 @@ pub fn visible_rows(data: &MarketDataState, ui: &MarketUiState) -> Vec<MarketRow
         .filter(|row| terms.is_empty() || all_terms_match(&matcher, &row_name(row), &terms))
         .cloned()
         .collect();
-    rows.sort_by(|a, b| compare_rows(a, b, ui));
+    rows.sort_by(|a, b| compare_rows(a, b, ui, ui.active_mix));
     rows
 }
 
@@ -235,8 +266,13 @@ pub fn match_ranges(row: &MarketRow, ui: &MarketUiState) -> Option<Vec<Range<usi
 /// `None` keys sort after values regardless of direction, so a flip
 /// never surfaces the unmatched rows first.
 #[must_use]
-pub fn compare_rows(a: &MarketRow, b: &MarketRow, ui: &MarketUiState) -> std::cmp::Ordering {
-    match (sort_key(a, ui.sort_col), sort_key(b, ui.sort_col)) {
+pub fn compare_rows(
+    a: &MarketRow,
+    b: &MarketRow,
+    ui: &MarketUiState,
+    mix: (u32, f64, u32),
+) -> std::cmp::Ordering {
+    match (sort_key(a, ui.sort_col, mix), sort_key(b, ui.sort_col, mix)) {
         (Some(av), Some(bv)) => {
             let ord = av.partial_cmp(&bv).unwrap_or(std::cmp::Ordering::Equal);
             if ui.sort_desc { ord.reverse() } else { ord }
@@ -261,16 +297,21 @@ fn model_row<'a>(data: &'a MarketDataState, ui: &MarketUiState) -> Option<&'a Ma
 /// model's listing row; a missing row (a refresh emptied the table
 /// mid-mode) sorts as a `None` key — a fallback, never a panic.
 #[must_use]
-pub fn detail_sort_key(row: &DetailRow, col: DetailSort, model: Option<&MarketRow>) -> Option<f64> {
+pub fn detail_sort_key(
+    row: &DetailRow,
+    col: DetailSort,
+    model: Option<&MarketRow>,
+    mix: (u32, f64, u32),
+) -> Option<f64> {
     match col {
         DetailSort::Endpoint => None,
         DetailSort::Proj => match row {
-            DetailRow::Default => model.map(|m| projected_cents(m, PROJECTION_MIX)),
+            DetailRow::Default => model.map(|m| projected_cents(m, mix)),
             DetailRow::Endpoint(endpoint) => Some(projected_cents_for(
                 endpoint.prompt_price,
                 endpoint.completion_price,
                 endpoint.cache_read_price,
-                PROJECTION_MIX,
+                mix,
             )),
         },
         DetailSort::In => row.sort_prices(model).0,
@@ -299,10 +340,11 @@ pub fn detail_compare_rows(
     b: &DetailRow,
     ui: &MarketUiState,
     model: Option<&MarketRow>,
+    mix: (u32, f64, u32),
 ) -> std::cmp::Ordering {
     match (
-        detail_sort_key(a, ui.detail_sort_col, model),
-        detail_sort_key(b, ui.detail_sort_col, model),
+        detail_sort_key(a, ui.detail_sort_col, model, mix),
+        detail_sort_key(b, ui.detail_sort_col, model, mix),
     ) {
         (Some(av), Some(bv)) => {
             let ord = av.partial_cmp(&bv).unwrap_or(std::cmp::Ordering::Equal);
@@ -327,7 +369,7 @@ pub fn sorted_detail_rows(data: &MarketDataState, ui: &MarketUiState) -> Option<
     let model = model_row(data, ui);
     let mut rows = detail_rows(data, ui)?;
     let sentinel = rows.remove(0);
-    rows.sort_by(|a, b| detail_compare_rows(a, b, ui, model));
+    rows.sort_by(|a, b| detail_compare_rows(a, b, ui, model, ui.active_mix));
     rows.insert(0, sentinel);
     Some(rows)
 }
@@ -557,7 +599,12 @@ mod detail_projection_tests {
         let (data, ui) = fixture();
 
         // When the sentinel's projection is keyed.
-        let key = detail_sort_key(&DetailRow::Default, DetailSort::Proj, model_row(&data, &ui));
+        let key = detail_sort_key(
+            &DetailRow::Default,
+            DetailSort::Proj,
+            model_row(&data, &ui),
+            PROJECTION_MIX,
+        );
 
         // Then it matches the listing row's own PROJ — the sentinel is
         // that listing, auto-routed.
@@ -572,9 +619,18 @@ mod detail_projection_tests {
         data.rows.clear();
 
         // When the sentinel's price keys are taken.
-        let in_key = detail_sort_key(&DetailRow::Default, DetailSort::In, model_row(&data, &ui));
-        let proj_key =
-            detail_sort_key(&DetailRow::Default, DetailSort::Proj, model_row(&data, &ui));
+        let in_key = detail_sort_key(
+            &DetailRow::Default,
+            DetailSort::In,
+            model_row(&data, &ui),
+            PROJECTION_MIX,
+        );
+        let proj_key = detail_sort_key(
+            &DetailRow::Default,
+            DetailSort::Proj,
+            model_row(&data, &ui),
+            PROJECTION_MIX,
+        );
 
         // Then every key is None — the fallback, never a panic or a
         // made-up number.
@@ -595,8 +651,18 @@ mod detail_projection_tests {
         ));
 
         // When its keys are taken.
-        let in_key = detail_sort_key(&azure, DetailSort::In, model_row(&data, &ui));
-        let cache_key = detail_sort_key(&azure, DetailSort::Cache, model_row(&data, &ui));
+        let in_key = detail_sort_key(
+            &azure,
+            DetailSort::In,
+            model_row(&data, &ui),
+            PROJECTION_MIX,
+        );
+        let cache_key = detail_sort_key(
+            &azure,
+            DetailSort::Cache,
+            model_row(&data, &ui),
+            PROJECTION_MIX,
+        );
 
         // Then they are the endpoint's own prices.
         assert_eq!(in_key, Some(1.2e-6));
@@ -614,9 +680,9 @@ mod detail_projection_tests {
         let model = model_row(&data, &ui);
 
         // When compared ascending, then descending.
-        let asc = detail_compare_rows(&sentinel, &lambda, &ui, model);
+        let asc = detail_compare_rows(&sentinel, &lambda, &ui, model, PROJECTION_MIX);
         ui.detail_sort_desc = true;
-        let desc = detail_compare_rows(&lambda, &sentinel, &ui, model);
+        let desc = detail_compare_rows(&lambda, &sentinel, &ui, model, PROJECTION_MIX);
 
         // Then the valued row sorts before the `None` key in both
         // directions — ascending, the valued row is Less; descending,
@@ -635,7 +701,7 @@ mod detail_projection_tests {
         let azure = DetailRow::Endpoint(endpoint("azure/us-east", "Azure", 1e-6, 1e-6, None));
 
         // When they are compared.
-        let ord = detail_compare_rows(&azure, &sentinel, &ui, model);
+        let ord = detail_compare_rows(&azure, &sentinel, &ui, model, PROJECTION_MIX);
 
         // Then the tiebreak is the display names, ascending:
         // "Azure (azure/us-east)" before "Default".

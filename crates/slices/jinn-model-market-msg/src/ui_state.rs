@@ -37,11 +37,28 @@ pub const DETAIL_SORT_CYCLE: [DetailSort; 8] = [
 
 /// The fixed cost projection every PROJ value is computed under, as
 /// `(input tokens, cache-hit fraction, output tokens)`. Cache misses
-/// bill at the prompt price (locked decision F). A constant, not an
-/// option: the projection is part of the slice's contract, so every
-/// reader — the table cells, the sort, the help card — names the same
-/// mix.
+/// bill at the prompt price (locked decision F). The default mix; the
+/// `m` key flips the projection to the session/tree usage-derived mix
+/// ([`MixSource::Usage`]).
 pub const PROJECTION_MIX: (u32, f64, u32) = (10_000_000, 0.98, 50_000);
+
+/// Where the projection's `(input, cache-hit, output)` mix comes from.
+///
+/// `Fixed` is the shipped constant ([`PROJECTION_MIX`]). `Usage` derives
+/// the mix from the current session tree's measured token usage — the
+/// session itself when the tree is a single session — so PROJ ranks
+/// models under the workload actually run, not a modeled one.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum MixSource {
+    /// The shipped [`PROJECTION_MIX`] constant — the default.
+    #[default]
+    Fixed,
+    /// Usage-derived from the current tree (or lone session): input =
+    /// effective sent, output = received, cache hit = cached/measured.
+    /// Falls back to `Fixed` semantics when the usage has no measured
+    /// requests (a zero mix projects every model to $0.00).
+    Usage,
+}
 
 /// Which column the sort is keyed on.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -219,6 +236,41 @@ pub struct MarketUiState {
     pub detail_sort_col: DetailSort,
     /// The detail-mode sort direction.
     pub detail_sort_desc: bool,
+    /// Where the PROJ projection's mix comes from: the shipped constant
+    /// or the session/tree's measured usage. `m` flips it; the flag
+    /// survives detail round-trips (like sort) and resets on open.
+    pub mix_source: MixSource,
+    /// The resolved mix the render pass projects and sorts under —
+    /// [`PROJECTION_MIX`] for [`MixSource::Fixed`], the usage-derived
+    /// values for [`MixSource::Usage`]. Render-measured state like
+    /// `results_viewport`: recomputed each frame, read by the cells.
+    pub active_mix: (u32, f64, u32),
+}
+
+/// Resolves the mix the frame projects and sorts under: the shipped
+/// constant for [`MixSource::Fixed`], the usage-derived values for
+/// [`MixSource::Usage`]. A `usage` of `None` (no facts) or one without
+/// measured requests (`measured_sent == 0` — a fresh session projects
+/// every model to $0.00, a useless ranking) degrades to the constant,
+/// never to a wrong mix.
+#[must_use]
+pub fn resolve_mix(source: MixSource, usage: Option<(u64, u64, u64, u64)>) -> (u32, f64, u32) {
+    match source {
+        MixSource::Fixed => PROJECTION_MIX,
+        MixSource::Usage => usage.map_or(PROJECTION_MIX, |(sent, received, cached, measured)| {
+            if measured == 0 {
+                return PROJECTION_MIX;
+            }
+            let input = sent.max(1) as f64;
+            let output = received as f64;
+            let cache_hit = cached as f64 / measured as f64;
+            (
+                input.round() as u32,
+                cache_hit.clamp(0.0, 1.0),
+                output.round() as u32,
+            )
+        }),
+    }
 }
 
 impl Default for MarketUiState {
@@ -236,6 +288,8 @@ impl Default for MarketUiState {
             detail_selection: 0,
             detail_sort_col: DetailSort::default(),
             detail_sort_desc: false,
+            mix_source: MixSource::default(),
+            active_mix: PROJECTION_MIX,
         }
     }
 }
@@ -262,6 +316,16 @@ impl MarketUiState {
     /// exactly as it was before drilling in. Touches nothing table-side.
     pub fn leave_detail(&mut self) {
         self.detail_model = None;
+    }
+
+    /// Flips the projection mix between the shipped constant and the
+    /// session/tree usage-derived mix (`m`). The flag survives detail
+    /// round-trips; `reset` (the opener) lands it back on `Fixed`.
+    pub fn toggle_mix_source(&mut self) {
+        self.mix_source = match self.mix_source {
+            MixSource::Fixed => MixSource::Usage,
+            MixSource::Usage => MixSource::Fixed,
+        };
     }
 }
 

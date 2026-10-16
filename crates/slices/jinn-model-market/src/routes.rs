@@ -117,6 +117,7 @@ pub const MARKET_BINDINGS: &[(&str, &str)] = &[
     ("h", "col \u{2190}"),
     ("l", "col \u{2192}"),
     ("s", "sort"),
+    ("m", "mix"),
     ("f", "filter"),
     ("?", "help"),
 ];
@@ -433,6 +434,15 @@ fn table_char_action(ui: &MarketUiCell, data: &MarketDataCell, ch: char) -> Char
         }
         's' => {
             ui.update(|s| s.sort_desc = !s.sort_desc);
+            CharAction::Acted(IntentResult::empty())
+        }
+        'm' => {
+            // The projection mix: shipped constant ⇄ the session tree's
+            // measured usage. The render pass resolves the flag into the
+            // active mix each frame (falling back to the constant when
+            // the usage has no measured requests), and the PROJ column
+            // and its sort re-derive from that.
+            ui.update(MarketUiState::toggle_mix_source);
             CharAction::Acted(IntentResult::empty())
         }
         _ => CharAction::Unclaimed,

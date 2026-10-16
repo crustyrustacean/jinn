@@ -26,6 +26,8 @@ fn ui_state_reset_restores_the_opener_defaults() {
         detail_selection: 3,
         detail_sort_col: DetailSort::Tp,
         detail_sort_desc: true,
+        mix_source: MixSource::Usage,
+        active_mix: (1_000, 0.5, 2_000),
     };
 
     // When the opener resets it.
@@ -50,6 +52,69 @@ fn ui_state_reset_restores_the_opener_defaults() {
     assert_eq!(state.detail_selection, 0);
     assert_eq!(state.detail_sort_col, DetailSort::Proj);
     assert!(!state.detail_sort_desc);
+    // And the mix returns to the fixed constant under the fixed source.
+    assert_eq!(state.mix_source, MixSource::Fixed);
+    assert_eq!(state.active_mix, PROJECTION_MIX);
+}
+
+#[rstest::rstest]
+fn m_toggles_the_mix_source_and_survives_detail_round_trips() {
+    // Given default UI state (fixed mix).
+    let mut state = MarketUiState::default();
+    assert_eq!(state.mix_source, MixSource::Fixed);
+
+    // When `m` toggles and a detail round trip happens around it.
+    state.toggle_mix_source();
+    state.enter_detail("openrouter/a/model".to_owned());
+    state.leave_detail();
+
+    // Then the usage source survived the round trip, and toggling again
+    // lands back on fixed.
+    assert_eq!(state.mix_source, MixSource::Usage);
+    state.toggle_mix_source();
+    assert_eq!(state.mix_source, MixSource::Fixed);
+}
+
+#[rstest::rstest]
+fn resolve_mix_uses_the_fixed_constant_for_the_fixed_source() {
+    // Given usage facts that would produce a very different mix.
+    let usage = Some((1_000_000, 500_000, 400_000, 800_000));
+
+    // When resolving under the fixed source.
+    let mix = resolve_mix(MixSource::Fixed, usage);
+
+    // Then the shipped constant stands regardless of the usage.
+    assert_eq!(mix, PROJECTION_MIX);
+}
+
+#[rstest::rstest]
+fn resolve_mix_derives_from_measured_usage() {
+    // Given a tree's measured numbers: 3.2M effective sent, 160k
+    // received, 2.8M of 3.0M measured-sent tokens served from cache.
+    let usage = Some((3_200_000, 160_000, 2_800_000, 3_000_000));
+
+    // When resolving under the usage source.
+    let mix = resolve_mix(MixSource::Usage, usage);
+
+    // Then the mix is those numbers with the hit ratio computed.
+    assert_eq!(mix.0, 3_200_000);
+    assert_eq!(mix.2, 160_000);
+    assert!((mix.1 - (2_800_000f64 / 3_000_000f64)).abs() < 1e-9);
+}
+
+#[rstest::rstest]
+fn resolve_mix_degrades_to_fixed_without_measured_requests() {
+    // Given usage with zero measured-sent tokens (a fresh session:
+    // everything projects to $0.00, a useless ranking) and no usage.
+    let fresh = Some((0, 0, 0, 0));
+
+    // When resolving either way under the usage source.
+    let fresh_mix = resolve_mix(MixSource::Usage, fresh);
+    let none_mix = resolve_mix(MixSource::Usage, None);
+
+    // Then both degrade to the fixed constant, never to a zero mix.
+    assert_eq!(fresh_mix, PROJECTION_MIX);
+    assert_eq!(none_mix, PROJECTION_MIX);
 }
 
 #[rstest::rstest]

@@ -1452,6 +1452,19 @@ fn clock_renders_from_stamp_without_network() {
 /// Renders the current popup frame and returns the buffer's text plus a
 /// per-row extractor. `Wired` must already have its cells seeded.
 fn render_to_buffer(wired: &Wired, width: u16, height: u16) -> ratatui::buffer::Buffer {
+    render_to_buffer_with_facts(wired, width, height, |facts| {
+        facts.set_facts(std::iter::empty());
+    })
+}
+
+/// Renders one frame with a hook for seeding extra render facts — the
+/// usage numbers the mix toggle reads.
+fn render_to_buffer_with_facts(
+    wired: &Wired,
+    width: u16,
+    height: u16,
+    seed: impl FnOnce(&mut jinn_slices::RenderFacts),
+) -> ratatui::buffer::Buffer {
     let theme = jinn_theme::default_theme();
     let area = ratatui::layout::Rect::new(0, 0, width, height);
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height))
@@ -1459,7 +1472,8 @@ fn render_to_buffer(wired: &Wired, width: u16, height: u16) -> ratatui::buffer::
     let popup = jinn_model_market::view::market_overlay_rect(&area).expect("frame fits the popup");
     terminal
         .draw(|frame| {
-            let facts = jinn_slices::RenderFacts::new(theme.clone(), &wired.slices);
+            let mut facts = jinn_slices::RenderFacts::new(theme.clone(), &wired.slices);
+            seed(&mut facts);
             jinn_model_market::view::render_market_popup(frame, popup, &facts);
         })
         .expect("draw");
@@ -1614,7 +1628,7 @@ fn focused_filter_shows_a_visible_filter_line() {
 }
 
 #[rstest::rstest]
-fn status_line_shows_the_stamps_but_no_mix_no_epoch() {
+fn status_line_shows_the_stamps_and_the_fixed_mix_no_epoch() {
     // Given an open popup over a seeded table with stamps two minutes
     // old.
     let mut wired = Wired::new();
@@ -1638,12 +1652,14 @@ fn status_line_shows_the_stamps_but_no_mix_no_epoch() {
         status.contains("models updated 2m ago"),
         "status shows the kept stamp, got: {status:?}"
     );
-    // And none of the retired indicators: no mix, no m hint, no epoch
-    // source, no epoch freshness stamp, no endpoints stamp.
+    // And the resolved mix — the fixed constant, since no usage facts
+    // are seeded and the source is fixed.
     assert!(
-        !status.contains("mix:"),
-        "status shows no mix, got: {status:?}"
+        status.contains("mix: fixed 10M\u{b7}98%\u{b7}50k"),
+        "status shows the fixed mix, got: {status:?}"
     );
+    // And none of the retired indicators: no epoch source, no epoch
+    // freshness stamp, no endpoints stamp, no m hint.
     assert!(
         !status.contains("endpoints "),
         "status shows no endpoints stamp, got: {status:?}"
@@ -1758,20 +1774,20 @@ fn multi_term_filter_narrows_the_table() {
 }
 
 #[rstest::rstest]
-fn footer_advertises_s_sort_and_no_m() {
+fn footer_advertises_s_sort_m_mix_f_filter() {
     // Given an open popup.
     let mut wired = Wired::new();
     wired.press("open-model-market", "search openrouter models");
 
     // When the popup renders (a wide frame — the footer is a long line
-    // and `s sort` sits past where 120 columns truncate it).
-    let area = ratatui::layout::Rect::new(0, 0, 160, 50);
+    // and the `m`/`f` entries sit past where 120 columns truncate it).
+    let area = ratatui::layout::Rect::new(0, 0, 200, 50);
     let popup = jinn_model_market::view::market_overlay_rect(&area).expect("frame fits the popup");
-    let buffer = render_to_buffer(&wired, 160, 50);
+    let buffer = render_to_buffer(&wired, 200, 50);
     let footer = row_text(&buffer, popup.y + popup.height - 2, popup.width);
 
-    // Then the direction entry reads `s sort`, not `s dir`, and no
-    // `m` key is advertised anywhere in the footer.
+    // Then the direction entry reads `s sort`, not `s dir`, the mix
+    // toggle is advertised, and the filter entry is present.
     assert!(
         footer.contains("s sort"),
         "the direction entry reads `s sort`, got: {footer:?}"
@@ -1781,12 +1797,151 @@ fn footer_advertises_s_sort_and_no_m() {
         "the old `s dir` is gone, got: {footer:?}"
     );
     assert!(
-        !footer.contains(" m "),
-        "no m key is advertised, got: {footer:?}"
+        footer.contains("m mix"),
+        "the mix toggle is advertised, got: {footer:?}"
     );
     assert!(
-        !footer.contains("mix"),
-        "no mix label is advertised, got: {footer:?}"
+        footer.contains("f filter"),
+        "the filter entry is advertised, got: {footer:?}"
+    );
+}
+
+#[rstest::rstest]
+fn m_toggles_the_mix_and_the_status_line_and_proj_reflect_it() {
+    // Given an open popup over a seeded table — the fixed mix active,
+    // its status display rendered.
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "search openrouter models");
+    seeded(&mut wired);
+    let area = ratatui::layout::Rect::new(0, 0, 120, 40);
+    let popup = jinn_model_market::view::market_overlay_rect(&area).expect("frame fits the popup");
+    let status_row = popup.y + popup.height - 3;
+    let buffer = render_to_buffer(&wired, 120, 40);
+    let status = row_text(&buffer, status_row, popup.width);
+    assert!(
+        status.contains("mix: fixed 10M\u{b7}98%\u{b7}50k"),
+        "fixed mix shows before the toggle, got: {status:?}"
+    );
+    // When `m` toggles the source to usage (no usage facts seeded — the
+    // projection degrades to the fixed constant) and the popup renders.
+    wired.handle(edit_intent("insert-char", 'm'));
+    let buffer = render_to_buffer(&wired, 120, 40);
+    let status = row_text(&buffer, status_row, popup.width);
+
+    // Then the source flag flipped (observable through the UI cell),
+    // the status line still reads the fixed display (the degraded
+    // resolve), and the PROJ values are unchanged.
+    assert_eq!(
+        wired.ui().read().mix_source,
+        jinn_model_market_msg::MixSource::Usage,
+        "the toggle flipped the source"
+    );
+    assert!(
+        status.contains("mix: fixed 10M\u{b7}98%\u{b7}50k"),
+        "no usage means the fixed display stands, got: {status:?}"
+    );
+    // And the PROJ header still reads PROJ (the column persists).
+    let header = row_text(&buffer, popup.y + 3, popup.width);
+    assert!(
+        header.contains("PROJ"),
+        "the PROJ column persists, got: {header:?}"
+    );
+}
+
+/// Seeds the kernel's tree-usage facts the mix toggle reads.
+fn seed_usage(
+    facts: &mut jinn_slices::RenderFacts,
+    sent: u64,
+    received: u64,
+    cached: u64,
+    measured: u64,
+) {
+    facts.set_facts([
+        jinn_slices::AppFact {
+            key: "session.tree-effective-sent",
+            value: sent.to_string(),
+        },
+        jinn_slices::AppFact {
+            key: "session.tree-total-received",
+            value: received.to_string(),
+        },
+        jinn_slices::AppFact {
+            key: "session.tree-cached-total",
+            value: cached.to_string(),
+        },
+        jinn_slices::AppFact {
+            key: "session.tree-measured-sent",
+            value: measured.to_string(),
+        },
+    ]);
+}
+
+#[rstest::rstest]
+fn m_with_seeded_usage_projects_under_the_tree_mix() {
+    // Given an open popup, `m` already flipped to the usage source, and
+    // a seeded tree usage: 5M effective sent, 100k received, 4.9M of
+    // 5.0M measured sent cached.
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "search openrouter models");
+    seeded(&mut wired);
+    wired.handle(edit_intent("insert-char", 'm'));
+    assert_eq!(
+        wired.ui().read().mix_source,
+        jinn_model_market_msg::MixSource::Usage,
+        "the toggle flipped the source"
+    );
+
+    // When the popup renders with those usage facts seeded.
+    let area = ratatui::layout::Rect::new(0, 0, 120, 40);
+    let popup = jinn_model_market::view::market_overlay_rect(&area).expect("frame fits the popup");
+    let status_row = popup.y + popup.height - 3;
+    let buffer = render_to_buffer_with_facts(&wired, 120, 40, |facts| {
+        seed_usage(facts, 5_000_000, 100_000, 4_900_000, 5_000_000);
+    });
+    let status = row_text(&buffer, status_row, popup.width);
+
+    // Then the status line shows the tree mix: 5M input, 98% hit, 100k
+    // output.
+    assert!(
+        status.contains("mix: tree 5M\u{b7}98%\u{b7}100k"),
+        "the tree mix shows, got: {status:?}"
+    );
+
+    // And toggling back with the facts still seeded shows fixed again.
+    wired.handle(edit_intent("insert-char", 'm'));
+    let buffer = render_to_buffer_with_facts(&wired, 120, 40, |facts| {
+        seed_usage(facts, 5_000_000, 100_000, 4_900_000, 5_000_000);
+    });
+    let status = row_text(&buffer, status_row, popup.width);
+    assert!(
+        status.contains("mix: fixed 10M\u{b7}98%\u{b7}50k"),
+        "toggling back shows fixed, got: {status:?}"
+    );
+}
+
+#[rstest::rstest]
+fn m_with_an_unmeasured_tree_degrades_to_the_fixed_mix() {
+    // Given an open popup flipped to the usage source over a tree with
+    // zero measured-sent tokens (a fresh session).
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "search openrouter models");
+    seeded(&mut wired);
+    wired.handle(edit_intent("insert-char", 'm'));
+
+    // When the popup renders with the zero-usage facts.
+    let area = ratatui::layout::Rect::new(0, 0, 120, 40);
+    let popup = jinn_model_market::view::market_overlay_rect(&area).expect("frame fits the popup");
+    let status_row = popup.y + popup.height - 3;
+    let buffer = render_to_buffer_with_facts(&wired, 120, 40, |facts| {
+        seed_usage(facts, 0, 0, 0, 0);
+    });
+    let status = row_text(&buffer, status_row, popup.width);
+
+    // Then the fixed display stands: the resolve degraded, never a
+    // $0.00 ranking.
+    assert!(
+        status.contains("mix: fixed 10M\u{b7}98%\u{b7}50k"),
+        "the degraded resolve shows fixed, got: {status:?}"
     );
 }
 

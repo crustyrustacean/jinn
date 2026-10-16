@@ -88,10 +88,10 @@ const MARKET_COLUMNS: &[MarketColumn] = &[
         sort: SortColumn::Proj,
         keyed: true,
         width: 10,
-        cell: |row, _ui, _theme| {
+        cell: |row, ui, _theme| {
             Line::from(format::dollars(ui_state::projected_cents(
                 row,
-                PROJECTION_MIX,
+                ui.active_mix,
             )))
         },
     },
@@ -148,7 +148,7 @@ struct DetailColumn {
     sort: DetailSort,
     keyed: bool,
     width: u16,
-    cell: fn(&DetailRow, Option<&MarketRow>, &Theme) -> Line<'static>,
+    cell: fn(&DetailRow, Option<&MarketRow>, &MarketUiState, &Theme) -> Line<'static>,
 }
 
 /// The detail-mode columns in header order — the same order as the
@@ -161,14 +161,14 @@ const DETAIL_COLUMNS: &[DetailColumn] = &[
         sort: DetailSort::Endpoint,
         keyed: true,
         width: 30,
-        cell: |row, _model, _theme| Line::from(row.display_name()),
+        cell: |row, _model, _ui, _theme| Line::from(row.display_name()),
     },
     DetailColumn {
         header: "IN /M",
         sort: DetailSort::In,
         keyed: true,
         width: 10,
-        cell: |row, model, _theme| {
+        cell: |row, model, _ui, _theme| {
             Line::from(format::price_per_million(detail_prices(row, model).0))
         },
     },
@@ -177,7 +177,7 @@ const DETAIL_COLUMNS: &[DetailColumn] = &[
         sort: DetailSort::Out,
         keyed: true,
         width: 10,
-        cell: |row, model, _theme| {
+        cell: |row, model, _ui, _theme| {
             Line::from(format::price_per_million(detail_prices(row, model).1))
         },
     },
@@ -186,21 +186,25 @@ const DETAIL_COLUMNS: &[DetailColumn] = &[
         sort: DetailSort::Cache,
         keyed: true,
         width: 10,
-        cell: |row, model, _theme| Line::from(format::cache_column(detail_prices(row, model).2)),
+        cell: |row, model, _ui, _theme| {
+            Line::from(format::cache_column(detail_prices(row, model).2))
+        },
     },
     DetailColumn {
         header: "PROJ",
         sort: DetailSort::Proj,
         keyed: true,
         width: 10,
-        cell: |row, model, _theme| Line::from(format::dollars(detail_projected_cents(row, model))),
+        cell: |row, model, ui, _theme| {
+            Line::from(format::dollars(detail_projected_cents(row, model, ui)))
+        },
     },
     DetailColumn {
         header: "LAT p50",
         sort: DetailSort::Lat,
         keyed: true,
         width: 9,
-        cell: |row, _model, _theme| {
+        cell: |row, _model, _ui, _theme| {
             Line::from(match row {
                 DetailRow::Default => "\u{2014}".to_owned(),
                 DetailRow::Endpoint(endpoint) => endpoint
@@ -214,7 +218,7 @@ const DETAIL_COLUMNS: &[DetailColumn] = &[
         sort: DetailSort::Tp,
         keyed: true,
         width: 10,
-        cell: |row, _model, _theme| {
+        cell: |row, _model, _ui, _theme| {
             Line::from(match row {
                 DetailRow::Default => "\u{2014}".to_owned(),
                 DetailRow::Endpoint(endpoint) => endpoint
@@ -228,7 +232,7 @@ const DETAIL_COLUMNS: &[DetailColumn] = &[
         sort: DetailSort::Up,
         keyed: true,
         width: 7,
-        cell: |row, _model, _theme| {
+        cell: |row, _model, _ui, _theme| {
             Line::from(match row {
                 DetailRow::Default => "\u{2014}".to_owned(),
                 DetailRow::Endpoint(endpoint) => endpoint.uptime_1d.map_or_else(
@@ -267,9 +271,9 @@ fn detail_prices(row: &DetailRow, model: Option<&MarketRow>) -> (f64, f64, Optio
 /// The row's projected $/turn: the endpoint's own prices, or the
 /// sentinel's from the model's listing row. A sentinel with no listing
 /// row left projects `NaN` — same fallback as [`detail_prices`].
-fn detail_projected_cents(row: &DetailRow, model: Option<&MarketRow>) -> f64 {
+fn detail_projected_cents(row: &DetailRow, model: Option<&MarketRow>, ui: &MarketUiState) -> f64 {
     let (prompt, completion, cache) = detail_prices(row, model);
-    ui_state::projected_cents_for(prompt, completion, cache, PROJECTION_MIX)
+    ui_state::projected_cents_for(prompt, completion, cache, ui.active_mix)
 }
 
 /// The popup rect: a centered table window, ~90% of the frame with
@@ -303,13 +307,18 @@ pub fn render_market_popup(frame: &mut Frame<'_>, area: Rect, facts: &RenderFact
         return;
     };
 
-    // Publish the measured result-row count for the paging keys before
-    // reading (the project picker's measurement pattern). Both modes
-    // page over the same geometry: the rows between the filter's
-    // separator and the status rows.
+    // Publish the measured result-row count for the paging keys and the
+    // frame's resolved projection mix before reading (the project
+    // picker's measurement pattern). Both modes page over the same
+    // geometry: the rows between the filter's separator and the status
+    // rows.
     let theme = facts.theme.clone();
     let measured = results_viewport(area);
-    ui_cell.update(|state: &mut MarketUiState| state.results_viewport = measured);
+    let usage = usage_mix_inputs(facts);
+    ui_cell.update(|state: &mut MarketUiState| {
+        state.results_viewport = measured;
+        state.active_mix = ui_state::resolve_mix(state.mix_source, usage);
+    });
 
     let ui = ui_cell.read();
     let data = data_cell.read();
@@ -377,7 +386,7 @@ pub fn render_market_popup(frame: &mut Frame<'_>, area: Rect, facts: &RenderFact
     );
     render_mode_table(frame, table_area, &data, &ui, &theme);
 
-    render_status_line(frame, inner, &data, &theme);
+    render_status_line(frame, inner, &data, &ui, &theme);
     render_footer(frame, inner, &theme);
 
     // The help card draws last, over the table behind it — the same
@@ -406,7 +415,7 @@ fn render_mode_table(
                     .iter()
                     .enumerate()
                     .map(|(idx, row)| {
-                        detail_table_row(row, model, idx == ui.detail_selection, theme)
+                        detail_table_row(row, model, idx == ui.detail_selection, ui, theme)
                     })
                     .collect();
                 let table = Table::new(
@@ -596,11 +605,12 @@ fn detail_table_row(
     row: &DetailRow,
     model: Option<&MarketRow>,
     selected: bool,
+    ui: &MarketUiState,
     theme: &Theme,
 ) -> Row<'static> {
     let cells: Vec<Cell<'static>> = DETAIL_COLUMNS
         .iter()
-        .map(|col| Cell::from((col.cell)(row, model, theme)))
+        .map(|col| Cell::from((col.cell)(row, model, ui, theme)))
         .collect();
     let mut rendered = Row::new(cells);
     if selected {
@@ -700,7 +710,13 @@ fn flags_column(row: &MarketRow) -> String {
 /// The status line, drawn on the popup's bottom-inner row: the
 /// "updated X ago" stamps (rendered from the stamps, no network) and
 /// the degraded-mode/error line.
-fn render_status_line(frame: &mut Frame<'_>, inner: Rect, data: &MarketDataState, theme: &Theme) {
+fn render_status_line(
+    frame: &mut Frame<'_>,
+    inner: Rect,
+    data: &MarketDataState,
+    ui: &MarketUiState,
+    theme: &Theme,
+) {
     let status_y = inner.y + inner.height.saturating_sub(2);
     let status_area = Rect::new(inner.x, status_y, inner.width, 1);
     let muted = Style::default().fg(theme.muted_text);
@@ -712,6 +728,28 @@ fn render_status_line(frame: &mut Frame<'_>, inner: Rect, data: &MarketDataState
             muted,
         ));
     }
+    // The active projection mix: which mix the PROJ column and its sort
+    // are computed under, so a flipped source is visible at a glance.
+    // Resolved to the fixed display whenever the value equals the
+    // constant (including the usage fallback on an unmeasured tree).
+    let (input, hit, output) = ui.active_mix;
+    let mix_display =
+        if input == PROJECTION_MIX.0 && hit == PROJECTION_MIX.1 && output == PROJECTION_MIX.2 {
+            format!(
+                "fixed {}M·{}%·{}k",
+                PROJECTION_MIX.0 / 1_000_000,
+                (PROJECTION_MIX.1 * 100.0) as u32,
+                PROJECTION_MIX.2 / 1_000
+            )
+        } else {
+            format!(
+                "tree {}M·{}%·{}k",
+                input / 1_000_000,
+                (hit * 100.0) as u32,
+                output / 1_000
+            )
+        };
+    spans.push(Span::styled(format!("mix: {mix_display} · "), muted));
     if data.models_loading || data.endpoints_loading || data.epoch_loading {
         spans.push(Span::styled(" \u{b7} loading\u{2026}", muted));
     }
@@ -751,6 +789,30 @@ fn render_footer(frame: &mut Frame<'_>, inner: Rect, theme: &Theme) {
 #[must_use]
 pub fn results_viewport(popup: Rect) -> usize {
     block_inner(popup).saturating_sub(5).max(1) as usize
+}
+
+/// The frame's usage numbers for [`ui_state::resolve_mix`], read from
+/// the render facts the kernel seeds each frame. `None` when any fact
+/// is missing or unparseable — an absent usage degrades to the fixed
+/// mix, never to a wrong one.
+fn usage_mix_inputs(facts: &RenderFacts) -> Option<(u64, u64, u64, u64)> {
+    let sent = facts
+        .fact("session.tree-effective-sent")?
+        .parse::<u64>()
+        .ok()?;
+    let received = facts
+        .fact("session.tree-total-received")?
+        .parse::<u64>()
+        .ok()?;
+    let cached = facts
+        .fact("session.tree-cached-total")?
+        .parse::<u64>()
+        .ok()?;
+    let measured = facts
+        .fact("session.tree-measured-sent")?
+        .parse::<u64>()
+        .ok()?;
+    Some((sent, received, cached, measured))
 }
 
 /// The popup's inner area: the rect less its border. Shared by the

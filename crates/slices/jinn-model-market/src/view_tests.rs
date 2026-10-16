@@ -38,13 +38,26 @@ impl Harness {
     /// Renders one frame at the given popup rect against a test backend
     /// and returns the buffer.
     fn render(&self, popup: ratatui::layout::Rect, width: u16, height: u16) -> Buffer {
+        self.render_seeded(popup, width, height, |_facts| {})
+    }
+
+    /// Renders one frame with a hook for seeding render facts (the
+    /// usage numbers the mix resolution reads).
+    fn render_seeded(
+        &self,
+        popup: ratatui::layout::Rect,
+        width: u16,
+        height: u16,
+        seed: impl FnOnce(&mut jinn_slices::RenderFacts),
+    ) -> Buffer {
         let theme = jinn_theme::default_theme();
         let mut terminal =
             ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height))
                 .expect("test terminal");
         terminal
             .draw(|frame| {
-                let facts = jinn_slices::RenderFacts::new(theme.clone(), &self.slices);
+                let mut facts = jinn_slices::RenderFacts::new(theme.clone(), &self.slices);
+                seed(&mut facts);
                 crate::view::render_market_popup(frame, popup, &facts);
             })
             .expect("draw");
@@ -235,7 +248,9 @@ fn filter_match_on_a_suffix_glyph_highlights_over_the_dim() {
 
 #[rstest::rstest]
 fn the_popup_paints_an_opaque_surface_over_what_is_behind_it() {
-    // Given a frame with filler text covering the whole terminal.
+    // Given a frame with filler text covering the whole terminal. The
+    // filler glyph `~` cannot occur in the popup's own text (prices,
+    // stamps, the mix display, and key names never render one).
     let harness = Harness::new();
     harness.data.update(|d| {
         d.rows = vec![plain_row()];
@@ -248,7 +263,7 @@ fn the_popup_paints_an_opaque_surface_over_what_is_behind_it() {
         ratatui::Terminal::new(ratatui::backend::TestBackend::new(90, 100)).expect("terminal");
     terminal
         .draw(|frame| {
-            let filler = ratatui::text::Line::from("x".repeat(90 * 100));
+            let filler = ratatui::text::Line::from("~".repeat(90 * 100));
             for y in 0..100u16 {
                 frame.render_widget(
                     Paragraph::new(filler.clone()),
@@ -266,7 +281,7 @@ fn the_popup_paints_an_opaque_surface_over_what_is_behind_it() {
     for y in popup.y..popup.y + popup.height {
         let bleeds = (popup.x..popup.x + popup.width)
             .filter_map(|x| buffer.cell((x, y)).map(Cell::symbol))
-            .any(|sym| sym.contains('x'));
+            .any(|sym| sym.contains('~'));
         assert!(!bleeds, "filler bleeds through at y={y}");
     }
 }

@@ -247,9 +247,9 @@ fn drawn_card_documents_the_detail_mode_semantics() {
     .expect("test terminal");
     terminal.draw(|f| card.draw(f)).expect("draw");
 
-    // Then the rendered text names the eight detail columns, the
-    // Default sentinel, and the pin/back semantics — and no pane-era
-    // wording survives.
+    // Then the rendered text names the detail columns, the DEFAULT
+    // sentinel with its auto-pick semantics, and the mix toggle — and
+    // no pane-era wording survives.
     let text: String = terminal
         .backend()
         .buffer()
@@ -262,10 +262,9 @@ fn drawn_card_documents_the_detail_mode_semantics() {
         "LAT p50",
         "TP p50",
         "UP 1d",
-        "Default",
-        "auto-route",
-        "pin",
-        "backspace",
+        "DEFAULT",
+        "auto-picks",
+        "mix",
     ] {
         assert!(text.contains(fact), "card must document {fact:?}");
     }

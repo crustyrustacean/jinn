@@ -49,11 +49,6 @@ fn said_style(theme: &Theme) -> Style {
     Style::default().fg(theme.primary_text)
 }
 
-/// The card's secondary notes: caveats, the attribution sentence.
-fn note_style(theme: &Theme) -> Style {
-    Style::default().fg(theme.muted_text)
-}
-
 /// One documented thing: its name in the table's accent, then the
 /// explanation after it.
 fn entry(name: &str, description: &str, theme: &Theme) -> Line<'static> {
@@ -61,14 +56,6 @@ fn entry(name: &str, description: &str, theme: &Theme) -> Line<'static> {
         Span::raw("  "),
         Span::styled(format!("{name}:"), name_style(theme)),
         Span::styled(format!(" {description}"), said_style(theme)),
-    ])
-}
-
-/// A secondary note under the entries it qualifies.
-fn note(text: &str, theme: &Theme) -> Line<'static> {
-    Line::from(vec![
-        Span::raw("  "),
-        Span::styled(text.to_owned(), note_style(theme)),
     ])
 }
 
@@ -107,7 +94,7 @@ fn column_section(theme: &Theme) -> Vec<Line<'static>> {
         ),
         entry(
             "PROJ",
-            "projected cost per task, using fixed values (10M input tokens, 98% cache hit, 50k output tokens)",
+            "projected cost per task. `m` switches the mix: fixed (10M input tokens, 98% cache hit, 50k output) or your session tree's measured usage.",
             theme,
         ),
         entry(
@@ -143,6 +130,11 @@ fn detail_section(theme: &Theme) -> Vec<Line<'static>> {
         entry(
             "PROJ",
             "projected $/task using the selected mix, per endpoint.",
+            theme,
+        ),
+        entry(
+            "mix",
+            "the status line's active mix — `m` switches fixed ⇄ your session tree's measured usage.",
             theme,
         ),
         entry(
