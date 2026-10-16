@@ -1537,10 +1537,11 @@ fn table_headers_align_over_their_data_columns() {
         data_row.contains('\u{2020}'),
         "FLAGS cell renders the override dagger, got: {data_row:?}"
     );
-    // And a row with no cache price shows the em-dash under CACHE/M.
+    // And a row with no cache price shows the empty-cell placeholder
+    // under CACHE/M.
     assert!(
-        data_row.contains("\u{2014}"),
-        "CACHE cell renders an em-dash when unpublished, got: {data_row:?}"
+        data_row.contains(jinn_model_market::format::EMPTY_CELL),
+        "CACHE cell renders the empty cell when unpublished, got: {data_row:?}"
     );
 }
 

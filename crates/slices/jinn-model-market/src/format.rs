@@ -3,6 +3,11 @@
 
 use jiff::Timestamp;
 
+/// The placeholder an empty cell renders as — an unpublished price, an
+/// unmatched ECI, a missing latency. One constant so the glyph is a
+/// one-line change.
+pub const EMPTY_CELL: &str = "-";
+
 /// Formats a USD/token price as a four-digit `$X.XXXX/M` column value —
 /// every price renders the same width, so a column of prices scans as
 /// one shape (e.g. `$3.0000/M`, `$0.3021/M`).
@@ -12,11 +17,12 @@ pub fn price_per_million(usd_per_token: f64) -> String {
     format!("${per_million:.4}/M")
 }
 
-/// Formats a USD/token price as `—` when it is unpublished (locked
-/// decision F: the row is still fully costed at the prompt price).
+/// Formats a USD/token price as [`EMPTY_CELL`] when it is unpublished
+/// (locked decision F: the row is still fully costed at the prompt
+/// price).
 #[must_use]
 pub fn cache_column(usd_per_token: Option<f64>) -> String {
-    usd_per_token.map_or_else(|| "\u{2014}".to_owned(), price_per_million)
+    usd_per_token.map_or_else(|| EMPTY_CELL.to_owned(), price_per_million)
 }
 
 /// Formats a projected cost in dollars with four decimals
@@ -26,10 +32,10 @@ pub fn dollars(cents: f64) -> String {
     format!("${:.4}", cents / 100.0)
 }
 
-/// Formats an ECI value, `—` when unmatched.
+/// Formats an ECI value, [`EMPTY_CELL`] when unmatched.
 #[must_use]
 pub fn eci_column(eci: Option<f64>) -> String {
-    eci.map_or_else(|| "\u{2014}".to_owned(), |v| format!("{v:.1}"))
+    eci.map_or_else(|| EMPTY_CELL.to_owned(), |v| format!("{v:.1}"))
 }
 
 /// The elapsed time since `stamp` as a compact human string

@@ -256,12 +256,13 @@ fn null_detail_fields_render_em_dashes() {
     // When the popup renders.
     let buffer = harness.render(popup, 140, 100);
 
-    // Then the CACHE cell reads the em-dash, and no made-up numbers
+    // Then the CACHE cell reads the empty-cell placeholder, and no
+    // made-up numbers
     // stand in for the missing fields.
     let text = buffer_text(&buffer);
     assert!(
-        text.contains("\u{2014}"),
-        "unpublished fields render em-dashes, got: {text:?}"
+        text.contains(crate::format::EMPTY_CELL),
+        "unpublished fields render the empty cell, got: {text:?}"
     );
     assert!(
         !text.contains("320ms") && !text.contains("88 tok/s") && !text.contains("99.2%"),

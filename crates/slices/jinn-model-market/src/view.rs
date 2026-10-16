@@ -206,10 +206,10 @@ const DETAIL_COLUMNS: &[DetailColumn] = &[
         width: 9,
         cell: |row, _model, _ui, _theme| {
             Line::from(match row {
-                DetailRow::Default => "\u{2014}".to_owned(),
+                DetailRow::Default => format::EMPTY_CELL.to_owned(),
                 DetailRow::Endpoint(endpoint) => endpoint
                     .latency_p50_ms
-                    .map_or_else(|| "\u{2014}".to_owned(), |ms| format!("{ms:.0}ms")),
+                    .map_or_else(|| format::EMPTY_CELL.to_owned(), |ms| format!("{ms:.0}ms")),
             })
         },
     },
@@ -220,10 +220,10 @@ const DETAIL_COLUMNS: &[DetailColumn] = &[
         width: 10,
         cell: |row, _model, _ui, _theme| {
             Line::from(match row {
-                DetailRow::Default => "\u{2014}".to_owned(),
+                DetailRow::Default => format::EMPTY_CELL.to_owned(),
                 DetailRow::Endpoint(endpoint) => endpoint
                     .throughput_p50
-                    .map_or_else(|| "\u{2014}".to_owned(), |t| format!("{t:.0} tok/s")),
+                    .map_or_else(|| format::EMPTY_CELL.to_owned(), |t| format!("{t:.0} tok/s")),
             })
         },
     },
@@ -234,9 +234,9 @@ const DETAIL_COLUMNS: &[DetailColumn] = &[
         width: 7,
         cell: |row, _model, _ui, _theme| {
             Line::from(match row {
-                DetailRow::Default => "\u{2014}".to_owned(),
+                DetailRow::Default => format::EMPTY_CELL.to_owned(),
                 DetailRow::Endpoint(endpoint) => endpoint.uptime_1d.map_or_else(
-                    || "\u{2014}".to_owned(),
+                    || format::EMPTY_CELL.to_owned(),
                     |frac| format!("{:.1}%", frac * 100.0),
                 ),
             })
