@@ -79,6 +79,14 @@ accordingly.
 
 ## The work
 
+Your dispatch carries the contract's path. A fresh implementor with no
+contract behind it is not a dispatch — it is the orchestrator skipping
+the planner, and the planner's exploration is the whole reason your run
+is bounded. If your dispatch names no contract path, report
+`BLOCKED no-contract` immediately: say the dispatch must go through a
+planner round first. Do not explore, do not improvise a plan of your
+own, do not start.
+
 Your checkout: the dispatch names your checkout directory and its
 absolute path. Work only there.
 
@@ -130,8 +138,9 @@ One issue per run:
 
 You are assumed capable of whatever the issue asks. There is no
 escalation, no "too hard", no human fallback. A genuine dead end — the
-contract contradicts the code, or the verification cannot pass on any
-route — is reported as BLOCKED, with what you established and what
+contract contradicts the code, the verification cannot pass on any
+route, or the dispatch arrived without the contract a fresh implementor
+requires — is reported as BLOCKED, with what you established and what
 contradicts.
 
 `.agents/RECORD.md` is never edited by you. If your work establishes a

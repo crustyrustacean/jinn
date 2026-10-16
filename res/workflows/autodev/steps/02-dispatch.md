@@ -6,7 +6,7 @@ Every issue flows through the planner before any implementor session
 exists for it:
 
 1. **Contract dispatch.** `tell_session` to the planner: the issue file's absolute path, your checkout path (where it saves the contract), the issue id. Mark the issue `status: contracting` while it runs.
-2. **Spawn.** When the planner reports READY, the issue is claimable: mark it `open`, then attach an implementor per the procedure below. Never attach one for an issue without a READY contract — a missing contract is a missing assignment, not a prompt to explore.
+2. **Spawn.** When the planner reports READY, the issue is claimable: mark it `open`, then attach an implementor per the procedure below. **Every freshly-attached implementor must have something the planner generated behind it** — the contract is what makes the run bounded. The two legal flows without a new contract round are: a REJECT sending work back to its existing implementor (the review is the plan), and a teardown conflict re-dispatch (same contract, same worker). Any *new* issue — reviewer finding, implementor proposal, defect — that gets its own implementor goes through the planner first, every time, however small: the planner is `preserve`, so a follow-up contract is cheap — it already holds the map. The implementor enforces this gate from its side: an implementor dispatched with no contract reports `BLOCKED no-contract`, and that BLOCKED is your signal to run the contract round you skipped.
 
 One exception: triage of a decomposable root dispatches the planner
 first too (01-triage.md) — the contract pass informs the split.
