@@ -100,7 +100,8 @@ pub fn match_ranges(row: &MarketRow, ui: &MarketUiState) -> Option<Vec<Range<usi
 ///
 /// `None` keys sort after values regardless of direction, so a flip
 /// never surfaces the unmatched rows first.
-fn compare_rows(a: &MarketRow, b: &MarketRow, ui: &MarketUiState) -> std::cmp::Ordering {
+#[must_use]
+pub fn compare_rows(a: &MarketRow, b: &MarketRow, ui: &MarketUiState) -> std::cmp::Ordering {
     match (sort_key(a, ui.sort_col), sort_key(b, ui.sort_col)) {
         (Some(av), Some(bv)) => {
             let ord = av.partial_cmp(&bv).unwrap_or(std::cmp::Ordering::Equal);

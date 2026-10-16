@@ -40,10 +40,12 @@
 //!
 //! # Detail on load
 //!
-//! Every models load ends by requesting the first row's endpoint
+//! Every models load ends by requesting the highlighted row's endpoint
 //! detail when the data cell carries none for it — the popup opens at
 //! selection 0 and nothing on the open path navigates, so the detail
-//! pane would otherwise stay blank until the user presses a key.
+//! pane would otherwise stay blank until the user presses a key. The
+//! highlighted row is the sorted projection's first under the UI
+//! defaults (cheapest projected ¢), not the build order's first.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -500,16 +502,24 @@ impl OpenRouterMarketActor {
     ///
     /// The popup opens at selection 0 and `open_market` publishes only
     /// `FetchModels`, so without this the detail pane stays blank until
-    /// the first navigation keypress. The `has_detail` check mirrors the
-    /// sync path's semantics (routes.rs): a detail already cached for
-    /// the highlighted row is never clobbered. `fetch_endpoints_for` is
-    /// the same core the debounced command runs — bypassing its
+    /// the first navigation keypress. The highlighted row is the
+    /// *sorted* projection's first row under the UI defaults — the open
+    /// state is `SortColumn::Proj` ascending over an empty filter, so
+    /// the cheapest-projected row is the one the pane shows, not the
+    /// catalog's arbitrary first entry. The `has_detail` check mirrors
+    /// the sync path's semantics (routes.rs): a detail already cached
+    /// for the highlighted row is never clobbered. `fetch_endpoints_for`
+    /// is the same core the debounced command runs — bypassing its
     /// sequence check is legitimate here, the actor just wrote the rows
     /// itself — and its cache-first order (memory → disk → network)
     /// makes warm-cached detail land instantly. No cell guard spans the
     /// await.
     async fn maybe_fetch_first_detail(&mut self, rows: &[jinn_model_market_msg::MarketRow]) {
-        let Some(first) = rows.first() else {
+        let open_defaults = MarketUiState::default();
+        let Some(highlighted) = rows
+            .iter()
+            .min_by(|a, b| crate::ui_state::compare_rows(a, b, &open_defaults))
+        else {
             return;
         };
         let has_detail = self
@@ -517,11 +527,11 @@ impl OpenRouterMarketActor {
             .read()
             .detail
             .as_ref()
-            .is_some_and(|d| d.model_id == first.id);
+            .is_some_and(|d| d.model_id == highlighted.id);
         if has_detail {
             return;
         }
-        self.fetch_endpoints_for(&first.id).await;
+        self.fetch_endpoints_for(&highlighted.id).await;
     }
 
     /// Writes a models load into the data cell. The rows arrive
