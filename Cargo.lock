@@ -4030,6 +4030,7 @@ dependencies = [
  "jinn-theme",
  "jinn-token-count-msg",
  "jinn-tools-msg",
+ "libc",
  "rand 0.9.5",
  "ratatui",
  "regex",

@@ -779,41 +779,25 @@ mod tests {
     #[cfg(unix)]
     #[rstest::rstest]
     #[tokio::test]
-    async fn execute_child_runs_in_new_session() {
-        // Given a bash tool call reporting its session id.
-        let call = ToolCall {
-            id: "call_sid".into(),
-            name: "bash".to_owned(),
-            arguments: serde_json::json!({
-                "command": "ps -o sid= -p $$"
-            })
-            .to_string(),
-        };
+    async fn spawned_shell_runs_in_new_session() {
+        // Given a shell spawned through the tool's own spawn path, kept
+        // alive long enough to inspect.
+        let child = spawn_shell_command("sleep 5", std::path::Path::new("."))
+            .expect("spawn should succeed");
 
-        // When executing the bash tool and reading the child's reported sid.
-        let child_sid: i64 = {
-            let result = execute(call, test_ctx()).await;
-            result
-                .content
-                .trim()
-                .parse()
-                .expect("ps should print a numeric sid")
-        };
+        // When reading the session ids of the test process and the shell
+        // via libc. `ps` cannot be used here: procps has `sid`, BSD ps has
+        // no working equivalent (`sess` reports 0), and `getsid(2)` needs
+        // neither.
+        let own_sid = unsafe { libc::getsid(0) };
+        let child_pid = child.id().expect("child is alive") as libc::pid_t;
+        let child_sid = unsafe { libc::getsid(child_pid) };
 
-        // Then the bash child runs in a different session from jinn.
-        let own_sid: i64 = {
-            let out = std::process::Command::new("ps")
-                .args(["-o", "sid=", "-p", &std::process::id().to_string()])
-                .output()
-                .expect("ps should run");
-            String::from_utf8_lossy(&out.stdout)
-                .trim()
-                .parse()
-                .expect("ps should print a numeric sid for the test process")
-        };
+        // Then the shell runs in a different session from the test process.
+        // (Dropping the guard kills the whole group — no stray sleeps.)
         assert_ne!(
             child_sid, own_sid,
-            "bash-tool child must not share jinn's session"
+            "bash-tool shell must not share jinn's session"
         );
     }
 

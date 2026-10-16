@@ -173,14 +173,16 @@ fn confirm_valid_dir_appends_project_optimistically_and_emits_update() {
     let result = confirm_project_add(&mut cx, &cell);
 
     // Then the project lands in the `[[project.entry]]` section, stored in
-    // the plain (non-verbatim) path form on every platform.
+    // the plain (non-verbatim) path form on every platform — the same
+    // `canonicalize_display` form the resolver stores, so on macOS the
+    // symlinked `$TMPDIR` (`/var` → `/private/var`) matches.
     let projects = config
         .get_list::<jinn_preferences_config::schemas::ProjectConfig>()
         .expect("section reads");
     assert_eq!(projects.len(), 1);
     assert_eq!(
         projects.first().expect("one project").path,
-        target.to_path_buf()
+        jinn_common::canonicalize_display(target).expect("tempdir canonicalizes")
     );
     // And no message is published — the write is the effect.
     assert!(result.messages.is_empty());
