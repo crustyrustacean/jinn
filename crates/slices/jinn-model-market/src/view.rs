@@ -221,9 +221,10 @@ const DETAIL_COLUMNS: &[DetailColumn] = &[
         cell: |row, _model, _ui, _theme| {
             Line::from(match row {
                 DetailRow::Default => format::EMPTY_CELL.to_owned(),
-                DetailRow::Endpoint(endpoint) => endpoint
-                    .throughput_p50
-                    .map_or_else(|| format::EMPTY_CELL.to_owned(), |t| format!("{t:.0} tok/s")),
+                DetailRow::Endpoint(endpoint) => endpoint.throughput_p50.map_or_else(
+                    || format::EMPTY_CELL.to_owned(),
+                    |t| format!("{t:.0} tok/s"),
+                ),
             })
         },
     },
