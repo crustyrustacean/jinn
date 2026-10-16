@@ -158,6 +158,7 @@ tokio = { workspace = true, features = ["full"] }
 tempfile = { workspace = true }
 jinn-preferences-config = { workspace = true }
 ctor = "0.8"
+zip = { workspace = true }
 rustls = { workspace = true }
 # Slice-composition integration tests (tests/slices.rs) drive the real
 # slices; integration targets are not compiled by `just check`, so the

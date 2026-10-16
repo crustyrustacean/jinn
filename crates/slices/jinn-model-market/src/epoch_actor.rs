@@ -48,8 +48,9 @@ pub struct EpochMarketActorDeps {
     pub deps: ActorDeps,
     /// The market data cell — this actor is its epoch-fields writer.
     pub data_cell: TypedCell<MarketDataState>,
-    /// The resolved epoch cache dir
-    /// ([`jinn_common::app_paths::AppPaths::epoch_cache_dir`]). Tests
+    /// The resolved epoch cache directory
+    /// ([`jinn_common::app_paths::AppPaths::epoch_cache_dir`]), passed
+    /// directly so the actor cannot re-derive a divergent path. Tests
     /// point it at a tempdir under the fixture root.
     pub cache_dir: std::path::PathBuf,
     /// The HTTP client for the zip download (tests point it at a mock).
@@ -116,11 +117,10 @@ impl EpochMarketActor {
                 move || {
                     let actor_deps = actor_deps.clone();
                     Box::pin(async move {
-                        let cache_dir = actor_deps.cache_dir.clone();
                         Ok(Self {
                             deps: actor_deps.deps,
                             data_cell: actor_deps.data_cell,
-                            cache_dir,
+                            cache_dir: actor_deps.cache_dir,
                             client: actor_deps.client,
                             zip_url: actor_deps.zip_url,
                             now_ms: actor_deps.now_ms,
