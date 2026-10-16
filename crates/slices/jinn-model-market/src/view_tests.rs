@@ -12,6 +12,7 @@ use jinn_slices::Slices;
 use jinn_slices::cell::TypedCell;
 use ratatui::buffer::Buffer;
 use ratatui::buffer::Cell;
+use ratatui::widgets::Paragraph;
 
 /// A registered pair of cells over a fresh registry, exactly as the
 /// composition catalog seeds them — the render pass resolves readers
@@ -176,10 +177,11 @@ fn model_column_dims_the_variant_suffix() {
     // name does not: the card's "dimmed :variant" is what the table
     // shows. The suffix cell is found by scanning the row's buffer
     // cells for the variant's colon — string indexes and buffer
-    // positions need not agree for that.
+    // positions need not agree for that. Data rows start below the
+    // filter line, its separator, and the header.
     let theme = jinn_theme::default_theme();
     let name = "z/mod:free";
-    let y = (popup.y + 2..popup.y + popup.height)
+    let y = (popup.y + 4..popup.y + popup.height)
         .find(|y| row_text(&buffer, *y, popup.width).contains(name))
         .expect("the variant row renders");
     let colon_x = (0..popup.width)
@@ -214,9 +216,10 @@ fn filter_match_on_a_suffix_glyph_highlights_over_the_dim() {
 
     // Then the matched suffix glyphs carry the shared highlight
     // background — the dim yields to the filter's highlight, as it
-    // does for the base name.
+    // does for the base name. Data rows start below the filter line,
+    // its separator, and the header.
     let theme = jinn_theme::default_theme();
-    let y = (popup.y + 2..popup.y + popup.height)
+    let y = (popup.y + 4..popup.y + popup.height)
         .find(|y| row_text(&buffer, *y, popup.width).contains("z/mod:free"))
         .expect("the filtered row renders");
     let highlighted: String = (0..popup.width)
@@ -228,4 +231,108 @@ fn filter_match_on_a_suffix_glyph_highlights_over_the_dim() {
         .filter_map(|x| buffer.cell((x, y)).map(Cell::symbol))
         .collect();
     assert_eq!(highlighted, "free", "the suffix match highlights");
+}
+
+#[rstest::rstest]
+fn the_popup_paints_an_opaque_surface_over_what_is_behind_it() {
+    // Given a frame with filler text covering the whole terminal.
+    let harness = Harness::new();
+    harness.data.update(|d| {
+        d.rows = vec![plain_row()];
+    });
+    let popup = ratatui::layout::Rect::new(5, 2, 80, 10);
+
+    // When the frame draws the filler first and the popup over it.
+    let theme = jinn_theme::default_theme();
+    let mut terminal =
+        ratatui::Terminal::new(ratatui::backend::TestBackend::new(90, 100)).expect("terminal");
+    terminal
+        .draw(|frame| {
+            let filler = ratatui::text::Line::from("x".repeat(90 * 100));
+            for y in 0..100u16 {
+                frame.render_widget(
+                    Paragraph::new(filler.clone()),
+                    ratatui::layout::Rect::new(0, y, 90, 1),
+                );
+            }
+            let facts = jinn_slices::RenderFacts::new(theme.clone(), &harness.slices);
+            crate::view::render_market_popup(frame, popup, &facts);
+        })
+        .expect("draw");
+    let buffer = terminal.backend().buffer().clone();
+
+    // Then no filler glyph survives anywhere inside the popup rect —
+    // the surface is opaque.
+    for y in popup.y..popup.y + popup.height {
+        let bleeds = (popup.x..popup.x + popup.width)
+            .filter_map(|x| buffer.cell((x, y)).map(Cell::symbol))
+            .any(|sym| sym.contains('x'));
+        assert!(!bleeds, "filler bleeds through at y={y}");
+    }
+}
+
+#[rstest::rstest]
+fn focused_filter_renders_its_own_line_and_the_title_stays_plain() {
+    // Given a popup with the filter focused and "son" typed.
+    let harness = Harness::new();
+    harness.ui.update(|s| {
+        s.filter_focused = true;
+        s.filter = "son".to_owned();
+    });
+
+    // When the popup renders.
+    let popup = ratatui::layout::Rect::new(5, 2, 80, 10);
+    let buffer = harness.render(popup, 90, 100);
+
+    // Then the filter line sits at the inner area's first row with the
+    // text and the cursor block, the separator sits under it, and the
+    // title row is the popup's plain name — the filter never renders
+    // into the titlebar.
+    let title = row_text(&buffer, popup.y, popup.width);
+    assert!(
+        title.contains(" Model Market "),
+        "the title stays plain, got: {title:?}"
+    );
+    assert!(
+        !title.contains("filter:"),
+        "the filter never renders into the titlebar, got: {title:?}"
+    );
+    let filter_line = row_text(&buffer, popup.y + 1, popup.width);
+    assert!(
+        filter_line.contains(" filter: son") && filter_line.contains('\u{2588}'),
+        "the focused filter line shows the text and cursor, got: {filter_line:?}"
+    );
+    let separator: String = (popup.x + 1..popup.x + popup.width - 1)
+        .filter_map(|x| buffer.cell((x, popup.y + 2)).map(Cell::symbol))
+        .collect();
+    let trimmed = separator.trim();
+    assert!(
+        !trimmed.is_empty() && trimmed.chars().all(|c| c == '\u{2500}'),
+        "a separator of dashes sits under the filter line, got: {separator:?}"
+    );
+}
+
+#[rstest::rstest]
+fn unfocused_filter_shows_its_text_without_the_cursor() {
+    // Given a popup holding filter text with the table focused.
+    let harness = Harness::new();
+    harness.ui.update(|s| {
+        s.filter = "son".to_owned();
+    });
+
+    // When the popup renders.
+    let popup = ratatui::layout::Rect::new(5, 2, 80, 10);
+    let buffer = harness.render(popup, 90, 100);
+
+    // Then the filter line still shows the text — the filter stays
+    // applied — but no cursor block, and the title stays plain.
+    let filter_line = row_text(&buffer, popup.y + 1, popup.width);
+    assert!(
+        filter_line.contains(" filter: son"),
+        "the applied filter text renders, got: {filter_line:?}"
+    );
+    assert!(
+        !filter_line.contains('\u{2588}'),
+        "an unfocused filter shows no cursor, got: {filter_line:?}"
+    );
 }

@@ -394,48 +394,60 @@ fn j_and_k_move_the_highlight() {
 }
 
 #[rstest::rstest]
-fn h_l_s_m_while_the_filter_is_focused_type_instead_of_firing() {
-    // Given an open popup with the filter focused, PROJ ascending,
-    // first mix preset.
+fn h_l_s_while_the_filter_is_focused_type_instead_of_firing() {
+    // Given an open popup with the filter focused, PROJ ascending.
     let mut wired = Wired::new();
     wired.press("open-model-market", "model market");
     wired.ui().update(|s| s.filter_focused = true);
 
-    // When "hlsm" is typed.
-    for ch in ['h', 'l', 's', 'm'] {
+    // When "hls" is typed.
+    for ch in ['h', 'l', 's'] {
         wired.handle(edit_intent("insert-char", ch));
     }
 
     // Then every letter landed in the filter text.
-    assert_eq!(wired.ui().read().filter, "hlsm");
-    // And no sort/mix action fired: still PROJ, ascending, first
-    // preset.
+    assert_eq!(wired.ui().read().filter, "hls");
+    // And no sort action fired: still PROJ, ascending.
     assert_eq!(wired.ui().read().sort_col, SortColumn::Proj);
     assert!(!wired.ui().read().sort_desc);
-    assert_eq!(wired.ui().read().mix_index, 0);
     // And the filter is still focused.
     assert!(wired.ui().read().filter_focused);
 }
 
 #[rstest::rstest]
-fn h_l_s_m_fire_when_the_table_is_focused() {
+fn h_l_s_fire_when_the_table_is_focused() {
     // Given an open popup, table focused.
     let mut wired = Wired::new();
     wired.press("open-model-market", "model market");
 
-    // When `l`, `h`, `s`, and `m` each arrive.
+    // When `l`, `h`, and `s` each arrive.
     wired.handle(edit_intent("insert-char", 'l'));
     wired.handle(edit_intent("insert-char", 'h'));
     wired.handle(edit_intent("insert-char", 's'));
-    wired.handle(edit_intent("insert-char", 'm'));
 
     // Then the sort is still PROJ (l then h round-trips) but the
-    // direction flipped and the mix advanced.
+    // direction flipped.
     assert_eq!(wired.ui().read().sort_col, SortColumn::Proj);
     assert!(wired.ui().read().sort_desc);
-    assert_eq!(wired.ui().read().mix_index, 1);
     // And none of the letters typed into the filter.
     assert!(wired.ui().read().filter.is_empty());
+}
+
+#[rstest::rstest]
+fn m_does_nothing_when_the_table_is_focused() {
+    // Given an open popup, table focused.
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "model market");
+    let before = wired.ui().read().clone();
+
+    // When `m` arrives.
+    wired.handle(edit_intent("insert-char", 'm'));
+
+    // Then nothing changed: the key has no action in the popup.
+    assert_eq!(wired.ui().read().filter, before.filter);
+    assert_eq!(wired.ui().read().selection, before.selection);
+    assert_eq!(wired.ui().read().sort_col, before.sort_col);
+    assert!(!wired.ui().read().filter_focused);
 }
 
 #[rstest::rstest]
@@ -465,20 +477,18 @@ fn open_resets_ui_state_and_pushes_the_scope() {
         s.filter_focused = true;
         s.sort_col = SortColumn::Eci;
         s.sort_desc = true;
-        s.mix_index = 2;
     });
 
     // When the opener fires.
     let result = wired.press("open-model-market", "model market");
 
     // Then the UI cell is back to the opener defaults: table focused,
-    // filter empty, PROJ ascending, first preset.
+    // filter empty, PROJ ascending.
     let ui = wired.ui();
     assert!(ui.read().filter.is_empty());
     assert!(!ui.read().filter_focused);
     assert_eq!(ui.read().sort_col, SortColumn::Proj);
     assert!(!ui.read().sort_desc);
-    assert_eq!(ui.read().mix_index, 0);
     // And the handler applied the push (the signal is consumed by
     // `apply_scope_signal`, so the stack is the observable) and the
     // fetch was requested.
@@ -503,17 +513,26 @@ fn esc_in_table_mode_pops_the_scope() {
 }
 
 #[rstest::rstest]
-fn esc_in_filter_mode_returns_focus_to_the_table() {
-    // Given an open popup with the filter focused.
+fn esc_in_filter_mode_clears_the_filter_and_returns_focus_to_the_table() {
+    // Given an open popup with the filter focused and text typed.
     let mut wired = Wired::new();
     wired.press("open-model-market", "model market");
-    wired.ui().update(|s| s.filter_focused = true);
+    seeded(&mut wired);
+    wired.ui().update(|s| {
+        s.filter_focused = true;
+        s.filter = "son".to_owned();
+        s.selection = 1;
+    });
 
     // When ESC fires.
     wired.press("close-model-market", "close");
 
-    // Then the filter hands focus back and the popup stays open.
-    assert!(!wired.ui().read().filter_focused);
+    // Then the filter emptied, the selection reset, and focus handed
+    // back — the popup stays open.
+    let ui = wired.ui();
+    assert!(ui.read().filter.is_empty());
+    assert!(!ui.read().filter_focused);
+    assert_eq!(ui.read().selection, 0);
     assert_eq!(
         wired.state.frontend.scope(),
         jinn_slices::FocusScope::Dynamic(market_ui_scope())
@@ -710,7 +729,33 @@ fn enter_without_a_highlighted_row_is_a_no_op() {
     );
 }
 
-// ── Sort / mix / navigation ─────────────────────────────────────────────
+#[rstest::rstest]
+fn enter_accepts_a_focused_filter_and_returns_focus_to_the_table() {
+    // Given an open popup with the filter focused and "son" typed.
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "model market");
+    seeded(&mut wired);
+    wired.ui().update(|s| {
+        s.filter_focused = true;
+        s.filter = "son".to_owned();
+    });
+
+    // When ENTER fires.
+    let result = wired.press("confirm-model-market", "switch model");
+
+    // Then the filter stays applied, focus returns to the table, and
+    // the popup stays open — no switch published.
+    let ui = wired.ui();
+    assert_eq!(ui.read().filter, "son");
+    assert!(!ui.read().filter_focused);
+    assert!(result.messages.is_empty());
+    assert_eq!(
+        wired.state.frontend.scope(),
+        jinn_slices::FocusScope::Dynamic(market_ui_scope())
+    );
+}
+
+// ── Sort / navigation ────────────────────────────────────────────────
 
 #[rstest::rstest]
 fn sort_column_cycles_l_through_all_six_columns() {
@@ -745,25 +790,6 @@ fn sort_direction_toggles_s() {
     // And again restores it.
     wired.handle(edit_intent("insert-char", 's'));
     assert!(!wired.ui().read().sort_desc);
-}
-
-#[rstest::rstest]
-fn mix_cycles_m_through_three_presets() {
-    // Given an open popup (first preset).
-    let mut wired = Wired::new();
-    wired.press("open-model-market", "model market");
-
-    // When `m` fires twice (a hook case).
-    wired.handle(edit_intent("insert-char", 'm'));
-    let second = wired.ui().read().active_mix();
-    wired.handle(edit_intent("insert-char", 'm'));
-
-    // Then the presets advanced in order.
-    assert_eq!(second, jinn_model_market_msg::MIX_PRESETS[1]);
-    assert_eq!(
-        wired.ui().read().active_mix(),
-        jinn_model_market_msg::MIX_PRESETS[2]
-    );
 }
 
 #[rstest::rstest]
@@ -1000,21 +1026,27 @@ fn table_headers_align_over_their_data_columns() {
         jinn_model_market::view::market_overlay_rect(&ratatui::layout::Rect::new(0, 0, 120, 40))
             .expect("frame fits the popup");
 
-    // Then the header row carries every column name in order.
-    let header = row_text(&buffer, popup.y + 1, popup.width);
+    // Then the header row — two rows below the popup's top border, the
+    // filter line and its separator above it — carries every column
+    // name in order, and PROJ is dollar-headed with no cent sign.
+    let header = row_text(&buffer, popup.y + 3, popup.width);
     for name in ["PROJ", "IN/M", "OUT/M", "CACHE/M", "ECI", "MODEL", "FLAGS"] {
         assert!(
             header.contains(name),
             "header row must name {name}, got: {header:?}"
         );
     }
-    // And the first data row shows each of the first listing's values
-    // on the same line: PROJ cents, $/M prices, the model, and the FLAGS
-    // glyph for the pricing override.
-    let data_row = row_text(&buffer, popup.y + 2, popup.width);
     assert!(
-        data_row.contains("\u{a2}"),
-        "PROJ cell renders cents, got: {data_row:?}"
+        !header.contains('\u{a2}'),
+        "PROJ is dollar-headed, got: {header:?}"
+    );
+    // And the first data row shows each of the first listing's values
+    // on the same line: PROJ dollars, $/M prices, the model, and the
+    // FLAGS glyph for the pricing override.
+    let data_row = row_text(&buffer, popup.y + 4, popup.width);
+    assert!(
+        data_row.contains('$'),
+        "PROJ cell renders dollars, got: {data_row:?}"
     );
     assert!(
         data_row.contains("a/small"),
@@ -1065,7 +1097,7 @@ fn footer_renders_the_advertised_keys() {
 }
 
 #[rstest::rstest]
-fn focused_filter_shows_a_visible_filter_bar() {
+fn focused_filter_shows_a_visible_filter_line() {
     // Given an open popup with the filter focused and text typed.
     let mut wired = Wired::new();
     wired.press("open-model-market", "model market");
@@ -1080,37 +1112,53 @@ fn focused_filter_shows_a_visible_filter_bar() {
     let popup = jinn_model_market::view::market_overlay_rect(&area).expect("frame fits the popup");
     let buffer = render_to_buffer(&wired, 120, 40);
     let title = row_text(&buffer, popup.y, popup.width);
+    let filter_line = row_text(&buffer, popup.y + 1, popup.width);
 
-    // Then the block title is the filter bar: the filter text and a
-    // cursor block.
+    // Then the filter lives on its own line — text plus cursor block —
+    // and the title is always the popup's plain name.
     assert!(
-        title.contains("filter: son"),
-        "focused title shows the filter, got: {title:?}"
+        filter_line.contains("filter: son"),
+        "the focused filter line shows the filter, got: {filter_line:?}"
     );
     assert!(
-        title.contains('\u{2588}'),
-        "focused title shows a cursor, got: {title:?}"
+        filter_line.contains('\u{2588}'),
+        "the focused filter line shows a cursor, got: {filter_line:?}"
     );
-    // And an unfocused popup shows the plain title instead.
-    wired.ui().update(|s| s.filter_focused = false);
-    let buffer = render_to_buffer(&wired, 120, 40);
-    let title = row_text(&buffer, popup.y, popup.width);
     assert!(
-        title.contains("Model Market"),
-        "unfocused title is plain, got: {title:?}"
+        title.contains(" Model Market "),
+        "the title stays plain, got: {title:?}"
     );
     assert!(
         !title.contains("filter:"),
-        "unfocused title hides the bar, got: {title:?}"
+        "the filter never renders into the titlebar, got: {title:?}"
+    );
+    // And a separator row of dashes sits under the filter line (the
+    // row text includes the popup's side borders, so scan the inner
+    // cell range).
+    let separator = row_text(&buffer, popup.y + 2, popup.width);
+    let inner: String = (popup.x + 1..popup.x + popup.width - 1)
+        .filter_map(|x| buffer.cell((x, popup.y + 2)).map(Cell::symbol))
+        .collect();
+    let trimmed = inner.trim();
+    assert!(
+        !trimmed.is_empty() && trimmed.chars().all(|c| c == '\u{2500}'),
+        "a separator sits under the filter line, got: {separator:?}"
     );
 }
 
 #[rstest::rstest]
-fn status_line_shows_the_mix_and_its_m_hint() {
-    // Given an open popup over a seeded table.
+fn status_line_shows_the_stamps_but_no_mix_no_epoch() {
+    // Given an open popup over a seeded table with stamps two minutes
+    // old.
     let mut wired = Wired::new();
     wired.press("open-model-market", "model market");
     seeded(&mut wired);
+    wired.data().update(|d| {
+        let stamp = jiff::Timestamp::now() - jiff::Span::new().minutes(2);
+        d.models_fetched_at = Some(stamp);
+        d.epoch_fetched_at = Some(stamp);
+        d.endpoints_fetched_at = Some(stamp);
+    });
 
     // When the popup renders.
     let area = ratatui::layout::Rect::new(0, 0, 120, 40);
@@ -1118,22 +1166,28 @@ fn status_line_shows_the_mix_and_its_m_hint() {
     let buffer = render_to_buffer(&wired, 120, 40);
     let status = row_text(&buffer, popup.y + popup.height - 3, popup.width);
 
-    // Then the status line carries the mix summary and the adjust hint.
+    // Then the status line carries the models and endpoints stamps.
     assert!(
-        status.contains("mix: 80k in"),
-        "status shows the mix, got: {status:?}"
+        status.contains("models updated 2m ago") && status.contains("endpoints 2m ago"),
+        "status shows the kept stamps, got: {status:?}"
+    );
+    // And none of the retired indicators: no mix, no m hint, no epoch
+    // source, no epoch freshness stamp.
+    assert!(
+        !status.contains("mix:"),
+        "status shows no mix, got: {status:?}"
     );
     assert!(
-        status.contains("[m] adjust"),
-        "status shows the m hint, got: {status:?}"
+        !status.contains("[m] adjust"),
+        "status shows no m hint, got: {status:?}"
     );
-    // And cycling the mix changes what the next frame shows.
-    wired.handle(edit_intent("insert-char", 'm'));
-    let buffer = render_to_buffer(&wired, 120, 40);
-    let status = row_text(&buffer, popup.y + popup.height - 3, popup.width);
     assert!(
-        status.contains("mix: 150k in"),
-        "status reflects the cycled mix, got: {status:?}"
+        !status.contains("epoch: "),
+        "status shows no epoch source, got: {status:?}"
+    );
+    assert!(
+        !status.contains("epoch 2m ago"),
+        "status shows no epoch freshness stamp, got: {status:?}"
     );
 }
 
@@ -1151,7 +1205,7 @@ fn filter_matches_are_highlighted_in_the_model_column() {
     let buffer = render_to_buffer(&wired, 120, 40);
 
     // Then only the matching row renders.
-    let popup_rows: Vec<String> = (popup.y + 2..popup.y + 5)
+    let popup_rows: Vec<String> = (popup.y + 4..popup.y + 7)
         .map(|y| row_text(&buffer, y, popup.width))
         .collect();
     assert!(
@@ -1166,7 +1220,7 @@ fn filter_matches_are_highlighted_in_the_model_column() {
     // scanning the row's cells, at least one cell in the MODEL column
     // carries the theme's highlight bg (the filter's match spans).
     let theme = jinn_theme::default_theme();
-    let y = (popup.y + 2..popup.y + popup.height - 3)
+    let y = (popup.y + 4..popup.y + popup.height - 3)
         .find(|y| row_text(&buffer, *y, popup.width).contains("a/small"))
         .expect("the matching row renders");
     let highlighted = (popup.x..popup.x + popup.width)
@@ -1190,4 +1244,205 @@ fn filter_matches_are_highlighted_in_the_model_column() {
         .filter_map(|x| buffer.cell((x, y)).map(Cell::symbol))
         .collect();
     assert_eq!(glyphs, "small");
+}
+
+#[rstest::rstest]
+fn footer_advertises_s_sort_and_no_m() {
+    // Given an open popup.
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "model market");
+
+    // When the popup renders (a wide frame — the footer is a long line
+    // and `s sort` sits past where 120 columns truncate it).
+    let area = ratatui::layout::Rect::new(0, 0, 160, 50);
+    let popup = jinn_model_market::view::market_overlay_rect(&area).expect("frame fits the popup");
+    let buffer = render_to_buffer(&wired, 160, 50);
+    let footer = row_text(&buffer, popup.y + popup.height - 2, popup.width);
+
+    // Then the direction entry reads `s sort`, not `s dir`, and no
+    // `m` key is advertised anywhere in the footer.
+    assert!(
+        footer.contains("s sort"),
+        "the direction entry reads `s sort`, got: {footer:?}"
+    );
+    assert!(
+        !footer.contains("s dir"),
+        "the old `s dir` is gone, got: {footer:?}"
+    );
+    assert!(
+        !footer.contains(" m "),
+        "no m key is advertised, got: {footer:?}"
+    );
+    assert!(
+        !footer.contains("mix"),
+        "no mix label is advertised, got: {footer:?}"
+    );
+}
+
+#[rstest::rstest]
+fn sorted_header_cell_carries_the_focus_pairing() {
+    // Given an open popup with the default sort (PROJ ascending).
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "model market");
+    seeded(&mut wired);
+
+    // When the popup renders.
+    let area = ratatui::layout::Rect::new(0, 0, 120, 40);
+    let popup = jinn_model_market::view::market_overlay_rect(&area).expect("frame fits the popup");
+    let buffer = render_to_buffer(&wired, 120, 40);
+    let header_y = popup.y + 3;
+    let theme = jinn_theme::default_theme();
+
+    // Then the PROJ header cells — name and arrow — wear the focus
+    // pairing: fg gutter_bg on bg focus_accent.
+    let proj_x = (popup.x..popup.x + popup.width)
+        .find(|x| {
+            buffer
+                .cell((*x, header_y))
+                .is_some_and(|c| c.symbol() == "P")
+        })
+        .expect("the PROJ header renders");
+    let proj_cell = buffer.cell((proj_x, header_y)).expect("cell exists");
+    assert_eq!(proj_cell.style().fg, Some(theme.gutter_bg));
+    assert_eq!(proj_cell.style().bg, Some(theme.focus_accent));
+    // And an unsorted header cell carries no background at all.
+    let model_x = (proj_x..popup.x + popup.width)
+        .find(|x| {
+            buffer
+                .cell((*x, header_y))
+                .is_some_and(|c| c.symbol() == "M")
+        })
+        .expect("the MODEL header renders");
+    let model_cell = buffer.cell((model_x, header_y)).expect("cell exists");
+    assert_ne!(
+        model_cell.style().bg,
+        Some(theme.focus_accent),
+        "an unsorted header carries no focus background"
+    );
+
+    // And after `l` the highlight moves to IN/M: the PROJ cell is
+    // unstyled again and the IN/M cell wears the pairing.
+    wired.handle(edit_intent("insert-char", 'l'));
+    let buffer = render_to_buffer(&wired, 120, 40);
+    let proj_cell = buffer.cell((proj_x, header_y)).expect("cell exists");
+    assert_ne!(
+        proj_cell.style().bg,
+        Some(theme.focus_accent),
+        "PROJ loses the pairing after `l`"
+    );
+    let in_x = (proj_x..popup.x + popup.width)
+        .find(|x| {
+            buffer
+                .cell((*x, header_y))
+                .is_some_and(|c| c.symbol() == "I")
+        })
+        .expect("the IN/M header renders");
+    let in_cell = buffer.cell((in_x, header_y)).expect("cell exists");
+    assert_eq!(in_cell.style().fg, Some(theme.gutter_bg));
+    assert_eq!(in_cell.style().bg, Some(theme.focus_accent));
+}
+
+#[rstest::rstest]
+fn footer_keys_wear_the_picker_pairing() {
+    // Given an open popup.
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "model market");
+
+    // When the popup renders.
+    let area = ratatui::layout::Rect::new(0, 0, 120, 40);
+    let popup = jinn_model_market::view::market_overlay_rect(&area).expect("frame fits the popup");
+    let buffer = render_to_buffer(&wired, 120, 40);
+    let footer_y = popup.y + popup.height - 2;
+    let theme = jinn_theme::default_theme();
+
+    // Then the `<enter>` key notation cells wear accent_action.
+    let enter_x = (popup.x..popup.x + popup.width)
+        .find(|x| {
+            buffer
+                .cell((*x, footer_y))
+                .is_some_and(|c| c.symbol() == "<")
+        })
+        .expect("the footer's first key renders");
+    let key_cell = buffer.cell((enter_x, footer_y)).expect("cell exists");
+    assert_eq!(
+        key_cell.style().fg,
+        Some(theme.accent_action),
+        "key notations render in accent_action"
+    );
+    // And a description cell — the label after the key — wears
+    // muted_text.
+    let desc_x = (enter_x..popup.x + popup.width)
+        .find(|x| {
+            buffer
+                .cell((*x, footer_y))
+                .is_some_and(|c| c.symbol() == "s")
+        })
+        .expect("the footer's first label renders");
+    let desc_cell = buffer.cell((desc_x, footer_y)).expect("cell exists");
+    assert_eq!(
+        desc_cell.style().fg,
+        Some(theme.muted_text),
+        "descriptions render in muted_text"
+    );
+}
+
+#[rstest::rstest]
+fn highlight_on_a_long_list_never_parks_under_the_status_rows() {
+    // Given a 50-row table with the selection walked deep past the
+    // viewport — the auto-scroll territory the full-area rect used to
+    // window wrongly.
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "model market");
+    wired.data().update(|d| {
+        d.rows = (0..50)
+            .map(|i| {
+                row(
+                    &format!("openrouter/m/model{i}"),
+                    "m",
+                    &format!("model{i}"),
+                    1e-6 + f64::from(i) * 1e-8,
+                    2e-6,
+                    Some(1e-7),
+                )
+            })
+            .collect();
+    });
+    for _ in 0..30 {
+        wired.handle(edit_intent("insert-char", 'j'));
+    }
+    assert_eq!(wired.ui().read().selection, 30, "the walk landed deep");
+
+    // When the popup renders.
+    let area = ratatui::layout::Rect::new(0, 0, 120, 40);
+    let popup = jinn_model_market::view::market_overlay_rect(&area).expect("frame fits the popup");
+    let buffer = render_to_buffer(&wired, 120, 40);
+    let theme = jinn_theme::default_theme();
+    let status_y = popup.y + popup.height - 3;
+
+    // Then the highlighted row renders strictly above the status line,
+    // and neither bottom row carries the selection background.
+    let selected_y = (popup.y..popup.y + popup.height)
+        .find(|y| {
+            (popup.x..popup.x + popup.width).any(|x| {
+                buffer
+                    .cell((x, *y))
+                    .is_some_and(|c| c.bg == theme.picker_selected_bg)
+            })
+        })
+        .expect("the selection renders highlighted");
+    assert!(
+        selected_y < status_y,
+        "the highlight ({selected_y}) must sit above the status line ({status_y})"
+    );
+    for y in status_y..popup.y + popup.height {
+        let selected = (popup.x..popup.x + popup.width).any(|x| {
+            buffer
+                .cell((x, y))
+                .is_some_and(|c| c.bg == theme.picker_selected_bg)
+        });
+        assert!(
+            !selected,
+            "the status/footer row {y} must never carry the selection bg"
+        );
+    }
 }

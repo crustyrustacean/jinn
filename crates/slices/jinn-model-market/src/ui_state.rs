@@ -10,6 +10,7 @@ use fuzzy_matcher::FuzzyMatcher;
 use jinn_model_market_msg::MarketDataState;
 use jinn_model_market_msg::MarketRow;
 use jinn_model_market_msg::MarketUiState;
+use jinn_model_market_msg::PROJECTION_MIX;
 use jinn_model_market_msg::SortColumn;
 use std::ops::Range;
 
@@ -29,15 +30,15 @@ pub fn projected_cents(row: &MarketRow, mix: (u32, f64, u32)) -> f64 {
     (input + output) * 100.0
 }
 
-/// The sort key for one row under the given mix.
+/// The sort key for one row.
 ///
 /// `None` sorts after every value in either direction — an unmatched ECI
 /// or an unpriced cache must not jump to the top when the user flips to
 /// descending.
 #[must_use]
-pub fn sort_key(row: &MarketRow, col: SortColumn, mix: (u32, f64, u32)) -> Option<f64> {
+pub fn sort_key(row: &MarketRow, col: SortColumn) -> Option<f64> {
     match col {
-        SortColumn::Proj => Some(projected_cents(row, mix)),
+        SortColumn::Proj => Some(projected_cents(row, PROJECTION_MIX)),
         SortColumn::In => Some(row.prompt_price),
         SortColumn::Out => Some(row.completion_price),
         SortColumn::Cache => row.cache_read_price,
@@ -57,7 +58,7 @@ pub fn row_name(row: &MarketRow) -> String {
 }
 
 /// The visible projection: rows filtered by the fuzzy filter, then
-/// stably sorted by the selected column under the active mix.
+/// stably sorted by the selected column.
 ///
 /// The filter runs over `author/slug[:variant]` with
 /// `SkimMatcherV2`; an empty filter keeps everything. The sort is
@@ -65,7 +66,6 @@ pub fn row_name(row: &MarketRow) -> String {
 #[must_use]
 pub fn visible_rows(data: &MarketDataState, ui: &MarketUiState) -> Vec<MarketRow> {
     let matcher = fuzzy_matcher::skim::SkimMatcherV2::default();
-    let mix = ui.active_mix();
     let mut rows: Vec<MarketRow> = data
         .rows
         .iter()
@@ -74,7 +74,7 @@ pub fn visible_rows(data: &MarketDataState, ui: &MarketUiState) -> Vec<MarketRow
         })
         .cloned()
         .collect();
-    rows.sort_by(|a, b| compare_rows(a, b, ui, mix));
+    rows.sort_by(|a, b| compare_rows(a, b, ui));
     rows
 }
 
@@ -100,13 +100,8 @@ pub fn match_ranges(row: &MarketRow, ui: &MarketUiState) -> Option<Vec<Range<usi
 ///
 /// `None` keys sort after values regardless of direction, so a flip
 /// never surfaces the unmatched rows first.
-fn compare_rows(
-    a: &MarketRow,
-    b: &MarketRow,
-    ui: &MarketUiState,
-    mix: (u32, f64, u32),
-) -> std::cmp::Ordering {
-    match (sort_key(a, ui.sort_col, mix), sort_key(b, ui.sort_col, mix)) {
+fn compare_rows(a: &MarketRow, b: &MarketRow, ui: &MarketUiState) -> std::cmp::Ordering {
+    match (sort_key(a, ui.sort_col), sort_key(b, ui.sort_col)) {
         (Some(av), Some(bv)) => {
             let ord = av.partial_cmp(&bv).unwrap_or(std::cmp::Ordering::Equal);
             if ui.sort_desc { ord.reverse() } else { ord }

@@ -50,6 +50,8 @@ impl EciIndex {
 }
 
 /// Where the epoch data currently in the data cell came from.
+///
+/// Actors record the provenance on every load; nothing renders it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EpochSource {
     /// The CSVs compiled into the slice (`include_bytes!`): first run
@@ -61,16 +63,4 @@ pub enum EpochSource {
     Download,
     /// Nothing loaded — the ECI column is `—` everywhere.
     None,
-}
-
-impl EpochSource {
-    /// The status line's short form.
-    #[must_use]
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Seed => "seed",
-            Self::Download => "downloaded",
-            Self::None => "none",
-        }
-    }
 }

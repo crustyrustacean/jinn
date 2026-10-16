@@ -19,7 +19,6 @@ fn ui_state_reset_restores_the_opener_defaults() {
         filter_focused: true,
         sort_col: SortColumn::Eci,
         sort_desc: true,
-        mix_index: 2,
         help_visible: true,
         results_viewport: 42,
         fetch_seq: 9,
@@ -29,13 +28,12 @@ fn ui_state_reset_restores_the_opener_defaults() {
     state.reset();
 
     // Then every display field is back to the defaults the contract
-    // names: table focused, filter empty, PROJ ascending, first preset.
+    // names: table focused, filter empty, PROJ ascending.
     assert_eq!(state.selection, 0);
     assert!(state.filter.is_empty());
     assert!(!state.filter_focused);
     assert_eq!(state.sort_col, SortColumn::Proj);
     assert!(!state.sort_desc);
-    assert_eq!(state.mix_index, 0);
     assert!(!state.help_visible);
     // And the measurement fields reset too: the viewport falls back to
     // its constant until the first frame re-measures it, and the fetch
@@ -45,34 +43,17 @@ fn ui_state_reset_restores_the_opener_defaults() {
 }
 
 #[rstest::rstest]
-fn mix_cycles_through_three_presets() {
-    // Given default UI state (first preset).
-    let mut state = MarketUiState::default();
+fn projection_mix_is_the_fixed_contract_mix() {
+    // Given the projection constant the slice's contract names.
 
-    // When cycling twice.
-    state.cycle_mix();
-    let second = state.active_mix();
-    state.cycle_mix();
+    // When read.
+    let (input, hit, output) = PROJECTION_MIX;
 
-    // Then the presets advanced in order.
-    assert_eq!(second, MIX_PRESETS[1]);
-    assert_eq!(state.active_mix(), MIX_PRESETS[2]);
-}
-
-#[rstest::rstest]
-fn mix_cycles_wrap_to_the_first_preset() {
-    // Given UI state on the last preset.
-    let mut state = MarketUiState {
-        mix_index: MIX_PRESETS.len() - 1,
-        ..MarketUiState::default()
-    };
-
-    // When cycling once more.
-    state.cycle_mix();
-
-    // Then the first preset is active again.
-    assert_eq!(state.mix_index, 0);
-    assert_eq!(state.active_mix(), MIX_PRESETS[0]);
+    // Then it is the locked decision: 10M input tokens, 98% cache-hit
+    // fraction, 50k output tokens.
+    assert_eq!(input, 10_000_000);
+    assert!((hit - 0.98).abs() < f64::EPSILON);
+    assert_eq!(output, 50_000);
 }
 
 #[rstest::rstest]
@@ -146,18 +127,6 @@ fn market_row_roundtrips_through_json() {
 
     // Then the roundtrip is lossless.
     assert_eq!(back, row);
-}
-
-#[rstest::rstest]
-fn epoch_source_labels_distinguish_seed_from_download() {
-    // Given the three sources.
-    // When labeling each.
-    // Then the status line can tell them apart.
-    assert_eq!(EpochSource::Seed.label(), "seed");
-    assert_eq!(EpochSource::Download.label(), "downloaded");
-    assert_eq!(EpochSource::None.label(), "none");
-    // And the default is the shipped seed (first-run correctness).
-    assert_eq!(EpochSource::default(), EpochSource::Seed);
 }
 
 #[rstest::rstest]

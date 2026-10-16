@@ -4,9 +4,10 @@
 //! `<leader>so` opens a centered full-table popup (dynamic scope
 //! [`jinn_model_market_msg::market_ui_scope`]): one row per text-output
 //! OpenRouter listing, columns for prices, a render-time cost projection
-//! under the active mix preset, and the Epoch Capabilities Index joined
-//! by display name. ENTER switches the session model through the same
-//! `ProviderSwitch` crossing the provider picker publishes.
+//! under the fixed [`jinn_model_market_msg::PROJECTION_MIX`], and the
+//! Epoch Capabilities Index joined by display name. ENTER switches the
+//! session model through the same `ProviderSwitch` crossing the
+//! provider picker publishes.
 //!
 //! Two cells, two owners. [`jinn_model_market_msg::MarketDataState`] is
 //! written only by the slice's actors (fetch, parse, cache — nothing

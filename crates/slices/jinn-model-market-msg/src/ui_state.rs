@@ -22,18 +22,18 @@ pub const SORT_CYCLE: [SortColumn; 6] = [
     SortColumn::Model,
 ];
 
-/// The mix presets `m` cycles, as `(input tokens, cache-hit fraction,
-/// output tokens)`. The status line renders the active one.
-pub const MIX_PRESETS: [(u32, f64, u32); 3] = [
-    (80_000, 0.99, 1_500),
-    (150_000, 0.99, 1_500),
-    (20_000, 0.95, 1_500),
-];
+/// The fixed cost projection every PROJ value is computed under, as
+/// `(input tokens, cache-hit fraction, output tokens)`. Cache misses
+/// bill at the prompt price (locked decision F). A constant, not an
+/// option: the projection is part of the slice's contract, so every
+/// reader — the table cells, the sort, the help card — names the same
+/// mix.
+pub const PROJECTION_MIX: (u32, f64, u32) = (10_000_000, 0.98, 50_000);
 
 /// Which column the sort is keyed on.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SortColumn {
-    /// Projected ¢/turn under the active mix — the default.
+    /// Projected $/turn under [`PROJECTION_MIX`] — the default.
     #[default]
     Proj,
     /// Prompt price, $/M.
@@ -79,7 +79,7 @@ impl SortColumn {
     #[must_use]
     pub fn header(self) -> &'static str {
         match self {
-            Self::Proj => "PROJ \u{a2}",
+            Self::Proj => "PROJ",
             Self::In => "IN/M",
             Self::Out => "OUT/M",
             Self::Cache => "CACHE/M",
@@ -98,7 +98,7 @@ pub struct MarketUiState {
     /// The filter text (`f`/`i` focuses the bar; typing narrows rows).
     pub filter: String,
     /// Whether the filter bar owns typing. While this is set the input
-    /// hook claims every printable character, so `h`/`l`/`s`/`m`/`f`
+    /// hook claims every printable character, so `h`/`l`/`s`/`f`
     /// type into the filter instead of firing their table actions —
     /// the table actions are hook cases, not route rows, and the hook
     /// decides by focus.
@@ -107,8 +107,6 @@ pub struct MarketUiState {
     pub sort_col: SortColumn,
     /// The sort direction.
     pub sort_desc: bool,
-    /// Which mix preset is active (`m` cycles).
-    pub mix_index: usize,
     /// Whether the help card is showing (`?` toggles).
     pub help_visible: bool,
     /// Render-measured result-row count for paging; falls back to
@@ -127,7 +125,6 @@ impl Default for MarketUiState {
             filter_focused: false,
             sort_col: SortColumn::default(),
             sort_desc: false,
-            mix_index: 0,
             help_visible: false,
             results_viewport: RESULTS_VIEWPORT_FALLBACK,
             fetch_seq: 0,
@@ -136,25 +133,8 @@ impl Default for MarketUiState {
 }
 
 impl MarketUiState {
-    /// The active mix preset: `(input tokens, cache-hit fraction,
-    /// output tokens)`.
-    #[must_use]
-    pub fn active_mix(&self) -> (u32, f64, u32) {
-        MIX_PRESETS
-            .iter()
-            .cycle()
-            .nth(self.mix_index % MIX_PRESETS.len())
-            .copied()
-            .unwrap_or_default()
-    }
-
-    /// Cycles to the next mix preset.
-    pub fn cycle_mix(&mut self) {
-        self.mix_index = (self.mix_index + 1) % MIX_PRESETS.len();
-    }
-
     /// Resets to the opener's defaults: table focused, filter empty,
-    /// PROJ ascending, first preset, help hidden.
+    /// PROJ ascending, help hidden.
     pub fn reset(&mut self) {
         *self = Self::default();
     }
