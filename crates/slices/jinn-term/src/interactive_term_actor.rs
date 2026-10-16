@@ -688,7 +688,7 @@ mod tests {
     /// `marker`. A candidate must be a real `/sleep` binary; transient pid
     /// slots between readdir and open are skipped, and a zombie is already
     /// dead (the group kill worked) so it is not an orphan.
-    #[cfg(unix)]
+    #[cfg(all(unix, target_os = "linux"))]
     fn find_sleep_orphans(marker: &str) -> Vec<String> {
         let mut found = Vec::new();
         let entries = std::fs::read_dir("/proc").expect("/proc is readable");
@@ -720,6 +720,42 @@ mod tests {
             }
         }
         found
+    }
+
+    /// Every live (non-zombie) `sleep` process whose arguments carry
+    /// `marker` (BSD variant — macOS has no `/proc`). `pgrep -x sleep`
+    /// names the candidates; each candidate's state and argument list
+    /// then come from `ps`, with `-ww` so long argument lists are never
+    /// truncated. A zombie is already dead (the group kill worked) so it
+    /// is not an orphan.
+    #[cfg(all(unix, not(target_os = "linux")))]
+    fn find_sleep_orphans(marker: &str) -> Vec<String> {
+        let pids = std::process::Command::new("pgrep")
+            .args(["-x", "sleep"])
+            .output()
+            .expect("pgrep should run");
+        // pgrep exits 1 when nothing matches — that is the "no orphans"
+        // case the caller asserts on, not a failure.
+        let mut found = Vec::new();
+        for pid in String::from_utf8_lossy(&pids.stdout).split_whitespace() {
+            if ps_field(pid, "state=") == "Z" {
+                continue;
+            }
+            if ps_field(pid, "args=").contains(marker) {
+                found.push(pid.to_owned());
+            }
+        }
+        found
+    }
+
+    /// One headerless `ps` field for `pid`, trimmed.
+    #[cfg(all(unix, not(target_os = "linux")))]
+    fn ps_field(pid: &str, field: &str) -> String {
+        let out = std::process::Command::new("ps")
+            .args(["-ww", "-o", field, "-p", pid])
+            .output()
+            .expect("ps should report on the pid");
+        String::from_utf8_lossy(&out.stdout).trim().to_owned()
     }
 
     /// Polls the realtime mirror for `chat` until its screen contains
