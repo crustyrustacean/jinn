@@ -138,10 +138,16 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
     jinn_project::activate(&mut ctx.host());
     // The model-market popup resolves both of its cells from the catalog
     // (registered in Block 0), so nothing here reads what it provides —
-    // an independent. Its actors are spawned by the activation itself,
-    // in later territories; the bus subscriptions they need exist by the
-    // time any consumer can open the popup.
+    // an independent. Its two actors spawn here too (they read nothing
+    // this block mints), and the ordering constraint is one-sided: the
+    // subscriptions must exist before anything can open the popup. The
+    // popup's only entry is `<leader>so`, bound in the Normal scope, and
+    // no scope is reachable until the interactive tail after this block —
+    // so spawning here is early enough; anything below that published
+    // `FetchModels` would race it.
     jinn_model_market::activate(&mut ctx.host());
+    let services_snapshot = ctx.services().clone();
+    jinn_model_market::activate_actors(&services_snapshot);
     // The workflows picker repaints from `WorkflowsLoaded`, which the
     // session-init discovery worker (activated below) publishes; its
     // subscription must exist first, and nothing below resolves a

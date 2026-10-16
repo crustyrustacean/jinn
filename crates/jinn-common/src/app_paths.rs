@@ -312,6 +312,18 @@ impl AppPaths {
         self.cache_dir.join(APP_NAME).join("epoch")
     }
 
+    /// Shared cache root for app-namespaced cache directories
+    /// (`~/.cache/jinn`).
+    ///
+    /// The parent of [`Self::epoch_cache_dir`] and
+    /// [`Self::openrouter_cache_dir`]; the epoch actor takes a root and
+    /// resolves `jinn/epoch` one level down, so it can share one root
+    /// with its sibling cache dirs.
+    #[must_use]
+    pub fn app_cache_root(&self) -> PathBuf {
+        self.cache_dir.join(APP_NAME)
+    }
+
     /// OpenRouter market cache directory (`~/.cache/jinn/openrouter`).
     ///
     /// Holds the model-market's TTL disk caches: the models listing and

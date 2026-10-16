@@ -99,3 +99,98 @@ pub fn activate(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
     routes::attach_market_rows(host.key_routes(), &ui, &data);
     routes::register_market_input_hook(host.key_routes(), &ui, &data);
 }
+
+/// Spawns the slice's two data-plane actors: [`epoch_actor::
+/// EpochMarketActor`] and [`openrouter_actor::OpenRouterMarketActor`].
+///
+/// Called by composition, not by [`activate`]: the spawns need `Services`
+/// (paths, api keys, the trouper system) and must run where those live —
+/// the provider-selection precedent derives its deps from `Services`
+/// exactly this way. Both actors' subscriptions are live when this
+/// returns, so composition must call it before any user interaction can
+/// open the popup; within the boot list the whole independents block sits
+/// ahead of the interactive tail, which is the guarantee the popup's
+/// keys ride.
+///
+/// # Panics
+///
+/// Panics if the catalog has not run (the actors would write into
+/// absent cells) or an actor's path is already taken — both are
+/// composition bugs that must abort launch, not continue degraded.
+pub fn activate_actors(services: &jinn_kernel::Services) {
+    activate_actors_with(services, ActorEndpoints::production());
+}
+
+/// The outbound endpoints the two market actors talk to.
+///
+/// Production resolves both to the real constants; tests override them
+/// with dead URLs so a subscription claim never depends on the network
+/// being down (or up).
+#[derive(Clone, Debug)]
+pub struct ActorEndpoints {
+    /// The epoch zip URL.
+    pub zip_url: String,
+    /// The OpenRouter API base URL.
+    pub base_url: String,
+}
+
+impl ActorEndpoints {
+    /// The production endpoints.
+    #[must_use]
+    pub fn production() -> Self {
+        Self {
+            zip_url: epoch_cache::EPOCH_ZIP_URL.to_owned(),
+            base_url: String::new(),
+        }
+    }
+}
+
+/// [`activate_actors`] with explicit endpoints — the test seam.
+///
+/// # Panics
+///
+/// Panics if the catalog has not run (the actors would write into
+/// absent cells) or an actor's path is already taken — both are
+/// composition bugs that must abort launch, not continue degraded.
+#[expect(
+    clippy::expect_used,
+    reason = "bootstrap assertion: broken slice wiring must abort launch, not continue degraded"
+)]
+pub fn activate_actors_with(services: &jinn_kernel::Services, endpoints: ActorEndpoints) {
+    let actor_deps = jinn_kernel::common::actor_deps::ActorDeps {
+        services: services.clone(),
+    };
+    let data_cell = services
+        .slices
+        .reader::<jinn_model_market_msg::MarketDataState>(&market_data_slot())
+        .expect("the cell catalog registers the model-market data slot before any actor spawns");
+    let ui_cell = services
+        .slices
+        .reader::<jinn_model_market_msg::MarketUiState>(&market_ui_slot())
+        .expect("the cell catalog registers the model-market UI slot before any actor spawns");
+
+    // Epoch first: its `EpochLoaded` event is what the OpenRouter actor
+    // consumes to re-join cached rows, so its subscription must exist
+    // before the sibling spawns.
+    let _epoch = epoch_actor::EpochMarketActor::spawn(
+        &services.trouper_system,
+        epoch_actor::EpochMarketActorDeps {
+            deps: actor_deps.clone(),
+            data_cell: data_cell.clone(),
+            cache_root: services.paths.app_cache_root(),
+            client: reqwest::Client::new(),
+            zip_url: endpoints.zip_url,
+            now_ms: epoch_actor::epoch_market_clock(),
+        },
+    );
+    let _openrouter = openrouter_actor::OpenRouterMarketActor::spawn(
+        &services.trouper_system,
+        openrouter_actor::OpenRouterMarketActorDeps {
+            deps: actor_deps,
+            data: data_cell,
+            ui: ui_cell,
+            base_url: endpoints.base_url,
+            cache_dir: std::path::PathBuf::new(),
+        },
+    );
+}

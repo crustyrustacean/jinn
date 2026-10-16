@@ -37,6 +37,7 @@ mod composition;
 mod dashboard;
 mod discord;
 mod model_market;
+mod model_market_actors;
 mod phase_control;
 mod preferences;
 mod project;
