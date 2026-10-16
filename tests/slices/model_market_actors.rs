@@ -18,8 +18,11 @@
 use std::io::Write as _;
 use std::time::Duration;
 
+use jinn_model_market::ActorEndpoints;
 use jinn_model_market_msg::EpochLoaded;
 use jinn_model_market_msg::EpochSource;
+use jinn_model_market_msg::FetchModels;
+use jinn_model_market_msg::ModelsLoaded;
 use jinn_model_market_msg::RefreshEpoch;
 use jinn_model_market_msg::RefreshFailed;
 use jinn_model_market_msg::market_data_slot;
@@ -286,6 +289,147 @@ async fn warm_boot_serves_the_app_paths_cache_without_a_request() {
 }
 
 // ── Publishes reach the live actors ─────────────────────────────────────
+
+/// A models catalog body for the mockito OR server, plus the endpoints
+/// detail body for the first row.
+async fn served_openrouter() -> (mockito::ServerGuard, String) {
+    let mut server = mockito::Server::new_async().await;
+    let url = server.url();
+    let catalog = serde_json::json!({
+        "data": [
+            {
+                "id": "test/model",
+                "pricing": {
+                    "prompt": "0.000003",
+                    "completion": "0.000015",
+                    "input_cache_read": "0.0000003"
+                },
+                "architecture": {"output_modalities": ["text"]},
+                "context_length": 100_000
+            }
+        ]
+    })
+    .to_string();
+    server
+        .mock("GET", "/models")
+        .with_status(200)
+        .with_body(catalog)
+        .create_async()
+        .await;
+    let detail = serde_json::json!({
+        "data": {
+            "endpoints": [
+                {
+                    "provider_name": "TestUp",
+                    "tag": "testup",
+                    "pricing": {"prompt": "0.000003", "completion": "0.000015"},
+                    "uptime_last_1d": 99.0
+                }
+            ]
+        }
+    })
+    .to_string();
+    server
+        .mock("GET", "/models/test/model/endpoints")
+        .with_status(200)
+        .with_body(detail)
+        .create_async()
+        .await;
+    (server, url)
+}
+
+#[rstest::rstest]
+#[tokio::test]
+#[timeout(Duration::from_secs(20))]
+async fn opening_the_popup_lands_rows_and_row0_detail_without_any_nav_keypress() {
+    // Given the slice composed as the boot list composes it — cells,
+    // routes, view, both actors — with the OR actor pointed at a live
+    // local mock serving the models catalog and the first row's
+    // endpoints.
+    let (server, base_url) = served_openrouter().await;
+    let services = composed_with_endpoints(ActorEndpoints {
+        zip_url: "http://127.0.0.1:9/data/benchmark_data.zip".to_owned(),
+        base_url,
+    })
+    .await;
+    let harness = TestHarness::from_parts(services.bus.clone(), services.trouper_system.clone());
+    let loaded_recorder = harness.spawn_recorder::<ModelsLoaded>().await;
+
+    // When the opener's publish (what `open_market` mints) rides the
+    // real bus — one publish, zero navigation keypresses, then settle
+    // past the endpoint debounce.
+    services.bus.publish(FetchModels).await;
+    let loaded = await_recorded::<ModelsLoaded>(&loaded_recorder, 1, SETTLE).await;
+    tokio::time::sleep(SETTLE).await;
+
+    // Then the table has rows AND the data cell carries detail for the
+    // highlighted (first) row — the pane is alive on open, not dead
+    // until the first nav key.
+    assert_eq!(loaded.len(), 1, "one models load");
+    let data = data_of(&services);
+    let read = data.read();
+    assert_eq!(
+        read.rows.first().map(|r| r.id.as_str()),
+        Some("openrouter/test/model"),
+        "the rows landed, got: {:?}",
+        read.rows
+    );
+    let detail = read
+        .detail
+        .as_ref()
+        .expect("row 0's detail was fetched without any nav keypress");
+    assert_eq!(detail.model_id, "openrouter/test/model");
+    assert_eq!(detail.endpoints[0].tag, "testup");
+    drop(server);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+#[timeout(Duration::from_secs(20))]
+async fn open_publishes_fetch_models_and_the_actor_answers_end_to_end() {
+    // Given the full composition with the popup route attached and a
+    // live local OR mock, and the bus recorder watching ModelsLoaded.
+    let (server, base_url) = served_openrouter().await;
+    let services = composed_with_endpoints(ActorEndpoints {
+        zip_url: "http://127.0.0.1:9/data/benchmark_data.zip".to_owned(),
+        base_url,
+    })
+    .await;
+    let harness = TestHarness::from_parts(services.bus.clone(), services.trouper_system.clone());
+    let loaded_recorder = harness.spawn_recorder::<ModelsLoaded>().await;
+
+    // When the opener intent is dispatched through the real handler —
+    // the exact keypress path production walks — over a state whose
+    // scope stack carries the slice registry.
+    let mut state = jinn_kernel::AppState::default();
+    state.frontend.attach_slices(services.slices.clone());
+    let result = jinn_kernel::IntentHandler::handle(
+        &jinn_kernel::KernelIntent::Dynamic(jinn_slices::DynamicIntent::new(
+            jinn_model_market::market_ui_scope(),
+            "open-model-market",
+            "model market",
+        )),
+        &mut state,
+        &services.slices,
+        &services.key_routes,
+        jinn_slices::empty_config_layer(),
+    );
+    // The handler returns closures; the caller's drain onto the real
+    // bus sink is what publishes them — the same drain production does.
+    for publish in result.messages {
+        publish(&services.bus);
+    }
+    let loaded = await_recorded::<ModelsLoaded>(&loaded_recorder, 1, SETTLE).await;
+
+    // Then the opener's publish reached the live actor and the load
+    // landed — the sync path and the actor meet on the real bus.
+    assert!(
+        result.message_names.contains(&"FetchModels"),
+        "the opener publishes FetchModels"
+    );
+    assert_eq!(loaded.len(), 1, "the actor answered the opener");
+    drop(server);
+}
 
 #[rstest::rstest]
 #[tokio::test]
