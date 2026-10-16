@@ -349,9 +349,9 @@ async fn set_name_relabels_the_instance_and_leaves_the_seed_name_alone() {
 
     // When the tool loads it with set_name = "implementor-002".
     let result = execute(
-        call(&format!(
-            r#"{{"path":"{path}","set_name":"implementor-002"}}"#
-        )),
+        call(
+            &serde_json::json!({ "path": path, "set_name": "implementor-002" }).to_string(),
+        ),
         ctx(&harness, &state, user_id.clone()).await,
     )
     .await;
@@ -390,7 +390,7 @@ async fn loading_the_same_seed_twice_with_different_set_names_yields_two_named_a
     // When it is loaded twice under two different labels.
     for label in ["implementor-001", "implementor-002"] {
         let result = execute(
-            call(&format!(r#"{{"path":"{path}","set_name":"{label}"}}"#)),
+            call(&serde_json::json!({ "path": path.clone(), "set_name": label }).to_string()),
             ctx(&harness, &state, user_id.clone()).await,
         )
         .await;
@@ -420,7 +420,11 @@ async fn without_set_name_the_seed_files_name_is_used() {
     let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
 
     // When the tool loads it with no set_name argument.
-    let result = execute(call(&format!(r#"{{"path":"{path}"}}"#)), tool_ctx).await;
+    let result = execute(
+        call(&serde_json::json!({ "path": path }).to_string()),
+        tool_ctx,
+    )
+    .await;
 
     // Then the attendant keeps the seed file's name.
     assert!(result.success, "load must succeed: {}", result.content);
