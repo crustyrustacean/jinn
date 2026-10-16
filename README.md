@@ -39,6 +39,8 @@ Quickly navigate and change things via Telescope-inspired pickers:
 
 ![Pickers](doc/screenshots/pickers.png)
 
+![OpenRouter-Search](doc/screenshots/openrouter-search.png)
+
 ### Attendants
 
 Attach "attendants" to sessions that fire when their parent session turn ends (or manually with `R`). Things that attendants can do:
