@@ -23,7 +23,7 @@ use wherror::Error;
 pub struct OrModelsError;
 
 /// The `/api/v1/models` response envelope.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct ModelsListResponse {
     /// Every listing OpenRouter publishes; `data` is always present.
     data: Vec<RawModel>,
@@ -33,7 +33,7 @@ struct ModelsListResponse {
 ///
 /// Fields the market needs are typed; everything else is ignored by
 /// serde. The ids are free-form upstream strings and stay strings.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct RawModel {
     /// Full listing id (`author/slug` or `author/slug:variant`).
     pub id: String,
@@ -52,7 +52,7 @@ pub struct RawModel {
 }
 
 /// The listing's `pricing` object.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct RawPricing {
     /// Per-token prompt price.
     #[serde(default)]
@@ -70,7 +70,7 @@ pub struct RawPricing {
 }
 
 /// The listing's `architecture` block.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct RawArchitecture {
     /// Output modalities; a listing without `"text"` is filtered out.
     #[serde(default)]

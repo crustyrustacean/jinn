@@ -218,6 +218,70 @@ async fn expired_models_ttl_refetches() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn epoch_loaded_rejoins_rows_without_a_refetch() {
+    // Given an actor that fetched models while the index was absent —
+    // rows built with dead ECI fields — and a models mock that would
+    // FAIL if hit again (the re-join must not refetch). The catalog
+    // carries a real seed joinable (Claude Sonnet 4.5, dot-vs-space).
+    let mut server = mockito::Server::new_async().await;
+    let dir = tempfile::TempDir::new().expect("temp dir");
+    let joinable_catalog = serde_json::json!({
+        "data": [
+            {
+                "id": "anthropic/claude-sonnet-4.5",
+                "pricing": {"prompt": "0.000003", "completion": "0.000015"},
+                "architecture": {"output_modalities": ["text"]},
+                "context_length": 100_000
+            }
+        ]
+    })
+    .to_string();
+    let models_mock = server
+        .mock("GET", "/models")
+        .with_status(200)
+        .with_body(joinable_catalog)
+        .create_async()
+        .await;
+    let world = World::start(&server.url(), dir.path().to_path_buf()).await;
+    let recorder = world.models_recorder().await;
+    world.harness.publish(FetchModels).await;
+    let loaded = await_recorded(&recorder, 1, SETTLE).await;
+    assert!(!loaded[0].from_cache);
+    let before = world.data.read().rows.clone();
+    assert!(
+        before.iter().all(|r| r.eci.is_none()),
+        "precondition: rows joined against an empty index"
+    );
+
+    // When the epoch actor lands the index in the cell and publishes
+    // EpochLoaded — the raw display-name key form the real epoch uses.
+    let index = crate::epoch::parse_eci_scores(crate::epoch::SEED_ECI_SCORES)
+        .expect("seed parses")
+        .0;
+    world
+        .data
+        .update(|d| d.eci = Some(std::sync::Arc::new(index)));
+    world
+        .harness
+        .publish(jinn_model_market_msg::EpochLoaded {
+            source: jinn_model_market_msg::EpochSource::Seed,
+            matched: 1,
+            total: 1,
+        })
+        .await;
+    tokio::time::sleep(SETTLE).await;
+
+    // Then the rows in the cell carry ECI scores — no second fetch.
+    models_mock.assert_async().await;
+    let after = world.data.read();
+    assert!(
+        after.rows.iter().any(|r| r.eci.is_some()),
+        "EpochLoaded must re-join the retained raw listings"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn refresh_all_drops_every_cache() {
     // Given warm models AND endpoints caches at both levels, with mocks
     // expecting exactly one GET each for the refetch.
@@ -236,6 +300,8 @@ async fn refresh_all_drops_every_cache() {
         quantization: None,
         overrides: Vec::new(),
     }];
+    // A SECOND detail file for a model that is NOT displayed — refresh
+    // must sweep the whole cache dir, not just the visible pane's file.
     crate::market_cache::store(
         &dir.path().join("models.json"),
         &crate::market_cache::stamped(fixture_rows(), at),
@@ -243,9 +309,14 @@ async fn refresh_all_drops_every_cache() {
     .expect("seed models cache");
     crate::market_cache::store(
         &dir.path().join("endpoints-test_model.json"),
-        &crate::market_cache::stamped(detail, at),
+        &crate::market_cache::stamped(detail.clone(), at),
     )
     .expect("seed endpoints cache");
+    crate::market_cache::store(
+        &dir.path().join("endpoints-other_model.json"),
+        &crate::market_cache::stamped(detail, at),
+    )
+    .expect("seed the non-displayed endpoint cache");
     let world = World::start(&server.url(), dir.path().to_path_buf()).await;
     // Put a detail id on the data cell so refresh knows what to drop.
     let displayed = jinn_model_market_msg::MarketDetail {
@@ -266,6 +337,19 @@ async fn refresh_all_drops_every_cache() {
     assert!(!loaded[0].from_cache);
     models_mock.assert_async().await;
     endpoints_mock.assert_async().await;
+    // And the sweep dropped every endpoint disk file — the only one
+    // present is the displayed model's freshly refetched file.
+    let leftovers: Vec<String> = std::fs::read_dir(dir.path())
+        .expect("cache dir readable")
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("endpoints-"))
+        .collect();
+    assert_eq!(
+        leftovers,
+        vec!["endpoints-openrouter_test_model.json".to_owned()],
+        "refresh must sweep ALL endpoint files, then the displayed refetch rewrites only its own"
+    );
     // And the detail was refetched too, replacing the stale cell entry.
     let detail = world.data.read().detail.clone().expect("detail refetched");
     assert_eq!(detail.model_id, "openrouter/test/model");

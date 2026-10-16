@@ -1,12 +1,15 @@
 //! The OpenRouter market actor — the models/endpoints half of the
 //! slice's data plane.
 //!
-//! Subscribes to `FetchModels`, `FetchEndpoints`, and `RefreshAll`;
-//! writes [`MarketDataState`] (the data cell — this actor is its only
-//! OR-side writer) and emits `ModelsLoaded`, `EndpointsLoaded`, and
-//! `RefreshFailed`. The epoch half (`RefreshEpoch`, `EpochLoaded`) is
-//! the epoch actor's; `RefreshAll` here drops the OR caches and
-//! refetches models plus the endpoints currently on display.
+//! Subscribes to `FetchModels`, `FetchEndpoints`, `RefreshAll`, and
+//! `EpochLoaded`; writes [`MarketDataState`] (the data cell — this
+//! actor is its only OR-side writer) and emits `ModelsLoaded`,
+//! `EndpointsLoaded`, and `RefreshFailed`. `RefreshEpoch` is the epoch
+//! actor's; `EpochLoaded` is *consumed* here: rows join against the ECI
+//! index at build time, so when the epoch data lands after the models
+//! (the common cold-open race), the handler rebuilds the rows from the
+//! retained raw listings without a refetch. `RefreshAll` drops the OR
+//! caches and refetches models plus the endpoints currently on display.
 //!
 //! # Cache shape
 //!
@@ -14,7 +17,9 @@
 //! lifetime *and* disk files under `AppPaths::openrouter_cache_dir()`
 //! so the cache survives restarts. The disk layer
 //! ([`crate::market_cache`]) is clock-injected; each handler reads
-//! `now` once and threads it through.
+//! `now` once and threads it through. The actor retains the *raw*
+//! parsed listings alongside the joined rows — the raw payload is what
+//! an `EpochLoaded` re-join needs, and joined rows cannot be un-joined.
 //!
 //! # Lock discipline
 //!
@@ -42,6 +47,7 @@ use error_stack::Report;
 use jinn_kernel::common::actor_deps::{ActorDeps, BusPublish};
 use jinn_model_market_msg::EciIndex;
 use jinn_model_market_msg::EndpointsLoaded;
+use jinn_model_market_msg::EpochLoaded;
 use jinn_model_market_msg::FetchEndpoints;
 use jinn_model_market_msg::FetchModels;
 use jinn_model_market_msg::MarketDataState;
@@ -58,6 +64,7 @@ use trouper::registry::RegistryError;
 
 use crate::market_cache;
 use crate::or_endpoints::MarketEndpointInfo;
+use crate::or_models::RawModel;
 use crate::rows;
 
 /// How long an endpoint fetch waits before comparing sequences.
@@ -94,7 +101,11 @@ pub struct OpenRouterMarketActor {
     cache_dir: std::path::PathBuf,
     /// The shared HTTP client.
     client: reqwest::Client,
-    /// In-memory models listing with its fetch stamp.
+    /// In-memory *raw* parsed listings with their fetch stamp — the
+    /// re-join payload an `EpochLoaded` handler needs. `None` until the
+    /// first successful models fetch.
+    raw_models: Option<(Vec<RawModel>, jiff::Timestamp)>,
+    /// In-memory joined models rows with their fetch stamp.
     models: Option<(Vec<jinn_model_market_msg::MarketRow>, jiff::Timestamp)>,
     /// In-memory per-model endpoint detail with fetch stamps.
     endpoints: HashMap<String, (Vec<MarketEndpointRow>, jiff::Timestamp)>,
@@ -182,6 +193,7 @@ impl OpenRouterMarketActor {
             .handles::<FetchModels>()
             .handles::<FetchEndpoints>()
             .handles::<RefreshAll>()
+            .handles::<EpochLoaded>()
             .emits::<ModelsLoaded>()
             .emits::<EndpointsLoaded>()
             .emits::<RefreshFailed>()
@@ -216,6 +228,7 @@ impl OpenRouterMarketActor {
             api_key,
             cache_dir,
             client: reqwest::Client::new(),
+            raw_models: None,
             models: None,
             endpoints: HashMap::new(),
         }
@@ -237,6 +250,12 @@ impl MsgHandler<FetchEndpoints> for OpenRouterMarketActor {
 impl MsgHandler<RefreshAll> for OpenRouterMarketActor {
     async fn handle(&mut self, _msg: &RefreshAll, _ctx: &mut MsgCtx<'_>) {
         self.handle_refresh_all().await;
+    }
+}
+
+impl MsgHandler<EpochLoaded> for OpenRouterMarketActor {
+    async fn handle(&mut self, _msg: &EpochLoaded, _ctx: &mut MsgCtx<'_>) {
+        self.handle_epoch_loaded();
     }
 }
 
@@ -296,6 +315,7 @@ impl OpenRouterMarketActor {
                 let eci = self.eci_snapshot();
                 let rows = rows::build_rows(&raw, eci.as_deref());
                 let at = jiff::Timestamp::now();
+                self.raw_models = Some((raw, at));
                 self.models = Some((rows.clone(), at));
                 if let Err(report) =
                     market_cache::store(&disk_path, &market_cache::stamped(rows.clone(), at))
@@ -416,31 +436,52 @@ impl OpenRouterMarketActor {
     }
 
     /// RefreshAll: drop the OR caches — both memory maps and every disk
-    /// file the data cell has keyed — then refetch models and the
-    /// endpoints currently on display.
+    /// file (models, plus *all* `endpoints-*` detail files, not just the
+    /// displayed one) — then refetch models and the endpoints currently
+    /// on display.
     ///
     /// Refresh means refresh: the drops happen first and are not rolled
     /// back if a refetch fails; each failure emits `RefreshFailed` and
     /// the next step still runs. The epoch half of `<c-r>` is the epoch
     /// actor's own `RefreshAll` subscription.
     async fn handle_refresh_all(&mut self) {
+        self.raw_models = None;
         self.models = None;
         self.endpoints.clear();
         market_cache::drop_file(&self.models_cache_path());
+        drop_all_endpoint_files(&self.cache_dir);
 
-        // The stale detail id is the one the pane was showing; its disk
-        // file goes with the rest.
+        // The stale detail id is the one the pane was showing; the
+        // refetch is forced because its cache levels are gone.
         let stale = {
             let read = self.data.read();
             read.detail.as_ref().map(|d| d.model_id.clone())
         };
-        if let Some(id) = &stale {
-            market_cache::drop_file(&self.endpoints_cache_path(id));
-        }
 
         self.handle_fetch_models().await;
         if let Some(id) = &stale {
             self.fetch_endpoints_for(id).await;
+        }
+    }
+
+    /// `EpochLoaded`: the ECI index changed under the rows — rebuild
+    /// them from the retained raw listings against the fresh index.
+    ///
+    /// This is the cold-open race fix: models frequently win the race
+    /// against the epoch download, and a row's ECI fields are decided
+    /// at build time. No refetch, no emission — the rows simply become
+    /// correct on the next read of the data cell. Without raw listings
+    /// (nothing fetched yet) this is a no-op; the eventual `FetchModels`
+    /// will join against the then-present index.
+    fn handle_epoch_loaded(&mut self) {
+        let Some((raw, at)) = self.raw_models.clone() else {
+            return;
+        };
+        let eci = self.eci_snapshot();
+        let rows = rows::build_rows(&raw, eci.as_deref());
+        self.models = Some((rows, at));
+        if let Some((rows, at)) = &self.models {
+            self.write_models(rows, *at);
         }
     }
 
@@ -490,6 +531,29 @@ impl OpenRouterMarketActor {
             .collect();
         self.cache_dir
             .join(format!("{ENDPOINT_CACHE_PREFIX}{flat}.json"))
+    }
+}
+
+/// Drops every `endpoints-*` detail file in the cache directory.
+///
+/// `RefreshAll` means all endpoints, not just the displayed one; the
+/// read_dir failure is logged and swallowed — a missing cache dir is a
+/// cold cache, which is a fine starting state for a refresh.
+fn drop_all_endpoint_files(cache_dir: &std::path::Path) {
+    let entries = match std::fs::read_dir(cache_dir) {
+        Ok(entries) => entries,
+        Err(error) => {
+            tracing::debug!(?error, "no cache dir to sweep for endpoint files");
+            return;
+        }
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if name.to_string_lossy().starts_with(ENDPOINT_CACHE_PREFIX)
+            && let Err(error) = std::fs::remove_file(entry.path())
+        {
+            tracing::warn!(?error, file = ?name, "failed to drop endpoint cache file");
+        }
     }
 }
 

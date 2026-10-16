@@ -2930,6 +2930,7 @@ name = "jinn-model-market"
 version = "1.7.0"
 dependencies = [
  "csv",
+ "ctor",
  "error-stack",
  "fuzzy-matcher",
  "jiff",
@@ -2950,6 +2951,7 @@ dependencies = [
  "ratatui",
  "reqwest 0.12.28",
  "rstest",
+ "rustls 0.23.45",
  "serde",
  "serde_json",
  "tempfile",

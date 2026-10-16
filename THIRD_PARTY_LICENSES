@@ -31,3 +31,32 @@ Command-guard patterns adapted from:
 - **jinn's original five** (`default_jinn.toml`, this project, AGPL-3.0).
 - The remainder are unattributable command-line folklore (the `curl | sh`
   class and the Steam `rm -rf "$STEAMROOT/"*` incident).
+
+---
+
+## Epoch AI benchmark data
+
+- **Location:** `crates/slices/jinn-model-market/src/seed/` —
+  `eci_scores.csv`, `benchmark_metadata.csv`, `model_metadata.csv`
+  (compiled into the binary with `include_bytes!`). Runtime refreshes
+  extract the same three files to `~/.cache/jinn/epoch/`; `<c-r>` in the
+  model-market popup re-downloads them.
+- **License:** Creative Commons Attribution 4.0 (CC BY 4.0)
+- **Source:** https://epoch.ai/benchmarks/use-this-data
+
+The Epoch Capabilities Index (ECI) and its confidence intervals, shown
+in jinn's model-market popup, are Epoch AI's data, used unmodified.
+
+Epoch AI's licensing terms: "Epoch AI's data is free to use, distribute,
+and reproduce provided the source and authors are credited under the
+Creative Commons Attribution license."
+
+Required attribution, verbatim:
+
+    Epoch AI, 'Capabilities & benchmarking'. Published online at epoch.ai.
+    Retrieved from 'https://epoch.ai/benchmarks/use-this-data' [online resource].
+    Accessed 15 Oct 2026.
+
+Benchmark questions and answers are the property of their respective
+creators; the seed files ship the ECI scores and normalization metadata
+only, not benchmark items.

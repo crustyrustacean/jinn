@@ -10,12 +10,13 @@
 //! - **Flags** — `f` (`:free`) is the id's variant suffix; `†`
 //!   (overrides) is the presence of a nonempty override list; `#`
 //!   (no ECI) falls out of the join.
-//! - **The ECI join** — strict display-name matching against the
-//!   [`EciIndex`], over the normalized listing name (lowercased,
-//!   variant and date suffixes stripped). An unmatched listing keeps
-//!   `eci: None`. This module is T2-agnostic: the alias table's
-//!   resolution, when it lands, threads in as one extra lookup in
-//!   [`resolve_eci_name`]'s caller.
+//! - **The ECI join** — routed through T2's
+//!   [`crate::eci_aliases::resolve_eci`], the single canonicalizing
+//!   resolver: it folds case and separators on *both* sides, strict-
+//!   matches against the index's raw display names, then consults the
+//!   compiled-in alias table. This module deliberately carries **no**
+//!   competing normalization of its own — two canonical forms is how
+//!   the join silently dies.
 //!
 //! The id's `openrouter/` prefix is prepended here, per the `-msg`
 //! crate's `MarketRow.id` docs: ENTER publishes exactly that string as
@@ -23,7 +24,6 @@
 
 use jinn_model_market_msg::EciIndex;
 use jinn_model_market_msg::MarketRow;
-use jinn_provider::PricingOverride;
 
 use crate::or_models::RawModel;
 
@@ -58,8 +58,8 @@ fn build_row(model: &RawModel, eci: Option<&EciIndex>) -> MarketRow {
     let variant = listing_variant(&model.id);
     let is_free = variant.as_deref() == Some("free");
     let eci_score = eci.and_then(|index| {
-        let name = resolve_eci_name(&model.id, model.hugging_face_id.as_deref());
-        index.get(&name).cloned()
+        let name = crate::eci_aliases::resolve_eci(&model.id, index)?;
+        index.get(name).cloned()
     });
 
     MarketRow {
@@ -72,7 +72,7 @@ fn build_row(model: &RawModel, eci: Option<&EciIndex>) -> MarketRow {
         // Decision F: no published cache price stays None — the prompt
         // price stands in at projection time, never at row-build time.
         cache_read_price,
-        has_overrides: overrides_have_thresholds(&overrides) || !overrides.is_empty(),
+        has_overrides: !overrides.is_empty(),
         context_length: model.context_length,
         eci: eci_score.as_ref().map(|s| s.eci),
         eci_ci: eci_score.map(|s| (s.ci_low, s.ci_high)),
@@ -113,58 +113,6 @@ fn listing_variant(listing_id: &str) -> Option<String> {
         .map(|(_, variant)| variant.to_owned())
 }
 
-/// Normalizes a listing id into the ECI display-name candidate:
-/// lowercased, author prefix and `:variant` suffix stripped, date
-/// suffixes (`-20250514`) removed, hyphens spaced — research §6–§8.
-///
-/// ECI names carry no OpenRouter author namespace and are human display
-/// forms (`Claude Sonnet 4.5`), so the join runs on the bare slug with
-/// its separators spaced. Index keys are expected lowercased the same
-/// way (the epoch parse's contract), so both sides fold case once.
-#[must_use]
-fn normalize_for_eci(listing_id: &str) -> String {
-    let bare = listing_id.split_once('/').map_or(listing_id, |(_, r)| r);
-    let bare = bare.split_once(':').map_or(bare, |(s, _)| s);
-    let bare = strip_date_suffix(bare);
-    bare.replace('-', " ").to_lowercase()
-}
-
-/// Strips a trailing `-YYYYMMDD` snapshot suffix.
-///
-/// Grapheme-safe per the style guide: the suffix is matched on the
-/// *last* hyphen-delimited segment's shape, never by byte indexing.
-#[must_use]
-fn strip_date_suffix(slug: &str) -> &str {
-    match slug.rsplit_once('-') {
-        Some((head, tail)) if tail.len() == 8 && tail.chars().all(|c| c.is_ascii_digit()) => head,
-        _ => slug,
-    }
-}
-
-/// Resolves a listing to the ECI display name to look up.
-///
-/// Strict first: the normalized slug against the index's own keys.
-/// `hugging_face_id` is the fallback candidate when the slug misses —
-/// model-card names often carry the full version the slug abbreviates.
-/// The compiled-in alias table (T2's `eci_aliases`) extends this by
-/// consulting the same two candidates before giving up; its lookup
-/// miss is what turns this into an unmatched row, so the name itself
-/// is always computable.
-#[must_use]
-fn resolve_eci_name(listing_id: &str, _hugging_face_id: Option<&str>) -> String {
-    normalize_for_eci(listing_id)
-}
-
-/// Whether any override row in `overrides` prices above a threshold.
-///
-/// The `†` flag is presence (`has_overrides`), not threshold; this
-/// distinguishes a *context-tier* override (the row the help card
-/// documents) from a bare conditional-price row.
-#[must_use]
-fn overrides_have_thresholds(overrides: &[PricingOverride]) -> bool {
-    overrides.iter().any(|o| o.min_prompt_tokens.is_some())
-}
-
 // ── Tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -178,6 +126,8 @@ mod rows_tests {
     )]
 
     use super::*;
+    use crate::epoch::SEED_ECI_SCORES;
+    use crate::epoch::parse_eci_scores;
 
     /// Parses one listing fixture (single-entry `data` array).
     #[expect(
@@ -190,23 +140,11 @@ mod rows_tests {
         models.into_iter().next().expect("one listing")
     }
 
-    /// An index holding one score under an ECI-style display name.
-    ///
-    /// The score struct is not nameable from outside the `-msg` crate
-    /// (T1 exports only `EciIndex`/`EpochSource`), so the fixture
-    /// deserializes it straight into the map slot; the insert site's
-    /// value type drives the `from_value` inference.
-    fn index_with(name: &str, eci: f64) -> EciIndex {
-        let mut index = EciIndex::default();
-        let score = serde_json::json!({
-            "eci": eci,
-            "ci_low": eci - 1.0,
-            "ci_high": eci + 1.0
-        });
-        index.scores.insert(
-            name.to_owned(),
-            serde_json::from_value(score).expect("score parses"),
-        );
+    /// The REAL seed index, parsed by T2's own parser — the same bytes
+    /// and the same key form the epoch actor puts in the data cell.
+    fn seed_index() -> EciIndex {
+        let (index, total) = parse_eci_scores(SEED_ECI_SCORES).expect("seed parses");
+        assert!(total > 0, "the shipped seed carries rows");
         index
     }
 
@@ -310,28 +248,54 @@ mod rows_tests {
     }
 
     #[rstest::rstest]
-    fn build_row_joins_eci_by_normalized_display_name() {
-        // Given an index whose key is the display name lowercased —
-        // the normalization contract (spaces for hyphens, no date).
-        let index = index_with("claude sonnet 4.5", 42.0);
+    fn build_row_joins_eci_against_the_real_seed() {
+        // Given the REAL seed index — T2's parser over the shipped
+        // eci_scores.csv bytes, keys in raw display-name form — and an
+        // OR listing whose slug differs from the display name only by
+        // case and the dot-vs-space separator.
+        let index = seed_index();
         let model = one_listing(serde_json::json!({
-            "id": "anthropic/claude-sonnet-4.5-20250514"
+            "id": "anthropic/claude-sonnet-4.5"
         }));
 
         // When building the row with the index.
         let row = build_row(&model, Some(&index));
 
-        // Then the score and its interval ride along.
-        assert_eq!(row.eci, Some(42.0));
-        assert_eq!(row.eci_ci, Some((41.0, 43.0)));
+        // Then the join resolves: the raw display-name key matches, and
+        // the score rides with its interval.
+        assert!(
+            row.eci.is_some(),
+            "claude-sonnet-4.5 must join the seed; key form is the contract"
+        );
+        assert!(row.eci_ci.is_some());
+    }
+
+    #[rstest::rstest]
+    fn build_row_joins_a_dated_slug_through_the_alias_table() {
+        // Given a dated OR slug whose Epoch spelling is parenthesized —
+        // the alias-table case (e.g. gpt-4o-2024-11-20 → "GPT-4o (Nov
+        // 2024)"), resolved only by T2's table, not strict matching.
+        let index = seed_index();
+        let model = one_listing(serde_json::json!({
+            "id": "openai/gpt-4o-2024-11-20"
+        }));
+
+        // When building the row with the index.
+        let row = build_row(&model, Some(&index));
+
+        // Then the alias closes the join.
+        assert!(
+            row.eci.is_some(),
+            "dated GPT snapshots must resolve through the compiled alias table"
+        );
     }
 
     #[rstest::rstest]
     fn build_row_leaves_eci_none_when_unmatched() {
-        // Given an index with no key near the listing.
-        let index = index_with("gpt-4 turbo", 30.0);
+        // Given the seed index and a listing no key or alias can name.
+        let index = seed_index();
         let model = one_listing(serde_json::json!({
-            "id": "mystery/model:thinking"
+            "id": "mystery/model-that-never-existed:thinking"
         }));
 
         // When building the row.
@@ -357,37 +321,21 @@ mod rows_tests {
     }
 
     #[rstest::rstest]
-    #[case("claude-sonnet-4.5-20250514", "claude sonnet 4.5")]
-    #[case("deepseek-r1:free", "deepseek r1")]
-    #[case("GPT-OSS-120B", "gpt oss 120b")]
-    #[case("author/kimi-k2-0905-preview", "kimi k2 0905 preview")]
-    fn normalize_strips_variant_dates_and_case(#[case] raw: &str, #[case] expected: &str) {
-        // Given a listing id in OpenRouter form.
-        // When normalizing for the ECI join.
-        // Then variant suffixes, date suffixes, and case are gone —
-        // except a short numeric tail that is part of the name (0905).
-        assert_eq!(normalize_for_eci(raw), expected);
-    }
+    fn build_row_sets_the_override_flag_from_a_nonempty_override_list() {
+        // Given a listing with a >200k pricing tier.
+        let model = one_listing(serde_json::json!({
+            "id": "anthropic/claude-sonnet-4.5",
+            "pricing": {
+                "prompt": "0.000003",
+                "completion": "0.000015",
+                "overrides": [{"min_prompt_tokens": 200_000, "prompt": "0.000006"}]
+            }
+        }));
 
-    #[rstest::rstest]
-    fn overrides_have_thresholds_reports_threshold_presence() {
-        // Given an override set where one row carries a threshold.
-        let with = vec![PricingOverride {
-            min_prompt_tokens: Some(200_000),
-            prompt: None,
-            completion: None,
-            input_cache_read: None,
-        }];
-        let without = vec![PricingOverride {
-            min_prompt_tokens: None,
-            prompt: Some("0.1".to_owned()),
-            completion: None,
-            input_cache_read: None,
-        }];
+        // When building its row.
+        let row = build_row(&model, None);
 
-        // When asking whether any row prices above a threshold.
-        // Then only the thresholded set reports true.
-        assert!(overrides_have_thresholds(&with));
-        assert!(!overrides_have_thresholds(&without));
+        // Then the `†` flag rides the override list's presence.
+        assert!(row.has_overrides);
     }
 }
