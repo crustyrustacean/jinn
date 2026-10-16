@@ -35,8 +35,15 @@ use super::OpenRouterMarketActor;
 use super::OpenRouterMarketActorDeps;
 
 /// The harness wait: past the 250ms debounce, small enough to keep the
-/// suite snappy.
+/// suite snappy. Tests that wait on a full refresh — two network fetches
+/// through a mockito server behind a debounce — use [`REFRESH_SETTLE`]
+/// instead: under full-suite parallel load 700ms can expire before the
+/// actor's task is scheduled twice, which looked like a dropped cache
+/// sweep rather than a slow machine.
 const SETTLE: Duration = Duration::from_millis(700);
+
+/// The wait for tests that ride a RefreshAll through the mockito server.
+const REFRESH_SETTLE: Duration = Duration::from_secs(5);
 
 /// One wired test world: harness bus, the two cells, mockito URL.
 struct World {
@@ -330,7 +337,7 @@ async fn refresh_all_drops_every_cache() {
 
     // When publishing RefreshAll.
     world.harness.publish(RefreshAll).await;
-    let loaded = await_recorded(&recorder, 1, SETTLE).await;
+    let loaded = await_recorded(&recorder, 1, REFRESH_SETTLE).await;
 
     // Then both GETs were consumed — memory and disk caches are gone.
     assert_eq!(loaded.len(), 1, "models refetched");

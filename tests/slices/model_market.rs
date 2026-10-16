@@ -214,6 +214,17 @@ fn edit_intent(action: &'static str, ch: char) -> DynamicIntent {
     )
 }
 
+/// The dynamic intent a bracketed paste travels as — the shape the TUI
+/// mints and the kernel's paste branch routes by focus.
+fn paste_intent(text: &str) -> DynamicIntent {
+    DynamicIntent::with_bytes(
+        market_ui_scope(),
+        jinn_chat_input_msg::PASTE_TEXT_ACTION,
+        "paste text",
+        text.as_bytes().to_vec(),
+    )
+}
+
 // ── Wiring ──────────────────────────────────────────────────────────────
 
 #[rstest::rstest]
@@ -272,6 +283,93 @@ fn every_advertised_key_binds_in_the_popup_scope() {
 /// wrapper, no modifier).
 fn is_char_key(key: &str) -> bool {
     key.len() == 1 && key.chars().next().is_some_and(|c| !c.is_control())
+}
+
+#[rstest::rstest]
+fn every_market_char_key_dispatches_through_the_composition_keymap() {
+    // Given the composed slice's keymap state at the popup's dynamic
+    // scope — the resolution path production dispatch uses.
+    let wired = Wired::new();
+    let mut keymap = jinn_tui::keymap::init();
+    jinn_tui::keymap_gen::bind_route_rows(&wired.routes, &mut keymap);
+    let mut state =
+        ratatui_which_key::WhichKeyState::new(keymap, jinn_tui::Scope::Dynamic(market_ui_scope()));
+
+    // When every advertised character key is pressed.
+    for (key, _) in jinn_model_market::routes::MARKET_BINDINGS {
+        if !is_char_key(key) {
+            continue;
+        }
+        let ch = key.chars().next().unwrap_or_default();
+        let intent = state.handle_key(key_event_char(ch));
+
+        // Then it resolves — to the insert-char edit intent the hook
+        // consult consumes, never an unbound drop.
+        let Some(jinn_kernel::KernelIntent::Dynamic(dynamic)) = intent else {
+            panic!("footer char key {key} resolved to no intent in the popup scope");
+        };
+        assert_eq!(
+            dynamic.action, "insert-char",
+            "char key {key} must dispatch as an insert-char edit intent"
+        );
+        assert_eq!(
+            dynamic.slice,
+            market_ui_scope(),
+            "the insert-char intent must target the popup's scope"
+        );
+    }
+}
+
+#[rstest::rstest]
+fn every_market_non_char_key_resolves_to_its_row() {
+    // Given the same composed keymap state at the popup's scope.
+    let wired = Wired::new();
+    let mut keymap = jinn_tui::keymap::init();
+    jinn_tui::keymap_gen::bind_route_rows(&wired.routes, &mut keymap);
+    let mut state =
+        ratatui_which_key::WhichKeyState::new(keymap, jinn_tui::Scope::Dynamic(market_ui_scope()));
+
+    // When every advertised non-character key is pressed.
+    for (key, _) in jinn_model_market::routes::MARKET_BINDINGS {
+        if is_char_key(key) {
+            continue;
+        }
+        let intent = state.handle_key(key_event_notation(key));
+
+        // Then it resolves to the dynamic intent its route row names.
+        let Some(jinn_kernel::KernelIntent::Dynamic(dynamic)) = intent else {
+            panic!("footer key {key} resolved to no intent in the popup scope");
+        };
+        assert_eq!(
+            dynamic.slice,
+            market_ui_scope(),
+            "key {key} must dispatch within the popup's scope"
+        );
+    }
+}
+
+/// A bare character key event.
+fn key_event_char(c: char) -> jinn_kernel::KeyEvent {
+    jinn_kernel::KeyEvent {
+        key: jinn_kernel::Key::Char(c),
+        modifiers: jinn_kernel::Modifiers::none(),
+    }
+}
+
+/// Parses a footer notation (`<enter>`, `<pgdn>`) into a key event.
+#[expect(
+    clippy::expect_used,
+    reason = "a footer notation that fails to parse is a table bug this test names"
+)]
+fn key_event_notation(notation: &str) -> jinn_kernel::KeyEvent {
+    let events = ratatui_which_key::parse_key_sequence::<jinn_kernel::KeyEvent>(
+        notation,
+        &key_event_char('\\'),
+    );
+    events
+        .into_iter()
+        .next()
+        .expect("a single-key notation yields one event")
 }
 
 #[rstest::rstest]
@@ -516,6 +614,42 @@ fn backspace_edits_a_focused_filter() {
     assert_eq!(wired.ui().read().filter, "so");
 }
 
+#[rstest::rstest]
+fn paste_into_a_focused_filter_appends_the_text() {
+    // Given an open popup with the filter focused and holding "so".
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "model market");
+    wired.ui().update(|s| {
+        s.filter_focused = true;
+        s.filter = "so".to_owned();
+    });
+
+    // When a bracketed paste arrives — the intent the kernel's paste
+    // branch routes to the focused scope's input hook.
+    wired.handle(paste_intent("nnet"));
+
+    // Then the pasted text landed in the filter and the selection reset.
+    let ui = wired.ui();
+    assert_eq!(ui.read().filter, "sonnet");
+    assert_eq!(ui.read().selection, 0);
+}
+
+#[rstest::rstest]
+fn paste_while_the_table_is_focused_is_declined() {
+    // Given an open popup, table focused.
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "model market");
+
+    // When a bracketed paste arrives.
+    wired.handle(paste_intent("sonnet"));
+
+    // Then the hook declined it: the filter is untouched and stays
+    // unfocused — the text belongs to the next surface, not the table.
+    let ui = wired.ui();
+    assert!(!ui.read().filter_focused);
+    assert!(ui.read().filter.is_empty());
+}
+
 // ── ENTER triple ────────────────────────────────────────────────────────
 
 #[rstest::rstest]
@@ -654,6 +788,38 @@ fn navigation_moves_and_clamps_at_the_table_end() {
     // And moving up at the top clamps.
     wired.press("move-model-market-up", "up");
     assert_eq!(wired.ui().read().selection, 0);
+}
+
+#[rstest::rstest]
+fn j_clamps_against_the_live_filtered_count_not_the_viewport() {
+    // Given a two-row table filtered down to both rows, with the
+    // measured viewport (10) larger than the filtered list.
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "model market");
+    seeded(&mut wired);
+    wired.ui().update(|s| s.results_viewport = 10);
+    assert_eq!(wired.ui().read().results_viewport, 10);
+
+    // When `j` fires five times — past the list's end.
+    for _ in 0..5 {
+        wired.handle(edit_intent("insert-char", 'j'));
+    }
+
+    // Then the selection clamped at the last filtered row.
+    assert_eq!(wired.ui().read().selection, 1);
+
+    // And the highlight renders at that clamped position.
+    let buffer = render_to_buffer(&wired, 120, 40);
+    let theme = jinn_theme::default_theme();
+    let highlighted = buffer
+        .content
+        .iter()
+        .filter(|c| c.bg == theme.picker_selected_bg)
+        .count();
+    assert!(
+        highlighted > 0,
+        "the clamped selection must still render highlighted"
+    );
 }
 
 #[rstest::rstest]

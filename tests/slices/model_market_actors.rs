@@ -294,6 +294,10 @@ async fn published_fetch_models_reaches_the_live_actor() {
     // Given the slice composed as the boot list composes it: routes and
     // view attached, both actors spawned over the catalog-seeded cells.
     let services = composed().await;
+    // And the boot kick's unconditional last_error (epoch fallback over
+    // a dead URL) cleared, so the assertion below cannot be satisfied
+    // by an outcome this publish never produced.
+    data_of(&services).update(|d| d.last_error = None);
 
     // When the opener's FetchModels publish rides the real bus.
     services

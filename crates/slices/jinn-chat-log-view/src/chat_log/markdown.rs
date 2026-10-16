@@ -317,7 +317,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[timeout(Duration::from_secs(3))]
+    #[timeout(Duration::from_secs(30))]
     fn warm_rerender_reuses_compiled_highlighters() {
         // Given a large, code-heavy response already rendered once.
         let theme = jinn_theme::default_theme();

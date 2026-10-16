@@ -162,11 +162,24 @@ pub fn render_market_popup(frame: &mut Frame<'_>, area: Rect, facts: &RenderFact
     };
 
     // Publish the measured result-row count for the paging keys before
-    // reading (the project picker's measurement pattern).
-    let measured = results_viewport(area);
+    // reading (the project picker's measurement pattern). The detail
+    // pane paints over the table's tail rows, so the paging window is
+    // the rows the table actually shows: the measurement minus the
+    // pane's rendered height. Without this, a page-down can land the
+    // selection inside the covered zone — highlighted, but invisible.
+    let theme = facts.theme.clone();
+    let pane_height = {
+        let data = data_cell.read();
+        let ui = ui_cell.read();
+        detail_for_highlight(&data, &ui).map_or(0, |(detail, eci)| {
+            let lines = detail_lines(&detail, eci, &theme).len();
+            let inner = Rect::new(area.x, area.y, area.width, block_inner(area));
+            usize::from(detail_pane_budget(inner, lines))
+        })
+    };
+    let measured = results_viewport(area).saturating_sub(pane_height);
     ui_cell.update(|state: &mut MarketUiState| state.results_viewport = measured);
 
-    let theme = facts.theme.clone();
     let visible = {
         let data = data_cell.read();
         let ui = ui_cell.read();
@@ -632,8 +645,14 @@ fn header_line(detail: &MarketDetail, theme: &Theme) -> Line<'static> {
 /// footer. At least 1, so paging never windows against zero.
 #[must_use]
 pub fn results_viewport(popup: Rect) -> usize {
-    let inner = popup.height.saturating_sub(2);
-    inner.saturating_sub(3).max(1) as usize
+    block_inner(popup).saturating_sub(3).max(1) as usize
+}
+
+/// The popup's inner area: the rect less its border. Shared by the
+/// viewport measurement and the pane budget so both subtract the same
+/// chrome.
+fn block_inner(popup: Rect) -> u16 {
+    popup.height.saturating_sub(2)
 }
 
 /// The focused filter's block title: the text plus a cursor block, so

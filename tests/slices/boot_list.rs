@@ -115,13 +115,63 @@ fn producer_cells_are_resolved_by_slot_key() {
 
 /// Every activation the boot list calls actually exists as a call.
 ///
+/// A stale entry naming an activation that was renamed or deleted fails
+/// to compile loudly, but one that was *dropped* while its comment
+/// survived does not.
+///
+/// The allowed entry-point names are derived, not hard-coded: an entry
+/// point is a `pub fn`/`pub async fn` named `activate*` or `install_*`
+/// in a slice crate's root or a re-exported module, plus the cell
+/// catalog's `register_all_cells` (the one wired name that is neither).
+/// A legitimately-named future entry point joins this set by declaring
+/// itself, so the test never fails on a name it never knew.
+fn activation_entry_points() -> Vec<String> {
+    let mut names = vec!["register_all_cells".to_owned()];
+    let mut roots: Vec<String> = std::fs::read_dir("crates/slices")
+        .expect("the slices container is in every checkout")
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .map(|e| e.path().join("src/lib.rs").display().to_string())
+        .collect();
+    roots.push("crates/slices/jinn-chat-log-view/src/kernel_element.rs".to_owned());
+    for root in roots {
+        let Ok(source) = std::fs::read_to_string(&root) else {
+            continue;
+        };
+        for line in source.lines() {
+            let trimmed = line.trim_start();
+            if let Some(rest) = trimmed
+                .strip_prefix("pub async fn ")
+                .or_else(|| trimmed.strip_prefix("pub fn "))
+                && (rest.starts_with("activate") || rest.starts_with("install_"))
+            {
+                let name = rest
+                    .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+                    .next()
+                    .unwrap_or_default()
+                    .to_owned();
+                names.push(name);
+            }
+        }
+    }
+    names.sort();
+    names.dedup();
+    assert!(
+        names.len() > 1,
+        "no activation entry points derived; the derivation broke"
+    );
+    names
+}
+
 /// Guards the inverse of the picker test above: a stale entry naming an
 /// activation that was renamed or deleted fails to compile loudly, but
 /// one that was *dropped* while its comment survived does not.
 #[rstest::rstest]
 fn every_activation_line_is_a_call() {
-    // Given the production boot list.
+    // Given the production boot list and the entry-point names the
+    // slices' public API declares.
     let list = boot_list();
+    let entry_points = activation_entry_points();
 
     // When each jinn_ line is examined.
     for line in list.lines() {
@@ -139,11 +189,9 @@ fn every_activation_line_is_a_call() {
             .expect("an activation line names a crate and a function");
         let func = rest.split('(').next().unwrap_or_default();
         assert!(
-            func.starts_with("activate")
-                || func.starts_with("install_actors")
-                || func.starts_with("install_layout_actors")
-                || func.starts_with("register_all_cells"),
-            "{module}::{func} is wired but is not an activation entry point"
+            entry_points.iter().any(|name| name == func),
+            "{module}::{func} is wired but is not an activation entry point — \
+             declare it `pub fn activate*`/`pub fn install_*` in the slice's lib"
         );
     }
 }
