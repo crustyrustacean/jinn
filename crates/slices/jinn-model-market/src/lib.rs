@@ -184,7 +184,7 @@ pub async fn activate_actors_with(services: &jinn_kernel::Services, endpoints: A
         epoch_actor::EpochMarketActorDeps {
             deps: actor_deps.clone(),
             data_cell: data_cell.clone(),
-            epoch_cache_dir: services.paths.epoch_cache_dir(),
+            cache_dir: services.paths.epoch_cache_dir(),
             client: reqwest::Client::new(),
             zip_url: endpoints.zip_url,
             now_ms: epoch_actor::epoch_market_clock(),
