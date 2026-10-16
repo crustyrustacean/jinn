@@ -309,4 +309,107 @@ fn definition_names_the_path_argument() {
     let required = def.parameters["required"].as_array().expect("required");
     assert_eq!(required.len(), 1);
     assert_eq!(required[0].as_str(), Some("path"));
+    // And set_name is declared optional.
+    let props = def.parameters["properties"]
+        .as_object()
+        .expect("properties");
+    assert!(
+        props.contains_key("set_name"),
+        "set_name is a declared argument"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn set_name_relabels_the_instance_and_leaves_the_seed_name_alone() {
+    // Given a user session and a seed file named "implementer".
+    let harness = TestHarness::new().await;
+    let (state, user_id) = fixture();
+    let path = attendant_file("setname", ATTENDANT_BODY);
+
+    // When the tool loads it with set_name = "implementor-002".
+    let result = execute(
+        call(&format!(
+            r#"{{"path":"{path}","set_name":"implementor-002"}}"#
+        )),
+        ctx(&harness, &state, user_id.clone()).await,
+    )
+    .await;
+
+    // Then the tool succeeds and the attendant's title is the new label.
+    assert!(result.success, "load must succeed: {}", result.content);
+    assert!(
+        result.content.contains("implementor-002"),
+        "the result names the applied label: {}",
+        result.content
+    );
+    let guard = state.read();
+    let attendant = guard
+        .session
+        .iter()
+        .map(|(_, s)| s)
+        .find(|s| s.is_attendant())
+        .expect("workflow attendant");
+    assert_eq!(
+        attendant.title(),
+        Some("implementor-002"),
+        "the instance carries the caller's label"
+    );
+    // And its behavior still comes from the seed file.
+    assert_eq!(attendant.title(), Some("implementor-002"));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn loading_the_same_seed_twice_with_different_set_names_yields_two_named_attendants() {
+    // Given a user session and one shared seed file.
+    let harness = TestHarness::new().await;
+    let (state, user_id) = fixture();
+    let path = attendant_file("twice", ATTENDANT_BODY);
+
+    // When it is loaded twice under two different labels.
+    for label in ["implementor-001", "implementor-002"] {
+        let result = execute(
+            call(&format!(r#"{{"path":"{path}","set_name":"{label}"}}"#)),
+            ctx(&harness, &state, user_id.clone()).await,
+        )
+        .await;
+        assert!(result.success, "load must succeed: {}", result.content);
+    }
+
+    // Then both attendants exist, each under its own label.
+    let guard = state.read();
+    let mut titles: Vec<_> = guard
+        .session
+        .iter()
+        .map(|(_, s)| s)
+        .filter(|s| s.is_attendant())
+        .map(|s| s.title().expect("titled").to_owned())
+        .collect();
+    titles.sort();
+    assert_eq!(titles, vec!["implementor-001", "implementor-002"]);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn without_set_name_the_seed_files_name_is_used() {
+    // Given a user session and a seed file named "implementer".
+    let harness = TestHarness::new().await;
+    let (state, user_id) = fixture();
+    let path = attendant_file("noname", ATTENDANT_BODY);
+    let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
+
+    // When the tool loads it with no set_name argument.
+    let result = execute(call(&format!(r#"{{"path":"{path}"}}"#)), tool_ctx).await;
+
+    // Then the attendant keeps the seed file's name.
+    assert!(result.success, "load must succeed: {}", result.content);
+    let guard = state.read();
+    let attendant = guard
+        .session
+        .iter()
+        .map(|(_, s)| s)
+        .find(|s| s.is_attendant())
+        .expect("workflow attendant");
+    assert_eq!(attendant.title(), Some("implementer"));
 }

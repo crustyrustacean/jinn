@@ -10,6 +10,7 @@
   - no-interactive-fossil-stash
 - The cursor on pickers is now clamped to the picker view area (previously the cursor could scroll out of the picker area).
 - Multi-pane pickers now clamp the viewport when scrolling long content (previously it was possible to scroll content out of the picker area).
+- Add `set_name` arg to `load_attendant` tool so attendants can be named at spawn time.
 
 ## 2026-10-15 v1.7.0
 
