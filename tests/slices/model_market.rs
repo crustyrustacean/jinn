@@ -539,6 +539,30 @@ fn esc_in_filter_mode_clears_the_filter_and_returns_focus_to_the_table() {
     );
 }
 
+#[rstest::rstest]
+fn esc_clearing_a_focused_filter_fetches_after_the_clear() {
+    // Given an open popup with the filter focused, "small" narrowing
+    // the seeded table to one row.
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "model market");
+    seeded(&mut wired);
+    wired.ui().update(|s| {
+        s.filter_focused = true;
+        s.filter = "small".to_owned();
+    });
+
+    // When ESC fires.
+    let mut result = wired.press("close-model-market", "close");
+
+    // Then the clear publishes the fetch for the widened set's
+    // highlighted row 0, stamped with the UI cell's incremented
+    // sequence.
+    let fetches = first_message::<jinn_model_market_msg::FetchEndpoints>(&mut result)
+        .expect("clearing a filter fetches the restored highlight");
+    assert_eq!(fetches.model_id, "openrouter/a/small");
+    assert_eq!(fetches.seq, wired.ui().read().fetch_seq);
+}
+
 // ── Filter focus (the hook) ─────────────────────────────────────────────
 
 #[rstest::rstest]
@@ -748,11 +772,35 @@ fn enter_accepts_a_focused_filter_and_returns_focus_to_the_table() {
     let ui = wired.ui();
     assert_eq!(ui.read().filter, "son");
     assert!(!ui.read().filter_focused);
-    assert!(result.messages.is_empty());
+    assert!(!result.message_names.contains(&"ProviderSwitch"));
     assert_eq!(
         wired.state.frontend.scope(),
         jinn_slices::FocusScope::Dynamic(market_ui_scope())
     );
+}
+
+#[rstest::rstest]
+fn enter_on_a_focused_filter_fetches_the_filtered_sets_row_zero() {
+    // Given an open popup with the filter focused and "small" typed —
+    // a filter matching exactly one row of the seeded table.
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "model market");
+    seeded(&mut wired);
+    wired.ui().update(|s| {
+        s.filter_focused = true;
+        s.filter = "small".to_owned();
+    });
+
+    // When ENTER fires.
+    let mut result = wired.press("confirm-model-market", "switch model");
+
+    // Then the accept publishes the fetch for the filtered set's
+    // highlighted row 0, stamped with the UI cell's incremented
+    // sequence.
+    let fetches = first_message::<jinn_model_market_msg::FetchEndpoints>(&mut result)
+        .expect("accepting a filter fetches the narrowed highlight");
+    assert_eq!(fetches.model_id, "openrouter/a/small");
+    assert_eq!(fetches.seq, wired.ui().read().fetch_seq);
 }
 
 // ── Sort / navigation ────────────────────────────────────────────────
@@ -883,6 +931,83 @@ fn navigation_with_detail_already_present_publishes_nothing() {
     let result = wired.press("move-model-market-down", "down");
 
     // Then no fetch publishes.
+    assert!(result.messages.is_empty());
+}
+
+#[rstest::rstest]
+fn hook_j_moves_and_fetches_the_newly_highlighted_row() {
+    // Given a seeded table with no detail loaded, table focused.
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "model market");
+    seeded(&mut wired);
+
+    // When `j` arrives as the insert-char intent the keymap's catch-all
+    // mints (route rows cannot own char keys in a hook scope).
+    let mut result = wired.handle(edit_intent("insert-char", 'j'));
+
+    // Then the fetch for the newly highlighted row rides the hook's
+    // result, stamped with the UI cell's incremented sequence.
+    let fetches = first_message::<jinn_model_market_msg::FetchEndpoints>(&mut result)
+        .expect("hook navigation into an unfetched row fetches");
+    assert_eq!(fetches.model_id, "openrouter/b/big");
+    assert_eq!(fetches.seq, wired.ui().read().fetch_seq);
+}
+
+/// A two-row table whose highlighted row changes under every sort key:
+/// `z/dear` is the cheapest projection, `a/cheap` the priciest — so
+/// `h` (MODEL order), `l` (IN order), and `s` (direction flip) each
+/// promote `a/cheap` over the default highlight.
+fn reorder_fixture(wired: &mut Wired) {
+    wired.data().update(|d| {
+        d.rows = vec![
+            row("openrouter/z/dear", "z", "dear", 0.000_005, 0.000_001, None),
+            row(
+                "openrouter/a/cheap",
+                "a",
+                "cheap",
+                0.000_001,
+                0.000_009,
+                Some(0.000_009),
+            ),
+        ];
+    });
+}
+
+#[rstest::rstest]
+#[case('h')]
+#[case('l')]
+#[case('s')]
+fn sort_keys_fetch_the_row_their_reorder_promotes(#[case] key: char) {
+    // Given a table whose default highlight (`z/dear`, cheapest PROJ)
+    // every sort key reorders away, no detail loaded.
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "model market");
+    reorder_fixture(&mut wired);
+
+    // When the sort key arrives as the insert-char intent the keymap's
+    // catch-all mints.
+    let mut result = wired.handle(edit_intent("insert-char", key));
+
+    // Then the fetch names the row the reorder promoted to the
+    // highlight, stamped with the UI cell's incremented sequence.
+    let fetches = first_message::<jinn_model_market_msg::FetchEndpoints>(&mut result)
+        .expect("a sort reorder that moves the highlight fetches");
+    assert_eq!(fetches.model_id, "openrouter/a/cheap");
+    assert_eq!(fetches.seq, wired.ui().read().fetch_seq);
+}
+
+#[rstest::rstest]
+fn typing_into_a_focused_filter_publishes_nothing() {
+    // Given a seeded table with the filter focused.
+    let mut wired = Wired::new();
+    wired.press("open-model-market", "model market");
+    seeded(&mut wired);
+    wired.ui().update(|s| s.filter_focused = true);
+
+    // When a character arrives as the insert-char intent.
+    let result = wired.handle(edit_intent("insert-char", 's'));
+
+    // Then nothing publishes: typing is not highlight motion.
     assert!(result.messages.is_empty());
 }
 
