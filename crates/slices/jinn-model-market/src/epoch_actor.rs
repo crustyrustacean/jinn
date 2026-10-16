@@ -34,7 +34,6 @@ use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
 use crate::epoch;
-use crate::epoch_cache;
 
 /// The epoch actor's static trouper path.
 pub const EPOCH_ACTOR_PATH: &str = "model-market-epoch";
@@ -49,9 +48,10 @@ pub struct EpochMarketActorDeps {
     pub deps: ActorDeps,
     /// The market data cell — this actor is its epoch-fields writer.
     pub data_cell: TypedCell<MarketDataState>,
-    /// The shared cache root (`AppPaths::cache_dir()`); the epoch dir
-    /// sits one level down (`jinn/epoch`).
-    pub cache_root: std::path::PathBuf,
+    /// The resolved epoch cache dir
+    /// ([`jinn_common::app_paths::AppPaths::epoch_cache_dir`]). Tests
+    /// point it at a tempdir under the fixture root.
+    pub cache_dir: std::path::PathBuf,
     /// The HTTP client for the zip download (tests point it at a mock).
     pub client: reqwest::Client,
     /// The epoch zip URL (tests point it at a mock server).
@@ -67,7 +67,9 @@ pub struct EpochMarketActor {
     deps: ActorDeps,
     /// The market data cell — the only cell this actor writes.
     data_cell: TypedCell<MarketDataState>,
-    /// Resolved epoch cache dir (`cache_root/jinn/epoch`).
+    /// Resolved epoch cache dir
+    /// ([`jinn_common::app_paths::AppPaths::epoch_cache_dir`]). Set once
+    /// at spawn from the deps.
     cache_dir: std::path::PathBuf,
     /// The HTTP client for the zip download.
     client: reqwest::Client,
@@ -114,7 +116,7 @@ impl EpochMarketActor {
                 move || {
                     let actor_deps = actor_deps.clone();
                     Box::pin(async move {
-                        let cache_dir = epoch_cache::epoch_cache_dir(&actor_deps.cache_root);
+                        let cache_dir = actor_deps.cache_dir.clone();
                         Ok(Self {
                             deps: actor_deps.deps,
                             data_cell: actor_deps.data_cell,
