@@ -163,7 +163,7 @@ report format.
 
 - **Teardown conflict** → same implementor fixes (Appendix C). Never a tracker issue.
 - **Teardown fails otherwise** → fix the invocation, re-issue. Stuck genuinely: issue stays `dispatched`, session named in the ledger and QA brief, loop continues.
-- **Four consecutive REJECTs** → stop cycling: issue back to `open`, findings filed as a new issue, branch/checkout wait (teardown only follows APPROVE).
-- **BLOCKED report** → facts filed as a new agent issue; the blocked session is abandoned (never messaged again); its checkout and branch are named in the QA brief's Known state. The issue re-enters the queue — being blocked once is not a demotion.
+- **Four consecutive REJECTs** → stop cycling: issue back to `open`, findings filed as a new issue (planner round first — it is a new implementor's work), branch/checkout wait (teardown only follows APPROVE).
+- **BLOCKED report** → facts filed as a new agent issue (planner round first), the blocked session abandoned (never messaged again), its checkout and branch named in the QA brief's Known state. The issue re-enters the queue — being blocked once is not a demotion.
 - **Silence** → hours past contract-sized effort with no report: abandoned, same as BLOCKED. There is no remote cancel; do not message it again.
 - **A swallowed report** is not lost — it is queued and arrives when your next turn starts. Read the inbox before dispatching: review first, then hand out new work.
