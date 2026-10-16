@@ -37,6 +37,13 @@
 //! the shared cell, not in the actor: a newer publish lands in the
 //! cell while this handler sleeps, even though the actor processes
 //! messages sequentially.
+//!
+//! # Detail on load
+//!
+//! Every models load ends by requesting the first row's endpoint
+//! detail when the data cell carries none for it — the popup opens at
+//! selection 0 and nothing on the open path navigates, so the detail
+//! pane would otherwise stay blank until the user presses a key.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -284,6 +291,7 @@ impl OpenRouterMarketActor {
                 from_cache: true,
             })
             .await;
+            self.maybe_fetch_first_detail(&rows).await;
             return;
         }
 
@@ -302,6 +310,7 @@ impl OpenRouterMarketActor {
                 from_cache: true,
             })
             .await;
+            self.maybe_fetch_first_detail(&rows).await;
             return;
         }
 
@@ -328,6 +337,7 @@ impl OpenRouterMarketActor {
                     from_cache: false,
                 })
                 .await;
+                self.maybe_fetch_first_detail(&rows).await;
             }
             Err(report) => {
                 tracing::warn!(?report, "models fetch failed; stale rows stand");
@@ -483,6 +493,35 @@ impl OpenRouterMarketActor {
         if let Some((rows, at)) = &self.models {
             self.write_models(rows, *at);
         }
+    }
+
+    /// Requests the highlighted row's detail when the data cell carries
+    /// none for it — the tail of every models load.
+    ///
+    /// The popup opens at selection 0 and `open_market` publishes only
+    /// `FetchModels`, so without this the detail pane stays blank until
+    /// the first navigation keypress. The `has_detail` check mirrors the
+    /// sync path's semantics (routes.rs): a detail already cached for
+    /// the highlighted row is never clobbered. `fetch_endpoints_for` is
+    /// the same core the debounced command runs — bypassing its
+    /// sequence check is legitimate here, the actor just wrote the rows
+    /// itself — and its cache-first order (memory → disk → network)
+    /// makes warm-cached detail land instantly. No cell guard spans the
+    /// await.
+    async fn maybe_fetch_first_detail(&mut self, rows: &[jinn_model_market_msg::MarketRow]) {
+        let Some(first) = rows.first() else {
+            return;
+        };
+        let has_detail = self
+            .data
+            .read()
+            .detail
+            .as_ref()
+            .is_some_and(|d| d.model_id == first.id);
+        if has_detail {
+            return;
+        }
+        self.fetch_endpoints_for(&first.id).await;
     }
 
     /// Writes a models load into the data cell. The rows arrive
