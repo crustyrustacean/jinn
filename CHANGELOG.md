@@ -1,5 +1,9 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
+## 2026-10-16 v1.8.1
+
+- Use actual dashes in OpenRouter popup.
+
 ## 2026-10-16 v1.8.0
 
 - These stream rule violations should now trigger less often:
