@@ -425,19 +425,50 @@ async fn up_from_the_first_row_stays_on_the_first_row() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn drawing_a_frame_publishes_the_measured_row_count_for_paging() {
+async fn drawing_a_frame_publishes_the_widget_solved_row_count_for_paging() {
     // Given a picker over many lifecycles.
     let wired = Wired::new((0..40).map(|i| plain(&format!("life{i:02}"))).collect()).await;
     wired.open();
 
-    // When a frame is drawn.
+    // When a frame is drawn, and an identical widget construction renders
+    // into a second terminal to learn what it solved.
+    let area = ratatui::layout::Rect::new(0, 0, 100, 16);
+    let popup =
+        crate::session_lifecycle_picker_render::session_lifecycle_picker_overlay_rect(&area)
+            .expect("geometry fn yields a popup rect");
+    let expected = {
+        let cell = wired.cell();
+        let guard = cell.read();
+        let widget = crate::session_lifecycle_picker_render::session_lifecycle_picker_widget(
+            &guard,
+            &jinn_theme::default_theme(),
+        );
+        let (mut probe, _) = jinn_testutil::setup_term(area.width, area.height);
+        let report = std::cell::Cell::new(None);
+        probe
+            .draw(|frame| {
+                report.set(Some(widget.render(frame, popup)));
+            })
+            .expect("draw");
+        report
+            .into_inner()
+            .expect("render reports a PickerLayout")
+            .inner
+            .height as usize
+    };
     let _ = wired.draw(100, 16);
 
-    // Then the cell holds the measurement, not the fallback.
-    assert_ne!(
+    // Then the cell holds exactly the height the widget solved — paging has
+    // a real row count rather than the fallback.
+    assert_eq!(
         wired.measured_viewport(),
-        jinn_session_lifecycle_msg::RESULTS_VIEWPORT_FALLBACK,
-        "the render pass must publish its own measurement for paging"
+        expected,
+        "the cell must hold the PickerLayout the frame's widget returned"
+    );
+    // And a wide frame's list pane is taller than the stacked layout's.
+    assert!(
+        expected > jinn_selection_widget::HORIZONTAL_LIST_ROWS as usize,
+        "a wide frame must solve more rows than the stacked list's fixed height"
     );
 }
 
@@ -755,6 +786,39 @@ async fn the_filter_hook_is_registered_for_the_picker_scope() {
 }
 
 // ── 7. One owner ────────────────────────────────────────────────────────
+
+#[rstest::rstest]
+#[tokio::test]
+async fn the_published_viewport_is_not_the_un_rendered_fallback() {
+    // Given a picker over many lifecycles, with a frame drawn so the cell
+    // holds the solve.
+    let wired = Wired::new((0..40).map(|i| plain(&format!("life{i:02}"))).collect()).await;
+    wired.open();
+    let _ = wired.draw(100, 16);
+
+    // When the cell is read back.
+    let viewport = wired.measured_viewport();
+
+    // Then it is a real measurement, not the un-rendered fallback.
+    assert_ne!(
+        viewport,
+        jinn_session_lifecycle_msg::RESULTS_VIEWPORT_FALLBACK,
+        "the render pass must publish the widget's solve, not the fallback"
+    );
+}
+
+#[rstest::rstest]
+fn the_unmeasured_viewport_matches_the_fallback() {
+    // Given a picker that has not rendered a frame yet.
+    // When asking for its viewport to page against.
+    let rows = jinn_session_lifecycle_msg::RESULTS_VIEWPORT_FALLBACK;
+
+    // Then the documented fallback is what the un-rendered cell holds.
+    assert_eq!(
+        jinn_session_lifecycle_msg::SessionLifecyclePickerState::default().results_viewport,
+        rows
+    );
+}
 
 #[rstest::rstest]
 fn the_picker_state_lives_only_in_its_slice_cell() {

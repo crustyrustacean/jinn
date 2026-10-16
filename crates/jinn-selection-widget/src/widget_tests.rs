@@ -636,3 +636,73 @@ fn compute_popup_rect_preserves_the_input_origin() {
         "popup should be centered in y: top_pad={top_pad}, bottom_pad={bottom_pad}"
     );
 }
+
+#[rstest::rstest]
+fn picker_layout_popup_is_the_rect_handed_in() {
+    // Given a widget and an explicit popup rect.
+    let state = SelectionState::with_items(make_items(&["test"]));
+    let (mut terminal, _) = setup_term(80, 24);
+    let popup = Rect::new(4, 2, 30, 10);
+    let report = std::cell::Cell::new(None);
+
+    // When rendering into that rect.
+    terminal
+        .draw(|frame| {
+            let widget = SelectionWidget::new(&state);
+            report.set(Some(widget.render(frame, popup)));
+        })
+        .unwrap();
+
+    // Then the report's popup is the rect handed in, verbatim.
+    let layout = report.into_inner().expect("render reports a PickerLayout");
+    assert_eq!(layout.popup, popup);
+}
+
+#[rstest::rstest]
+fn picker_layout_inner_height_excludes_chrome_with_two_footers() {
+    // Given a widget with two footer lines rendered into the computed popup.
+    let state = SelectionState::with_items(make_items(&["alpha", "bravo"]));
+    let (mut terminal, _) = setup_term(80, 24);
+    let popup = compute_popup_rect(Rect::new(0, 0, 80, 24));
+    let report = std::cell::Cell::new(None);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let widget = SelectionWidget::new(&state)
+                .footers(vec![Line::from("TOP FOOTER"), Line::from("BOTTOM FOOTER")]);
+            report.set(Some(widget.render(frame, popup)));
+        })
+        .unwrap();
+    let layout = report.into_inner().expect("render reports a PickerLayout");
+
+    // Then inner is the results area: the borders, the input row, the
+    // separator row, and both footer rows are excluded from its height.
+    assert_eq!(layout.inner.height, popup.height - 6);
+}
+
+#[rstest::rstest]
+fn picker_layout_inner_contains_the_drawn_result_rows() {
+    // Given a state whose first item is selected.
+    let state = SelectionState::with_items(make_items(&["alpha", "bravo"]));
+    let (mut terminal, _) = setup_term(80, 24);
+    let popup = compute_popup_rect(Rect::new(0, 0, 80, 24));
+    let report = std::cell::Cell::new(None);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let widget = SelectionWidget::new(&state);
+            report.set(Some(widget.render(frame, popup)));
+        })
+        .unwrap();
+    let layout = report.into_inner().expect("render reports a PickerLayout");
+
+    // Then the drawn result rows land inside inner: the selected item's
+    // "> " marker sits on inner's first row.
+    let buffer = terminal.backend().buffer().clone();
+    let first_row_cell = buffer
+        .cell((layout.inner.x, layout.inner.y))
+        .expect("first results cell");
+    assert_eq!(first_row_cell.symbol(), ">");
+}

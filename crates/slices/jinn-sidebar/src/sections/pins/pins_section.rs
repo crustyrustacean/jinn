@@ -440,7 +440,7 @@ fn build_entry_list(
 
     // Header
     lines.push(Line::from(vec![Span::styled(
-        format!(" Pinned Context — {}", pinned.len()),
+        format!(" Pinned Context - {}", pinned.len()),
         Style::default()
             .fg(theme.primary_text)
             .add_modifier(Modifier::BOLD),

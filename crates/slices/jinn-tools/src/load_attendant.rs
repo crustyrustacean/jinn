@@ -50,6 +50,12 @@ pub fn definition() -> ToolDefinition {
                     "type": "string",
                     "description": "Path to the attendant TOML file. Relative paths resolve \
                          against this session's working directory."
+                },
+                "set_name": {
+                    "type": "string",
+                    "description": "Optional replacement for the attendant's name from the \
+                         file — for labeling instances of one shared seed (e.g. \
+                         \"implementor-002\"). Behavior and configuration are unaffected."
                 }
             },
             "required": ["path"]
@@ -71,6 +77,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let Some(raw_path) = string_argument(&call, "path") else {
             return tool_error(&call, "missing required argument: path");
         };
+        let set_name = string_argument(&call, "set_name");
         let Some(state) = ctx.state.clone() else {
             return tool_error(&call, "load_attendant is unavailable without shared state");
         };
@@ -118,13 +125,18 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         };
 
         // Build under the read lock — `build` snapshots the parent's state —
-        // then stamp, insert, and hand the caller the child's id.
+        // then stamp, insert, and hand the caller the child's id. An
+        // explicit `set_name` relabels the instance after the build: the
+        // seed file's name stays the shared identity; this instance's
+        // display name becomes the caller's label.
+        let display_name = set_name.unwrap_or_else(|| entry.name.clone());
         let (created, messages, attendant_id) = {
             let guard = state.read();
             let Some(parent) = guard.session.get(&parent_id) else {
                 return tool_error(&call, "calling session is not live");
             };
             let mut attendant = saved_create::build(&entry, parent);
+            attendant.set_title(display_name.clone());
             attendant.set_workflow_source(AttendantSourcePath::new(source.clone()));
             let messages = saved_create::creation_messages(&parent_id, &attendant);
             let id = attendant.session_id().clone();
@@ -145,7 +157,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             call,
             &format!(
                 "Attached attendant \"{}\" as {attendant_id} (loaded from {source}).",
-                entry.name
+                display_name
             ),
         )
     })

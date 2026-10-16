@@ -159,6 +159,8 @@ anyhow = "^1"
 crossterm = "^0.29"
 lipsum = "^0.9"
 pest_derive = "^2"
+# The timing tests run under the workspace's rstest per-test timeout.
+rstest = "0.26"
 
 
 [[example]]

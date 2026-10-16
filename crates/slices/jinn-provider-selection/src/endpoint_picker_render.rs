@@ -217,6 +217,12 @@ pub fn endpoint_status(
 }
 
 /// Draws the endpoint picker popup for one frame.
+///
+/// The popup's result-row count is not measured here — the widget solves the
+/// layout (including its wide/narrow split decision) and reports it (see
+/// `jinn_selection_widget::PickerLayout`); this writes the reported
+/// `inner.height` into the cell so the navigation keys page by what the last
+/// frame actually laid out.
 pub fn render_endpoint_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFacts) {
     let Some(cell) = facts
         .slices
@@ -224,15 +230,6 @@ pub fn render_endpoint_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderF
     else {
         return;
     };
-
-    // Measure the popup's result rows and publish them for the navigation keys,
-    // which need a real row count to keep the highlight on screen. This is the
-    // slice-owned equivalent of the kernel's per-frame viewport write.
-    let measured = crate::endpoint_picker_viewport::results_viewport(area);
-    cell.update(|state: &mut EndpointPickerState| state.results_viewport = measured);
-
-    let guard = cell.read();
-    let state: &EndpointPickerState = &guard;
 
     let theme = &facts.theme;
     let palette = endpoint_picker_palette(theme);
@@ -251,20 +248,46 @@ pub fn render_endpoint_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderF
         (guard.endpoint_loading, guard.endpoint_fetched_at)
     });
 
-    let footers = vec![
-        endpoint_status(state, theme, loading, fetched_at),
-        Line::from(keybind.0),
-    ];
+    let (footers, preview_scroll) = {
+        let guard = cell.read();
+        let state: &EndpointPickerState = &guard;
+        let footers = vec![
+            endpoint_status(state, theme, loading, fetched_at),
+            Line::from(keybind.0),
+        ];
+        (footers, state.preview_scroll)
+    };
 
     // `PreviewSelectionWidget`, not `SelectionWidget`: the endpoint menu has a
     // detail pane (routing tag, uptime, quantization, pricing). The plain
     // widget has no pane to draw it in, so the rows rendered bare.
-    let widget = jinn_selection_widget::PreviewSelectionWidget::new(&state.selection)
-        .title(Line::from(" OpenRouter Endpoint "))
-        .title_style(Style::default().fg(theme.popup_title))
-        .footers(footers)
-        .colors(palette.selection_colors())
-        .preview_scroll(state.preview_scroll);
-
-    widget.render(frame, area);
+    //
+    // The widget solves the layout — its wide/narrow split included — and
+    // reports it; the guard ends before the cell write because `TypedCell` is
+    // a plain RwLock and a same-thread write-while-read would deadlock. The
+    // layout is `Copy`, so it outlives the guard cleanly.
+    let (layout, report) = {
+        let guard = cell.read();
+        let mut report = None;
+        let layout = jinn_selection_widget::PreviewSelectionWidget::new(&guard.selection)
+            .title(Line::from(" OpenRouter Endpoint "))
+            .title_style(Style::default().fg(theme.popup_title))
+            .footers(footers)
+            .colors(palette.selection_colors())
+            .preview_scroll(preview_scroll)
+            .preview_report(&mut report)
+            .render(frame, area);
+        (layout, report)
+    };
+    cell.update(|state: &mut EndpointPickerState| {
+        state.results_viewport = usize::from(layout.inner.height);
+        // The pane's measured geometry is this frame's clamp bound; clamping
+        // the stored offset here is what keeps a stale oversized scroll —
+        // including one held over from a shorter detail list — from
+        // surviving past the first frame that shows the new content.
+        if let Some(report) = report {
+            state.preview_max_scroll = report.max_scroll();
+            state.preview_scroll = state.preview_scroll.min(state.preview_max_scroll);
+        }
+    });
 }

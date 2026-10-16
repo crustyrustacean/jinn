@@ -119,7 +119,7 @@ pub fn attach_workflow_picker_rows(routes: &KeyRoutes, cell: &WorkflowPickerCell
         feature: "workflows",
         outcome: RouteOutcome::Action {
             action: "open-workflow-picker",
-            display: "start a workflow",
+            display: "search workflows",
             run: action(cell, open_workflow_picker),
         },
     });

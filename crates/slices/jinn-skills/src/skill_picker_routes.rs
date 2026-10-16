@@ -519,9 +519,15 @@ fn scroll_preview_up(_ctx: &mut ActionCtx<'_>, cell: &SkillPickerCell) -> Intent
 }
 
 /// `<c-d>`: scroll the preview pane down one page.
+///
+/// Saturates at the render pass-measured bound, so a held key stops at the
+/// last content line instead of scrolling into blank rows forever.
 fn scroll_preview_down(_ctx: &mut ActionCtx<'_>, cell: &SkillPickerCell) -> IntentResult {
     cell.update(|picker| {
-        picker.preview_scroll = picker.preview_scroll.saturating_add(PREVIEW_PAGE_SIZE);
+        picker.preview_scroll = picker
+            .preview_scroll
+            .saturating_add(PREVIEW_PAGE_SIZE)
+            .min(picker.preview_max_scroll);
     });
     IntentResult::empty()
 }

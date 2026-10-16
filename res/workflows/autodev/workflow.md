@@ -1,12 +1,12 @@
 +++
 name = "autodev"
-description = "Autonomous development loop: the human states one goal on their feature branch, the orchestrator decomposes it into a file-based issue tracker, a planner attendant writes an execution contract per issue, implementor attendants are attached on demand and land their work back onto the feature branch through scripted teardown, agent-created issues recurse through the same loop, and the human reappears only to QA the result."
+description = "Autonomous development loop: the human states one goal on their feature branch, the orchestrator decomposes it into a file-based issue tracker, a planner attendant plans each issue (decomposing big ones into children first), implementor attendants are attached on demand and land their work back onto the feature branch through scripted teardown, agent-created issues recurse through the same loop, and the human reappears only to QA the result."
 +++
 
 # Autodev
 
 Instructions for the session that runs an autodev loop. The human gives
-you one goal on their feature branch; you file it, contract it,
+you one goal on their feature branch; you file it, plan it,
 implement it through attendant sessions, and return one QA brief. The
 appendices at the bottom define the pieces (roles, tracker, lifecycle,
 report formats); the instructions below are the actual procedure.
@@ -25,7 +25,7 @@ they approve.
 the QA brief are your scheduled contacts; they are not the only ones.
 The human can read any implementor's session live and message any
 session directly — including attendants. A message that arrives in
-*your* session is a directive; an implementor reports human messages
+_your_ session is a directive; an implementor reports human messages
 it received in its next report. Treat both as authoritative.
 
 **Human sequencing remarks are quality guidance, not scheduling
@@ -50,19 +50,18 @@ You are the orchestrator. Read top to bottom, then loop.
 ### 1. The loop
 
 Repeat until the tracker holds nothing claimable, dispatched,
-contracting, or triaged. Then do the QA brief (step 6).
+planning, or triaged. Then do the QA brief (step 5).
 
-1. **Triage** — read `steps/01-triage.md`. For each `triage` issue: decompose (ceiling: ~500 lines or 3+ independent areas) or set `open`. Update the task list.
-2. **Contract** — read `steps/02-dispatch.md`. For each claimable issue: dispatch the planner, mark `contracting`, end your turn. Its READY report wakes you; mark `open`.
-3. **Attach** — read `steps/02-dispatch.md`. For each contract-ready, claimable issue: `load_attendant` the implementor seed (never `spawn_subagent` — Appendix C), apply the lifecycle setup, send the implementor dispatch, mark `dispatched` with the session id as `assignee`. End your turn if nothing else is actionable — a turn that never ends is a turn whose reports never land.
-4. **Review** — a DONE report arrives as a queued message that starts your next turn. Read `steps/03-integrate.md`, dispatch the reviewer (Appendix D), end your turn. APPROVE → teardown. REJECT → findings back to the same implementor session; it fixes and re-reports.
-5. **Teardown** — APPROVE in hand: `run_lifecycle` teardown on the implementor's session (Appendix C). Success → issue `done`, session gone, work on your branch — then `fossil update` / `git pull --ff-only` in your own seat (the teardown moved the branch, not your working tree). `TEARDOWN-CONFLICT` → merge-fix dispatch to the same implementor; on its report, teardown again. Other failure → correct the invocation, re-issue; never hand-work around it.
-6. **QA brief** — nothing claimable, nothing in flight: read `steps/04-qa.md`, write the brief, end your turn. The human's reply resumes the loop (defects → issues) or ends the run (OK → final report; the work is already on the branch).
+1. **Triage** — read `steps/01-triage.md`. For each `triage` issue: one planner dispatch (it decides PLAN or DECOMPOSE — never split an issue yourself). PLAN → mark `open`. DECOMPOSE → transcribe the children, mark this issue `parent`, and route each child the same way. Update the task list.
+2. **Attach** — read `steps/02-dispatch.md`. For each execution-plan-ready, claimable issue: `load_attendant` the implementor seed (never `spawn_subagent` — Appendix C) with `set_name` = `implementor-<issue-number>` (e.g. `implementor-002` — short, so the sidebar reads well), apply the lifecycle setup, send the implementor dispatch, mark `dispatched` with the session id as `assignee`. End your turn if nothing else is actionable — a turn that never ends is a turn whose reports never land.
+3. **Review** — a DONE report arrives as a queued message that starts your next turn. Read `steps/03-integrate.md`, dispatch the reviewer (Appendix D), end your turn. APPROVE → teardown. REJECT → findings back to the same implementor session; it fixes and re-reports.
+4. **Teardown** — APPROVE in hand: `run_lifecycle` teardown on the implementor's session (Appendix C). Success → issue `done`, session gone, work on your branch — then `fossil update` / `git pull --ff-only` in your own seat (the teardown moved the branch, not your working tree). `TEARDOWN-CONFLICT` → merge-fix dispatch to the same implementor; on its report, teardown again. Other failure → correct the invocation, re-issue; never hand-work around it.
+5. **QA brief** — nothing claimable, nothing in flight: read `steps/04-qa.md`, write the brief, end your turn. The human's reply resumes the loop (defects → issues).
 
 **Ending the turn is the whole waiting mechanism.** A dispatch with
 nothing else actionable means: say so in one line and end the turn —
 no sleep loops, no `tail -f`, no watching files, no polling of any
-kind. Queued reports cannot arrive mid-turn; they arrive *because* the
+kind. Queued reports cannot arrive mid-turn; they arrive _because_ the
 turn ended. The only loop that exists is stage 1, re-entered when a
 report wakes you.
 
@@ -70,9 +69,9 @@ report wakes you.
 
 - You write every tracker file and status transition. Workers never touch them; they report, you file.
 - Teardown is yours alone, after review, never by another session. Conflicts surfaced by teardown are fixed by the implementor that produced the work — never by you, never as tracker issues.
-- No escalation path: BLOCKED hands you facts; you file them as issues. No "too hard", no capability judging — decomposition is the only recursion.
-- No gates except the goal ask and the QA brief. The contract is an input, not an approval gate.
-- `.agents/RECORD.md` is never written by any session, you included. Planner `record:` lines go to the ledger, then verbatim into the QA brief; the file changes only after human approval, outside the loop.
+- No escalation path: BLOCKED hands you facts; you file them as issues. No "too hard", no capability judging — the planner's DECOMPOSE verdict is the only recursion.
+- No gates except the goal ask and the QA brief. The execution plan is an input, not an approval gate.
+- The record is propose-then-apply: planner `record:` lines go to the ledger, then verbatim into the QA brief as proposed amendments to `.agents/RECORD.md`. Write them only upon the human's approval, applying approved lines and any amendments the human made, verbatim.
 - Repository commands come from `steps/scm.md`. A missing command is a workflow bug — report it, don't improvise.
 - A workflow file edited mid-run governs from the next action: re-read everything under this workflow's directory, migrate the standing attendants if their seeds changed (fresh load; retire old sessions by never messaging them again), append a cycle section to the ledger, and continue. A prompt update never restarts a run.
 
@@ -87,17 +86,18 @@ never committed; an existing one is this cycle's backlog):
 ---
 id = 1
 title = "the issue in one line"
-status = "triage"        # triage | open | contracting | dispatched | done | parent | closed
+status = "triage" # triage | open | planning | dispatched | done | parent | closed
 # parent = 1            # parent issue id; absent on top-level issues
 # blocked-by = [2, 3]   # issue ids that must close first; absent when nothing blocks
 # assignee = "<session-id>"  # absent when unassigned
 ---
 
 # <title>
+
 <goal, approach when known, verification>
 ```
 
-- Statuses: `triage` (new) → `open` (claimable) → `contracting` → `dispatched` (an implementor holds it) → `done` (teardown succeeded). A decomposed issue becomes `parent` and closes when all children close.
+- Statuses: `triage` (new) → `planning` (the planner holds it) → `open` (claimable) → `dispatched` (an implementor holds it) → `done` (teardown succeeded). A decomposed issue becomes `parent` and closes when all children close.
 - Claimable = `open` and every `blocked-by` id closed. Order by least blocked, then oldest.
 - Bodies are written for a stranger and never mention the human; where work came from is ledger material.
 - Keep frontmatter valid TOML — verify after every write.
@@ -129,9 +129,9 @@ is the landing; there is no integration branch.
 Spawn procedure, per issue (steps/02-dispatch.md carries the full
 payload lists):
 
-1. `load_attendant` on `attendants/implementor.toml` (absolute path) — this creates the session and stamps the seed. Never `spawn_subagent`.
+1. `load_attendant` on `attendants/implementor.toml` (absolute path), with `set_name` = `implementor-<issue-number>` — the seed file's own name stays generic; the label distinguishes instances in the sidebar. Keep it short: `implementor-002`, never the issue slug. Never `spawn_subagent`.
 2. `run_lifecycle` setup: `path` = this workflow's `lifecycle.toml` (absolute), `session_id` = the new session's id, `dir` = `<your-root>-issue-<id>` (sibling of your checkout), `branch` = `<your-branch>-issue-<id>`, `parent` = your branch.
-3. `tell_session` the dispatch (issue path, contract path, ids, checkout dir, parent branch, scm.md path, report format).
+3. `tell_session` the dispatch (issue path, execution plan path, ids, checkout dir, parent branch, scm.md path, report format).
 
 Teardown: `run_lifecycle` teardown, session id only — recorded
 coordinates replay it. The script gates on conflicts BEFORE any
@@ -143,11 +143,11 @@ same-file issues serialize because parallel teardowns would fight.
 
 ## Appendix D — the roles
 
-- **Planner** (`attendants/planner.toml`, preserve, manual): one dispatch per issue before any implementor exists. Reads the issue, reads `.agents/RECORD.md` once (exploration fuel, not a constraint — the code is the authority), investigates, saves a contract to `.plans/<issue-id>-<slug>/contract.md` in your checkout: end state (checkable facts), files to touch, approach, verification (exact commands), traps. Reports `READY <issue-id>-<slug> <contract-path>` (with a `record:` line for stale/proposed record entries) or `BLOCKED` (issue contradicts itself, or end state unreachable — never capability doubt). Writes nothing else, edits no code.
-- **Implementor** (`attendants/implementor.toml`, preserve, attached on demand): works its issue in its own checkout on its own branch, stamps the contract as its task list first, exploration bounded by the contract's files-to-touch list, verifies per the contract, commits on its branch. Reports `DONE` / `BLOCKED` with verification results and contract divergences. Never lands its own work, never touches the tracker, never spawns anything.
-- **Reviewer** (`attendants/reviewer.toml`, preserve, manual): one dispatch per DONE report, before any teardown. Reads the contract then the branch diff through the repository file (no checkout). Judges: end state delivered? tests that can fail? scope matches files-to-touch? report honest? Reports `APPROVE <issue-id>-<slug>` / `REJECT <issue-id>-<slug>` + findings. Never edits anything.
+- **Planner** (`attendants/planner.toml`, preserve, manual): create only one planner attendant and re-use it throughout the run, dispatching issues/goals to it to generate new execution plans. Reads the issue, reads `.agents/RECORD.md` once (exploration fuel, not a constraint — the code is the authority), investigates, saves an execution plan to `.plans/<issue-id>-<slug>/execution-plan.md` in your checkout: end state (checkable facts), context (orientation, files-to-read, functions, impacted tests, task-specific), files to touch, approach, verification (exact commands), surprises & discoveries (findings with evidence). Reports `READY <issue-id>-<slug> <execution-plan-path>` (with a `record:` line for stale/proposed record entries) or `BLOCKED` (issue contradicts itself, or end state unreachable — never capability doubt). Writes nothing else, edits no code.
+- **Implementor** (`attendants/implementor.toml`, preserve, attached on demand, labeled `implementor-<issue-number>` via `set_name`): create per issue/slug and works its issue in its own checkout on its own branch, stamps the execution plan as its task list first, exploration bounded by the execution plan's files-to-touch list, verifies per the execution plan, commits on its branch. Reports `DONE` / `BLOCKED` with verification results and execution plan divergences. Never lands its own work, never touches the tracker, never spawns anything. Delegate REJECTED reviews to the same implementor so it can apply a fix with minimal context usage.
+- **Reviewer** (`attendants/reviewer.toml`, preserve, manual): create only one reviewer attendant and re-use it throughout the rune, dispatching to it once per DONE report, before any teardown. Reads the execution plan then the branch diff through the repository file (no checkout). Judges: end state delivered? tests that can fail? scope matches files-to-touch? report honest? Reports `APPROVE <issue-id>-<slug>` / `REJECT <issue-id>-<slug>` + findings. Never edits anything.
 
-Dispatches are always self-contained — issue path, contract path,
+Dispatches are always self-contained — issue path, execution plan path,
 absolute paths, expected report format — paste paths, never retype
 them. Re-dispatches (REJECT fixes, teardown conflicts) are shorter but
 still explicit: what failed, the findings verbatim, what to do, same
@@ -155,15 +155,15 @@ report format.
 
 ## Appendix E — verification
 
-- **Invariant greps** (run after any workflow edit, before any QA brief): `fossil`/`git` appear only in `lifecycle.toml` and `steps/scm.md`; "escalat" and "too hard" appear nowhere; the record file is only ever *proposed about*, never written.
+- **Invariant greps** (run after any workflow edit, before any QA brief): `fossil`/`git` appear only in `lifecycle.toml` and `steps/scm.md`; "escalat" and "too hard" appear nowhere; the record file is written only on the human's approval of the QA brief's proposed entries.
 - **Live checks**: the tracker parses (frontmatter TOML per file); every `dispatched` issue names a live session id; every `done` issue's branch is closed; your branch's log shows one merge per `done`.
-- **QA brief** (`steps/04-qa.md`): what changed, how it should work (root contract's end state), how to test, known state, proposed record entries. Then stop.
+- **QA brief** (`steps/04-qa.md`): what changed, how it should work (root execution plan's end state), how to test, known state, proposed record entries. Then stop.
 
 ## Appendix F — failure handling
 
 - **Teardown conflict** → same implementor fixes (Appendix C). Never a tracker issue.
 - **Teardown fails otherwise** → fix the invocation, re-issue. Stuck genuinely: issue stays `dispatched`, session named in the ledger and QA brief, loop continues.
-- **Four consecutive REJECTs** → stop cycling: issue back to `open`, findings filed as a new issue, branch/checkout wait (teardown only follows APPROVE).
-- **BLOCKED report** → facts filed as a new agent issue; the blocked session is abandoned (never messaged again); its checkout and branch are named in the QA brief's Known state. The issue re-enters the queue — being blocked once is not a demotion.
-- **Silence** → hours past contract-sized effort with no report: abandoned, same as BLOCKED. There is no remote cancel; do not message it again.
+- **Four consecutive REJECTs** → stop cycling: issue back to `open`, findings filed as a new issue (a planner dispatch first — it is a new implementor's work), branch/checkout wait (teardown only follows APPROVE).
+- **BLOCKED report** → facts filed as a new agent issue (a planner dispatch first), the blocked session abandoned (never messaged again), its checkout and branch named in the QA brief's Known state. The issue re-enters the queue — being blocked once is not a demotion.
+- **Silence** → hours past execution-plan-sized effort with no report: abandoned, same as BLOCKED. There is no remote cancel; do not message it again.
 - **A swallowed report** is not lost — it is queued and arrives when your next turn starts. Read the inbox before dispatching: review first, then hand out new work.

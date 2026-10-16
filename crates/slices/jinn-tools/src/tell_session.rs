@@ -67,20 +67,14 @@ pub(crate) fn processed_title(title: Option<&str>) -> Option<String> {
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
         name: "tell_session".to_owned(),
-        description: "Send a text message to another session by its session id. An idle \
-             attendant starts a run seeded from its template plus your message; a busy \
-             attendant receives it when its current turn finishes; any other session \
-             receives it as a new user turn."
+        description: "Send a message to another session by its session id. An idle attendant starts a run seeded from its template plus your message; a busy attendant receives it when its current turn finishes; any other session receives it as a new user turn."
             .to_owned(),
         prompt_snippet: Some(
-            "Deliver a message to a named session: `tell_session` with the target \
-             session id and the text."
+            "Deliver a message to a named session: `tell_session` with the target session id and the text."
                 .to_owned(),
         ),
         prompt_guidelines: vec![
-            "Use `tell_session` to hand work to a specific session — a stage \
-             attendant in a workflow run, or any session whose id you know. Never guess \
-             an id; use one you were given or can read."
+            "Use `tell_session` to hand work to a specific session — a stage attendant in a workflow run, or any session whose id you know. Never guess an id; use one you were given or can read."
                 .to_owned(),
         ],
         parameters: serde_json::json!({
@@ -92,7 +86,7 @@ pub fn definition() -> ToolDefinition {
                 },
                 "message": {
                     "type": "string",
-                    "description": "The message text the target session receives."
+                    "description": "The message text the target session receives. Markdown format is supported."
                 }
             },
             "required": ["session_id", "message"]

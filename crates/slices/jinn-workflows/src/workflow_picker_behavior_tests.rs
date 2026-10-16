@@ -682,21 +682,81 @@ fn a_rescan_replaces_the_visible_workflows() {
 
 // ── Viewport ────────────────────────────────────────────────────────────
 
+/// Draws one frame of the workflows picker through the real render fn into
+/// a fresh test terminal, over `slices`' registry.
+///
+/// Returns the layout a second, identical widget construction solved, so a
+/// test's expectation comes from the widget's report rather than arithmetic.
+fn draw_and_solve(
+    slices: &jinn_slices::Slices,
+    area: ratatui::layout::Rect,
+) -> jinn_selection_widget::PickerLayout {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let facts = jinn_slices::RenderFacts::new(jinn_theme::default_theme(), slices);
+    let cell = slices
+        .reader::<WorkflowPickerState>(&workflows_picker_slot())
+        .expect("the picker's cell is registered");
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).expect("terminal");
+    terminal
+        .draw(|frame| {
+            let popup = crate::workflow_picker_render::workflow_picker_overlay_rect(&area)
+                .expect("geometry fn yields a popup rect");
+            crate::workflow_picker_render::render_workflow_picker(frame, popup, &facts);
+        })
+        .expect("draw");
+
+    let guard = cell.read();
+    let widget = crate::workflow_picker_render::workflow_picker_widget(&guard, &facts.theme);
+    let popup = crate::workflow_picker_render::workflow_picker_overlay_rect(&area)
+        .expect("geometry fn yields a popup rect");
+    let (mut probe, _) = jinn_testutil::setup_term(area.width, area.height);
+    let report = std::cell::Cell::new(None);
+    probe
+        .draw(|frame| {
+            report.set(Some(widget.render(frame, popup)));
+        })
+        .expect("draw");
+    report.into_inner().expect("render reports a PickerLayout")
+}
+
 #[rstest::rstest]
-fn the_render_pass_publishes_the_measured_viewport() {
-    // Given a picker state that has not rendered a frame yet.
-    let mut state = WorkflowPickerState::default();
+fn the_render_pass_publishes_the_widget_solved_viewport() {
+    // Given a picker cell over several discovered workflows, registered on
+    // its slot in a fresh registry.
+    let slices = jinn_slices::Slices::new();
+    let cell = slices
+        .register(workflows_picker_slot(), WorkflowPickerState::default())
+        .expect("workflow picker slot is free in a fresh registry");
+    opened(&cell, &["alpha", "beta", "gamma"]);
 
-    // When the renderer measures a frame.
-    let measured = crate::workflow_picker_viewport::results_viewport(ratatui::layout::Rect::new(
-        0, 0, 200, 50,
-    ));
-    state.results_viewport = measured;
+    // When a wide frame is drawn and the widget's own solve is captured.
+    let layout = draw_and_solve(&slices, ratatui::layout::Rect::new(0, 0, 200, 50));
 
-    // Then paging has a real row count rather than the fallback.
-    assert!(state.results_viewport > 0);
+    // Then the cell holds exactly the height the widget solved — paging has
+    // a real row count rather than the fallback.
+    assert_eq!(
+        cell.read().results_viewport,
+        layout.inner.height as usize,
+        "the cell must hold the PickerLayout the frame's widget returned"
+    );
     // And a wide frame's list pane is taller than the stacked layout's.
-    assert!(state.results_viewport > jinn_selection_widget::HORIZONTAL_LIST_ROWS as usize);
+    assert!(
+        layout.inner.height as usize > jinn_selection_widget::HORIZONTAL_LIST_ROWS as usize,
+        "a wide frame must solve more rows than the stacked list's fixed height"
+    );
+}
+
+#[rstest::rstest]
+fn the_unmeasured_viewport_matches_the_fallback() {
+    // Given a picker that has not rendered a frame yet.
+    // When asking for its viewport to page against.
+    // Then the documented fallback is what the un-rendered cell holds.
+    assert_eq!(
+        jinn_workflows_msg::WorkflowPickerState::default().results_viewport,
+        jinn_workflows_msg::RESULTS_VIEWPORT_FALLBACK
+    );
 }
 
 // ── Slot ────────────────────────────────────────────────────────────────

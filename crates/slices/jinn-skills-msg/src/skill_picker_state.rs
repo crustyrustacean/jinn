@@ -44,6 +44,16 @@ pub struct SkillPickerState {
     /// Lives beside the selection because the preview follows the cursor:
     /// highlighting a different skill resets it.
     pub preview_scroll: usize,
+    /// The largest scroll offset that still shows preview content, as the
+    /// render pass measured from the widget's report.
+    ///
+    /// `usize::MAX` until the first frame — "unbounded until measured", so a
+    /// keypress landing before any render scrolls exactly as it always has
+    /// instead of being swallowed by a clamp that has no measurement yet.
+    /// The render pass writes the real bound every frame and clamps
+    /// `preview_scroll` against it, so a stale oversized value cannot
+    /// survive past the first frame.
+    pub preview_max_scroll: usize,
     /// The picker's rendered-preview cache, shared with the render pass.
     pub preview_cache: std::sync::Arc<crate::skill_preview_cache::SkillPreviewCache>,
     /// How many result rows fit on screen, measured by the render pass.
@@ -66,6 +76,9 @@ impl Default for SkillPickerState {
             selection: jinn_selection_widget::SelectionState::new(),
             snapshot: None,
             preview_scroll: 0,
+            // Unbounded until the render pass measures the pane; the first
+            // frame replaces this with the widget-reported bound.
+            preview_max_scroll: usize::MAX,
             preview_cache: std::sync::Arc::new(crate::skill_preview_cache::SkillPreviewCache::new()),
             // Matches the kernel's pre-measurement fallback, so the very first
             // keypress before any render behaves as it always has.

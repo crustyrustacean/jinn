@@ -21,6 +21,9 @@ tracing = { workspace = true }
 unicode-segmentation = { workspace = true }
 
 [dev-dependencies]
+# The picker tests seed the picker cell through the shared cell catalog, the
+# way production resolves it, rather than minting a stand-in registry.
+jinn-cell-catalog = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
 uuid = { workspace = true }

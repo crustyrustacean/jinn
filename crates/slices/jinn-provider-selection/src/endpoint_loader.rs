@@ -160,6 +160,11 @@ mod tests {
                 completion_price: None,
                 quantization: None,
                 max_completion_tokens: None,
+                input_cache_read: None,
+                uptime_1d: None,
+                latency_p50_ms: None,
+                throughput_p50: None,
+                overrides: Vec::new(),
             },
             jinn_provider::EndpointInfo {
                 tag: "anthropic".to_owned(),
@@ -169,6 +174,11 @@ mod tests {
                 completion_price: None,
                 quantization: None,
                 max_completion_tokens: None,
+                input_cache_read: None,
+                uptime_1d: None,
+                latency_p50_ms: None,
+                throughput_p50: None,
+                overrides: Vec::new(),
             },
         ];
         // The pin is only a tag: `providers.toml` stores the routing slug and

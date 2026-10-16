@@ -303,6 +303,24 @@ impl AppPaths {
         self.system_data_dir.join("models.dev.json")
     }
 
+    /// Epoch benchmark cache directory (`~/.cache/jinn/epoch`).
+    ///
+    /// Holds the three CSVs `<c-r>` extracts from the downloaded epoch
+    /// zip; absent on first run, where the compiled-in seed stands in.
+    #[must_use]
+    pub fn epoch_cache_dir(&self) -> PathBuf {
+        self.cache_dir.join(APP_NAME).join("epoch")
+    }
+
+    /// OpenRouter market cache directory (`~/.cache/jinn/openrouter`).
+    ///
+    /// Holds the model-market's TTL disk caches: the models listing and
+    /// the per-model endpoint detail files.
+    #[must_use]
+    pub fn openrouter_cache_dir(&self) -> PathBuf {
+        self.cache_dir.join(APP_NAME).join("openrouter")
+    }
+
     // -- Merged resource paths (system + user) ---------------------------------
 
     /// Returns merged theme file paths from system and user directories.
@@ -684,6 +702,38 @@ mod tests {
 
         // Then it is root/share.
         assert_eq!(system_data_dir, root.path().join("share"));
+    }
+
+    #[rstest::rstest]
+    fn new_in_epoch_cache_dir_is_under_root_cache() {
+        // Given an AppPaths created with new_in.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        let paths = AppPaths::new_in(root.path());
+
+        // When reading the epoch cache dir.
+        let epoch_dir = paths.epoch_cache_dir();
+
+        // Then it is root/cache/jinn/epoch.
+        assert_eq!(
+            epoch_dir,
+            root.path().join("cache").join("jinn").join("epoch")
+        );
+    }
+
+    #[rstest::rstest]
+    fn new_in_openrouter_cache_dir_is_under_root_cache() {
+        // Given an AppPaths created with new_in.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        let paths = AppPaths::new_in(root.path());
+
+        // When reading the OpenRouter market cache dir.
+        let or_dir = paths.openrouter_cache_dir();
+
+        // Then it is root/cache/jinn/openrouter.
+        assert_eq!(
+            or_dir,
+            root.path().join("cache").join("jinn").join("openrouter")
+        );
     }
 
     #[rstest::rstest]

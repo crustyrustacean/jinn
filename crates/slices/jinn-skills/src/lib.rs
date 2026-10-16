@@ -19,7 +19,6 @@ pub mod skill_picker_render;
 pub mod skill_picker_republisher_actor;
 pub mod skill_picker_routes;
 pub mod skill_picker_scope;
-pub mod skill_picker_viewport;
 pub mod skill_preview;
 
 pub use format::format_skills_for_prompt;

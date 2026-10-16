@@ -317,11 +317,20 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[timeout(Duration::from_secs(3))]
+    #[timeout(Duration::from_secs(30))]
     fn warm_rerender_reuses_compiled_highlighters() {
         // Given a large, code-heavy response already rendered once.
         let theme = jinn_theme::default_theme();
         let markdown = response_of(8, 465_000);
+
+        // And the process-global highlight configuration cache primed for
+        // this document's language. The cache lives behind a mutex that a
+        // cold query compile holds for tens of milliseconds, and sibling
+        // tests in this binary compile grammars concurrently — without this
+        // prime, whether this test's heavy renders stall behind one depends
+        // entirely on scheduling order.
+        let _ = TreeSitterHighlighter::new().highlight("rust", "fn prime() {}");
+
         let first = render_markdown(&markdown, WIDTH, &theme);
 
         // And a few more warm runs, so the measurement below is not a

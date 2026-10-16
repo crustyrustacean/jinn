@@ -23,7 +23,6 @@ pub mod endpoint_picker_render;
 mod endpoint_picker_routes;
 #[cfg(test)]
 mod endpoint_picker_tests;
-mod endpoint_picker_viewport;
 pub mod entries;
 pub mod loader;
 pub mod provider_actor;
@@ -32,13 +31,11 @@ pub mod provider_picker_render;
 pub mod provider_picker_routes;
 #[cfg(test)]
 mod provider_picker_tests;
-pub mod provider_picker_viewport;
 mod reasoning_picker_actions;
 pub mod reasoning_picker_render;
 mod reasoning_picker_routes;
 #[cfg(test)]
 mod reasoning_picker_tests;
-mod reasoning_picker_viewport;
 
 use jinn_kernel::Services;
 use jinn_kernel::common::state::State;

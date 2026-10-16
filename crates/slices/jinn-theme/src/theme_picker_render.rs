@@ -75,29 +75,35 @@ pub fn render_theme_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFact
         return;
     };
 
-    // Measure the popup's result rows and publish them for the navigation keys,
-    // which need a real row count to keep the highlight on screen. This is the
-    // slice-owned equivalent of the kernel's per-frame viewport write.
-    let measured = crate::theme_picker_viewport::results_viewport(area);
-    cell.update(|state: &mut ThemePickerState| state.results_viewport = measured);
-
-    let guard = cell.read();
-    let state: &ThemePickerState = &guard;
-
     let theme = &facts.theme;
     let palette = theme_picker_palette(theme);
     let binds = theme_picker_binds();
     let keybind = jinn_picker::keybind_line(&binds, jinn_picker::Tail::Standard, &palette);
-    let footers = vec![
-        crate::theme_picker_actions::theme_status(state, theme),
-        Line::from(keybind.0),
-    ];
 
-    let widget = jinn_selection_widget::SelectionWidget::new(&state.selection)
-        .title(Line::from(" Themes "))
-        .title_style(Style::default().fg(theme.popup_title))
-        .footers(footers)
-        .colors(palette.selection_colors());
+    // Render under the read guard, then publish the layout after the block
+    // ends: `TypedCell` is a plain RwLock, and a same-thread write while the
+    // read guard is alive deadlocks.
+    let layout = {
+        let guard = cell.read();
+        let state: &ThemePickerState = &guard;
+        let footers = vec![
+            crate::theme_picker_actions::theme_status(state, theme),
+            Line::from(keybind.0),
+        ];
 
-    widget.render(frame, area);
+        jinn_selection_widget::SelectionWidget::new(&state.selection)
+            .title(Line::from(" Themes "))
+            .title_style(Style::default().fg(theme.popup_title))
+            .footers(footers)
+            .colors(palette.selection_colors())
+            .render(frame, area)
+    };
+
+    // The widget reports the rects it actually solved; the navigation keys
+    // page against that row count. This is the slice-owned equivalent of the
+    // kernel's per-frame viewport write — measured by the widget itself
+    // rather than mirrored arithmetic.
+    cell.update(|state: &mut ThemePickerState| {
+        state.results_viewport = layout.inner.height as usize;
+    });
 }

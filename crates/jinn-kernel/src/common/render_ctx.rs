@@ -9,6 +9,7 @@
 
 use crate::common::app_state::AppState;
 use jinn_context_curation_msg::prune_report;
+use jinn_session_state::aggregate_tree_stats;
 use jinn_slices::AppFact;
 use jinn_slices::OverlayViewFn;
 use jinn_slices::OverlayViews;
@@ -162,6 +163,35 @@ impl<'a> RenderCtx<'a> {
             AppFact {
                 key: jinn_term_msg::overlay_facts::TOGGLE_KEY,
                 value: toggle_key,
+            },
+        ]);
+        // The model-market popup's usage-derived projection mix: the
+        // current tree's measured token totals, seeded each frame so the
+        // popup's `m` toggle can rank under the workload actually run.
+        // The working-interval map is empty here — the token fields the
+        // mix derives from don't depend on it.
+        let tree = aggregate_tree_stats(
+            self.state.session.sessions(),
+            self.state.session.frozen_nodes(),
+            self.state.session.active_session_id(),
+            &std::collections::HashMap::new(),
+        );
+        facts.set_facts([
+            AppFact {
+                key: "session.tree-effective-sent",
+                value: tree.effective_sent.to_string(),
+            },
+            AppFact {
+                key: "session.tree-total-received",
+                value: tree.total_received.to_string(),
+            },
+            AppFact {
+                key: "session.tree-cached-total",
+                value: tree.cached_total.to_string(),
+            },
+            AppFact {
+                key: "session.tree-measured-sent",
+                value: tree.measured_sent.to_string(),
             },
         ]);
         facts

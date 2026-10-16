@@ -66,7 +66,7 @@ pub fn notify_parent_definition() -> ToolDefinition {
             "properties": {
                 "message": {
                     "type": "string",
-                    "description": "The message the parent session receives."
+                    "description": "The message the parent session receives. Markdown format is supported"
                 }
             },
             "required": ["message"]

@@ -229,10 +229,15 @@ impl Wired {
     /// Draws one frame of the picker at `120x34` and returns the buffer's
     /// symbols, row by row.
     fn draw(&self) -> Vec<String> {
+        self.draw_at(ratatui::layout::Rect::new(0, 0, 120, 34))
+    }
+
+    /// Draws one frame of the picker at `area` and returns the buffer's
+    /// symbols, row by row.
+    fn draw_at(&self, area: ratatui::layout::Rect) -> Vec<String> {
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
 
-        let area = ratatui::layout::Rect::new(0, 0, 120, 34);
         let mut terminal = Terminal::new(TestBackend::new(area.width, area.height))
             .expect("a test terminal allocates");
         let facts =
@@ -251,6 +256,59 @@ impl Wired {
             .chunks(area.width as usize)
             .map(|row| row.iter().map(ratatui::buffer::Cell::symbol).collect())
             .collect()
+    }
+
+    /// Draws one frame at `area` and returns the layout the widget solved.
+    ///
+    /// Mirrors the render pass (footers built from the live cell, the widget
+    /// rendered over the geometry fn's popup) with the widget's own report as
+    /// the return value, so the expected viewport in a renderer-level
+    /// assertion comes from the widget rather than recomputed arithmetic.
+    fn draw_returning_layout(
+        &self,
+        area: ratatui::layout::Rect,
+    ) -> jinn_selection_widget::PickerLayout {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let popup = crate::provider_picker_render::provider_picker_overlay_rect(&area)
+            .expect("geometry fn yields a popup rect");
+        let theme = self.state.borrow().frontend.theme.clone();
+        let palette = crate::provider_picker_render::provider_picker_palette(&theme);
+        let keybind = jinn_picker::keybind_line(
+            &crate::provider_picker_render::provider_picker_binds(),
+            jinn_picker::Tail::Standard,
+            &palette,
+        );
+        // The guard is held across the draw: the helper never writes the cell,
+        // so a write-while-read deadlock is impossible here.
+        let cell = self.cell();
+        let guard = cell.read();
+        let footers = vec![
+            crate::provider_picker_render::provider_status(
+                crate::provider_picker_actions::selected_count(&guard),
+                false,
+                None,
+                &theme,
+            ),
+            ratatui::text::Line::from(keybind.0),
+        ];
+        let mut terminal = Terminal::new(TestBackend::new(area.width, area.height))
+            .expect("a test terminal allocates");
+        let mut layout = None;
+        terminal
+            .draw(|frame| {
+                layout = Some(
+                    jinn_selection_widget::SelectionWidget::new(&guard.selection)
+                        .title(ratatui::text::Line::from(" Model "))
+                        .title_style(ratatui::style::Style::default().fg(theme.popup_title))
+                        .footers(footers)
+                        .colors(palette.selection_colors())
+                        .render(frame, popup),
+                );
+            })
+            .expect("the draw closure must not panic");
+        layout.unwrap_or_else(|| panic!("the widget render ran and reported its layout"))
     }
 }
 
@@ -975,25 +1033,45 @@ async fn render_advertises_every_key_the_picker_binds() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn the_unmeasured_viewport_matches_the_msg_fallback() {
+    // Given a picker cell that has not rendered a frame yet.
+    let state = ProviderPickerState::default();
+
+    // When reading its viewport.
+    let viewport = state.results_viewport;
+
+    // Then it is the msg crate's documented pre-render fallback.
+    assert_eq!(
+        viewport,
+        jinn_provider_selection_msg::provider_picker_state::RESULTS_VIEWPORT_FALLBACK
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn render_measures_the_viewport_from_the_actual_frame() {
-    // Given the model picker drawn at a known size.
+    // Given the model picker with rows loaded.
     let wired = Wired::new().await;
     wired.with_entries(sample_entries());
-
-    // When drawing a frame.
-    let _ = wired.draw();
-
-    // Then the measured viewport is what the popup's own geometry implies,
-    // not the fallback the navigation keys would otherwise page by.
     let area = ratatui::layout::Rect::new(0, 0, 120, 34);
-    let popup = crate::provider_picker_render::provider_picker_overlay_rect(&area)
-        .expect("geometry fn yields a popup rect");
-    let expected = crate::provider_picker_viewport::results_viewport(&popup);
-    let actual = wired.cell().read().results_viewport;
-    assert_eq!(actual, expected);
-    // And it is a real measurement, distinct from the unmeasured fallback.
+
+    // When drawing a frame through the real render pass, and asking the
+    // identical widget construction what layout it solved.
+    let layout = wired.draw_returning_layout(area);
+    let _ = wired.draw_at(area);
+
+    // Then the cell carries the widget's reported result-row height, not the
+    // fallback the navigation keys would otherwise page by.
+    let measured = wired.cell().read().results_viewport;
+    assert_eq!(
+        measured,
+        usize::from(layout.inner.height),
+        "the cell must carry the widget's reported result-row height"
+    );
+    // And the measurement is real, distinct from the unmeasured fallback.
     assert_ne!(
-        actual, 20,
+        measured,
+        jinn_provider_selection_msg::provider_picker_state::RESULTS_VIEWPORT_FALLBACK,
         "a viewport equal to the fallback is not a measurement"
     );
 }
