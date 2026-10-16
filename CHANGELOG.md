@@ -1,9 +1,5 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
-## 2026-10-16 v1.8.0
-
-- Add OpenRouter model picker.
-
 ## 2026-10-15 v1.7.0
 
 - Entire session trees can now be loaded using `<c-enter>` keybind in the session picker.
