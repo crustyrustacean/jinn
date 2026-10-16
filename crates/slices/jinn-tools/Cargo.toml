@@ -53,6 +53,10 @@ jinn-session-turn = { workspace = true }
 jinn-session-init-msg = { workspace = true }
 
 [dev-dependencies]
+# `spawned_shell_runs_in_new_session` reads the shell's session id with
+# `getsid(2)` — the one portable way, since `ps` session keywords differ
+# between procps (`sid`) and BSD (`sess`, which reports 0).
+libc = { workspace = true }
 # `activate_picker` resolves the picker cells the catalog owns, so the test
 # harnesses seed their registry through the same list production boot uses.
 jinn-cell-catalog = { workspace = true }

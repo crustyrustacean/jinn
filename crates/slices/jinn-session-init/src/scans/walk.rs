@@ -184,12 +184,17 @@ mod tests {
 
     impl Tree {
         /// `root/sub/leaf` directory structure; `marker` placed at `root`.
+        ///
+        /// The root is canonicalized at construction so fixture paths sit
+        /// in the same form the walk emits: on macOS the temp tree lives
+        /// behind a symlink (`$TMPDIR` → `/private/var/…`), and a plain
+        /// `tmp.path()` would compare unequal to the walk's canonicalized
+        /// output. Linux is identity; Windows loses only the verbatim
+        /// prefix, which [`canonicalize_display`] already strips.
         fn new(marker: Option<&str>) -> Self {
             let tmp = tempfile::tempdir().expect("temp dir");
-            let root = tmp.path().to_path_buf();
-            for seg in ["sub", "leaf"] {
-                std::fs::create_dir_all(root.join(seg)).expect("create dir");
-            }
+            let root = canonicalize_display(tmp.path()).expect("temp dir canonicalizes");
+            std::fs::create_dir_all(root.join("sub").join("leaf")).expect("create dir chain");
             if let Some(m) = marker {
                 // Marker is a file for .fslckout/.fossil, dir for .git/.hg/.jj.
                 if m == ".git" || m == ".hg" || m == ".jj" {
@@ -293,7 +298,9 @@ mod tests {
         // Given home is an ANCESTOR of cwd, and a VCS marker exists BELOW home
         // (so home would be reached first walking up).
         let tmp = tempfile::tempdir().expect("temp dir");
-        let home = tmp.path().join("home");
+        let home = canonicalize_display(tmp.path())
+            .expect("temp dir canonicalizes")
+            .join("home");
         let repo = home.join("repo");
         let cwd = repo.join("deep");
         std::fs::create_dir_all(&cwd).expect("mkdir");
@@ -313,7 +320,7 @@ mod tests {
     fn walk_vcs_root_above_home_stops_at_home() {
         // Given a VCS marker ABOVE home — home should bound first.
         let tmp = tempfile::tempdir().expect("temp dir");
-        let outer = tmp.path();
+        let outer = canonicalize_display(tmp.path()).expect("temp dir canonicalizes");
         let home = outer.join("home");
         let cwd = home.join("project");
         std::fs::create_dir_all(&cwd).expect("mkdir");
@@ -330,8 +337,10 @@ mod tests {
     fn walk_nonexistent_cwd_falls_back_to_input() {
         // Given a cwd path that does not exist.
         let tmp = tempfile::tempdir().expect("temp dir");
-        let cwd = tmp.path().join("nope/does-not-exist");
-        let home = tmp.path().to_path_buf();
+        // The base is canonicalized so the literal fallback form and home
+        // compare in the same form on every platform (see `Tree::new`).
+        let home = canonicalize_display(tmp.path()).expect("temp dir canonicalizes");
+        let cwd = home.join("nope/does-not-exist");
 
         // When walking.
         let dirs = project_dirs(&cwd, &home);
@@ -449,7 +458,9 @@ mod tests {
     fn walk_canonicalizes_symlinked_cwd() {
         // Given a real dir and a symlink to it, with home elsewhere.
         let tmp = tempfile::tempdir().expect("temp dir");
-        let real = tmp.path().join("real");
+        let real = canonicalize_display(tmp.path())
+            .expect("temp dir canonicalizes")
+            .join("real");
         std::fs::create_dir(&real).expect("mkdir");
         #[cfg(unix)]
         let link = {
