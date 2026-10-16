@@ -112,7 +112,7 @@ pub fn attach_stream_rule_picker_rows(
         feature: "stream-rule-picker",
         outcome: RouteOutcome::Action {
             action: "open-stream-rule-picker",
-            display: "toggle stream rules",
+            display: "search stream rules",
             run: action(cell, preferences_path, open_stream_rule_picker),
         },
     });

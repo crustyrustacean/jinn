@@ -76,7 +76,7 @@ pub fn register_all_cells(slices: &Slices) {
 /// The `jinn-slices` infrastructure slots are not counted: they are
 /// registered lazily by the first caller that resolves one, and a harness
 /// that never renders never creates them.
-const EXPECTED_CELL_COUNT: usize = 41;
+const EXPECTED_CELL_COUNT: usize = 43;
 
 // ── The catalog ─────────────────────────────────────────────────────
 //
@@ -248,6 +248,21 @@ fn register_catalog(slices: &Slices) -> usize {
         count,
         jinn_project_msg::project_picker_slot(),
         jinn_project_msg::ProjectPickerState::default()
+    );
+
+    // jinn-model-market — the fetched table (actor-written) and the
+    // popup's UI state (sync-written).
+    register!(
+        slices,
+        count,
+        jinn_model_market_msg::market_data_slot(),
+        jinn_model_market_msg::MarketDataState::default()
+    );
+    register!(
+        slices,
+        count,
+        jinn_model_market_msg::market_ui_slot(),
+        jinn_model_market_msg::MarketUiState::default()
     );
 
     // jinn-provider-selection — the provider cell, both pickers, and the

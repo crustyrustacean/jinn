@@ -21,6 +21,7 @@ jinn-mcp-msg = { workspace = true }
 jinn-persona-msg = { workspace = true }
 jinn-preferences-msg = { workspace = true }
 jinn-project-msg = { workspace = true }
+jinn-model-market-msg = { workspace = true }
 jinn-provider-selection-msg = { workspace = true }
 jinn-quake-bar-msg = { workspace = true }
 jinn-session-lifecycle-msg = { workspace = true }
