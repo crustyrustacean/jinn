@@ -231,11 +231,22 @@ fn apply_nav(ui: &MarketUiCell, data: &MarketDataCell, step: Nav) -> IntentResul
         Nav::PageUp => ui.update(ui_state::page_up),
         Nav::PageDown => ui.update(|s| ui_state::page_down(s, count)),
     }
-    let mut result = IntentResult::empty();
-    if let Some(fetch) = maybe_fetch_endpoints(ui, data) {
-        result = result.with_message(fetch);
+    fetch_following(ui, data)
+}
+
+/// The result a highlighted-row mutation publishes: the debounced
+/// endpoint fetch when the newly highlighted row has no detail yet, an
+/// empty result otherwise.
+///
+/// Every mutation that moves the highlight — the navigation rows and
+/// the hook's `j`/`k`/`h`/`l`/`s`, plus the ENTER-accept and ESC-clear
+/// of a focused filter — ends by attaching this, so the detail pane
+/// follows whichever key moved the selection.
+fn fetch_following(ui: &MarketUiCell, data: &MarketDataCell) -> IntentResult {
+    match maybe_fetch_endpoints(ui, data) {
+        Some(fetch) => IntentResult::new_message(fetch),
+        None => IntentResult::empty(),
     }
-    result
 }
 
 /// Which navigation key was pressed.
@@ -278,7 +289,7 @@ pub fn register_market_input_hook(routes: &KeyRoutes, ui: &MarketUiCell, data: &
         // no character key is a route row.
         if let EditIntent::InsertChar(ch) = intent {
             return match table_char_action(&owned_ui, &owned_data, *ch) {
-                CharAction::Acted => Some(IntentResult::empty()),
+                CharAction::Acted(result) => Some(result),
                 CharAction::Type => {
                     owned_ui.update(|s| {
                         s.filter.push(*ch);
@@ -324,8 +335,11 @@ pub fn register_market_input_hook(routes: &KeyRoutes, ui: &MarketUiCell, data: &
 /// What the hook should do with a character.
 #[derive(Debug)]
 enum CharAction {
-    /// A table-mode action fired; the keystroke is consumed.
-    Acted,
+    /// A table-mode action fired; the keystroke is consumed. The payload
+    /// is what the action publishes — a table-focused action that moved
+    /// the highlight carries the row's endpoint fetch, typing carries
+    /// none.
+    Acted(IntentResult),
     /// The filter is focused: the character is typing.
     Type,
     /// Nobody wants this character; let the intent fall through.
@@ -336,7 +350,10 @@ enum CharAction {
 ///
 /// Table-focused `h`/`l`/`s` mutate the sort cell exactly as their
 /// pre-hook-route ancestors did; `j`/`k` navigate because the
-/// keymap's insert-char catch-all owns those keys in this scope.
+/// keymap's insert-char catch-all owns those keys in this scope. Every
+/// arm that moves the highlighted row returns the row's endpoint fetch
+/// through [`CharAction::Acted`] — the same follow-along the
+/// navigation rows publish — so the pane tracks the vim keys too.
 fn table_char_action(ui: &MarketUiCell, data: &MarketDataCell, ch: char) -> CharAction {
     if ui.read().filter_focused {
         return CharAction::Type;
@@ -344,15 +361,15 @@ fn table_char_action(ui: &MarketUiCell, data: &MarketDataCell, ch: char) -> Char
     match ch {
         'f' | 'i' => {
             ui.update(|s| s.filter_focused = true);
-            CharAction::Acted
+            CharAction::Acted(IntentResult::empty())
         }
         '?' => {
             ui.update(|s| s.help_visible = !s.help_visible);
-            CharAction::Acted
+            CharAction::Acted(IntentResult::empty())
         }
         'k' => {
             ui.update(ui_state::move_up);
-            CharAction::Acted
+            CharAction::Acted(fetch_following(ui, data))
         }
         'j' => {
             // Clamp against the live visible count, not the measured
@@ -360,23 +377,23 @@ fn table_char_action(ui: &MarketUiCell, data: &MarketDataCell, ch: char) -> Char
             // and a highlight past the list end simply vanishes.
             let count = visible_count(ui, data);
             ui.update(|s| ui_state::move_down(s, count));
-            CharAction::Acted
+            CharAction::Acted(fetch_following(ui, data))
         }
         'h' => {
             ui.update(|s| {
                 s.sort_col = s.sort_col.prev();
             });
-            CharAction::Acted
+            CharAction::Acted(fetch_following(ui, data))
         }
         'l' => {
             ui.update(|s| {
                 s.sort_col = s.sort_col.next();
             });
-            CharAction::Acted
+            CharAction::Acted(fetch_following(ui, data))
         }
         's' => {
             ui.update(|s| s.sort_desc = !s.sort_desc);
-            CharAction::Acted
+            CharAction::Acted(fetch_following(ui, data))
         }
         _ => CharAction::Unclaimed,
     }
@@ -397,12 +414,13 @@ fn open_market(
 }
 
 /// `<esc>`: a focused filter clears — text emptied, selection reset,
-/// focus back on the table; the popup stays open. Table-focused, the
-/// popup closes.
+/// focus back on the table; the popup stays open. Clearing changes the
+/// visible set, so the newly highlighted row 0's endpoint fetch follows.
+/// Table-focused, the popup closes.
 fn escape_market(
     _ctx: &mut ActionCtx<'_>,
     ui: &MarketUiCell,
-    _data: &MarketDataCell,
+    data: &MarketDataCell,
 ) -> IntentResult {
     if ui.read().filter_focused {
         ui.update(|s| {
@@ -410,16 +428,17 @@ fn escape_market(
             s.filter_focused = false;
             s.selection = 0;
         });
-        return IntentResult::empty();
+        return fetch_following(ui, data);
     }
     IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(market_ui_scope()))
 }
 
 /// ENTER: a focused filter accepts — focus returns to the table with
-/// the typed filter still applied and the popup still open. Table
-/// focused, the confirm triple publishes — `ProviderSwitch` for the
-/// highlighted row, `UpdateAppState::SetLastModel` to seed the global
-/// default, and the scope pop. No highlighted row, no-op.
+/// the typed filter still applied and the popup still open; accepting
+/// narrows the visible set, so the filtered set's row 0 fetch follows.
+/// Table focused, the confirm triple publishes — `ProviderSwitch` for
+/// the highlighted row, `UpdateAppState::SetLastModel` to seed the
+/// global default, and the scope pop. No highlighted row, no-op.
 fn confirm_market(
     ctx: &mut ActionCtx<'_>,
     ui: &MarketUiCell,
@@ -427,7 +446,7 @@ fn confirm_market(
 ) -> IntentResult {
     if ui.read().filter_focused {
         ui.update(|s| s.filter_focused = false);
-        return IntentResult::empty();
+        return fetch_following(ui, data);
     }
     let highlighted = highlighted(ui, data);
     let Some(row) = highlighted else {
@@ -465,11 +484,11 @@ fn refresh_market(
 /// detail is absent, stamping the UI cell's sequence for the actor's
 /// debounce.
 ///
-/// `j`/`k` navigation actions call this after moving: a row whose
-/// endpoints are not cached yet gets a debounced fetch, and a stale
-/// sequence loses to a newer one in the actor. The request rides the
-/// action's `RouteResult` — the same publish path as every routed
-/// message.
+/// Every highlight-moving action routes through [`fetch_following`]: a
+/// row whose endpoints are not cached yet gets a debounced fetch, and a
+/// stale sequence loses to a newer one in the actor. The request rides
+/// the action's `RouteResult` — the same publish path as every routed
+/// message, hook or row.
 fn maybe_fetch_endpoints(ui: &MarketUiCell, data: &MarketDataCell) -> Option<FetchEndpoints> {
     let request = {
         let highlighted = highlighted(ui, data);
