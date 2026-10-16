@@ -75,12 +75,16 @@ struct EpochFixture {
     _dir: TempDir,
     harness: TestHarness,
     data_cell: TypedCell<jinn_model_market_msg::MarketDataState>,
-    cache_root: std::path::PathBuf,
+    /// The fixture's own AppPaths; the epoch cache dir resolves from it
+    /// exactly as the actor's did at spawn.
+    paths: jinn_common::app_paths::AppPaths,
     clock: FakeClock,
 }
 
 /// Builds the fixture with the actor's zip URL aimed at `zip_url` and
-/// the fixture's own clock wired into the deps.
+/// the fixture's own clock wired into the deps. The actor's cache dir
+/// resolves through `AppPaths::epoch_cache_dir()` — the same one layout
+/// constant production uses.
 async fn epoch_fixture_at(zip_url: String) -> EpochFixture {
     let dir = tempfile::TempDir::new().expect("temp dir");
     let harness = TestHarness::new().await;
@@ -93,7 +97,7 @@ async fn epoch_fixture_at(zip_url: String) -> EpochFixture {
                 &jinn_model_market_msg::market_data_slot(),
             )
             .expect("the cell catalog registers the market data slot");
-    let cache_root = dir.path().join("cache");
+    let paths = services.paths.clone();
     let clock = FakeClock::new();
 
     let _actor = EpochMarketActor::spawn(
@@ -103,7 +107,7 @@ async fn epoch_fixture_at(zip_url: String) -> EpochFixture {
                 services: services.clone(),
             },
             data_cell: data_cell.clone(),
-            cache_root: cache_root.clone(),
+            cache_dir: services.paths.epoch_cache_dir(),
             client: reqwest::Client::new(),
             zip_url,
             now_ms: clock.dep(),
@@ -114,7 +118,7 @@ async fn epoch_fixture_at(zip_url: String) -> EpochFixture {
         _dir: dir,
         harness,
         data_cell,
-        cache_root,
+        paths,
         clock,
     }
 }
@@ -166,7 +170,7 @@ async fn first_run_without_network_uses_seed() {
     // Given a fixture with an empty cache dir and an actor whose zip URL
     // points at a port nothing listens on.
     let fixture = epoch_fixture_at("http://127.0.0.1:9/data/benchmark_data.zip".to_owned()).await;
-    let epoch_dir = crate::epoch_cache::epoch_cache_dir(&fixture.cache_root);
+    let epoch_dir = fixture.paths.epoch_cache_dir();
     assert!(!epoch_dir.exists(), "precondition: no cache dir");
     let loads = fixture.harness.spawn_recorder::<EpochLoaded>().await;
     let failures = fixture.harness.spawn_recorder::<RefreshFailed>().await;
@@ -213,7 +217,7 @@ async fn fresh_cache_serves_without_a_request() {
     // Given a complete, fresh cache dir (written by a real extraction
     // into the fixture's own cache root) and no reachable download URL.
     let fixture = epoch_fixture_at("http://127.0.0.1:9/data/benchmark_data.zip".to_owned()).await;
-    let epoch_dir = crate::epoch_cache::epoch_cache_dir(&fixture.cache_root);
+    let epoch_dir = fixture.paths.epoch_cache_dir();
     crate::epoch_cache::download_and_extract(&epoch_dir, &zip_bytes(), fixture.clock.now())
         .expect("seed the cache with a real extraction");
     let loads = fixture.harness.spawn_recorder::<EpochLoaded>().await;
@@ -237,7 +241,7 @@ async fn expired_epoch_ttl_refetches_from_the_served_zip() {
     // well before the TTL expires) and a mock serving the refetch.
     let (server, mock) = serve_zip().await;
     let fixture = epoch_fixture_at(zip_url(&server)).await;
-    let epoch_dir = crate::epoch_cache::epoch_cache_dir(&fixture.cache_root);
+    let epoch_dir = fixture.paths.epoch_cache_dir();
     let written_at = fixture.clock.now();
     crate::epoch_cache::download_and_extract(&epoch_dir, &zip_bytes(), written_at)
         .expect("seed the cache");
@@ -275,7 +279,7 @@ async fn refresh_all_drops_every_cache_epoch_half() {
     // the zip.
     let (server, _mock) = serve_zip().await;
     let fixture = epoch_fixture_at(zip_url(&server)).await;
-    let epoch_dir = crate::epoch_cache::epoch_cache_dir(&fixture.cache_root);
+    let epoch_dir = fixture.paths.epoch_cache_dir();
     crate::epoch_cache::download_and_extract(&epoch_dir, &zip_bytes(), fixture.clock.now())
         .expect("seed the cache");
     assert!(epoch_dir.exists(), "precondition: cache present");
@@ -315,7 +319,7 @@ async fn refresh_all_reports_a_failing_download_and_the_seed_stands() {
     // Given a cache dir (the fixture's own) and a refresh whose download
     // fails (no server).
     let fixture = epoch_fixture_at("http://127.0.0.1:9/data/benchmark_data.zip".to_owned()).await;
-    let epoch_dir = crate::epoch_cache::epoch_cache_dir(&fixture.cache_root);
+    let epoch_dir = fixture.paths.epoch_cache_dir();
     crate::epoch_cache::download_and_extract(&epoch_dir, &zip_bytes(), fixture.clock.now())
         .expect("seed the cache");
     let loads = fixture.harness.spawn_recorder::<EpochLoaded>().await;
@@ -352,7 +356,7 @@ async fn refresh_all_reports_a_failing_download_and_the_seed_stands() {
 fn extraction_writes_exactly_the_three_csvs_plus_stamp() {
     // Given a temp cache root and a real zip.
     let dir = tempfile::TempDir::new().expect("temp dir");
-    let epoch_dir = crate::epoch_cache::epoch_cache_dir(dir.path());
+    let epoch_dir = jinn_common::app_paths::AppPaths::new_in(dir.path()).epoch_cache_dir();
 
     // When extracting.
     crate::epoch_cache::download_and_extract(&epoch_dir, &zip_bytes(), 123)
@@ -382,7 +386,7 @@ fn extraction_writes_exactly_the_three_csvs_plus_stamp() {
 fn load_fresh_returns_none_when_any_csv_is_missing() {
     // Given a cache dir with only one of the three CSVs.
     let dir = tempfile::TempDir::new().expect("temp dir");
-    let epoch_dir = crate::epoch_cache::epoch_cache_dir(dir.path());
+    let epoch_dir = jinn_common::app_paths::AppPaths::new_in(dir.path()).epoch_cache_dir();
     std::fs::create_dir_all(&epoch_dir).expect("mkdir");
     std::fs::write(epoch_dir.join("fetched_at"), "1000").expect("stamp");
     std::fs::write(epoch_dir.join("eci_scores.csv"), SEED_ECI_SCORES).expect("partial file");
@@ -399,7 +403,7 @@ fn load_fresh_returns_none_when_any_csv_is_missing() {
 fn load_fresh_returns_none_past_the_ttl() {
     // Given a complete, stamped cache dir.
     let dir = tempfile::TempDir::new().expect("temp dir");
-    let epoch_dir = crate::epoch_cache::epoch_cache_dir(dir.path());
+    let epoch_dir = jinn_common::app_paths::AppPaths::new_in(dir.path()).epoch_cache_dir();
     crate::epoch_cache::download_and_extract(&epoch_dir, &zip_bytes(), 1_000).expect("extraction");
 
     // When reading with now just past the TTL.
@@ -414,7 +418,7 @@ fn load_fresh_returns_none_past_the_ttl() {
 fn load_fresh_serves_a_complete_cache_inside_the_ttl() {
     // Given a complete, stamped cache dir.
     let dir = tempfile::TempDir::new().expect("temp dir");
-    let epoch_dir = crate::epoch_cache::epoch_cache_dir(dir.path());
+    let epoch_dir = jinn_common::app_paths::AppPaths::new_in(dir.path()).epoch_cache_dir();
     crate::epoch_cache::download_and_extract(&epoch_dir, &zip_bytes(), 1_000).expect("extraction");
 
     // When reading with now just inside the TTL (one tick before it
@@ -432,7 +436,7 @@ fn load_fresh_serves_a_complete_cache_inside_the_ttl() {
 fn drop_cache_is_success_when_nothing_is_there() {
     // Given a cache root with no epoch dir.
     let dir = tempfile::TempDir::new().expect("temp dir");
-    let epoch_dir = crate::epoch_cache::epoch_cache_dir(dir.path());
+    let epoch_dir = jinn_common::app_paths::AppPaths::new_in(dir.path()).epoch_cache_dir();
 
     // When dropping.
     // Then the drop succeeds (nothing to do is not an error).

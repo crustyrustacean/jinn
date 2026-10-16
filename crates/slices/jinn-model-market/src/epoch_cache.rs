@@ -16,9 +16,6 @@
 use std::fs;
 use std::io::Read;
 use std::path::Path;
-use std::path::PathBuf;
-
-use jinn_common::app_info::APP_NAME;
 
 /// The upstream archive (`research/openrouter-api-model-selection-data.md`
 /// §8 — ~2.4 MB, 91 benchmark CSVs plus the three files this slice
@@ -76,17 +73,6 @@ pub enum EpochCacheError {
         /// The filesystem's complaint.
         detail: String,
     },
-}
-
-/// The epoch cache directory under the shared cache root.
-///
-/// Path seam note: the contract's `AppPaths::epoch_cache_dir()` belongs
-/// to T3's territory (`app_paths.rs`), so this resolves the same layout
-/// (`cache_dir/jinn/epoch`) locally. When T3 lands, swap this for the
-/// `AppPaths` method; the layout constant makes that a one-line change.
-#[must_use]
-pub fn epoch_cache_dir(cache_root: &Path) -> PathBuf {
-    cache_root.join(APP_NAME).join("epoch")
 }
 
 /// The complete parsed content of one cache read, with its freshness

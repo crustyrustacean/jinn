@@ -32,7 +32,7 @@ Baichuan-7B,Baichuan1-7B,2023-06-01,,Baichuan,China,Open weights (non-commercial
 Baichuan-13B-Base,Baichuan 1-13B,2023-07-11,,Baichuan,China,Open weights (restricted use),9.36e+22
 Baichuan2-13B-Chat,Baichuan2-13B-Chat,2023-09-06,,,,,
 blip2-opt-2.7b,BLIP-2 (Q-Former),2023-02-06,,Salesforce Research,United States of America,Open weights (unrestricted),1.20000000001e+21
-bloom,BLOOM-176B,2022-07-06,,"Hugging Face,BigScience","France,United States of America",Open weights (restricted use),3.65664e+23
+bloom,BLOOM-176B,2022-07-06,,"Hugging Face,BigScience","United States of America,France",Open weights (restricted use),3.65664e+23
 ByteVideoLLM-14B,ByteVideoLLM-14B,2024-10-13,,,,,
 c4ai-command-a-03-2025,Cohere Command A,2025-03-13,,Cohere,Canada,Open weights (non-commercial),
 c4ai-command-r-08-2024,c4ai-command-r-08-2024,2024-08-30,,,,,
@@ -315,7 +315,7 @@ deepseek-v4.1-flash_max,DeepSeek V4.1 Flash,2026-09-09,DeepSeek V4.1 Flash (max)
 deepseek-v4.1-flash_none,DeepSeek V4.1 Flash,2026-09-09,DeepSeek V4.1 Flash (none),DeepSeek,China,Open weights (unrestricted),4.32e+24
 deepseek-v4.1-flash_unknown,DeepSeek V4.1 Flash,2026-09-09,DeepSeek V4.1 Flash (unknown),DeepSeek,China,Open weights (unrestricted),4.32e+24
 deepseek/deepseek-v3.2,DeepSeek-V3.2,2025-12-01,DeepSeek-V3.2 (Thinking; Novita),DeepSeek,China,Open weights (unrestricted),4.2e+24
-devstral-small-2505,Devstral Small,2025-05-21,,"Mistral AI,All Hands AI","France,United States of America",Open weights (unrestricted),
+devstral-small-2505,Devstral Small,2025-05-21,,"Mistral AI,All Hands AI","United States of America,France",Open weights (unrestricted),
 devstral-small-2512,Devstral Small 2,2025-12-09,Devstral Small 2,Mistral AI,France,Open weights (unrestricted),
 dolly-v2-12b,Dolly 2.0-12b,2023-04-11,,Databricks,United States of America,Open weights (unrestricted),
 doubao-pro-32k,Doubao-pro,2024-10-28,,ByteDance,China,API access,2.505e+25
@@ -466,10 +466,10 @@ glm-5.2_medium,GLM-5.2,2026-06-16,GLM-5.2,Z.ai (Zhipu AI),China,Open weights (un
 glm-5.2_minimal,GLM-5.2,2026-06-16,,Z.ai (Zhipu AI),China,Open weights (unrestricted),
 glm-5.2_none,GLM-5.2,2026-06-16,GLM-5.2,Z.ai (Zhipu AI),China,Open weights (unrestricted),
 glm-5.2_unknown,GLM-5.2,2026-06-16,GLM-5.2,Z.ai (Zhipu AI),China,Open weights (unrestricted),
-glm-5.3_high,GLM-5.3,2026-08-14,GLM-5.3 (high),Z.ai (Zhipu AI),China,API access,
-glm-5.3_low,GLM-5.3,2026-08-14,GLM-5.3 (low),Z.ai (Zhipu AI),China,API access,
-glm-5.3_max,GLM-5.3,2026-08-14,GLM-5.3 (max),Z.ai (Zhipu AI),China,API access,
-glm-5.3_unknown,GLM-5.3,2026-08-14,GLM-5.3 (unknown thinking),Z.ai (Zhipu AI),China,API access,
+glm-5.3_high,GLM-5.3,2026-08-14,GLM-5.3 (high),Z.ai (Zhipu AI),China,Open weights (restricted use),
+glm-5.3_low,GLM-5.3,2026-08-14,GLM-5.3 (low),Z.ai (Zhipu AI),China,Open weights (restricted use),
+glm-5.3_max,GLM-5.3,2026-08-14,GLM-5.3 (max),Z.ai (Zhipu AI),China,Open weights (restricted use),
+glm-5.3_unknown,GLM-5.3,2026-08-14,GLM-5.3 (unknown thinking),Z.ai (Zhipu AI),China,Open weights (restricted use),
 glm-5.3-flash_high,GLM-5.3-Flash,2026-08-20,GLM-5.3-Flash (high),Z.ai (Zhipu AI),China,Open weights (unrestricted),3.24e+24
 glm-5.3-flash_low,GLM-5.3-Flash,2026-08-20,GLM-5.3-Flash (low),Z.ai (Zhipu AI),China,Open weights (unrestricted),3.24e+24
 glm-5.3-flash_max,GLM-5.3-Flash,2026-08-20,GLM-5.3-Flash (max),Z.ai (Zhipu AI),China,Open weights (unrestricted),3.24e+24
