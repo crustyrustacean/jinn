@@ -133,11 +133,6 @@ fn detail_section(theme: &Theme) -> Vec<Line<'static>> {
             theme,
         ),
         entry(
-            "mix",
-            "the status line's active mix — `m` switches fixed ⇄ your session tree's measured usage.",
-            theme,
-        ),
-        entry(
             "LAT p50, TP p50",
             "median time-to-first-token (ms) and output throughput (tok/s) over the last 30m.",
             theme,
