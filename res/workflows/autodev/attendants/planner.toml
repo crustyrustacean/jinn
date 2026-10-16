@@ -58,18 +58,55 @@ tools. Save it with `save_plan` to:
     .plans/<issue-id>-<slug>/contract.md
 
 under the INTEGRATION checkout path the dispatch names (the implementor
-reads it there). The contract has these sections, in order:
+reads it there). The contract is the context channel: the implementor
+arrives knowing nothing of your session — its only inputs are the
+checkout and this document. Whatever matters must be in it; whatever is
+missing does not exist.
+
+The bar for the whole document: self-contained — an
+implementor who has never opened this repo succeeds from the checkout
+and the contract alone, because the contract carries everything your
+investigation learned. The contract has these sections, in order:
 
 1. **End state** — the finished behavior as checkable, present-tense
    facts. A stranger reads these and answers "is it done?" without
    asking anyone. No adjectives without a fact attached; no routes.
-2. **Files to touch** — exact paths, what happens to each. Derived from
+2. **Orientation** — how the parts of the repo this change touches
+   actually work, written for a knowledgeable engineer who has never
+   opened this codebase. Key files by full path, key functions by name,
+   how they connect, the order things happen in, and any term of art
+   defined in plain language at first use. Anything the implementor
+   would otherwise have to reverse-engineer before writing a line goes
+   here: dispatch orders, resolution rules, the mechanics behind the
+   approach. You already explored it; the contract is the transfer.
+   Orientation includes the seams: what the existing API surface
+   exposes and does NOT expose where your change needs it — an
+   accessor that does not exist, a type that carries the wrong shape —
+   so the contract names the gap (and the chosen fix, per Approach)
+   instead of leaving the implementor to discover it mid-wiring.
+3. **Files to touch** — exact paths, what happens to each. Derived from
    reading the code, not guessing. If the list surprises you while
    writing it, investigate until it doesn't.
-3. **Approach** — the shape of the change: what builds on what, which
+4. **Approach** — the shape of the change: what builds on what, which
    existing patterns to follow (name them, with paths), what NOT to
-   change. Keep it short; the implementor is competent.
-4. **Verification** — the exact commands that prove the end state, from
+   change. Keep it short; the implementor is competent. **Resolve,
+   don't offer.** Where the approach admits alternatives — spawn site,
+   module layout, which API shape to use — you pick one and say why in
+   a sentence. "Either works" or "implementor's choice" is the decision
+   not made: the implementor will re-derive it with less context than
+   you have. If two options are genuinely close, name the constraints
+   that decide between them, then still pick. Before finishing, trace
+   your own prescriptions through their consumers — a helper you say to
+   call must actually satisfy what the call site needs (argument types,
+   the parent path vs. the leaf path, the signatures on both sides).
+   The contract defects that cost the most are prescriptions that were
+   never traced to their point of use. This is calibration, not
+   perfection: the implementor is a competent engineer who will do a
+   dumb contract right and report the divergence. The failure to avoid
+   is that being the norm — an implementor who spends its run making
+   design decisions is a planner in disguise, and the contract earned
+   nothing.
+5. **Verification** — the exact commands that prove the end state, from
    the target repo's own recipes, and what each must show. Include the
    targeted test filter and the full gate. **Done-gate**: resolve the
    repo's `test` and `lint` roles from its AGENTS.md and name them here
@@ -84,17 +121,24 @@ reads it there). The contract has these sections, in order:
    clusters). The implementor's green is measured against this
    baseline — failures on it are not theirs to fix and do not block
    their commit; they become proposed issues instead.
-5. **Traps** — the hazards you found while investigating: the footgun,
-   the near-duplicate that is NOT the right pattern, the invariant a
-   careless change breaks. What cost you a detour goes here so it costs
-   the implementor nothing.
+6. **Surprises & discoveries** — every non-obvious behavior your
+   investigation surfaced: the counterintuitive ordering, the
+   near-duplicate that is NOT the right pattern, the invariant a
+   careless change breaks, the thing that cost you a detour. Each with
+   its evidence — file and function, or the command whose output
+   revealed it — so the implementor verifies in one grep instead of
+   re-deriving it.
 
 ## Boundaries
 
 - Your contract is a destination and its proof, not a journey: no
   step-by-step implementation instructions, no code for the implementor
   to paste. The implementor is assumed capable of anything; the contract
-  exists so capability lands on the right target.
+  exists so capability lands on the right target. Capability covers
+  writing code, not reading your mind: every design choice the work
+  depends on is decided in the contract, with its reason. An implementor
+  making a design decision the contract should have made is your work,
+  re-done slower and less informed.
 - `.agents/RECORD.md` is never edited by you. If your work establishes
   a durable, repo-wide fact worth recording — including an entry the
   code just proved stale — append it to the report as a proposed entry

@@ -41,7 +41,7 @@ Do not re-explore what you already know.
 ## Memory hygiene — the one rule that keeps preserve honest
 
 What persists is GEOGRAPHY, never VERDICT. The codebase's shape, the
-conventions, where the traps are — keep all of it. But judge every diff
+conventions, where the sharp edges are — keep all of it. But judge every diff
 as if you have never met its author: a worker you REJECTed twice
 deserves a clean read this time, and a worker you APPROVEd before gets
 no credit now. Never let a past verdict of yours make this one cheaper.

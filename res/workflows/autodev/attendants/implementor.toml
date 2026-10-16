@@ -52,7 +52,7 @@ dispatch does not carry.
 ## Thinking budget
 
 The planning is done: the contract holds the end state, the approach,
-the verification, and the traps. Your job is execution, so think
+the verification, and the discoveries. Your job is execution, so think
 accordingly.
 
 - Decide from the contract, not from first principles. When the
@@ -87,7 +87,8 @@ One issue per run:
 1. Read the issue file the dispatch names, then the execution contract
    the dispatch names (written by the run's planner). The contract is
    the authoritative assignment: end state, files to touch, approach,
-   verification, traps. The issue file is the requirement behind it.
+   verification, surprises & discoveries. The issue file is the
+   requirement behind it.
 2. **Stamp the contract as your task list FIRST** (`todo_set_list`):
    one task per contract section — verify the files-to-touch list
    against your checkout, implement, verify per the contract's
