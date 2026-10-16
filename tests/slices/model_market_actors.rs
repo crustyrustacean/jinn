@@ -290,8 +290,9 @@ async fn warm_boot_serves_the_app_paths_cache_without_a_request() {
 
 // ── Publishes reach the live actors ─────────────────────────────────────
 
-/// A models catalog body for the mockito OR server, plus the endpoints
-/// detail body for the first row.
+/// A models catalog body for the mockito OR server. No endpoints mock:
+/// under fetch-on-drill-in-only semantics a models load alone must make
+/// no endpoints request, so any one would fail the test below.
 async fn served_openrouter() -> (mockito::ServerGuard, String) {
     let mut server = mockito::Server::new_async().await;
     let url = server.url();
@@ -316,36 +317,17 @@ async fn served_openrouter() -> (mockito::ServerGuard, String) {
         .with_body(catalog)
         .create_async()
         .await;
-    let detail = serde_json::json!({
-        "data": {
-            "endpoints": [
-                {
-                    "provider_name": "TestUp",
-                    "tag": "testup",
-                    "pricing": {"prompt": "0.000003", "completion": "0.000015"},
-                    "uptime_last_1d": 99.0
-                }
-            ]
-        }
-    })
-    .to_string();
-    server
-        .mock("GET", "/models/test/model/endpoints")
-        .with_status(200)
-        .with_body(detail)
-        .create_async()
-        .await;
     (server, url)
 }
 
 #[rstest::rstest]
 #[tokio::test]
 #[timeout(Duration::from_secs(20))]
-async fn opening_the_popup_lands_rows_and_row0_detail_without_any_nav_keypress() {
+async fn opening_the_popup_lands_rows_without_fetching_any_detail() {
     // Given the slice composed as the boot list composes it — cells,
     // routes, view, both actors — with the OR actor pointed at a live
-    // local mock serving the models catalog and the first row's
-    // endpoints.
+    // local mock serving ONLY the models catalog: any endpoints request
+    // hits no mock and 501s.
     let (server, base_url) = served_openrouter().await;
     let services = composed_with_endpoints(ActorEndpoints {
         zip_url: "http://127.0.0.1:9/data/benchmark_data.zip".to_owned(),
@@ -362,9 +344,9 @@ async fn opening_the_popup_lands_rows_and_row0_detail_without_any_nav_keypress()
     let loaded = await_recorded::<ModelsLoaded>(&loaded_recorder, 1, SETTLE).await;
     tokio::time::sleep(SETTLE).await;
 
-    // Then the table has rows AND the data cell carries detail for the
-    // highlighted (first) row — the pane is alive on open, not dead
-    // until the first nav key.
+    // Then the table has rows AND the data cell carries no detail:
+    // opening fetches nothing but the listing — detail rides the
+    // drill-in ENTER alone.
     assert_eq!(loaded.len(), 1, "one models load");
     let data = data_of(&services);
     let read = data.read();
@@ -374,12 +356,11 @@ async fn opening_the_popup_lands_rows_and_row0_detail_without_any_nav_keypress()
         "the rows landed, got: {:?}",
         read.rows
     );
-    let detail = read
-        .detail
-        .as_ref()
-        .expect("row 0's detail was fetched without any nav keypress");
-    assert_eq!(detail.model_id, "openrouter/test/model");
-    assert_eq!(detail.endpoints[0].tag, "testup");
+    assert!(
+        read.detail.is_none(),
+        "opening must fetch no detail, got: {:?}",
+        read.detail
+    );
     drop(server);
 }
 

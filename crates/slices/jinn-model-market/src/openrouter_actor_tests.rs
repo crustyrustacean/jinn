@@ -19,7 +19,6 @@ use jinn_model_market_msg::EndpointsLoaded;
 use jinn_model_market_msg::FetchEndpoints;
 use jinn_model_market_msg::FetchModels;
 use jinn_model_market_msg::MarketDataState;
-use jinn_model_market_msg::MarketDetail;
 use jinn_model_market_msg::MarketEndpointRow;
 use jinn_model_market_msg::MarketUiState;
 use jinn_model_market_msg::ModelsLoaded;
@@ -486,44 +485,12 @@ async fn fetch_models_failure_emits_refresh_failed_and_keeps_stale_rows() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn fetch_models_requests_the_highlighted_rows_detail_when_none_loaded() {
-    // Given a cold actor and a mock expecting exactly one GET for the
-    // models listing plus one for the first row's endpoints — the
-    // detail pane's content, requested unprompted.
-    let mut server = mockito::Server::new_async().await;
-    let dir = tempfile::TempDir::new().expect("temp dir");
-    let world = World::start(&server.url(), dir.path().to_path_buf()).await;
-    let recorder = world.endpoints_recorder().await;
-    let models_mock = expect_models_once(&mut server).await;
-    let endpoints_mock = expect_endpoints_once(&mut server).await;
-
-    // When publishing FetchModels — the popup-open publish, no nav key.
-    world.harness.publish(FetchModels).await;
-    let loaded = await_recorded(&recorder, 1, SETTLE).await;
-
-    // Then the actor fetched the highlighted row's detail on its own:
-    // one EndpointsLoaded for it and the endpoints GET consumed.
-    assert_eq!(loaded.len(), 1, "exactly one EndpointsLoaded");
-    assert_eq!(
-        loaded[0].model_id, "openrouter/test/model",
-        "the highlighted row's detail was requested"
-    );
-    let detail = world.data.read().detail.clone().expect("detail written");
-    assert_eq!(detail.model_id, "openrouter/test/model");
-    assert_eq!(detail.endpoints[0].tag, "testup");
-    models_mock.assert_async().await;
-    endpoints_mock.assert_async().await;
-}
-
-#[rstest::rstest]
-#[tokio::test]
-async fn fetch_models_targets_the_sorted_first_row_not_the_catalog_first() {
-    // Given a MULTI-row catalog whose catalog-first entry is the
-    // EXPENSIVE one — under the open defaults (Proj ascending, empty
-    // filter) the view's selection-0 row is `test/cheap`, so a
-    // build-order `rows.first()` would wrongly fetch `test/dear`. The
-    // dear row's endpoints mock carries `.expect(0)`: a request to it
-    // fails the test, so the targeting is measured at the wire.
+async fn fetch_models_fetches_no_detail() {
+    // Given a MULTI-row catalog and zero-expect mocks for BOTH rows'
+    // endpoints — any detail request, for whichever row, fails the
+    // expectations at the wire. Under fetch-on-drill-in-only semantics
+    // a models load alone must make no endpoints request, whichever
+    // row the table would highlight.
     let mut server = mockito::Server::new_async().await;
     let dir = tempfile::TempDir::new().expect("temp dir");
     let catalog = serde_json::json!({
@@ -544,8 +511,9 @@ async fn fetch_models_targets_the_sorted_first_row_not_the_catalog_first() {
     })
     .to_string();
     let world = World::start(&server.url(), dir.path().to_path_buf()).await;
-    let recorder = world.endpoints_recorder().await;
-    server
+    let models_recorder = world.models_recorder().await;
+    let endpoints_recorder = world.endpoints_recorder().await;
+    let models_mock = server
         .mock("GET", "/models")
         .with_status(200)
         .with_body(catalog)
@@ -553,100 +521,34 @@ async fn fetch_models_targets_the_sorted_first_row_not_the_catalog_first() {
         .await;
     let cheap_mock = server
         .mock("GET", "/models/test/cheap/endpoints")
-        .with_status(200)
-        .with_body(endpoints_body())
+        .expect(0)
         .create_async()
         .await;
     let dear_mock = server
         .mock("GET", "/models/test/dear/endpoints")
-        .with_status(200)
-        .with_body(endpoints_body())
         .expect(0)
         .create_async()
         .await;
 
-    // When publishing FetchModels — the popup-open publish, no nav key.
+    // When publishing FetchModels — the popup-open publish, no nav key,
+    // no drill-in.
     world.harness.publish(FetchModels).await;
-    let loaded = await_recorded(&recorder, 1, SETTLE).await;
-
-    // Then the fetch targeted the cheapest-projected (highlighted) row:
-    // the cheap GET was consumed, the dear GET never fired, and the
-    // cell's detail names the cheap id.
-    assert_eq!(loaded.len(), 1, "exactly one EndpointsLoaded");
-    assert_eq!(
-        loaded[0].model_id, "openrouter/test/cheap",
-        "the sorted-first (highlighted) row's detail was requested"
-    );
-    let detail = world.data.read().detail.clone().expect("detail written");
-    assert_eq!(detail.model_id, "openrouter/test/cheap");
-    cheap_mock.assert_async().await;
-    dear_mock.assert_async().await;
-}
-
-#[rstest::rstest]
-#[tokio::test]
-async fn fetch_models_respects_detail_already_present_for_the_first_row() {
-    // Given a warm models cache (so the listing load makes no models
-    // GET) and a cell already carrying detail for row 0 — the
-    // not-clobber case. The endpoints mock is registered with
-    // `.expect(0)`: any outbound request fails its expectation, so
-    // "no fetch fired" is measured at the wire.
-    let mut server = mockito::Server::new_async().await;
-    let dir = tempfile::TempDir::new().expect("temp dir");
-    let at = jiff::Timestamp::now() - jiff::SignedDuration::from_hours(1);
-    crate::market_cache::store(
-        &dir.path().join("models.json"),
-        &crate::market_cache::stamped(fixture_rows(), at),
-    )
-    .expect("seed the models cache");
-    let world = World::start(&server.url(), dir.path().to_path_buf()).await;
-    let detail = MarketDetail {
-        model_id: "openrouter/test/model".to_owned(),
-        endpoints: warm_detail(),
-    };
-    world.data.update(|d| d.detail = Some(detail));
-    let endpoints_mock = server
-        .mock("GET", "/models/test/model/endpoints")
-        .expect(0)
-        .create_async()
-        .await;
-    let recorder = world.endpoints_recorder().await;
-
-    // When publishing FetchModels — a full listing reload.
-    world.harness.publish(FetchModels).await;
+    let loaded = await_recorded(&models_recorder, 1, SETTLE).await;
     tokio::time::sleep(SETTLE).await;
 
-    // Then no endpoints request fired and the cell's detail stands
-    // untouched — the pre-existing detail was respected, not clobbered.
-    endpoints_mock.assert_async().await;
-    let d = world.data.read();
-    assert_eq!(
-        d.detail.as_ref().expect("detail still present").endpoints[0].tag,
-        "warm",
-        "the cached detail was not replaced by a fresh fetch"
-    );
-    // And no EndpointsLoaded even rode the bus.
+    // Then the models rows land and nothing else was requested: the
+    // endpoints mocks never fired and no EndpointsLoaded rode the bus.
+    assert_eq!(loaded.len(), 1, "exactly one ModelsLoaded");
+    let rows = world.data.read().rows.clone();
+    assert_eq!(rows.len(), 2, "the catalog rows landed");
+    models_mock.assert_async().await;
+    cheap_mock.assert_async().await;
+    dear_mock.assert_async().await;
     assert!(
-        recorder.is_empty(),
-        "no fetch means no EndpointsLoaded, got: {:?}",
-        recorder.drain()
+        endpoints_recorder.is_empty(),
+        "a models load fetches no detail, got: {:?}",
+        endpoints_recorder.drain()
     );
-}
-
-/// One endpoint row standing in for a warm detail fixture.
-fn warm_detail() -> Vec<MarketEndpointRow> {
-    vec![MarketEndpointRow {
-        tag: "warm".to_owned(),
-        provider_name: "WarmCache".to_owned(),
-        prompt_price: 1.0,
-        completion_price: 1.0,
-        cache_read_price: None,
-        latency_p50_ms: None,
-        throughput_p50: None,
-        uptime_1d: None,
-        quantization: None,
-        overrides: Vec::new(),
-    }]
 }
 
 /// One-row fixture matching [`catalog_body`]'s listing.

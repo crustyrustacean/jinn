@@ -158,42 +158,75 @@ pub fn detail_rows(data: &MarketDataState, ui: &MarketUiState) -> Option<Vec<Det
     })
 }
 
+/// The filter split into its AND terms: whitespace-separated, each of
+/// which must fuzzy-match a row's name for the row to stay visible.
+/// A whitespace-only filter yields no terms — unfiltered.
+#[must_use]
+fn filter_terms(filter: &str) -> Vec<&str> {
+    filter.split_whitespace().collect()
+}
+
+/// Whether every filter term fuzzy-matches the row name.
+///
+/// Terms are order-insensitive and match anywhere — plain per-term
+/// `SkimMatcherV2` subsequence semantics, no positional logic.
+#[must_use]
+fn all_terms_match(
+    matcher: &fuzzy_matcher::skim::SkimMatcherV2,
+    name: &str,
+    terms: &[&str],
+) -> bool {
+    terms
+        .iter()
+        .all(|term| matcher.fuzzy_match(name, term).is_some())
+}
+
 /// The visible projection: rows filtered by the fuzzy filter, then
 /// stably sorted by the selected column.
 ///
-/// The filter runs over `author/slug[:variant]` with
-/// `SkimMatcherV2`; an empty filter keeps everything. The sort is
-/// stable so equal-cost rows keep their fetch order.
+/// The filter runs over `author/slug[:variant]` with `SkimMatcherV2`:
+/// whitespace-separated terms AND-combine, so a row stays only when
+/// every term matches; a whitespace-only filter keeps everything. The
+/// sort is stable so equal-cost rows keep their fetch order.
 #[must_use]
 pub fn visible_rows(data: &MarketDataState, ui: &MarketUiState) -> Vec<MarketRow> {
     let matcher = fuzzy_matcher::skim::SkimMatcherV2::default();
+    let terms = filter_terms(&ui.filter);
     let mut rows: Vec<MarketRow> = data
         .rows
         .iter()
-        .filter(|row| {
-            ui.filter.is_empty() || matcher.fuzzy_match(&row_name(row), &ui.filter).is_some()
-        })
+        .filter(|row| terms.is_empty() || all_terms_match(&matcher, &row_name(row), &terms))
         .cloned()
         .collect();
     rows.sort_by(|a, b| compare_rows(a, b, ui));
     rows
 }
 
-/// The fuzzy match offsets of `ui.filter` against one row's display
-/// name — the byte indices the filter highlighted, as the
-/// `[Range<usize>]` slices the selection widget's highlighter takes.
+/// The fuzzy match offsets of the filter against one row's display name
+/// — the byte indices the filter highlighted, as the `[Range<usize>]`
+/// slices the selection widget's highlighter takes.
 ///
-/// `None` means "no filter active" (nothing to highlight); an active
-/// filter that misses a row cannot reach here, because the projection
-/// has already dropped the row.
+/// `None` means "no filter active" (nothing to highlight). An active
+/// multi-term filter highlights the UNION of every term's matched
+/// glyphs: the row reaching here matched every term, so each term
+/// contributes its indices, merged and ascending. An active filter that
+/// misses a row cannot reach here, because the projection has already
+/// dropped the row.
 #[must_use]
 pub fn match_ranges(row: &MarketRow, ui: &MarketUiState) -> Option<Vec<Range<usize>>> {
-    if ui.filter.is_empty() {
+    let terms = filter_terms(&ui.filter);
+    if terms.is_empty() {
         return None;
     }
     let matcher = fuzzy_matcher::skim::SkimMatcherV2::default();
     let name = row_name(row);
-    let (_, indices) = matcher.fuzzy_indices(&name, &ui.filter)?;
+    let mut indices: Vec<usize> = terms
+        .iter()
+        .filter_map(|term| matcher.fuzzy_indices(&name, term))
+        .flat_map(|(_, matched)| matched)
+        .collect();
+    indices.sort_unstable();
+    indices.dedup();
     Some(indices.into_iter().map(|i| i..i + 1).collect())
 }
 
@@ -633,5 +666,154 @@ mod detail_projection_tests {
 
         // Then the refactor delegated exactly.
         assert!((raw - wrapped).abs() < 1e-12);
+    }
+}
+
+#[cfg(test)]
+mod filter_tests {
+    #![allow(clippy::indexing_slicing, reason = "test code")]
+
+    use super::*;
+
+    /// A `MarketRow` named `author/slug` — everything else defaults
+    /// away; only the name matters to the filter.
+    fn named_row(author: &str, slug: &str) -> MarketRow {
+        MarketRow {
+            id: format!("openrouter/{author}/{slug}"),
+            author: author.to_owned(),
+            slug: slug.to_owned(),
+            variant: None,
+            prompt_price: 1e-6,
+            completion_price: 2e-6,
+            cache_read_price: None,
+            has_overrides: false,
+            context_length: None,
+            eci: None,
+            eci_ci: None,
+            is_free: false,
+        }
+    }
+
+    /// A data cell over `anthropic/claude-3-5-latest`, `mistral/small`,
+    /// and `a/tiny` — the multi-term and single-term shapes.
+    fn fixture() -> MarketDataState {
+        MarketDataState {
+            rows: vec![
+                named_row("anthropic", "claude-3-5-latest"),
+                named_row("mistral", "small"),
+                named_row("a", "tiny"),
+            ],
+            ..MarketDataState::default()
+        }
+    }
+
+    fn rows_matching(ui: &MarketUiState) -> Vec<String> {
+        let mut names: Vec<String> = visible_rows(&fixture(), ui).iter().map(row_name).collect();
+        names.sort();
+        names
+    }
+
+    /// UI state carrying only the filter — struct-update syntax, so a
+    /// test names exactly what varies.
+    fn filtered(filter: &str) -> MarketUiState {
+        MarketUiState {
+            filter: filter.to_owned(),
+            ..MarketUiState::default()
+        }
+    }
+
+    #[rstest::rstest]
+    fn space_separated_terms_and_combine() {
+        // Given the fixture and a two-term filter both terms must
+        // match ("lat" ⊂ …latest, "anth" ⊂ anthropic).
+        let ui = filtered("lat anth");
+
+        // When the projection resolves.
+        let names = rows_matching(&ui);
+
+        // Then only the name carrying BOTH terms survives.
+        assert_eq!(names, vec!["anthropic/claude-3-5-latest".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn term_order_does_not_matter() {
+        // Given the two orderings of the same terms.
+        let first = filtered("anth lat");
+        let second = filtered("lat anth");
+
+        // When both projections resolve.
+        // Then both keep exactly the same row.
+        assert_eq!(
+            rows_matching(&first),
+            vec!["anthropic/claude-3-5-latest".to_owned()]
+        );
+        assert_eq!(
+            rows_matching(&second),
+            vec!["anthropic/claude-3-5-latest".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_term_matching_no_row_drops_every_row() {
+        // Given a filter whose second term matches nothing.
+        let ui = filtered("anth zzz");
+
+        // When the projection resolves.
+        let names = rows_matching(&ui);
+
+        // Then the table is empty: AND means every term must hit.
+        assert!(names.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn whitespace_only_filter_keeps_every_row() {
+        // Given a whitespace-only filter.
+        let ui = filtered("   ");
+
+        // When the projection resolves.
+        let names = rows_matching(&ui);
+
+        // Then every row survives — it behaves as the empty filter.
+        assert_eq!(names.len(), 3);
+    }
+
+    #[rstest::rstest]
+    fn single_term_filter_behavior_is_unchanged() {
+        // Given a single-term filter.
+        let ui = filtered("small");
+
+        // When the projection resolves.
+        let names = rows_matching(&ui);
+
+        // Then only the matching row survives, exactly as before.
+        assert_eq!(names, vec!["mistral/small".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn match_ranges_unions_the_terms_glyphs() {
+        // Given a row both terms match: against `a/small`, `a` hits
+        // index 0 and `l` hits index 6 — different glyphs.
+        let row = named_row("a", "small");
+        let ui = filtered("a l");
+
+        // When the highlight ranges resolve.
+        let starts: Vec<usize> = match_ranges(&row, &ui)
+            .map(|ranges| ranges.iter().map(|r| r.start).collect())
+            .unwrap_or_default();
+
+        // Then the union is ascending and carries BOTH terms' glyphs —
+        // more than either term alone highlights.
+        assert_eq!(starts, vec![0, 6]);
+    }
+
+    #[rstest::rstest]
+    fn match_ranges_returns_none_for_a_whitespace_only_filter() {
+        // Given a whitespace-only filter.
+        let row = named_row("a", "small");
+        let ui = filtered(" \t ");
+
+        // When the highlight ranges resolve.
+        // Then there is nothing to highlight.
+        assert_eq!(match_ranges(&row, &ui), None);
     }
 }

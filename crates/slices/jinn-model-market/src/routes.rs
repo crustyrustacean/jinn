@@ -27,6 +27,11 @@
 //! and ESC into "clear the filter"; detail mode turns ENTER into
 //! "confirm the highlighted endpoint" and ESC into "back to the table".
 //! The branch order inside every action is filter → detail → table.
+//!
+//! Fetches ride one key only: the table-mode ENTER drill-in. Highlight
+//! motion, sorts, and filter accept/clear publish nothing — the detail
+//! content fetches when the user drills into a row, never as a side
+//! effect of moving the highlight.
 
 use std::sync::Arc;
 
@@ -237,13 +242,9 @@ fn attach_navigation_rows(routes: &KeyRoutes, ui: &MarketUiCell, data: &MarketDa
     }
 }
 
-/// Applies one navigation step and follows it with the debounced
-/// endpoint fetch when the newly highlighted row has no detail yet.
-///
-/// Detail mode navigates its own projection — `detail_selection`
-/// against the detail rows — and publishes nothing: all detail-mode
-/// nav/sort paths publish nothing, so `fetch_seq` sits still while the
-/// mode is open.
+/// Applies one navigation step, moving the highlight only — no fetch
+/// follows, in either mode: table mode fetches on drill-in ENTER
+/// alone, detail mode fetches nothing at all.
 fn apply_nav(ui: &MarketUiCell, data: &MarketDataCell, step: Nav) -> IntentResult {
     if ui.read().detail_model.is_some() {
         let count = detail_count(ui, data);
@@ -271,22 +272,7 @@ fn apply_nav(ui: &MarketUiCell, data: &MarketDataCell, step: Nav) -> IntentResul
         Nav::PageUp => ui.update(ui_state::page_up),
         Nav::PageDown => ui.update(|s| ui_state::page_down(s, count)),
     }
-    fetch_following(ui, data)
-}
-
-/// The result a highlighted-row mutation publishes: the debounced
-/// endpoint fetch when the newly highlighted row has no detail yet, an
-/// empty result otherwise.
-///
-/// Every mutation that moves the highlight — the navigation rows and
-/// the hook's `j`/`k`/`h`/`l`/`s`, plus the ENTER-accept and ESC-clear
-/// of a focused filter — ends by attaching this, so the detail pane
-/// follows whichever key moved the selection.
-fn fetch_following(ui: &MarketUiCell, data: &MarketDataCell) -> IntentResult {
-    match maybe_fetch_endpoints(ui, data) {
-        Some(fetch) => IntentResult::new_message(fetch),
-        None => IntentResult::empty(),
-    }
+    IntentResult::empty()
 }
 
 /// Which navigation key was pressed.
@@ -383,10 +369,10 @@ pub fn register_market_input_hook(routes: &KeyRoutes, ui: &MarketUiCell, data: &
 /// What the hook should do with a character.
 #[derive(Debug)]
 enum CharAction {
-    /// A table-mode action fired; the keystroke is consumed. The payload
-    /// is what the action publishes — a table-focused action that moved
-    /// the highlight carries the row's endpoint fetch, typing carries
-    /// none.
+    /// An action fired; the keystroke is consumed. The payload is what
+    /// the action publishes — empty for every table-mode action, since
+    /// highlight motion and sort/filter keys publish nothing (only the
+    /// drill-in ENTER fetches).
     Acted(IntentResult),
     /// The filter is focused: the character is typing.
     Type,
@@ -399,12 +385,12 @@ enum CharAction {
 /// Table-focused `h`/`l`/`s` mutate the sort cell exactly as their
 /// pre-hook-route ancestors did; `j`/`k` navigate because the
 /// keymap's insert-char catch-all owns those keys in this scope. Every
-/// table-mode arm that moves the highlighted row returns the row's
-/// endpoint fetch through [`CharAction::Acted`] — the same follow-along
-/// the navigation rows publish. Detail mode's arms mirror them over the
-/// mode's own state (`detail_selection`, `detail_sort_col`,
-/// `detail_sort_desc`) and publish nothing — the mode never mints
-/// fetches, so `fetch_seq` sits still while it is open.
+/// table-mode arm that moves the highlighted row publishes nothing —
+/// the only fetch site is the drill-in ENTER. Detail mode's arms mirror
+/// them over the mode's own state (`detail_selection`,
+/// `detail_sort_col`, `detail_sort_desc`) and publish nothing — the
+/// mode never mints fetches, so `fetch_seq` sits still while it is
+/// open.
 fn table_char_action(ui: &MarketUiCell, data: &MarketDataCell, ch: char) -> CharAction {
     if ui.read().filter_focused {
         return CharAction::Type;
@@ -423,7 +409,7 @@ fn table_char_action(ui: &MarketUiCell, data: &MarketDataCell, ch: char) -> Char
         }
         'k' => {
             ui.update(ui_state::move_up);
-            CharAction::Acted(fetch_following(ui, data))
+            CharAction::Acted(IntentResult::empty())
         }
         'j' => {
             // Clamp against the live visible count, not the measured
@@ -431,38 +417,34 @@ fn table_char_action(ui: &MarketUiCell, data: &MarketDataCell, ch: char) -> Char
             // and a highlight past the list end simply vanishes.
             let count = visible_count(ui, data);
             ui.update(|s| ui_state::move_down(s, count));
-            CharAction::Acted(fetch_following(ui, data))
+            CharAction::Acted(IntentResult::empty())
         }
         'h' => {
             ui.update(|s| {
                 s.sort_col = s.sort_col.prev();
             });
-            CharAction::Acted(fetch_following(ui, data))
+            CharAction::Acted(IntentResult::empty())
         }
         'l' => {
             ui.update(|s| {
                 s.sort_col = s.sort_col.next();
             });
-            CharAction::Acted(fetch_following(ui, data))
+            CharAction::Acted(IntentResult::empty())
         }
         's' => {
             ui.update(|s| s.sort_desc = !s.sort_desc);
-            CharAction::Acted(fetch_following(ui, data))
+            CharAction::Acted(IntentResult::empty())
         }
         _ => CharAction::Unclaimed,
     }
 }
 
 /// Classifies one character in detail mode: `j`/`k` move the detail
-/// highlight (no fetch), `h`/`l` cycle the detail sort columns, `s`
-/// flips the detail direction, `f`/`i` focus the filter, `?` toggles
-/// the help card.
+/// highlight, `h`/`l` cycle the detail sort columns, `s` flips the
+/// detail direction, `?` toggles the help card. There is no filter in
+/// detail mode — `f`/`i` are unclaimed here and fall through.
 fn detail_char_action(ui: &MarketUiCell, data: &MarketDataCell, ch: char) -> CharAction {
     match ch {
-        'f' | 'i' => {
-            ui.update(|s| s.filter_focused = true);
-            CharAction::Acted(IntentResult::empty())
-        }
         '?' => {
             ui.update(|s| s.help_visible = !s.help_visible);
             CharAction::Acted(IntentResult::empty())
@@ -513,15 +495,14 @@ fn open_market(
 }
 
 /// `<esc>`: a focused filter clears — text emptied, selection reset,
-/// focus back on the table; the popup stays open. Clearing changes the
-/// visible set, so the newly highlighted row 0's endpoint fetch follows.
-/// Detail mode returns to the table — the pin clears, everything
-/// table-side exactly as it was, the popup stays open. Table mode
-/// closes the popup.
+/// focus back on the table; the popup stays open. Nothing publishes —
+/// the clear is not highlight motion worth fetching for. Detail mode
+/// returns to the table — the pin clears, everything table-side exactly
+/// as it was, the popup stays open. Table mode closes the popup.
 fn escape_market(
     _ctx: &mut ActionCtx<'_>,
     ui: &MarketUiCell,
-    data: &MarketDataCell,
+    _data: &MarketDataCell,
 ) -> IntentResult {
     if ui.read().filter_focused {
         ui.update(|s| {
@@ -529,7 +510,7 @@ fn escape_market(
             s.filter_focused = false;
             s.selection = 0;
         });
-        return fetch_following(ui, data);
+        return IntentResult::empty();
     }
     if ui.read().detail_model.is_some() {
         ui.update(MarketUiState::leave_detail);
@@ -539,11 +520,10 @@ fn escape_market(
 }
 
 /// ENTER: a focused filter accepts — focus returns to the table with
-/// the typed filter still applied and the popup still open; accepting
-/// narrows the visible set, so the filtered set's row 0 fetch follows.
-/// Detail mode confirms the highlighted detail row: the Default
-/// sentinel is the model-only switch (`SetEndpointDefault` with no
-/// tag — clearing any pin, OpenRouter auto-routes), a provider row is
+/// the typed filter still applied and the popup still open; nothing
+/// publishes. Detail mode confirms the highlighted detail row: the
+/// Default sentinel is the model-only switch (`SetEndpointDefault` with
+/// no tag — clearing any pin, OpenRouter auto-routes), a provider row is
 /// the model switch plus that endpoint's pin; both close the popup
 /// with the scope pop, exactly as table mode does. Table mode drills
 /// in — the popup pins the highlighted row's model, requests its
@@ -555,7 +535,7 @@ fn confirm_market(
 ) -> IntentResult {
     if ui.read().filter_focused {
         ui.update(|s| s.filter_focused = false);
-        return fetch_following(ui, data);
+        return IntentResult::empty();
     }
     if ui.read().detail_model.is_some() {
         return confirm_detail(ctx, ui, data);
@@ -581,20 +561,26 @@ fn confirm_market(
 /// pin, auto-route; `Some(tag)` for a provider row) — and the scope
 /// pop. Model switch then pin land on the same actor mailbox in
 /// publish order.
+///
+/// The row resolves through
+/// [`ui_state::highlighted_detail_row`] — the *rendered* (sorted)
+/// projection, the same function the view's row-by-index contract goes
+/// through — so the pin lands on exactly the row the cursor sat on.
+/// `detail_rows` (fetch order) would name a different endpoint whenever
+/// the sort reorders the endpoints, which is the wrong-pin bug.
 fn confirm_detail(
     ctx: &mut ActionCtx<'_>,
     ui: &MarketUiCell,
     data: &MarketDataCell,
 ) -> IntentResult {
-    let pinned_model = {
+    let (pinned_model, tag) = {
         let (d, guard) = (data.read(), ui.read());
-        let row = ui_state::detail_rows(&d, &guard)
-            .unwrap_or_default()
-            .get(guard.detail_selection)
-            .cloned();
-        match row {
-            Some(_) => guard.detail_model.clone(),
-            None => None,
+        match ui_state::highlighted_detail_row(&d, &guard) {
+            Some(DetailRow::Default) => (guard.detail_model.clone(), None),
+            Some(DetailRow::Endpoint(endpoint)) => {
+                (guard.detail_model.clone(), Some(endpoint.tag.clone()))
+            }
+            None => (None, None),
         }
     };
     let Some(pinned_model) = pinned_model else {
@@ -607,17 +593,6 @@ fn confirm_detail(
     // resolves through it, not through a kernel-only method.
     let session_id = state.active_session_id();
     let model = Some(ModelSelection::Single(pinned_model.clone()));
-    let tag = {
-        let d = data.read();
-        let guard = ui.read();
-        match ui_state::detail_rows(&d, &guard)
-            .unwrap_or_default()
-            .get(guard.detail_selection)
-        {
-            Some(DetailRow::Default) | None => None,
-            Some(DetailRow::Endpoint(endpoint)) => Some(endpoint.tag.clone()),
-        }
-    };
 
     IntentResult::new_message(ProviderSwitch {
         session_id,
@@ -647,26 +622,10 @@ fn refresh_market(
 /// does not already carry its detail, stamping the UI cell's sequence
 /// for the actor's debounce.
 ///
-/// Both fetch callers route through here: [`fetch_following`] wraps the
-/// highlighted row (every highlight-moving table-mode action), and the
-/// table-mode ENTER drill-in passes the row it pins. A model whose
-/// detail is already cached returns `None` — re-entering a previously
-/// viewed model renders instantly, publishing nothing.
-fn maybe_fetch_endpoints(ui: &MarketUiCell, data: &MarketDataCell) -> Option<FetchEndpoints> {
-    let request = {
-        let highlighted = highlighted(ui, data);
-        match highlighted {
-            Some(row) if !has_detail_read(data, &row.id) => Some(row.id),
-            _ => None,
-        }
-    };
-    let model_id = request?;
-    fetch_for_model(ui, data, &model_id)
-}
-
-/// [`maybe_fetch_endpoints`] for an explicit model: the has-detail
-/// guard plus the `fetch_seq` bump — no seq bypass, the same debounce
-/// every fetch rides.
+/// The drill-in ENTER is the only caller — the one sync-side fetch
+/// site. A model whose detail is already cached returns `None`:
+/// re-entering a previously viewed model renders instantly, publishing
+/// nothing.
 fn fetch_for_model(
     ui: &MarketUiCell,
     data: &MarketDataCell,
