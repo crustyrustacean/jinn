@@ -173,10 +173,17 @@ fn drawn_card_renders_its_border_title_and_sections() {
         .map(ratatui::buffer::Cell::symbol)
         .collect();
     assert!(text.contains("Model Market help"), "title, got: {text:?}");
-    for section in ["Columns", "Detail pane"] {
+    for section in ["Columns", "Detail mode"] {
         assert!(text.contains(section), "section {section}, got: {text:?}");
     }
-    for gone in ["Keys", "Status line", "Data sources", "<leader>so", "[m]"] {
+    for gone in [
+        "Keys",
+        "Status line",
+        "Data sources",
+        "<leader>so",
+        "[m]",
+        "Detail pane",
+    ] {
         assert!(
             !text.contains(gone),
             "the card must not carry {gone:?}, got: {text:?}"
@@ -215,6 +222,55 @@ fn drawn_card_documents_the_columns_and_flags() {
         "MODEL", "IN/M", "OUT/M", "CACHE/M", "PROJ", "ECI", "FLAGS", "\u{2020}", "#",
     ] {
         assert!(text.contains(fact), "card must document {fact:?}");
+    }
+}
+
+#[rstest::rstest]
+fn drawn_card_documents_the_detail_mode_semantics() {
+    // Given a visible help card over a tall frame so the whole card is
+    // on screen.
+    let ui = MarketUiState {
+        help_visible: true,
+        ..MarketUiState::default()
+    };
+    let card = card_for(&ui).expect("a visible help produces a card");
+    let frame = popup_frame();
+
+    // When it draws against a test backend.
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(
+        frame.terminal.width,
+        120,
+    ))
+    .expect("test terminal");
+    terminal.draw(|f| card.draw(f)).expect("draw");
+
+    // Then the rendered text names the eight detail columns, the
+    // Default sentinel, and the pin/back semantics — and no pane-era
+    // wording survives.
+    let text: String = terminal
+        .backend()
+        .buffer()
+        .content
+        .iter()
+        .map(ratatui::buffer::Cell::symbol)
+        .collect();
+    for fact in [
+        "ENDPOINT",
+        "LAT p50",
+        "TP p50",
+        "UP 1d",
+        "Default",
+        "auto-route",
+        "pin",
+        "backspace",
+    ] {
+        assert!(text.contains(fact), "card must document {fact:?}");
+    }
+    for gone in ["ECI \u{b1}", "Detail pane"] {
+        assert!(
+            !text.contains(gone),
+            "the pane-era fact {gone:?} must be gone, got: {text:?}"
+        );
     }
 }
 

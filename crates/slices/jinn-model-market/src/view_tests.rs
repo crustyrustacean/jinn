@@ -285,22 +285,22 @@ fn focused_filter_renders_its_own_line_and_the_title_stays_plain() {
     let buffer = harness.render(popup, 90, 100);
 
     // Then the filter line sits at the inner area's first row with the
-    // text and the cursor block, the separator sits under it, and the
-    // title row is the popup's plain name — the filter never renders
-    // into the titlebar.
+    // glyph, the text, and the cursor block, the separator sits under
+    // it, and the title row is the popup's plain name — the filter
+    // never renders into the titlebar.
     let title = row_text(&buffer, popup.y, popup.width);
     assert!(
         title.contains(" Model Market "),
         "the title stays plain, got: {title:?}"
     );
     assert!(
-        !title.contains("filter:"),
-        "the filter never renders into the titlebar, got: {title:?}"
+        !title.contains('>'),
+        "the filter never renders into the titlebar"
     );
     let filter_line = row_text(&buffer, popup.y + 1, popup.width);
     assert!(
-        filter_line.contains(" filter: son") && filter_line.contains('\u{2588}'),
-        "the focused filter line shows the text and cursor, got: {filter_line:?}"
+        filter_line.contains(" > son") && filter_line.contains('\u{2588}'),
+        "the focused filter line shows the glyph, text, and cursor, got: {filter_line:?}"
     );
     let separator: String = (popup.x + 1..popup.x + popup.width - 1)
         .filter_map(|x| buffer.cell((x, popup.y + 2)).map(Cell::symbol))
@@ -324,15 +324,63 @@ fn unfocused_filter_shows_its_text_without_the_cursor() {
     let popup = ratatui::layout::Rect::new(5, 2, 80, 10);
     let buffer = harness.render(popup, 90, 100);
 
-    // Then the filter line still shows the text — the filter stays
-    // applied — but no cursor block, and the title stays plain.
+    // Then the filter line still shows the glyph and text — the filter
+    // stays applied — but no cursor block, and the title stays plain.
     let filter_line = row_text(&buffer, popup.y + 1, popup.width);
     assert!(
-        filter_line.contains(" filter: son"),
-        "the applied filter text renders, got: {filter_line:?}"
+        filter_line.contains(" > son"),
+        "the applied filter text renders after the glyph, got: {filter_line:?}"
     );
     assert!(
         !filter_line.contains('\u{2588}'),
         "an unfocused filter shows no cursor, got: {filter_line:?}"
+    );
+}
+
+#[rstest::rstest]
+fn the_filter_line_renders_the_glyph_alone_when_empty() {
+    // Given a popup with an empty, focused filter.
+    let harness = Harness::new();
+    harness.ui.update(|s| s.filter_focused = true);
+
+    // When the popup renders.
+    let popup = ratatui::layout::Rect::new(5, 2, 80, 10);
+    let buffer = harness.render(popup, 90, 100);
+
+    // Then the filter line reads the prompt glyph with just the cursor.
+    let filter_line = row_text(&buffer, popup.y + 1, popup.width);
+    assert!(
+        filter_line.contains(" > \u{2588}"),
+        "the empty focused filter reads the glyph and cursor, got: {filter_line:?}"
+    );
+}
+
+#[rstest::rstest]
+fn the_filter_line_renders_the_glyph_in_detail_mode_too() {
+    // Given detail mode holding filter text, filter unfocused.
+    let harness = Harness::new();
+    harness.ui.update(|s| {
+        s.filter = "son".to_owned();
+        s.enter_detail("openrouter/a/model".to_owned());
+    });
+    harness.data.update(|d| {
+        d.rows = vec![variant_row()];
+    });
+
+    // When the popup renders.
+    let popup = ratatui::layout::Rect::new(5, 2, 80, 10);
+    let buffer = harness.render(popup, 90, 100);
+    let title = row_text(&buffer, popup.y, popup.width);
+
+    // Then the filter line carries the same glyph — the filter line is
+    // global to the popup — and the titlebar stays plain.
+    let filter_line = row_text(&buffer, popup.y + 1, popup.width);
+    assert!(
+        filter_line.contains(" > son"),
+        "the glyph renders in detail mode too, got: {filter_line:?}"
+    );
+    assert!(
+        !title.contains('>'),
+        "the titlebar stays plain, got: {title:?}"
     );
 }

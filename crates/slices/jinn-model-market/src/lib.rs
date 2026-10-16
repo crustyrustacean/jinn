@@ -5,9 +5,15 @@
 //! [`jinn_model_market_msg::market_ui_scope`]): one row per text-output
 //! OpenRouter listing, columns for prices, a render-time cost projection
 //! under the fixed [`jinn_model_market_msg::PROJECTION_MIX`], and the
-//! Epoch Capabilities Index joined by display name. ENTER switches the
-//! session model through the same `ProviderSwitch` crossing the
-//! provider picker publishes.
+//! Epoch Capabilities Index joined by display name. The popup is
+//! two-state: ENTER drills into the highlighted model's *detail mode* —
+//! its provider endpoints as table rows, Default (auto-route) first —
+//! where ENTER on a row switches the session model through the same
+//! `ProviderSwitch` crossing the provider picker publishes and pins the
+//! chosen endpoint through the existing `SetEndpointDefault` persist
+//! path; ESC or backspace returns to the table with its state intact.
+//! In table mode, ENTER keeps its drill-in; only detail-mode ENTER
+//! switches.
 //!
 //! Two cells, two owners. [`jinn_model_market_msg::MarketDataState`] is
 //! written only by the slice's actors (fetch, parse, cache — nothing

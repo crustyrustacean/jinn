@@ -22,6 +22,19 @@ pub const SORT_CYCLE: [SortColumn; 6] = [
     SortColumn::Model,
 ];
 
+/// The detail-mode sort cycle: the default first, then the eight detail
+/// columns in header order, wrapping.
+pub const DETAIL_SORT_CYCLE: [DetailSort; 8] = [
+    DetailSort::Endpoint,
+    DetailSort::In,
+    DetailSort::Out,
+    DetailSort::Cache,
+    DetailSort::Proj,
+    DetailSort::Lat,
+    DetailSort::Tp,
+    DetailSort::Up,
+];
+
 /// The fixed cost projection every PROJ value is computed under, as
 /// `(input tokens, cache-hit fraction, output tokens)`. Cache misses
 /// bill at the prompt price (locked decision F). A constant, not an
@@ -89,6 +102,82 @@ impl SortColumn {
     }
 }
 
+/// Which detail-mode column the sort is keyed on. The cycle order is the
+/// detail table's header order; the *default* is `Proj` (the mode's
+/// reason to exist is the per-endpoint projection), mirroring the
+/// table's own PROJ default.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DetailSort {
+    /// The endpoint's display name — `provider_name` plus a non-empty
+    /// tag; the Default row is the name-sort's `None` key, tie-broken
+    /// by name like the table's `Model`.
+    Endpoint,
+    /// Endpoint prompt price, $/M.
+    In,
+    /// Endpoint completion price, $/M.
+    Out,
+    /// Endpoint cached-input read price (`None` sorts last either way).
+    Cache,
+    /// Projected $/turn under [`PROJECTION_MIX`] — the default.
+    #[default]
+    Proj,
+    /// Median time-to-first-token, ms (`None` sorts last either way).
+    Lat,
+    /// Median output throughput, tok/s (`None` sorts last either way).
+    Tp,
+    /// One-day uptime fraction (`None` sorts last either way).
+    Up,
+}
+
+/// Steps `from` `steps` positions around [`DETAIL_SORT_CYCLE`], wrapping.
+///
+/// Index arithmetic is denied by lint, so the cycle is walked by
+/// `nth` over an endlessly-chained iterator.
+fn detail_cycle_step(from: DetailSort, steps: usize) -> DetailSort {
+    let offset = DETAIL_SORT_CYCLE
+        .iter()
+        .position(|c| *c == from)
+        .unwrap_or(0)
+        + steps;
+    DETAIL_SORT_CYCLE
+        .iter()
+        .cycle()
+        .nth(offset)
+        .copied()
+        .unwrap_or_default()
+}
+
+impl DetailSort {
+    /// The next column in the `h`/`l` cycle.
+    #[must_use]
+    pub fn next(self) -> Self {
+        detail_cycle_step(self, 1)
+    }
+
+    /// The previous column in the `h`/`l` cycle.
+    #[must_use]
+    pub fn prev(self) -> Self {
+        detail_cycle_step(self, DETAIL_SORT_CYCLE.len() - 1)
+    }
+
+    /// The column header the detail table shows. Symmetry with
+    /// [`SortColumn::header`]: the rendered headers live in the view's
+    /// column table, which remains the source of truth on screen.
+    #[must_use]
+    pub fn header(self) -> &'static str {
+        match self {
+            Self::Endpoint => "ENDPOINT",
+            Self::In => "IN /M",
+            Self::Out => "OUT /M",
+            Self::Cache => "CACHE /M",
+            Self::Proj => "PROJ",
+            Self::Lat => "LAT p50",
+            Self::Tp => "TP p50",
+            Self::Up => "UP 1d",
+        }
+    }
+}
+
 /// The model-market picker's per-open state.
 #[derive(Debug, Clone)]
 pub struct MarketUiState {
@@ -115,6 +204,21 @@ pub struct MarketUiState {
     /// Monotonic sequence the UI stamps on every fetch request so the
     /// endpoint actor can drop stale debounced fetches.
     pub fetch_seq: u64,
+    /// The detail mode's pin: `None` = table mode; `Some(id)` = detail
+    /// mode, pinned to that model until ESC/backspace. The pin is the
+    /// stale guard — render trusts `data.detail` only when its
+    /// `model_id` equals this, so detail for another model never
+    /// renders under this mode.
+    pub detail_model: Option<String>,
+    /// The detail-mode highlight, into the detail rows projection
+    /// (Default sentinel first, then the endpoints).
+    pub detail_selection: usize,
+    /// The detail-mode sort key; `h`/`l` cycle it, `s` flips direction.
+    /// Separate from the table's `sort_col`: leaving detail mode
+    /// restores the table's sort untouched.
+    pub detail_sort_col: DetailSort,
+    /// The detail-mode sort direction.
+    pub detail_sort_desc: bool,
 }
 
 impl Default for MarketUiState {
@@ -128,15 +232,36 @@ impl Default for MarketUiState {
             help_visible: false,
             results_viewport: RESULTS_VIEWPORT_FALLBACK,
             fetch_seq: 0,
+            detail_model: None,
+            detail_selection: 0,
+            detail_sort_col: DetailSort::default(),
+            detail_sort_desc: false,
         }
     }
 }
 
 impl MarketUiState {
-    /// Resets to the opener's defaults: table focused, filter empty,
-    /// PROJ ascending, help hidden.
+    /// Resets to the opener's defaults: table mode, filter empty, PROJ
+    /// ascending, help hidden.
     pub fn reset(&mut self) {
         *self = Self::default();
+    }
+
+    /// Enters detail mode pinned to `model_id`: the highlight and the
+    /// detail sort land on their defaults, and the pin is the mode.
+    /// Touches nothing table-side — the filter, focus, sort, and
+    /// selection survive the round trip.
+    pub fn enter_detail(&mut self, model_id: String) {
+        self.detail_model = Some(model_id);
+        self.detail_selection = 0;
+        self.detail_sort_col = DetailSort::default();
+        self.detail_sort_desc = false;
+    }
+
+    /// Leaves detail mode: the pin clears and the table mode's state is
+    /// exactly as it was before drilling in. Touches nothing table-side.
+    pub fn leave_detail(&mut self) {
+        self.detail_model = None;
     }
 }
 
