@@ -429,20 +429,33 @@ async fn published_fetch_models_reaches_the_live_actor() {
         .bus
         .publish(jinn_model_market_msg::FetchModels)
         .await;
-    tokio::time::sleep(SETTLE).await;
 
     // Then the actor answered: the empty cache dir forces the network
     // path, which fails offline — the degraded-mode line lands in the
     // cell. Either way the message was consumed, not dropped
-    // unsubscribed (zero outcomes is the dead-bus signature).
+    // unsubscribed (zero outcomes is the dead-bus signature). The
+    // dead-URL connect refuses instantly on Linux, but a first
+    // reqwest connect on Windows can take seconds (proxy resolution,
+    // firewall evaluation), so the outcome is polled to a deadline
+    // rather than checked after one settle sleep.
     let data = data_of(&services);
-    assert!(
-        data.read().models_fetched_at.is_some() || data.read().last_error.is_some(),
-        "a published FetchModels must reach the live actor and land an outcome \
-         in the data cell, got: models_fetched_at={:?} last_error={:?}",
-        data.read().models_fetched_at,
-        data.read().last_error
-    );
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let (fetched_at, last_error) = {
+            let cell = data.read();
+            (cell.models_fetched_at, cell.last_error.clone())
+        };
+        if fetched_at.is_some() || last_error.is_some() {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "a published FetchModels must reach the live actor and land an outcome \
+             in the data cell, got: models_fetched_at={fetched_at:?} \
+             last_error={last_error:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 }
 
 #[rstest::rstest]
