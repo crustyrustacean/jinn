@@ -27,8 +27,7 @@
 # >   scopes      where the rule looks: `text`, `thinking`, `tool`, or
 # >               `tool:<name>(<glob>)`. Every rule in this file uses
 # >               `tool:bash`. `project` would confine a rule to matching a
-# >               session's project association (stamped at creation); none of
-# >               these need it.
+# >               session's working directory by glob; none of these need it.
 # >   body        the guidance the model resumes under. Say what is wrong
 # >               and give the working alternative.
 # >   positive    test fixtures: bare command strings that MUST trip this
