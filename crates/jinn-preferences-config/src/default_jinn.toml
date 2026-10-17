@@ -47,7 +47,8 @@ tool_filter = { mode = "deny", names = ["grep"] }
 # > - `thinking`: thinking/reasoning block
 # > - `tool`: any tool call
 # > - `tool:<name>(<glob>)`: specific tool call with optional parameter matching.
-# > `project` confines a rule to matching working directories; absent
+# > `project` confines a rule to matching a session's project association
+# > (stamped at creation; it does not follow working-directory changes); absent
 # > means every project, and a global rule is a floor a project-scoped one can
 # > add to but never lift.
 #
