@@ -47,7 +47,8 @@ tool_filter = { mode = "deny", names = ["grep"] }
 # > - `thinking`: thinking/reasoning block
 # > - `tool`: any tool call
 # > - `tool:<name>(<glob>)`: specific tool call with optional parameter matching.
-# > `project` confines a rule to matching working directories; absent
+# > `project` confines a rule to matching a session's project association
+# > (stamped at creation; it does not follow working-directory changes); absent
 # > means every project, and a global rule is a floor a project-scoped one can
 # > add to but never lift.
 #
@@ -59,8 +60,10 @@ tool_filter = { mode = "deny", names = ["grep"] }
 # > start is anchored on the envelope head, not `^`.
 #
 # > The `project` field is a single glob that matches a project. If provided,
-# > the stream_rules will only trigger when `project` glob matches the CWD of
-# > session.
+# > the stream_rules will only trigger when `project` glob matches the session's
+# > project association (stamped when the session is created; it does not
+# > follow later working-directory changes). A session with no project
+# > association runs under the global rules only.
 #
 # > Examples:
 # project = "/path/to/project"  # must have at least these components
