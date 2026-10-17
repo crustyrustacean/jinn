@@ -2706,6 +2706,8 @@ dependencies = [
  "jinn-provider-config",
  "jinn-session-history-msg",
  "jinn-session-msg",
+ "jinn-session-state",
+ "jinn-session-store-msg",
  "jinn-slices",
  "jinn-stream-rules",
  "jinn-testutil",
@@ -3305,7 +3307,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-session-init"
-version = "0.116.1"
+version = "1.8.1"
 dependencies = [
  "error-stack",
  "jinn-common",

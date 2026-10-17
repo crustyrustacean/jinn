@@ -157,7 +157,7 @@ mod tests {
     fn a_global_rule_merged_with_a_project_rule_keeps_both_blocks() {
         // Given the same two rules, compiled for the scoped project.
         let set = CompiledSet::build(&read_rules(&mixed_project_config(), &temp_prefs()))
-            .for_project(std::path::Path::new("/home/dev/code/myapp"));
+            .for_cwd(Some(std::path::Path::new("/home/dev/code/myapp")));
 
         // When each command's arguments stream in that project.
         let global = {
@@ -191,7 +191,7 @@ mod tests {
         // Given the same two rules, resolved for a project that is not myapp.
         let set =
             crate::matcher::CompiledSet::build(&read_rules(&mixed_project_config(), &temp_prefs()))
-                .for_project(std::path::Path::new("/home/dev/code/other"));
+                .for_cwd(Some(std::path::Path::new("/home/dev/code/other")));
 
         // When the global rule's command's arguments stream there.
         let global = {
@@ -266,7 +266,7 @@ mod tests {
 
         // When the rules are read and compiled for that project.
         let set = crate::matcher::CompiledSet::build(&read_rules(&config, &temp_prefs()))
-            .for_project(std::path::Path::new("/home/dev/code/myapp"));
+            .for_cwd(Some(std::path::Path::new("/home/dev/code/myapp")));
 
         // Then both fire: the project rule adds its block beside the global.
         let mut session = set.new_session(&jinn_core_types::SessionId::new());

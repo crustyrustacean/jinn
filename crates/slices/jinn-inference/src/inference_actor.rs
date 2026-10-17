@@ -116,6 +116,9 @@ async fn emit_stream_error(
 /// tombstone. Streams run as plain tokio tasks; the actor loop only
 /// sees the three crossing messages.
 pub struct InferenceActor {
+    /// Shared application state, read for the session's live working
+    /// directory at rule-mint time.
+    state: jinn_kernel::common::state::State,
     /// Application-wide runtime services (bus publish, LLM factory,
     /// provider registry, api keys, request dump, prefs reads).
     services: Services,
@@ -152,14 +155,20 @@ impl InferenceActor {
     /// returned path to the inference topic (composition's
     /// `SliceHost::subscribe_service`) — subscribe is the readiness
     /// point, so it must follow this call before any publish.
-    pub fn spawn(system: &ActorSystem, services: Services) -> ActorPath {
+    pub fn spawn(
+        system: &ActorSystem,
+        state: jinn_kernel::common::state::State,
+        services: Services,
+    ) -> ActorPath {
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new(INFERENCE_PATH))
             .start_with({
                 move || {
+                    let state = state.clone();
                     let services = services.clone();
                     Box::pin(async move {
                         Ok(Self {
+                            state,
                             services,
                             tasks: HashMap::new(),
                             sessions: HashMap::new(),
@@ -815,21 +824,30 @@ async fn handle_done_event(
 impl InferenceActor {
     /// Dispatches incoming commands to the appropriate handler.
     /// Starts an LLM streaming response for a session, aborting any existing stream.
-    /// Narrows the installed rule set to `session_id`'s project and mints the
-    /// matching state for one response.
+    /// Narrows the installed rule set to `session_id`'s working directory and
+    /// mints the matching state for one response.
     ///
-    /// The project is bound *here*, once per stream, rather than per delta or
-    /// per project change mid-stream. A session's project association is
-    /// stamped at creation and does not move under a running turn, so binding
-    /// it at the mint point is sufficient and costs nothing per delta. The
-    /// working directory is deliberately not the thing matched: it moves during
-    /// a turn, and a rule bound to a moving value is a rule that changes
-    /// meaning under a running stream.
+    /// The cwd is bound *here*, once per stream, rather than per delta. A
+    /// rule's `project` key is a plain glob against the session's working
+    /// directory — nothing else; the live value is read from shared state so
+    /// it follows `cd`-style moves, with a stream seeing the directory it was
+    /// minted under.
     ///
-    /// A session with no project association gets every rule, which is the
-    /// unscoped reading rather than a narrowed one — a rule naming no project
-    /// applies everywhere, so a rule naming a project applies nowhere until
-    /// this session is stamped with one.
+    /// A session whose cwd cannot be read from the live map gets the global
+    /// rules only: a rule carrying no `project` applies everywhere, so a rule
+    /// carrying one must not fire where the directory is unknown.
+    //
+    // The `async` stays even though nothing awaits: callers (and tests)
+    // `await` this method, and keeping the signature spares them churn when a
+    // rule source that needs awaits arrives.
+    #[expect(
+        clippy::unused_async,
+        reason = "signature symmetry: callers await resolve_rule_session"
+    )]
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "signature symmetry: callers await resolve_rule_session"
+    )]
     async fn resolve_rule_session(
         &self,
         session_id: &SessionId,
@@ -844,27 +862,15 @@ impl InferenceActor {
         // above.
         let cell = cell.clone();
 
-        let project = match self.services.session_store.load_session(session_id).await {
-            Ok(Some(snapshot)) => snapshot.project().map(std::path::Path::to_path_buf),
-            Ok(None) => None,
-            Err(error) => {
-                // An unreadable store must not disable the user's rules: an
-                // unscoped session is the safe reading, since it fires the
-                // global rules and leaves project-scoped ones disarmed.
-                tracing::warn!(
-                    session_id = %session_id,
-                    ?error,
-                    "could not read the session's project; rule set left unscoped"
-                );
-                None
-            }
-        };
+        let cwd = self
+            .state
+            .read()
+            .session
+            .get(session_id)
+            .map(|session| session.cwd().to_path_buf());
 
         let guard = cell.read();
-        let set = match project {
-            Some(ref path) => guard.for_project(path),
-            None => guard.installed(),
-        };
+        let set = guard.for_cwd(cwd.as_deref());
         set.filter(|set| !set.is_empty())
             .map(|set| set.new_session(session_id))
     }

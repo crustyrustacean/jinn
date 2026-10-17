@@ -1,6 +1,6 @@
 [package]
 name = "jinn-session-init"
-version = "0.116.1"
+version.workspace = true
 edition.workspace = true
 publish.workspace = true
 
