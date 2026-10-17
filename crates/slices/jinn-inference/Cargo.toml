@@ -47,6 +47,11 @@ jinn-cell-catalog = { workspace = true }
 rstest = { workspace = true }
 serde_json = { workspace = true }
 jinn-kernel = { workspace = true }
+# The project-narrowing tests stamp a fake session store with a project
+# association, so `resolve_rule_session` sees a stamped session.
+jinn-session-state = { workspace = true }
+# The same fake store's `SessionStore` impl names the search-message types.
+jinn-session-store-msg = { workspace = true }
 
 [lints]
 workspace = true

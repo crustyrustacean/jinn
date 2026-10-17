@@ -826,10 +826,9 @@ impl InferenceActor {
     /// a turn, and a rule bound to a moving value is a rule that changes
     /// meaning under a running stream.
     ///
-    /// A session with no project association gets every rule, which is the
-    /// unscoped reading rather than a narrowed one — a rule naming no project
-    /// applies everywhere, so a rule naming a project applies nowhere until
-    /// this session is stamped with one.
+    /// A session with no project association gets the global rules only:
+    /// a rule naming no project applies everywhere, so a rule naming a
+    /// project applies nowhere until this session is stamped with one.
     async fn resolve_rule_session(
         &self,
         session_id: &SessionId,
@@ -848,23 +847,20 @@ impl InferenceActor {
             Ok(Some(snapshot)) => snapshot.project().map(std::path::Path::to_path_buf),
             Ok(None) => None,
             Err(error) => {
-                // An unreadable store must not disable the user's rules: an
-                // unscoped session is the safe reading, since it fires the
-                // global rules and leaves project-scoped ones disarmed.
+                // An unreadable store arms the global rules only: a project
+                // unknown to the store is not a project every scoped rule
+                // belongs in.
                 tracing::warn!(
                     session_id = %session_id,
                     ?error,
-                    "could not read the session's project; rule set left unscoped"
+                    "could not read the session's project; project-scoped rules disarmed"
                 );
                 None
             }
         };
 
         let guard = cell.read();
-        let set = match project {
-            Some(ref path) => guard.for_project(path),
-            None => guard.installed(),
-        };
+        let set = guard.for_project(project.as_deref());
         set.filter(|set| !set.is_empty())
             .map(|set| set.new_session(session_id))
     }

@@ -2706,6 +2706,8 @@ dependencies = [
  "jinn-provider-config",
  "jinn-session-history-msg",
  "jinn-session-msg",
+ "jinn-session-state",
+ "jinn-session-store-msg",
  "jinn-slices",
  "jinn-stream-rules",
  "jinn-testutil",

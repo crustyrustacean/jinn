@@ -510,7 +510,7 @@ impl StreamRuleSet for CompiledSet {
         })
     }
 
-    fn for_project(&self, project: &std::path::Path) -> std::sync::Arc<dyn StreamRuleSet> {
+    fn for_project(&self, project: Option<&std::path::Path>) -> std::sync::Arc<dyn StreamRuleSet> {
         // Rules are cloned rather than recompiled: the regexes and globs are
         // already built, and only the project test is new. A rule with no
         // `project` is cloned as-is, so the common configuration -- every rule
@@ -518,13 +518,16 @@ impl StreamRuleSet for CompiledSet {
         //
         // Binding the project here rather than per match is what keeps a
         // project-scoped rule from firing in every project: the stream loop
-        // narrows once, when it mints the response's rule set.
+        // narrows once, when it mints the response's rule set. `None` (a
+        // session with no project association) disarms every project-scoped
+        // rule rather than letting any of them fire unchecked.
         let narrowed: Vec<CompiledRule> = self
             .rules
             .iter()
-            .filter(|rule| match &rule.project {
-                Some(glob) => project_matches(glob, project),
-                None => true,
+            .filter(|rule| match (&rule.project, project) {
+                (Some(glob), Some(path)) => project_matches(glob, path),
+                (Some(_), None) => false,
+                (None, _) => true,
             })
             .cloned()
             .collect();
@@ -1413,8 +1416,8 @@ mod tests {
         let configs = [rule("global", "rm -rf")];
 
         // When the set is built for a project it names nothing about.
-        let set =
-            CompiledSet::build(&configs).for_project(std::path::Path::new("/anywhere/at/all"));
+        let set = CompiledSet::build(&configs)
+            .for_project(Some(std::path::Path::new("/anywhere/at/all")));
 
         // Then the rule is live there.
         assert!(!set.is_empty());
@@ -1430,8 +1433,8 @@ mod tests {
         }];
 
         // When the set is built for that project.
-        let set =
-            CompiledSet::build(&configs).for_project(std::path::Path::new("/home/dev/code/myapp"));
+        let set = CompiledSet::build(&configs)
+            .for_project(Some(std::path::Path::new("/home/dev/code/myapp")));
 
         // Then the rule is live.
         assert!(!set.is_empty());
@@ -1447,11 +1450,60 @@ mod tests {
         }];
 
         // When the set is built for a different project.
-        let set =
-            CompiledSet::build(&configs).for_project(std::path::Path::new("/home/dev/code/other"));
+        let set = CompiledSet::build(&configs)
+            .for_project(Some(std::path::Path::new("/home/dev/code/other")));
 
         // Then the rule is not there at all.
         assert!(set.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_project_scoped_rule_is_inactive_for_a_session_with_no_project() {
+        // Given a rule scoped to one project by name.
+        let configs = [StreamRuleConfig {
+            project: Some("myapp".to_owned()),
+            ..rule("scoped", "rm -rf")
+        }];
+
+        // When the set is built for a session carrying no project association.
+        let set = CompiledSet::build(&configs).for_project(None);
+
+        // Then the rule is not there: an unknown project must not read as
+        // "every project".
+        assert!(set.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_global_rule_survives_narrowing_for_a_session_with_no_project() {
+        // Given a global rule beside one scoped to a single project.
+        let configs = [
+            rule("global", "rm -rf"),
+            StreamRuleConfig {
+                project: Some("myapp".to_owned()),
+                ..rule("scoped", "curl")
+            },
+        ];
+
+        // When the set is built for a session carrying no project association.
+        let set = CompiledSet::build(&configs).for_project(None);
+
+        // Then the global rule still fires and the scoped one does not: the
+        // absence of a project narrows to the global floor.
+        let mut session = set.new_session(&SessionId::new());
+        assert_eq!(
+            session
+                .check("rm -rf", StreamContext::text())
+                .or_else(|| session.finalize())
+                .map(|hit| hit.name.clone()),
+            Some("global".to_owned())
+        );
+        let mut next = set.new_session(&SessionId::new());
+        assert!(
+            next.check("curl", StreamContext::text()).is_none(),
+            "a rule scoped to myapp must be silent when no project is known"
+        );
     }
 
     #[rstest::rstest]
@@ -1467,7 +1519,8 @@ mod tests {
         ];
 
         // When the set is built for the project the scoped rule excludes.
-        let set = CompiledSet::build(&configs).for_project(std::path::Path::new("/home/dev/other"));
+        let set =
+            CompiledSet::build(&configs).for_project(Some(std::path::Path::new("/home/dev/other")));
 
         // Then the global rule still fires there and the scoped one does not.
         let mut session = set.new_session(&SessionId::new());
@@ -1495,7 +1548,8 @@ mod tests {
         }];
 
         // When the set is built for an unrelated project.
-        let set = CompiledSet::build(&configs).for_project(std::path::Path::new("/home/dev/other"));
+        let set =
+            CompiledSet::build(&configs).for_project(Some(std::path::Path::new("/home/dev/other")));
 
         // Then the rule applies over-broad rather than being disarmed.
         assert!(!set.is_empty());

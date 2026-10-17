@@ -190,14 +190,19 @@ pub trait StreamRuleSet: fmt::Debug + Send + Sync {
     /// holds an `Arc` of them, not a reference to this set.
     fn new_session(&self, session: &SessionId) -> Box<dyn StreamRuleSession + 'static>;
 
-    /// This set with every rule whose `project` glob excludes `project`
-    /// removed.
+    /// This set with the rules that do not apply to `project` removed.
+    ///
+    /// `Some(path)` removes every rule whose `project` glob excludes the path.
+    /// `None` — a session carrying no project association at all — removes
+    /// every rule that carries a `project` glob, leaving the global rules:
+    /// a rule scoped to a project must not fire where the project is unknown.
     ///
     /// A rule is configured against the projects it applies in, but a set is
     /// installed once and consulted by every session, so the project is bound
     /// here rather than carried into each match. A consumer holding a set
-    /// derived this way needs no knowledge of globs.
-    fn for_project(&self, project: &std::path::Path) -> std::sync::Arc<dyn StreamRuleSet>;
+    /// derived this way needs no knowledge of globs, and there is no argument
+    /// that skips the narrowing.
+    fn for_project(&self, project: Option<&std::path::Path>) -> std::sync::Arc<dyn StreamRuleSet>;
 }
 
 /// The cell payload: the installed matcher, or the absence of one.
@@ -230,9 +235,11 @@ impl StreamRules {
 
     /// The installed set, unscoped.
     ///
-    /// The counterpart to [`Self::for_project`] for a session with no project
-    /// association to narrow against. Returning `None` for an uninstalled cell
-    /// keeps absence and emptiness reading the same way at every entry point.
+    /// Reading "what is in the cell", without narrowing. A session's set is
+    /// minted through [`Self::for_project`], which is the only narrowing
+    /// verb; this accessor exists for diagnostics and tests. Returning `None`
+    /// for an uninstalled cell keeps absence and emptiness reading the same
+    /// way at every entry point.
     #[must_use]
     pub fn installed(&self) -> Option<Arc<dyn StreamRuleSet>> {
         self.0.clone()
@@ -262,12 +269,15 @@ impl StreamRules {
 
     /// The installed set narrowed to the rules that apply in `project`.
     ///
-    /// Returns `None` when no matcher is installed, so a consumer can hold the
-    /// result as an `Option` and treat absence as "no rules apply" — the same
-    /// reading it gives an uninstalled cell.
+    /// `Some(path)` keeps the rules whose `project` glob matches the path;
+    /// `None` keeps only the rules that carry no `project` glob at all. The
+    /// narrowing is total — there is no argument that returns the unfiltered
+    /// set. Returns `None` when no matcher is installed, so a consumer can
+    /// hold the result as an `Option` and treat absence as "no rules apply" —
+    /// the same reading it gives an uninstalled cell.
     pub fn for_project(
         &self,
-        project: &std::path::Path,
+        project: Option<&std::path::Path>,
     ) -> Option<std::sync::Arc<dyn StreamRuleSet>> {
         let set = self.0.as_ref()?;
         Some(set.for_project(project))
@@ -327,7 +337,10 @@ mod tests {
             })
         }
 
-        fn for_project(&self, _project: &std::path::Path) -> std::sync::Arc<dyn StreamRuleSet> {
+        fn for_project(
+            &self,
+            _project: Option<&std::path::Path>,
+        ) -> std::sync::Arc<dyn StreamRuleSet> {
             std::sync::Arc::new(Self { empty: self.empty })
         }
     }
