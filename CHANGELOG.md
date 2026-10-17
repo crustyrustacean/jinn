@@ -1,5 +1,9 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
+## (development)
+
+- Update git worktree lifecycle script so it handles symlinks better.
+
 ## 2026-10-16 v1.8.2
 
 - `stream_rules` now respect `project` key.
