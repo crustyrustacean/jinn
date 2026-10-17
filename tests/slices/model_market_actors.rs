@@ -551,12 +551,14 @@ async fn refresh_failure_reports_through_the_bus() {
 
     // When a RefreshAll arrives (the `<c-r>` publish): both actors
     // consume it, the epoch one falls back to seed, the OR one fails
-    // its fetch and reports.
+    // its fetch and reports. Both failures are guaranteed — RefreshAll
+    // clears every cache first — so both are awaited: waiting on one
+    // races the two publishes and can observe only the epoch failure.
     services
         .bus
         .publish(jinn_model_market_msg::RefreshAll)
         .await;
-    let reported = await_recorded::<RefreshFailed>(&failures, 1, Duration::from_secs(10)).await;
+    let reported = await_recorded::<RefreshFailed>(&failures, 2, Duration::from_secs(10)).await;
 
     // Then the OR actor's failure is announced on the bus (the
     // degraded-mode path), and the epoch actor still answers with seed.
