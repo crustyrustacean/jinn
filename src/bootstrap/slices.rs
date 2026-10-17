@@ -179,8 +179,9 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
     let state_snapshot = ctx.state().clone();
     let services_snapshot = ctx.services().clone();
     jinn_turn_dispatch::activate(&mut ctx.host(), state_snapshot, services_snapshot);
+    let state_snapshot = ctx.state().clone();
     let services_snapshot = ctx.services().clone();
-    jinn_inference::activate(&mut ctx.host(), services_snapshot.clone());
+    jinn_inference::activate(&mut ctx.host(), state_snapshot, services_snapshot.clone());
     // The stream-rules matcher must be installed before the first stream runs,
     // so a turn dispatched after boot is already guarded. Installing it after
     // inference's activation is fine — inference only *resolves* the matcher

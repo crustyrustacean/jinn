@@ -3307,7 +3307,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-session-init"
-version = "0.116.1"
+version = "1.8.1"
 dependencies = [
  "error-stack",
  "jinn-common",

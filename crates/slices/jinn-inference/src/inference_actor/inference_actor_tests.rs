@@ -106,6 +106,7 @@ use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 async fn test_llm_actor_standalone() -> InferenceActor {
     let services = jinn_kernel::common::services::Services::new_fake().await;
     InferenceActor {
+        state: jinn_kernel::common::state::State::new(jinn_kernel::AppState::default()),
         services,
         tasks: HashMap::new(),
         sessions: HashMap::new(),
@@ -131,14 +132,38 @@ async fn test_llm_actor_with_factory<F: jinn_provider::LlmServiceFactory + 'stat
 
 /// Builds the actor over already-prepared `Services` — for tests that need
 /// the registry or the session store configured before the actor exists.
+/// The actor's `State` holds no session, so rule resolution sees an unknown
+/// cwd.
 fn test_llm_actor_with_services(
     services: jinn_kernel::common::services::Services,
 ) -> InferenceActor {
     InferenceActor {
+        state: jinn_kernel::common::state::State::new(jinn_kernel::AppState::default()),
         services,
         tasks: HashMap::new(),
         sessions: HashMap::new(),
     }
+}
+
+/// An actor whose live state holds one session whose cwd is `cwd`, under
+/// that session's own id — the shape rule resolution reads.
+async fn actor_with_session_cwd(
+    set: std::sync::Arc<dyn jinn_slices::StreamRuleSet>,
+    cwd: &str,
+) -> (InferenceActor, SessionId) {
+    let mut app = jinn_kernel::AppState::default();
+    let mut session = jinn_session_state::ChatSessionState::new();
+    session.set_cwd(std::path::PathBuf::from(cwd));
+    let session_id = session.session_id().clone();
+    app.session.insert(session);
+    let services = actor_services_with_rule_set(set).await;
+    let actor = InferenceActor {
+        state: jinn_kernel::common::state::State::new(app),
+        services,
+        tasks: HashMap::new(),
+        sessions: HashMap::new(),
+    };
+    (actor, session_id)
 }
 
 #[rstest::rstest]
@@ -1281,7 +1306,11 @@ async fn spawn_actor_with_rules(
         cell.update(|payload| payload.install(rules));
     }
 
-    InferenceActor::spawn(harness.system(), services);
+    InferenceActor::spawn(
+        harness.system(),
+        jinn_kernel::common::state::State::new(jinn_kernel::AppState::default()),
+        services,
+    );
 }
 
 /// A dispatch that streams `tokens` as one response.
@@ -1563,8 +1592,7 @@ async fn actor_with_rule_set(
 }
 
 /// A fake `Services` with the stream-rules cell installed and the plain
-/// `FakeSessionStore` (every `load_session` reads `Ok(None)`, so sessions
-/// resolve association-less).
+/// fake session store.
 async fn actor_services_with_rule_set(
     set: std::sync::Arc<dyn jinn_slices::StreamRuleSet>,
 ) -> jinn_kernel::common::services::Services {
@@ -1578,154 +1606,6 @@ async fn actor_services_with_rule_set(
     };
     cell.update(|payload| payload.install(set));
     services
-}
-
-/// A session store whose sessions are all stamped with one project
-/// association — the shape a session created through the projects UI
-/// persists as.
-struct ProjectStampedStore;
-
-#[async_trait::async_trait]
-impl jinn_session_state::SessionStore for ProjectStampedStore {
-    fn name(&self) -> &'static str {
-        "project-stamped"
-    }
-
-    async fn save(
-        &self,
-        _snapshot: &jinn_session_state::SessionSnapshot,
-    ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
-        Ok(())
-    }
-
-    async fn load_summaries(
-        &self,
-    ) -> Result<
-        Vec<jinn_session_store_msg::SessionSummary>,
-        error_stack::Report<jinn_session_state::SessionStoreError>,
-    > {
-        Ok(Vec::new())
-    }
-
-    async fn load_session(
-        &self,
-        _session_id: &SessionId,
-    ) -> Result<
-        Option<jinn_session_state::SessionSnapshot>,
-        error_stack::Report<jinn_session_state::SessionStoreError>,
-    > {
-        let mut session = jinn_session_state::ChatSessionState::new();
-        session.set_project(Some(std::path::PathBuf::from("/home/someone/code/myapp")));
-        Ok(Some(session.capture_snapshot()))
-    }
-
-    async fn delete(
-        &self,
-        _session_id: &SessionId,
-    ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
-        Ok(())
-    }
-
-    async fn fork(
-        &self,
-        _source_session_id: &SessionId,
-        _at_ordinal: usize,
-    ) -> Result<SessionId, error_stack::Report<jinn_session_state::SessionStoreError>> {
-        Ok(SessionId::new())
-    }
-
-    async fn set_archived(
-        &self,
-        _session_id: &SessionId,
-        _archived: bool,
-    ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
-        Ok(())
-    }
-
-    async fn set_archived_many(
-        &self,
-        _session_ids: &[SessionId],
-        _archived: bool,
-    ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
-        Ok(())
-    }
-
-    async fn load_unarchived_summaries(
-        &self,
-    ) -> Result<
-        Vec<jinn_session_store_msg::SessionSummary>,
-        error_stack::Report<jinn_session_state::SessionStoreError>,
-    > {
-        Ok(Vec::new())
-    }
-
-    async fn dirty_session_ids(
-        &self,
-    ) -> Result<Vec<SessionId>, error_stack::Report<jinn_session_state::SessionStoreError>> {
-        Ok(Vec::new())
-    }
-
-    async fn reindex_session_chunk(
-        &self,
-        _session_id: &SessionId,
-        _max_entries: usize,
-    ) -> Result<bool, error_stack::Report<jinn_session_state::SessionStoreError>> {
-        Ok(true)
-    }
-
-    async fn pending_dirty_count(
-        &self,
-    ) -> Result<usize, error_stack::Report<jinn_session_state::SessionStoreError>> {
-        Ok(0)
-    }
-
-    async fn search(
-        &self,
-        _params: jinn_session_store_msg::SearchParams,
-    ) -> Result<
-        jinn_session_store_msg::SearchOutcome,
-        error_stack::Report<jinn_session_state::SessionStoreError>,
-    > {
-        Ok(jinn_session_store_msg::SearchOutcome {
-            total_matches: 0,
-            per_session: Vec::new(),
-            hits: Vec::new(),
-        })
-    }
-
-    async fn fetch_window(
-        &self,
-        _session_id: &SessionId,
-        _anchor: &jinn_kernel::protocol::ChatEntryId,
-        _context: usize,
-    ) -> Result<
-        Option<jinn_session_store_msg::TranscriptWindow>,
-        error_stack::Report<jinn_session_state::SessionStoreError>,
-    > {
-        Ok(None)
-    }
-
-    async fn fetch_tail(
-        &self,
-        _session_id: &SessionId,
-        _limit: usize,
-    ) -> Result<
-        Option<jinn_session_store_msg::TranscriptWindow>,
-        error_stack::Report<jinn_session_state::SessionStoreError>,
-    > {
-        Ok(None)
-    }
-}
-
-/// An actor whose every session resolves as stamped with project
-/// `/home/someone/code/myapp`.
-async fn actor_with_project_stamped_store(
-    set: std::sync::Arc<dyn jinn_slices::StreamRuleSet>,
-) -> InferenceActor {
-    let mut services = actor_services_with_rule_set(set).await;
-    services.session_store =
-        jinn_session_state::SessionStoreService::new(std::sync::Arc::new(ProjectStampedStore));
-    test_llm_actor_with_services(services)
 }
 
 /// A rule set whose single rule fires on `condition`, scoped to `project`.
@@ -1749,17 +1629,18 @@ fn project_scoped_rule_set(
 #[tokio::test]
 async fn a_rule_scoped_to_a_project_fires_for_a_session_in_that_project() {
     // Given a rule whose `project` glob names one codebase, and a session
-    // store whose sessions are stamped with that project's path.
-    let actor =
-        actor_with_project_stamped_store(project_scoped_rule_set("FORBIDDEN", Some("**/myapp")))
-            .await;
+    // whose live working directory sits inside that codebase.
+    let (actor, session_id) = actor_with_session_cwd(
+        project_scoped_rule_set("FORBIDDEN", Some("**/myapp")),
+        "/home/someone/code/myapp",
+    )
+    .await;
 
     // When that session is given a rule session.
-    let session = actor
-        .resolve_rule_session(&SessionId::new())
+    let mut session = actor
+        .resolve_rule_session(&session_id)
         .await
         .expect("a rule session");
-    let mut session = session;
     // Checked the way production checks: the delta, then the stream's end.
     let fired = session
         .check("FORBIDDEN", jinn_slices::StreamContext::text())
@@ -1774,15 +1655,45 @@ async fn a_rule_scoped_to_a_project_fires_for_a_session_in_that_project() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn a_rule_scoped_to_a_project_fires_for_a_cli_session_in_its_launch_directory() {
+    // Given a rule whose `project` glob names one codebase, and a
+    // CLI-started session whose cwd is that checkout — the boot session's
+    // shape: cwd is the launch directory, and no project association exists.
+    let (actor, session_id) = actor_with_session_cwd(
+        project_scoped_rule_set("FORBIDDEN", Some("jinn")),
+        "/mnt/zed/repos/jinn",
+    )
+    .await;
+
+    // When that session is given a rule session.
+    let mut session = actor
+        .resolve_rule_session(&session_id)
+        .await
+        .expect("a rule session");
+    // Checked the way production checks: the delta, then the stream's end.
+    let fired = session
+        .check("FORBIDDEN", jinn_slices::StreamContext::text())
+        .or_else(|| session.finalize());
+
+    // Then the rule fires: the glob matches the working directory, with no
+    // stamping involved.
+    assert!(
+        fired.is_some(),
+        "a project-scoped rule must fire for an unstamped session in a matching directory"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn a_rule_scoped_to_a_project_is_inactive_for_a_session_elsewhere() {
     // Given a rule whose `project` glob names one codebase, and a session
-    // whose project association is a different codebase — the shape a
+    // whose working directory is a different codebase — the shape a
     // project-scoped rule exists to prevent.
     let set = project_scoped_rule_set("FORBIDDEN", Some("**/myapp"));
     let sid = SessionId::new();
 
     // When the set is narrowed against another project's session.
-    let narrowed = set.for_project(Some(std::path::Path::new("/home/someone/code/otherapp")));
+    let narrowed = set.for_cwd(Some(std::path::Path::new("/home/someone/code/otherapp")));
     let mut session = narrowed.new_session(&sid);
 
     // Then the rule does not fire: a project-scoped rule must not leak into
@@ -1797,15 +1708,14 @@ async fn a_rule_scoped_to_a_project_is_inactive_for_a_session_elsewhere() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn a_rule_scoped_to_a_project_is_inactive_for_a_session_with_no_project() {
-    // Given a rule whose `project` glob names one codebase, over a session
-    // store that associates no project with any session — the common shape,
-    // since only the projects UI stamps one.
+async fn a_rule_scoped_to_a_project_is_inactive_when_the_session_cwd_cannot_be_read() {
+    // Given a rule whose `project` glob names one codebase, over an actor
+    // whose live state holds no session for the dispatched id.
     let actor = actor_with_rule_set(project_scoped_rule_set("FORBIDDEN", Some("**/myapp"))).await;
 
-    // When that session is given a rule session. The narrowed set holds only
-    // the scoped rule, so minting may legitimately produce nothing at all;
-    // either way no rule may fire.
+    // When that (unknown) session is given a rule session. The narrowed set
+    // holds only the scoped rule, so minting may legitimately produce nothing
+    // at all; either way no rule may fire.
     let resolved = actor.resolve_rule_session(&SessionId::new()).await;
     let fired = resolved.and_then(|mut session| {
         // Checked the way production checks: the delta, then the stream's end.
@@ -1814,11 +1724,11 @@ async fn a_rule_scoped_to_a_project_is_inactive_for_a_session_with_no_project() 
             .or_else(|| session.finalize())
     });
 
-    // Then the rule does not fire: a project unknown to the session must not
-    // read as "every project".
+    // Then the rule does not fire: an unreadable cwd must not read as
+    // "every directory".
     assert!(
         fired.is_none(),
-        "a project-scoped rule must be disarmed for an association-less session"
+        "a project-scoped rule must be disarmed when the session's cwd is unknown"
     );
 }
 
@@ -1829,7 +1739,7 @@ async fn a_rule_with_no_project_still_fires_for_any_session() {
     // and the case that must not regress when narrowing is introduced.
     let actor = actor_with_rule_set(project_scoped_rule_set("FORBIDDEN", None)).await;
 
-    // When a session with no project association is given a rule session.
+    // When a session the map cannot resolve is given a rule session.
     let mut session = actor
         .resolve_rule_session(&SessionId::new())
         .await
@@ -1839,7 +1749,7 @@ async fn a_rule_with_no_project_still_fires_for_any_session() {
         .check("FORBIDDEN", jinn_slices::StreamContext::text())
         .or_else(|| session.finalize());
 
-    // Then the rule fires: an unscoped session is not a narrowed one.
+    // Then the rule fires: an unscoped rule is not a narrowed one.
     assert!(
         fired.is_some(),
         "a rule naming no project must apply everywhere"
@@ -1898,6 +1808,7 @@ async fn looping_actor(harness: &TestHarness) -> InferenceActor {
     ));
     services.bus = harness.bus();
     InferenceActor {
+        state: jinn_kernel::common::state::State::new(jinn_kernel::AppState::default()),
         services,
         tasks: HashMap::new(),
         sessions: HashMap::new(),
