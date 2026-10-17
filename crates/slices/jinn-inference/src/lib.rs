@@ -30,9 +30,12 @@ pub use jinn_inference_msg::StreamCompleted;
 /// `.subscribe` declarations are the readiness point). The dispatch
 /// commands and the actor's own `StreamCompleted` echo arrive by
 /// schema broadcast (the actor publishes completion on the fabric and
-/// re-consumes it to finalize per-session tracking).
+/// re-consumes it to finalize per-session tracking). The actor is
+/// granted shared `State` alongside `Services`: it reads the session's
+/// live working directory from it when minting stream-rule state.
 pub fn activate(
     host: &mut SliceHost<'_, jinn_slices::RenderFacts>,
+    state: jinn_kernel::common::state::State,
     services: jinn_kernel::Services,
 ) {
     // The streaming indicator's own screen region. The element holds
@@ -70,7 +73,7 @@ pub fn activate(
             ),
         );
 
-    let _path = inference_actor::InferenceActor::spawn(host.system(), services);
+    let _path = inference_actor::InferenceActor::spawn(host.system(), state, services);
 }
 
 /// Register the streaming indicator element.

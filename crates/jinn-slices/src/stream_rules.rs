@@ -190,14 +190,21 @@ pub trait StreamRuleSet: fmt::Debug + Send + Sync {
     /// holds an `Arc` of them, not a reference to this set.
     fn new_session(&self, session: &SessionId) -> Box<dyn StreamRuleSession + 'static>;
 
-    /// This set with every rule whose `project` glob excludes `project`
-    /// removed.
+    /// This set with the rules that do not apply in `cwd` removed.
     ///
-    /// A rule is configured against the projects it applies in, but a set is
-    /// installed once and consulted by every session, so the project is bound
-    /// here rather than carried into each match. A consumer holding a set
-    /// derived this way needs no knowledge of globs.
-    fn for_project(&self, project: &std::path::Path) -> std::sync::Arc<dyn StreamRuleSet>;
+    /// `Some(path)` removes every rule whose `project` glob does not match the
+    /// session's working directory. `None` — a session whose working directory
+    /// cannot be read — removes every rule that carries a `project` glob,
+    /// leaving the global rules: a rule scoped to a project must not fire
+    /// where the directory is unknown.
+    ///
+    /// A rule's `project` key is a plain glob tested against the session's
+    /// working directory — it has no association with the projects feature or
+    /// any other state — but a set is installed once and consulted by every
+    /// session, so the directory is bound here rather than carried into each
+    /// match. A consumer holding a set derived this way needs no knowledge of
+    /// globs, and there is no argument that skips the narrowing.
+    fn for_cwd(&self, cwd: Option<&std::path::Path>) -> std::sync::Arc<dyn StreamRuleSet>;
 }
 
 /// The cell payload: the installed matcher, or the absence of one.
@@ -230,9 +237,11 @@ impl StreamRules {
 
     /// The installed set, unscoped.
     ///
-    /// The counterpart to [`Self::for_project`] for a session with no project
-    /// association to narrow against. Returning `None` for an uninstalled cell
-    /// keeps absence and emptiness reading the same way at every entry point.
+    /// Reading "what is in the cell", without narrowing. A session's set is
+    /// minted through [`Self::for_cwd`], which is the only narrowing
+    /// verb; this accessor exists for diagnostics and tests. Returning `None`
+    /// for an uninstalled cell keeps absence and emptiness reading the same
+    /// way at every entry point.
     #[must_use]
     pub fn installed(&self) -> Option<Arc<dyn StreamRuleSet>> {
         self.0.clone()
@@ -260,17 +269,21 @@ impl StreamRules {
         Some(set.new_session(session))
     }
 
-    /// The installed set narrowed to the rules that apply in `project`.
+    /// The installed set narrowed to the rules that apply in `cwd`, the
+    /// session's working directory.
     ///
-    /// Returns `None` when no matcher is installed, so a consumer can hold the
-    /// result as an `Option` and treat absence as "no rules apply" — the same
-    /// reading it gives an uninstalled cell.
-    pub fn for_project(
+    /// `Some(path)` keeps the rules whose `project` glob matches the path;
+    /// `None` keeps only the rules that carry no `project` glob at all. The
+    /// narrowing is total — there is no argument that returns the unfiltered
+    /// set. Returns `None` when no matcher is installed, so a consumer can
+    /// hold the result as an `Option` and treat absence as "no rules apply" —
+    /// the same reading it gives an uninstalled cell.
+    pub fn for_cwd(
         &self,
-        project: &std::path::Path,
+        cwd: Option<&std::path::Path>,
     ) -> Option<std::sync::Arc<dyn StreamRuleSet>> {
         let set = self.0.as_ref()?;
-        Some(set.for_project(project))
+        Some(set.for_cwd(cwd))
     }
 }
 
@@ -327,7 +340,7 @@ mod tests {
             })
         }
 
-        fn for_project(&self, _project: &std::path::Path) -> std::sync::Arc<dyn StreamRuleSet> {
+        fn for_cwd(&self, _cwd: Option<&std::path::Path>) -> std::sync::Arc<dyn StreamRuleSet> {
             std::sync::Arc::new(Self { empty: self.empty })
         }
     }

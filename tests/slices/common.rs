@@ -415,7 +415,11 @@ pub async fn activate_inference(services: &mut jinn_kernel::Services) {
         &services.key_routes,
         &services.trouper_system,
     );
-    jinn_inference::activate(&mut host, services_snapshot);
+    jinn_inference::activate(
+        &mut host,
+        jinn_kernel::State::new(jinn_kernel::AppState::default()),
+        services_snapshot,
+    );
 }
 
 /// Activates the watchdog slice: spawns the stall + tool-call watchdog
