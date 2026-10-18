@@ -810,14 +810,14 @@ fn render_shows_cwd_on_first_line() {
 #[rstest::rstest]
 fn render_shows_absolute_path_for_non_home_cwd() {
     // Given a session with a non-home CWD.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let cwd = dir.path().join("test-project");
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
-    state
-        .active_session_mut()
-        .set_cwd(std::path::PathBuf::from("/tmp/test-project"));
+    state.active_session_mut().set_cwd(cwd.clone());
     let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
@@ -832,10 +832,11 @@ fn render_shows_absolute_path_for_non_home_cwd() {
     let buffer = terminal.backend().buffer().clone();
 
     // Then the cwd line (row 0) shows the full absolute path, with no tilde.
+    let cwd_label = cwd.display().to_string();
     let row0 = buffer_row(&buffer, 0, 80);
     assert!(
-        row0.contains("/tmp/test-project"),
-        "expected /tmp/test-project in cwd line, got: {row0}"
+        row0.contains(cwd_label.as_str()),
+        "expected the cwd in row 0, got: {row0}"
     );
 }
 

@@ -975,12 +975,18 @@ fn properties_scope_has_no_input_hook() {
 
 /// A discovered skill named `name`.
 fn skill(name: String) -> jinn_skills_msg::Skill {
+    // The paths are fixture data nothing reads back from disk: the temp
+    // root only keeps test paths off absolute literals (one root shared by
+    // both fields, as discovery produces), so it is deleted when this helper
+    // returns rather than leaked.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (file_path, base_dir) = (dir.path().join("skill/SKILL.md"), dir.path().join("skill"));
     jinn_skills_msg::Skill {
         name,
         description: "a skill".to_owned(),
         body: String::new(),
-        file_path: std::path::PathBuf::from("/tmp/skill/SKILL.md"),
-        base_dir: std::path::PathBuf::from("/tmp/skill"),
+        file_path,
+        base_dir,
         source: jinn_skills_msg::SkillSource::Global,
     }
 }

@@ -973,26 +973,28 @@ mod tests {
         // Given a coordinator and a real scratch directory.
         let harness = TestHarness::new().await;
         let (actor, _system) = spawn_coordinator(&harness, TermControls::default()).await;
-        let dir = std::env::temp_dir().join(format!("jinn-term-cwd-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("scratch dir");
+        let dir = tempfile::Builder::new()
+            .prefix("jinn-term-cwd")
+            .tempdir()
+            .expect("temp dir");
+        let expected = dir.path().to_str().expect("utf8 path");
 
         // When spawning `pwd` with that directory as cwd.
         let mut msg = spawn_msg(jinn_core_types::SessionId::new(), "pwd");
-        msg.cwd = PathBuf::from(&dir);
+        msg.cwd = PathBuf::from(dir.path());
         let reply = actor.ask(msg).await;
 
         // Then the screen shows the requested directory.
         match reply {
             SpawnTermOutcome::Started { screen, .. } => {
                 assert!(
-                    plain_screen(&screen.screen).contains(dir.to_str().expect("utf8 path")),
+                    plain_screen(&screen.screen).contains(expected),
                     "pwd should print the requested cwd, got: {}",
                     plain_screen(&screen.screen)
                 );
             }
             other => panic!("expected Started, got {other:?}"),
         }
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[rstest::rstest]

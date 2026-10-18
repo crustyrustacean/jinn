@@ -71,7 +71,12 @@ where
     condition().await
 }
 
-struct SuccessfulBuiltin;
+/// A successful builtin whose setup path the owning test provides: the test
+/// creates the `TempDir`, derives the path from it, and keeps the `TempDir`
+/// alive for the whole test.
+struct SuccessfulBuiltin {
+    setup_dir: std::path::PathBuf,
+}
 
 impl BuiltinHandler for SuccessfulBuiltin {
     fn name(&self) -> &'static str {
@@ -83,7 +88,7 @@ impl BuiltinHandler for SuccessfulBuiltin {
         _session_id: &jinn_core_types::SessionId,
         _args: &[String],
     ) -> Result<std::path::PathBuf, Report<BuiltinHandlerError>> {
-        Ok(std::env::temp_dir())
+        Ok(self.setup_dir.clone())
     }
 
     fn teardown(&self, _session_id: &jinn_core_types::SessionId, _args: &[String]) -> bool {
@@ -97,7 +102,8 @@ async fn set_session_cwd_updates_session_working_directory() {
     // Given a running lifecycle actor and a session.
     let fixture = plain_fixture().await;
     let session_id = fixture.state.read().session.active_session_id().clone();
-    let cwd = std::env::temp_dir().join("lifecycle-cwd");
+    let dir = tempfile::tempdir().expect("temp dir");
+    let cwd = dir.path().join("lifecycle-cwd");
 
     // When SetSessionCwd is published.
     fixture
@@ -128,7 +134,8 @@ async fn set_session_cwd_publishes_session_cwd_changed() {
     let fixture = plain_fixture().await;
     let changed = fixture.harness.spawn_recorder::<SessionCwdChanged>().await;
     let session_id = fixture.state.read().session.active_session_id().clone();
-    let cwd = std::env::temp_dir().join("lifecycle-event-cwd");
+    let dir = tempfile::tempdir().expect("temp dir");
+    let cwd = dir.path().join("lifecycle-event-cwd");
 
     // When SetSessionCwd is published.
     fixture
@@ -176,10 +183,13 @@ async fn cancel_lifecycle_command_is_noop_without_running_child() {
 #[tokio::test]
 async fn builtin_setup_completes_with_setup_completed() {
     // Given a running lifecycle actor with a successful builtin setup.
+    let dir = tempfile::tempdir().expect("temp dir");
     let mut registry = BuiltinRegistry::new();
     registry.register(
         BuiltinId("test-builtin".to_owned()),
-        Arc::new(SuccessfulBuiltin),
+        Arc::new(SuccessfulBuiltin {
+            setup_dir: dir.path().to_path_buf(),
+        }),
     );
     let fixture = actor_fixture(registry).await;
     let session_id = fixture.state.read().session.active_session_id().clone();
@@ -213,10 +223,13 @@ async fn builtin_setup_completes_with_setup_completed() {
 #[tokio::test]
 async fn builtin_setup_publishes_setup_completion_event() {
     // Given a running lifecycle actor with a successful builtin setup.
+    let dir = tempfile::tempdir().expect("temp dir");
     let mut registry = BuiltinRegistry::new();
     registry.register(
         BuiltinId("test-builtin".to_owned()),
-        Arc::new(SuccessfulBuiltin),
+        Arc::new(SuccessfulBuiltin {
+            setup_dir: dir.path().to_path_buf(),
+        }),
     );
     let fixture = actor_fixture(registry).await;
     let session_id = fixture.state.read().session.active_session_id().clone();
@@ -978,9 +991,12 @@ async fn legacy_positional_pairs_still_tear_down_positionally() {
 #[rstest::rstest]
 #[tokio::test]
 async fn builtin_teardown_receives_recorded_values_in_template_order() {
+    use std::sync::Mutex;
+
     // Given a builtin teardown that records the values it was handed.
     struct RecordingTeardown {
         seen: Arc<Mutex<Vec<String>>>,
+        setup_dir: std::path::PathBuf,
     }
     impl BuiltinHandler for RecordingTeardown {
         fn name(&self) -> &'static str {
@@ -991,20 +1007,22 @@ async fn builtin_teardown_receives_recorded_values_in_template_order() {
             _session_id: &jinn_core_types::SessionId,
             _args: &[String],
         ) -> Result<std::path::PathBuf, Report<BuiltinHandlerError>> {
-            Ok(std::env::temp_dir())
+            Ok(self.setup_dir.clone())
         }
         fn teardown(&self, _session_id: &jinn_core_types::SessionId, args: &[String]) -> bool {
             *self.seen.lock().expect("mutex") = args.to_vec();
             true
         }
     }
-    use std::sync::Mutex;
+
+    let dir = tempfile::tempdir().expect("temp dir");
     let received: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let mut registry = BuiltinRegistry::new();
     registry.register(
         BuiltinId("recording-teardown".to_owned()),
         Arc::new(RecordingTeardown {
             seen: Arc::clone(&received),
+            setup_dir: dir.path().to_path_buf(),
         }),
     );
     let harness = TestHarness::new().await;

@@ -230,7 +230,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use std::path::PathBuf;
+    use std::path::Path;
 
     #[rstest::rstest]
     fn apply_offset_limit_no_offset_no_limit() {
@@ -292,10 +292,12 @@ mod tests {
         assert!(result.contains("offset 10 exceeds file length (2 lines)"));
     }
 
-    fn test_ctx() -> crate::tool_types::ToolContext {
+    /// A context whose cwd is a real, existing scratch directory owned by the
+    /// calling test.
+    fn test_ctx(cwd: &Path) -> crate::tool_types::ToolContext {
         crate::tool_types::ToolContext {
             config: jinn_config::testutil::config_layer(""),
-            cwd: PathBuf::from("/tmp"),
+            cwd: cwd.to_owned(),
             timeout: None,
             state: None,
             session_id: None,
@@ -332,7 +334,7 @@ mod tests {
         };
 
         // When executing the read tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result contains the file contents.
         assert_eq!(result.tool_call_id.as_str(), "call_1");
@@ -349,6 +351,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_missing_file() {
         // Given a read call for a nonexistent file.
+        let dir = tempfile::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_2".into(),
             name: "read".into(),
@@ -359,7 +362,7 @@ mod tests {
         };
 
         // When executing the read tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result indicates failure.
         assert_eq!(result.tool_call_id.as_str(), "call_2");
@@ -371,6 +374,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_bad_json() {
         // Given a read call with invalid JSON.
+        let dir = tempfile::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_3".into(),
             name: "read".into(),
@@ -378,7 +382,7 @@ mod tests {
         };
 
         // When executing the read tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result indicates failure.
         assert!(!result.success);
@@ -455,7 +459,7 @@ mod tests {
         };
 
         // When executing with offset=2, limit=2.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then only lines 2-3 are returned.
         assert!(result.success);

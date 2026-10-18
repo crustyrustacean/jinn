@@ -922,13 +922,14 @@ async fn deleting_both_sessions_cleans_up_orphaned_entries() {
 #[tokio::test]
 async fn cwd_round_trips_through_save_and_load() {
     // Given a store with a session that has a custom cwd.
-    let (_dir, store) = make_store().await;
+    let (dir, store) = make_store().await;
     let session_id = SessionId::new();
     let mut session = ChatSessionState::new();
     session.set_session_id(session_id.clone());
     session.set_title("CWD Test".to_owned());
     session.push_entry(ChatEntry::user("hello"));
-    session.set_cwd(std::path::PathBuf::from("/tmp/my-project"));
+    let expected = dir.path().join("my-project");
+    session.set_cwd(expected.clone());
 
     // When saving and loading.
     store.save(&session.capture_snapshot()).await.expect("save");
@@ -939,20 +940,21 @@ async fn cwd_round_trips_through_save_and_load() {
         .expect("should exist");
 
     // Then the cwd is preserved.
-    assert_eq!(loaded.cwd(), std::path::Path::new("/tmp/my-project"));
+    assert_eq!(loaded.cwd(), expected.as_path());
 }
 
 #[rstest::rstest]
 #[tokio::test]
 async fn fork_inherits_cwd_from_source() {
     // Given a store with a session that has a custom cwd.
-    let (_dir, store) = make_store().await;
+    let (dir, store) = make_store().await;
     let source_id = SessionId::new();
     let mut source = ChatSessionState::new();
     source.set_session_id(source_id.clone());
     source.set_title("Original".to_owned());
     source.push_entry(ChatEntry::user("hello"));
-    source.set_cwd(std::path::PathBuf::from("/home/user/project"));
+    let expected = dir.path().join("user/project");
+    source.set_cwd(expected.clone());
     store
         .save(&source.capture_snapshot())
         .await
@@ -967,7 +969,7 @@ async fn fork_inherits_cwd_from_source() {
         .await
         .expect("load forked")
         .expect("should exist");
-    assert_eq!(forked.cwd(), std::path::Path::new("/home/user/project"));
+    assert_eq!(forked.cwd(), expected.as_path());
 }
 
 #[rstest::rstest]
@@ -1061,13 +1063,14 @@ async fn fork_preserves_other_filtered_tools() {
 #[tokio::test]
 async fn project_round_trips_through_save_and_load() {
     // Given a store with a session that has a project stamp.
-    let (_dir, store) = make_store().await;
+    let (dir, store) = make_store().await;
     let session_id = SessionId::new();
     let mut session = ChatSessionState::new();
     session.set_session_id(session_id.clone());
     session.set_title("Project Test".to_owned());
     session.push_entry(ChatEntry::user("hello"));
-    session.set_project(Some(std::path::PathBuf::from("/home/user/projects/jinn")));
+    let expected = dir.path().join("user/projects/jinn");
+    session.set_project(Some(expected.clone()));
 
     // When saving and loading.
     store.save(&session.capture_snapshot()).await.expect("save");
@@ -1078,10 +1081,7 @@ async fn project_round_trips_through_save_and_load() {
         .expect("should exist");
 
     // Then the project is preserved.
-    assert_eq!(
-        loaded.project(),
-        Some(std::path::Path::new("/home/user/projects/jinn")),
-    );
+    assert_eq!(loaded.project(), Some(expected.as_path()));
 }
 
 #[rstest::rstest]
@@ -1109,13 +1109,14 @@ async fn project_defaults_to_none_for_legacy_rows() {
 #[tokio::test]
 async fn fork_inherits_project_from_source() {
     // Given a store with a session that has a project stamp.
-    let (_dir, store) = make_store().await;
+    let (dir, store) = make_store().await;
     let source_id = SessionId::new();
     let mut source = ChatSessionState::new();
     source.set_session_id(source_id.clone());
     source.set_title("Original".to_owned());
     source.push_entry(ChatEntry::user("hello"));
-    source.set_project(Some(std::path::PathBuf::from("/home/user/projects/jinn")));
+    let expected = dir.path().join("user/projects/jinn");
+    source.set_project(Some(expected.clone()));
     store
         .save(&source.capture_snapshot())
         .await
@@ -1130,40 +1131,38 @@ async fn fork_inherits_project_from_source() {
         .await
         .expect("load forked")
         .expect("should exist");
-    assert_eq!(
-        forked.project(),
-        Some(std::path::Path::new("/home/user/projects/jinn")),
-    );
+    assert_eq!(forked.project(), Some(expected.as_path()));
 }
 
 #[rstest::rstest]
 #[tokio::test]
 async fn set_cwd_does_not_alter_project() {
     // Given a session with a project stamp.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let project = dir.path().join("user/projects/jinn");
     let mut session = ChatSessionState::new();
-    session.set_project(Some(std::path::PathBuf::from("/home/user/projects/jinn")));
+    session.set_project(Some(project.clone()));
 
     // When changing the session's cwd.
-    session.set_cwd(std::path::PathBuf::from("/somewhere/else/entirely"));
+    let elsewhere = dir.path().join("somewhere/else/entirely");
+    session.set_cwd(elsewhere);
 
     // Then the project stamp is unchanged.
-    assert_eq!(
-        session.project(),
-        Some(std::path::Path::new("/home/user/projects/jinn")),
-    );
+    assert_eq!(session.project(), Some(project.as_path()));
 }
 
 #[rstest::rstest]
 #[tokio::test]
 async fn summary_from_store_carries_project() {
     // Given a store with a session that has a project stamp.
-    let (_dir, store) = make_store().await;
+    let (dir, store) = make_store().await;
     let session_id = SessionId::new();
     let mut session = ChatSessionState::new();
     session.set_session_id(session_id.clone());
     session.set_title("Summary Project".to_owned());
     session.push_entry(ChatEntry::user("hello"));
-    session.set_project(Some(std::path::PathBuf::from("/home/user/projects/jinn")));
+    let project = dir.path().join("user/projects/jinn");
+    session.set_project(Some(project.clone()));
     store.save(&session.capture_snapshot()).await.expect("save");
 
     // When loading summaries.
@@ -1171,10 +1170,7 @@ async fn summary_from_store_carries_project() {
 
     // Then the summary carries the project from the metadata blob.
     assert_eq!(summaries.len(), 1);
-    assert_eq!(
-        summaries[0].project,
-        Some(std::path::PathBuf::from("/home/user/projects/jinn")),
-    );
+    assert_eq!(summaries[0].project, Some(project));
 }
 
 #[rstest::rstest]
@@ -1798,8 +1794,9 @@ fn metadata_blob_is_unchanged_by_group_composition() {
     session.restore_updated_at(timestamp);
     session.restore_created_at(timestamp);
     session.set_title("Lifecycle title".to_owned());
+    let dir = tempfile::tempdir().expect("temp dir");
     session.set_cwd(std::path::PathBuf::from("/workspace/project"));
-    session.set_home(std::path::PathBuf::from("/home/developer"));
+    session.set_home(dir.path().join("home/developer"));
     session.set_lifecycle_name(Some("dev".to_owned()));
     session.set_lifecycle_args(jinn_session_state::fields::LifecycleArgs::from_pairs([(
         "$1", "--fast",
@@ -2089,8 +2086,9 @@ async fn legacy_blob_without_origin_loads_as_user() {
 #[tokio::test]
 async fn legacy_blob_without_project_defaults_to_none() {
     // Given a project-stamped session serialized to the persisted blob shape.
+    let dir = tempfile::tempdir().expect("temp dir");
     let mut session = ChatSessionState::new();
-    session.set_project(Some(std::path::PathBuf::from("/home/user/projects/jinn")));
+    session.set_project(Some(dir.path().join("user/projects/jinn")));
     let blob = serde_json::to_string(&crate::sqlite::PersistableCore::from(
         &session.capture_snapshot().metadata,
     ))

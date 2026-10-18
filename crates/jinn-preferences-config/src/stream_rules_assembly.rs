@@ -586,18 +586,25 @@ mod tests {
     #[test]
     fn a_projects_own_command_policy_becomes_a_project_scoped_rule() {
         // Given two projects, the second carrying its own blocked-command rule.
-        let config = layer(
+        let dir = tempfile::tempdir().expect("temp dir");
+        let myapp = dir.path().join("dev/code/myapp");
+        let other = dir.path().join("dev/code/other");
+        // The paths ride through `toml_edit::Value` so the interpolated text
+        // is quoted and escaped, never spliced raw into the document.
+        let config = layer(&format!(
             r#"
             [[project.entry]]
-            path = "/home/dev/code/myapp"
+            path = {}
 
             [[project.entry]]
-            path = "/home/dev/code/other"
+            path = {}
             [[project.entry.command_policy]]
             pattern = 'npm run release'
             message = 'Run the package test, not the whole workspace.'
         "#,
-        );
+            toml_edit::Value::from(myapp.to_string_lossy().into_owned()),
+            toml_edit::Value::from(other.to_string_lossy().into_owned()),
+        ));
 
         // When the rules are assembled.
         let rules = assemble_stream_rules(&config, &temp_prefs());
@@ -606,7 +613,7 @@ mod tests {
         assert!(
             rules.iter().any(|r| {
                 r.conditions == vec!["npm run release".to_owned()]
-                    && r.project.as_deref() == Some("/home/dev/code/other")
+                    && r.project.as_deref() == Some(other.to_string_lossy().as_ref())
             }),
             "a project's own rule must keep its project scope, got: {:?}",
             rules

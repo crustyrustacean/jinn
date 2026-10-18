@@ -42,13 +42,22 @@ mod tests {
     #[rstest::rstest]
     fn project_entries_read_from_the_umbrella_key() {
         // Given a document listing two projects under the umbrella.
-        let doc = r#"
+        let dir = tempfile::tempdir().expect("temp dir");
+        let first = dir.path().join("a");
+        let second = dir.path().join("b");
+        // The paths ride through `toml_edit::Value` so the interpolated text is
+        // a properly escaped TOML string on every platform.
+        let doc = format!(
+            "
             [[project.entry]]
-            path = "/tmp/a"
+            path = {}
 
             [[project.entry]]
-            path = "/tmp/b"
-        "#
+            path = {}
+        ",
+            toml_edit::Value::from(first.to_string_lossy().into_owned()),
+            toml_edit::Value::from(second.to_string_lossy().into_owned()),
+        )
         .parse()
         .expect("test TOML parses");
         let layer = ConfigLayer::load(Arc::new(InMemoryConfigStorage::new(doc))).expect("load");
@@ -58,8 +67,8 @@ mod tests {
 
         // Then both entries are read, in document order.
         assert_eq!(projects.len(), 2);
-        assert_eq!(projects[0].path.to_string_lossy(), "/tmp/a");
-        assert_eq!(projects[1].path.to_string_lossy(), "/tmp/b");
+        assert_eq!(projects[0].path, first);
+        assert_eq!(projects[1].path, second);
     }
 
     #[rstest::rstest]
@@ -80,8 +89,9 @@ mod tests {
     #[rstest::rstest]
     fn a_project_renders_as_a_path_and_reads_back() {
         // Given a project with no rules of its own.
+        let dir = tempfile::tempdir().expect("temp dir");
         let project = ProjectConfig {
-            path: "/tmp/demo".parse().expect("path parses"),
+            path: dir.path().join("demo"),
         };
         let storage = Arc::new(InMemoryConfigStorage::new(
             "[tools]\nx = 1\n".parse().expect("parses"),

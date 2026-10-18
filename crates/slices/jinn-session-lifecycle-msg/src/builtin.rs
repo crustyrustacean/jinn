@@ -106,10 +106,11 @@ mod tests {
     #[test]
     fn registry_register_and_get_roundtrip() {
         // Given an empty registry.
+        let dir = tempfile::tempdir().expect("temp dir");
         let mut registry = BuiltinRegistry::new();
 
         // When registering a handler.
-        let handler = Arc::new(MockHandler);
+        let handler = MockHandler::new(dir.path());
         registry.register(BuiltinId("test-handler".to_owned()), handler);
 
         // Then get returns Some.
@@ -121,8 +122,9 @@ mod tests {
     #[test]
     fn registry_get_returns_none_for_unknown() {
         // Given a registry with one handler.
+        let dir = tempfile::tempdir().expect("temp dir");
         let mut registry = BuiltinRegistry::new();
-        registry.register(BuiltinId("known".to_owned()), Arc::new(MockHandler));
+        registry.register(BuiltinId("known".to_owned()), MockHandler::new(dir.path()));
 
         // When looking up an unknown handler.
         let result = registry.get(&BuiltinId("unknown".to_owned()));
@@ -148,8 +150,9 @@ mod tests {
     #[test]
     fn registry_is_empty_false_after_register() {
         // Given a registry with one handler.
+        let dir = tempfile::tempdir().expect("temp dir");
         let mut registry = BuiltinRegistry::new();
-        registry.register(BuiltinId("test".to_owned()), Arc::new(MockHandler));
+        registry.register(BuiltinId("test".to_owned()), MockHandler::new(dir.path()));
 
         // When checking whether it holds any handler.
         let is_empty = registry.is_empty();
@@ -162,9 +165,10 @@ mod tests {
     #[test]
     fn registry_debug_shows_count() {
         // Given a registry with two handlers.
+        let dir = tempfile::tempdir().expect("temp dir");
         let mut registry = BuiltinRegistry::new();
-        registry.register(BuiltinId("a".to_owned()), Arc::new(MockHandler));
-        registry.register(BuiltinId("b".to_owned()), Arc::new(MockHandler));
+        registry.register(BuiltinId("a".to_owned()), MockHandler::new(dir.path()));
+        registry.register(BuiltinId("b".to_owned()), MockHandler::new(dir.path()));
 
         // When debugging.
         let debug_str = format!("{registry:?}");
@@ -173,8 +177,15 @@ mod tests {
         assert!(debug_str.contains("count"));
     }
 
-    /// A minimal mock handler for testing the registry.
-    struct MockHandler;
+    /// A minimal mock handler for testing the registry. Its working directory
+    /// comes from the test's own tempdir root.
+    struct MockHandler(PathBuf);
+
+    impl MockHandler {
+        fn new(root: &std::path::Path) -> Arc<Self> {
+            Arc::new(Self(root.to_path_buf()))
+        }
+    }
 
     impl BuiltinHandler for MockHandler {
         fn name(&self) -> &'static str {
@@ -186,7 +197,7 @@ mod tests {
             _session_id: &SessionId,
             _args: &[String],
         ) -> Result<PathBuf, Report<BuiltinHandlerError>> {
-            Ok(PathBuf::from("/tmp/mock"))
+            Ok(self.0.join("mock"))
         }
 
         fn teardown(&self, _session_id: &SessionId, _args: &[String]) -> bool {

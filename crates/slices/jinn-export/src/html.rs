@@ -322,10 +322,15 @@ mod tests {
     use jiff::Timestamp;
 
     fn doc_with(entries: Vec<ExportEntry>) -> ExportDocument {
+        // The cwd is fixture data nothing reads back from disk: the temp root
+        // only keeps test paths off absolute literals, so it is deleted when
+        // this helper returns and no tempdir lifetime reaches the call sites.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let cwd = dir.path().join("work");
         ExportDocument {
             title: "Test session".to_owned(),
             model: "test-model".to_owned(),
-            cwd: std::path::PathBuf::from("/tmp/work"),
+            cwd,
             created_at: Timestamp::UNIX_EPOCH,
             updated_at: Timestamp::UNIX_EPOCH,
             session_id: "s-1".to_owned(),

@@ -275,8 +275,10 @@ fn reset_run_seeds_through_the_template_with_the_prior_report() {
 #[test]
 fn attendant_created_from_parent_links_and_defaults() {
     // Given a parent with environment values.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let project = dir.path().join("p");
     let mut parent = ChatSessionState::new();
-    parent.set_project(Some(std::path::PathBuf::from("/tmp/p")));
+    parent.set_project(Some(project.clone()));
 
     // When an attendant is created from it.
     let attendant = ChatSessionState::new_attendant(&parent, true);
@@ -285,7 +287,7 @@ fn attendant_created_from_parent_links_and_defaults() {
     // hands the user an attendant they have not finished writing.
     assert_eq!(attendant.origin(), SessionOrigin::Attendant);
     assert!(attendant.attendant_is_prepping());
-    assert_eq!(attendant.project(), Some(std::path::Path::new("/tmp/p")));
+    assert_eq!(attendant.project(), Some(project.as_path()));
     assert!(attendant.is_empty());
 }
 

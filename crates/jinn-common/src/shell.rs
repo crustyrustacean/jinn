@@ -118,7 +118,11 @@ mod tests {
     #[test]
     fn existing_candidate_wins_over_later_candidates() {
         // Given a list where an existing file comes before the bare fallback.
-        let existing = std::env::temp_dir().join("shell-resolver-probe");
+        let dir = tempfile::Builder::new()
+            .prefix("jinn-shell-resolver")
+            .tempdir()
+            .expect("temp dir");
+        let existing = dir.path().join("shell-resolver-probe");
         std::fs::write(&existing, b"probe").expect("write probe");
 
         // When resolving from that list.
@@ -126,7 +130,6 @@ mod tests {
 
         // Then the earlier existing candidate wins.
         assert_eq!(shell, existing.to_string_lossy());
-        std::fs::remove_file(&existing).expect("remove probe");
     }
 
     #[rstest::rstest]
@@ -144,7 +147,11 @@ mod tests {
     #[test]
     fn duplicate_existing_candidate_is_not_double_matched() {
         // Given the same existing file twice around a bare fallback.
-        let existing = std::env::temp_dir().join("shell-resolver-dup");
+        let dir = tempfile::Builder::new()
+            .prefix("jinn-shell-resolver")
+            .tempdir()
+            .expect("temp dir");
+        let existing = dir.path().join("shell-resolver-dup");
         std::fs::write(&existing, b"probe").expect("write probe");
 
         // When resolving from the duplicated list.
@@ -152,7 +159,6 @@ mod tests {
 
         // Then the existing candidate still resolves once, to itself.
         assert_eq!(shell, existing.to_string_lossy());
-        std::fs::remove_file(&existing).expect("remove probe");
     }
 
     #[cfg(windows)]

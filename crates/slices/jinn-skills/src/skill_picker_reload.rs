@@ -78,13 +78,13 @@ mod tests {
     use jinn_selection_widget::TreeItem;
     use jinn_theme::default_theme;
 
-    fn skill(name: &str, description: &str, body: &str) -> Skill {
+    fn skill(root: &std::path::Path, name: &str, description: &str, body: &str) -> Skill {
         Skill {
             name: name.to_owned(),
             description: description.to_owned(),
             body: body.to_owned(),
-            file_path: std::path::PathBuf::from(format!("/tmp/{name}/SKILL.md")),
-            base_dir: std::path::PathBuf::from(format!("/tmp/{name}")),
+            file_path: root.join(name).join("SKILL.md"),
+            base_dir: root.join(name),
             source: jinn_skills_msg::SkillSource::Global,
         }
     }
@@ -92,8 +92,9 @@ mod tests {
     #[rstest::rstest]
     fn reload_keeps_the_spec_row_renderer() {
         // Given a skill picker cell and one discovered skill.
+        let dir = tempfile::tempdir().expect("temp dir");
         let mut state = SkillPickerState::default();
-        let skills = vec![skill("alpha", "does things", "# body")];
+        let skills = vec![skill(dir.path(), "alpha", "does things", "# body")];
 
         // When reloading the skill picker.
         reload_skill_picker(&mut state, &skills, None, &default_theme());
@@ -108,8 +109,9 @@ mod tests {
     #[rstest::rstest]
     fn reload_keeps_the_spec_preview_renderer() {
         // Given a skill picker cell and one discovered skill with a markdown body.
+        let dir = tempfile::tempdir().expect("temp dir");
         let mut state = SkillPickerState::default();
-        let skills = vec![skill("alpha", "does things", "# Title")];
+        let skills = vec![skill(dir.path(), "alpha", "does things", "# Title")];
 
         // When reloading the skill picker.
         reload_skill_picker(&mut state, &skills, None, &default_theme());
@@ -126,10 +128,12 @@ mod tests {
     #[rstest::rstest]
     fn reload_sorts_entries_case_insensitively_by_name() {
         // Given discovered skills in non-alphabetical order.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
         let skills = vec![
-            skill("zeta", "last", ""),
-            skill("Alpha", "first", ""),
-            skill("mid", "middle", ""),
+            skill(root, "zeta", "last", ""),
+            skill(root, "Alpha", "first", ""),
+            skill(root, "mid", "middle", ""),
         ];
 
         // When building the picker's entries.

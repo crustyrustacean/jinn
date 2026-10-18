@@ -1837,11 +1837,13 @@ fn enter_normal_mode_returns_to_normal_scope() {
 #[rstest::rstest]
 fn enter_normal_mode_clears_pending_creation() {
     // Given a state with a stale pending session creation stash.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let stale = dir.path().join("stale");
     let mut state = AppState::default_with_scope_focus();
     state.frontend.pending_creation =
         Some(jinn_kernel::state::frontend_state::PendingSessionCreation {
-            project_dir: std::path::PathBuf::from("/tmp/stale"),
-            starting_cwd: std::path::PathBuf::from("/tmp/stale"),
+            project_dir: stale.clone(),
+            starting_cwd: stale,
         });
 
     // When handling EnterNormalMode (ESC from the project/lifecycle chain).
@@ -4813,11 +4815,15 @@ async fn create_harness() -> (TestHarness, State, ActorDeps) {
     (harness, state, deps)
 }
 
-fn make_temp_dir(entries: &[(&str, bool)]) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("jinn-file-lister-test-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&dir).expect("create temp dir");
+fn make_temp_dir(entries: &[(&str, bool)]) -> tempfile::TempDir {
+    // The `TempDir` binding is the cleanup: it removes the whole tree on
+    // drop, at the end of whichever test owns it.
+    let dir = tempfile::Builder::new()
+        .prefix("jinn-file-lister-test")
+        .tempdir()
+        .expect("temp dir");
     for (name, is_dir) in entries {
-        let path = dir.join(name);
+        let path = dir.path().join(name);
         if *is_dir {
             std::fs::create_dir_all(&path).expect("create subdir");
         } else {
@@ -4876,7 +4882,7 @@ async fn actor_reads_directory_entries_into_file_picker() {
     harness
         .publish(ListDirectory {
             session_id: SessionId::new(),
-            path: dir.clone(),
+            path: dir.path().to_path_buf(),
             request_id: 1,
         })
         .await;
@@ -4922,7 +4928,7 @@ async fn actor_drops_stale_reply_when_request_id_mismatches() {
     harness
         .publish(ListDirectory {
             session_id: SessionId::new(),
-            path: dir,
+            path: dir.path().to_path_buf(),
             request_id: 1, // stale
         })
         .await;
@@ -4991,7 +4997,7 @@ async fn actor_lists_hidden_files() {
     harness
         .publish(ListDirectory {
             session_id: SessionId::new(),
-            path: dir,
+            path: dir.path().to_path_buf(),
             request_id: 1,
         })
         .await;
@@ -5015,11 +5021,13 @@ async fn actor_lists_hidden_files() {
 fn enter_normal_mode_clears_pending_session_creation() {
     // Given a state with a pending session creation stashed from a
     // project-picker confirm (midway through the lifecycle/args chain).
+    let dir = tempfile::tempdir().expect("temp dir");
+    let project_a = dir.path().join("project-a");
     let mut state = AppState::default_with_scope_focus();
     let active_cwd = state.active_session().cwd().to_path_buf();
     state.frontend.pending_creation = Some(PendingSessionCreation {
-        project_dir: std::path::PathBuf::from("/tmp/project-a"),
-        starting_cwd: std::path::PathBuf::from("/tmp/project-a"),
+        project_dir: project_a.clone(),
+        starting_cwd: project_a,
     });
 
     // When abandoning the chain via ESC (enter normal mode).

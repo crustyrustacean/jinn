@@ -2112,16 +2112,18 @@ fn visible_entry_range_uses_rendered_scroll_offset_not_scroll_offset() {
 
 #[rstest::rstest]
 fn cwd_preserved_across_serialization_round_trip() {
-    // Given a session with a specific CWD.
+    // Given a session with a temp-rooted CWD.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let cwd = dir.path().to_path_buf();
     let mut session = ChatSessionState::new();
-    session.set_cwd(PathBuf::from("/tmp"));
+    session.set_cwd(cwd.clone());
 
     // When serializing and deserializing.
     let json = serde_json::to_string(&session).expect("serialize");
     let restored: ChatSessionState = serde_json::from_str(&json).expect("deserialize");
 
     // Then the CWD is preserved.
-    assert_eq!(restored.cwd(), PathBuf::from("/tmp"));
+    assert_eq!(restored.cwd(), cwd);
 }
 
 #[rstest::rstest]
@@ -6771,11 +6773,13 @@ fn tool_age_window_exclude_refused_on_included_todo_pair() {
 #[rstest::rstest]
 #[test]
 fn new_attendant_links_parent_without_inheriting_conversation() {
-    // Given a parent session with a project stamp, cwd, home, and MCP servers.
+    // Given a parent session with a temp-rooted project stamp, cwd, home,
+    // and MCP servers.
+    let dir = tempfile::tempdir().expect("temp dir");
     let mut parent = ChatSessionState::new();
-    parent.set_project(Some(PathBuf::from("/tmp/demo-project")));
-    parent.set_cwd(PathBuf::from("/tmp/demo-cwd"));
-    parent.set_home(PathBuf::from("/tmp/demo-home"));
+    parent.set_project(Some(dir.path().join("demo-project")));
+    parent.set_cwd(dir.path().join("demo-cwd"));
+    parent.set_home(dir.path().join("demo-home"));
     parent.set_enabled_mcp_servers(std::collections::BTreeSet::from(["filesystem".to_owned()]));
     parent.push_entry(ChatEntry::user("parent conversation"));
 
@@ -6796,11 +6800,12 @@ fn new_attendant_links_parent_without_inheriting_conversation() {
 #[rstest::rstest]
 #[test]
 fn new_attendant_copies_parent_environment() {
-    // Given a parent session with environment values set.
+    // Given a parent session with temp-rooted environment values set.
+    let dir = tempfile::tempdir().expect("temp dir");
     let mut parent = ChatSessionState::new();
-    parent.set_project(Some(PathBuf::from("/tmp/demo-project")));
-    parent.set_cwd(PathBuf::from("/tmp/demo-cwd"));
-    parent.set_home(PathBuf::from("/tmp/demo-home"));
+    parent.set_project(Some(dir.path().join("demo-project")));
+    parent.set_cwd(dir.path().join("demo-cwd"));
+    parent.set_home(dir.path().join("demo-home"));
     parent.set_enabled_mcp_servers(std::collections::BTreeSet::from(["filesystem".to_owned()]));
 
     // When creating an attendant of that parent.

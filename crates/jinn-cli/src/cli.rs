@@ -185,15 +185,19 @@ pub enum ConfigCommands {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, reason = "test code")]
     use super::*;
     use clap::Parser;
 
     #[rstest::rstest]
     #[test]
     fn log_file_flag_defaults_to_none() {
-        // Given no --log-file argument.
+        // Given a temp-rooted --db-path and no --log-file argument.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let db_path = dir.path().join("test.db").to_string_lossy().to_string();
+
         // When parsing.
-        let cli = Cli::parse_from(["jinn", "--db-path", "/tmp/test.db"]);
+        let cli = Cli::parse_from(["jinn", "--db-path", db_path.as_str()]);
 
         // Then Cli.log_file is None (default).
         assert!(cli.log_file.is_none());
@@ -203,21 +207,23 @@ mod tests {
     #[test]
     fn log_file_flag_global_overrides() {
         // Given a global --log-file argument before a subcommand.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let expected = dir.path().join("x.log");
+        let log_file = expected.to_string_lossy().to_string();
+        let db_path = dir.path().join("test.db").to_string_lossy().to_string();
+
         // When parsing.
         let cli = Cli::parse_from([
             "jinn",
             "--db-path",
-            "/tmp/test.db",
+            db_path.as_str(),
             "--log-file",
-            "/tmp/x.log",
+            log_file.as_str(),
             "tui",
         ]);
 
         // Then Cli.log_file captures the override.
-        assert_eq!(
-            cli.log_file.as_deref(),
-            Some(std::path::Path::new("/tmp/x.log"))
-        );
+        assert_eq!(cli.log_file.as_deref(), Some(expected.as_path()));
     }
 
     #[rstest::rstest]
@@ -225,9 +231,18 @@ mod tests {
     fn log_dir_flag_removed() {
         // Given the old --log-dir argument (and a dummy --db-path, so a
         // missing --db-path cannot trigger first in debug mode).
+        let dir = tempfile::tempdir().expect("temp dir");
+        let db_path = dir.path().join("test.db").to_string_lossy().to_string();
+        let log_dir = dir.path().join("logs").to_string_lossy().to_string();
+
         // When parsing.
-        let result =
-            Cli::try_parse_from(["jinn", "--db-path", "/tmp/test.db", "--log-dir", "/tmp"]);
+        let result = Cli::try_parse_from([
+            "jinn",
+            "--db-path",
+            db_path.as_str(),
+            "--log-dir",
+            log_dir.as_str(),
+        ]);
 
         // Then clap rejects it (the flag has been removed).
         assert!(result.is_err());
@@ -237,14 +252,18 @@ mod tests {
     #[test]
     fn headless_scoped_log_file_removed() {
         // Given --log-file scoped to the headless subcommand (old shape).
+        let dir = tempfile::tempdir().expect("temp dir");
+        let db_path = dir.path().join("test.db").to_string_lossy().to_string();
+        let log_file = dir.path().join("x.log").to_string_lossy().to_string();
+
         // When parsing.
         let result = Cli::try_parse_from([
             "jinn",
             "--db-path",
-            "/tmp/test.db",
+            db_path.as_str(),
             "headless",
             "--log-file",
-            "/tmp/x.log",
+            log_file.as_str(),
             "send-chat",
             "hi",
         ]);
@@ -257,31 +276,36 @@ mod tests {
     #[test]
     fn log_file_flag_works_with_headless() {
         // Given a global --log-file alongside a headless subcommand.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let expected = dir.path().join("x.log");
+        let log_file = expected.to_string_lossy().to_string();
+        let db_path = dir.path().join("test.db").to_string_lossy().to_string();
+
         // When parsing.
         let cli = Cli::parse_from([
             "jinn",
             "--db-path",
-            "/tmp/test.db",
+            db_path.as_str(),
             "--log-file",
-            "/tmp/x.log",
+            log_file.as_str(),
             "headless",
             "send-chat",
             "hi",
         ]);
 
         // Then Cli.log_file captures the override.
-        assert_eq!(
-            cli.log_file.as_deref(),
-            Some(std::path::Path::new("/tmp/x.log"))
-        );
+        assert_eq!(cli.log_file.as_deref(), Some(expected.as_path()));
     }
 
     #[rstest::rstest]
     #[test]
     fn config_flag_defaults_to_none() {
-        // Given no --config argument.
+        // Given a temp-rooted --db-path and no --config argument.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let db_path = dir.path().join("test.db").to_string_lossy().to_string();
+
         // When parsing.
-        let cli = Cli::parse_from(["jinn", "--db-path", "/tmp/test.db"]);
+        let cli = Cli::parse_from(["jinn", "--db-path", db_path.as_str()]);
 
         // Then Cli.config is None (the default location is used).
         assert!(cli.config.is_none());
@@ -291,21 +315,23 @@ mod tests {
     #[test]
     fn config_flag_before_subcommand_captures_override() {
         // Given a --config argument before a subcommand.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let expected = dir.path().join("alt.toml");
+        let config = expected.to_string_lossy().to_string();
+        let db_path = dir.path().join("test.db").to_string_lossy().to_string();
+
         // When parsing.
         let cli = Cli::parse_from([
             "jinn",
             "--db-path",
-            "/tmp/test.db",
+            db_path.as_str(),
             "--config",
-            "/tmp/alt.toml",
+            config.as_str(),
             "tui",
         ]);
 
         // Then Cli.config captures the override and the subcommand still parses.
-        assert_eq!(
-            cli.config.as_deref(),
-            Some(std::path::Path::new("/tmp/alt.toml"))
-        );
+        assert_eq!(cli.config.as_deref(), Some(expected.as_path()));
         // And the subcommand was still recognized.
         assert!(matches!(cli.command, Some(Commands::Tui)));
     }
@@ -314,21 +340,23 @@ mod tests {
     #[test]
     fn config_flag_after_subcommand_captures_override() {
         // Given a --config argument after a subcommand.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let expected = dir.path().join("alt.toml");
+        let config = expected.to_string_lossy().to_string();
+        let db_path = dir.path().join("test.db").to_string_lossy().to_string();
+
         // When parsing.
         let cli = Cli::parse_from([
             "jinn",
             "--db-path",
-            "/tmp/test.db",
+            db_path.as_str(),
             "tui",
             "--config",
-            "/tmp/alt.toml",
+            config.as_str(),
         ]);
 
         // Then Cli.config captures the override (the flag is global).
-        assert_eq!(
-            cli.config.as_deref(),
-            Some(std::path::Path::new("/tmp/alt.toml"))
-        );
+        assert_eq!(cli.config.as_deref(), Some(expected.as_path()));
     }
 
     #[cfg(debug_assertions)]
@@ -356,13 +384,18 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn db_path_opt_returns_some_when_provided() {
-        // Given --db-path /tmp/test.db.
+        // Given a temp-rooted --db-path.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let expected = dir.path().join("test.db");
+        let expected_str = expected.to_string_lossy().to_string();
+
         // When parsing.
-        let cli = Cli::parse_from(["jinn", "--db-path", "/tmp/test.db"]);
+        let cli = Cli::parse_from(["jinn", "--db-path", expected_str.as_str()]);
+
         // Then db_path_opt returns the path.
         assert_eq!(
             cli.db_path_opt().map(std::path::PathBuf::as_path),
-            Some(std::path::Path::new("/tmp/test.db"))
+            Some(expected.as_path())
         );
     }
 }

@@ -16,6 +16,9 @@ ratatui = { workspace = true }
 [dev-dependencies]
 dirs = { workspace = true }
 rstest = { workspace = true }
+# The render-row tests build entries from tempdir paths, so no absolute path
+# literal ships in test code.
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

@@ -41,4 +41,5 @@ jinn-testutil = { workspace = true }
 
 jinn-kernel = { workspace = true }
 rstest = { workspace = true }
+tempfile = { workspace = true }
 

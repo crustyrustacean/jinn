@@ -160,8 +160,9 @@ mod tests {
     #[test]
     fn resolve_empty_filter_returns_cwd() {
         // Given a cwd and home.
-        let cwd = PathBuf::from("/proj");
-        let home = PathBuf::from("/home/u");
+        let root = tempfile::tempdir().expect("temp dir");
+        let cwd = root.path().join("proj");
+        let home = root.path().join("u");
 
         // When resolving an empty filter.
         let dir = resolve_list_dir("", &cwd, &home);
@@ -175,7 +176,8 @@ mod tests {
     fn resolve_absolute_filter_returns_path_as_is() {
         // Given a cwd, home, and an absolute filter.
         let cwd = PathBuf::from("/proj");
-        let home = PathBuf::from("/home/u");
+        let home_root = tempfile::tempdir().expect("temp dir");
+        let home = home_root.path().join("u");
 
         // When resolving an absolute path.
         let dir = resolve_list_dir("/etc", &cwd, &home);
@@ -188,8 +190,9 @@ mod tests {
     #[test]
     fn resolve_tilde_filter_returns_home() {
         // Given a cwd and home.
-        let cwd = PathBuf::from("/proj");
-        let home = PathBuf::from("/home/u");
+        let root = tempfile::tempdir().expect("temp dir");
+        let cwd = root.path().join("proj");
+        let home = root.path().join("u");
 
         // When resolving a bare tilde.
         let dir = resolve_list_dir("~", &cwd, &home);
@@ -202,28 +205,30 @@ mod tests {
     #[test]
     fn resolve_tilde_slash_filter_returns_home_subpath() {
         // Given a cwd and home.
-        let cwd = PathBuf::from("/proj");
-        let home = PathBuf::from("/home/u");
+        let root = tempfile::tempdir().expect("temp dir");
+        let cwd = root.path().join("proj");
+        let home = root.path().join("u");
 
         // When resolving ~/sub.
         let dir = resolve_list_dir("~/sub", &cwd, &home);
 
         // Then the result is home/sub.
-        assert_eq!(dir, PathBuf::from("/home/u/sub"));
+        assert_eq!(dir, home.join("sub"));
     }
 
     #[rstest::rstest]
     #[test]
     fn resolve_relative_filter_joins_cwd() {
         // Given a cwd and home.
-        let cwd = PathBuf::from("/proj");
-        let home = PathBuf::from("/home/u");
+        let root = tempfile::tempdir().expect("temp dir");
+        let cwd = root.path().join("proj");
+        let home = root.path().join("u");
 
         // When resolving a relative path `foo/bar`.
         let dir = resolve_list_dir("foo/bar", &cwd, &home);
 
         // Then the result is cwd/foo/bar.
-        assert_eq!(dir, PathBuf::from("/proj/foo/bar"));
+        assert_eq!(dir, cwd.join("foo/bar"));
     }
 
     #[rstest::rstest]

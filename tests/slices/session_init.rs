@@ -25,30 +25,34 @@ use crate::common::test_app;
 /// prompt, and one context file. No cwd is seeded into state — the
 /// supervisor routes from payload cwd, so tests publish triggers that
 /// carry the project dir.
-async fn composed_app_with_project() -> (TuiApp, std::path::PathBuf, SessionId) {
+///
+/// The project root is a [`tempfile::TempDir`] owned by the caller: it
+/// stays alive for the whole test and removes the tree on drop.
+async fn composed_app_with_project() -> (TuiApp, tempfile::TempDir, SessionId) {
     let app = test_app().await;
-    let project = std::env::temp_dir().join(format!(
-        "session-init-e2e-{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("clock")
-            .as_nanos()
-    ));
-    let skills_dir = project.join(".agents").join("skills").join("e2e-skill");
+    let project = tempfile::Builder::new()
+        .prefix("session-init-e2e")
+        .tempdir()
+        .expect("temp dir");
+    let skills_dir = project
+        .path()
+        .join(".agents")
+        .join("skills")
+        .join("e2e-skill");
     std::fs::create_dir_all(&skills_dir).expect("skill dir");
     std::fs::write(
         skills_dir.join("SKILL.md"),
         "---\nname: e2e-skill\ndescription: end-to-end\n---\nbody",
     )
     .expect("SKILL.md");
-    let prompts_dir = project.join(".agents").join("prompts");
+    let prompts_dir = project.path().join(".agents").join("prompts");
     std::fs::create_dir_all(&prompts_dir).expect("prompts dir");
     std::fs::write(
         prompts_dir.join("hello.md"),
         "+++\nname = \"hello\"\ndescription = \"Say hello\"\n+++\nHello!",
     )
     .expect("prompt template");
-    std::fs::write(project.join("AGENTS.md"), "context body").expect("AGENTS.md");
+    std::fs::write(project.path().join("AGENTS.md"), "context body").expect("AGENTS.md");
     let session_id = app.core.state.read().session.active_session_id().clone();
     (app, project, session_id)
 }
@@ -92,7 +96,7 @@ async fn session_created_triggers_discovery_and_loaded_events_land_on_slice_topi
         .bridge
         .send(Bridge::publish_closure(SessionCreated {
             session_id: session_id.clone(),
-            cwd: project.clone(),
+            cwd: project.path().to_path_buf(),
         }));
 
     // Then the kernel `SkillsLoaded` type crosses back — and its
@@ -145,7 +149,7 @@ async fn boot_cwd_changed_triggers_initial_discovery() {
     let _ = app.core.bridge.send(Bridge::publish_closure(
         jinn_session_lifecycle_msg::SessionCwdChanged {
             session_id: session_id.clone(),
-            cwd: project.clone(),
+            cwd: project.path().to_path_buf(),
         },
     ));
 
@@ -210,7 +214,7 @@ async fn manual_scan_reaches_only_the_addressed_session() {
     let (app, project, first) = composed_app_with_project().await;
     let second = {
         let mut session = ChatSessionState::new();
-        session.set_cwd(project.clone());
+        session.set_cwd(project.path().to_path_buf());
         let id = session.session_id().clone();
         app.core.state.write().session.insert(session);
         id
@@ -224,7 +228,7 @@ async fn manual_scan_reaches_only_the_addressed_session() {
         .bridge
         .send(Bridge::publish_closure(jinn_skills_msg::ScanSkills {
             session_id: first.clone(),
-            cwd: project,
+            cwd: project.path().to_path_buf(),
         }));
 
     // Then exactly the addressed session's event crosses.

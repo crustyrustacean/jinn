@@ -63,4 +63,7 @@ jinn-testutil = { workspace = true }
 # The preview tests assert the ~-shortened cwd form and seed token records.
 dirs = { workspace = true }
 jinn-token-count-msg = { workspace = true }
+# The preview tests derive their cwd fixtures from a tempdir, so no absolute
+# path literal ships in test code.
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "time"] }

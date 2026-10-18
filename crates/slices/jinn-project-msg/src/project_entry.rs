@@ -153,25 +153,31 @@ mod tests {
     #[rstest::rstest]
     fn render_row_unselected_has_leading_spaces() {
         // Given a project entry.
-        let entry = ProjectEntry::new(std::path::PathBuf::from("/tmp/proj"), default_theme());
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("proj");
+        let entry = ProjectEntry::new(path.clone(), default_theme());
 
         // When rendering unselected.
         let text = entry.render_row(false).to_string();
 
         // Then it begins with the two-space inactive marker.
-        assert!(text.starts_with("  /tmp/proj"));
+        let expected = format!("  {}", path.display());
+        assert!(text.starts_with(expected.as_str()));
     }
 
     #[rstest::rstest]
     fn render_row_selected_has_arrow() {
         // Given a project entry.
-        let entry = ProjectEntry::new(std::path::PathBuf::from("/tmp/proj"), default_theme());
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("proj");
+        let entry = ProjectEntry::new(path.clone(), default_theme());
 
         // When rendering selected.
         let text = entry.render_row(true).to_string();
 
         // Then it begins with the active arrow marker.
-        assert!(text.starts_with("> /tmp/proj"));
+        let expected = format!("> {}", path.display());
+        assert!(text.starts_with(expected.as_str()));
     }
 
     #[rstest::rstest]

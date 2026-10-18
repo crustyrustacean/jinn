@@ -91,13 +91,17 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    fn test_skill(name: &str, description: &str) -> Skill {
+    fn test_skill(root: &std::path::Path, name: &str, description: &str) -> Skill {
         Skill {
             name: name.to_owned(),
             description: description.to_owned(),
             body: String::new(),
-            file_path: PathBuf::from(format!("/home/user/.agents/skills/{name}/SKILL.md")),
-            base_dir: PathBuf::from(format!("/home/user/.agents/skills/{name}")),
+            file_path: root
+                .join(".agents")
+                .join("skills")
+                .join(name)
+                .join("SKILL.md"),
+            base_dir: root.join(".agents").join("skills").join(name),
             source: jinn_skills_msg::SkillSource::Global,
         }
     }
@@ -117,21 +121,30 @@ mod tests {
     #[rstest::rstest]
     fn format_produces_available_skills_block() {
         // Given one skill.
-        let skills = vec![test_skill("my-skill", "A test skill")];
+        let dir = tempfile::tempdir().expect("temp dir");
+        let skills = vec![test_skill(dir.path(), "my-skill", "A test skill")];
 
         // When formatting.
         let result = format_skills_for_prompt(&skills, &std::collections::HashSet::new());
 
         // Then the output contains the XML block.
+        let expected_location = format!(
+            "<location>{}</location>",
+            dir.path()
+                .join(".agents/skills/my-skill/SKILL.md")
+                .display()
+        );
+        let expected_base_dir = format!(
+            "<base_dir>{}</base_dir>",
+            dir.path().join(".agents/skills/my-skill").display()
+        );
         assert!(result.contains("<available_skills>"));
         assert!(result.contains("</available_skills>"));
         assert!(result.contains("<name>my-skill</name>"));
         assert!(result.contains("<description>A test skill</description>"));
+        assert!(result.contains(&expected_location));
         assert!(
-            result.contains("<location>/home/user/.agents/skills/my-skill/SKILL.md</location>")
-        );
-        assert!(
-            result.contains("<base_dir>/home/user/.agents/skills/my-skill</base_dir>"),
+            result.contains(&expected_base_dir),
             "<base_dir> should hold the skill's base directory (parent of SKILL.md, no trailing /SKILL.md), got: {result}"
         );
     }
@@ -139,7 +152,8 @@ mod tests {
     #[rstest::rstest]
     fn format_includes_usage_instructions() {
         // Given one skill.
-        let skills = vec![test_skill("test", "Test skill")];
+        let dir = tempfile::tempdir().expect("temp dir");
+        let skills = vec![test_skill(dir.path(), "test", "Test skill")];
 
         // When formatting.
         let result = format_skills_for_prompt(&skills, &std::collections::HashSet::new());
@@ -202,10 +216,12 @@ mod tests {
     #[rstest::rstest]
     fn format_handles_multiple_skills() {
         // Given three skills.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
         let skills = vec![
-            test_skill("skill-a", "First skill"),
-            test_skill("skill-b", "Second skill"),
-            test_skill("skill-c", "Third skill"),
+            test_skill(root, "skill-a", "First skill"),
+            test_skill(root, "skill-b", "Second skill"),
+            test_skill(root, "skill-c", "Third skill"),
         ];
 
         // When formatting.
@@ -220,14 +236,16 @@ mod tests {
     #[rstest::rstest]
     fn format_returns_stable_skill_list() {
         // Given three skills.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
         let skills = vec![
-            test_skill("skill-a", "First skill"),
-            test_skill("skill-d", "4"),
-            test_skill("skill-e", "5"),
-            test_skill("skill-f", "6"),
-            test_skill("skill-g", "7"),
-            test_skill("skill-b", "Second skill"),
-            test_skill("skill-c", "Third skill"),
+            test_skill(root, "skill-a", "First skill"),
+            test_skill(root, "skill-d", "4"),
+            test_skill(root, "skill-e", "5"),
+            test_skill(root, "skill-f", "6"),
+            test_skill(root, "skill-g", "7"),
+            test_skill(root, "skill-b", "Second skill"),
+            test_skill(root, "skill-c", "Third skill"),
         ];
 
         // When formatting.
@@ -244,9 +262,11 @@ mod tests {
     #[rstest::rstest]
     fn format_marks_loaded_skill_with_attribute() {
         // Given one loaded and one unloaded skill.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
         let skills = vec![
-            test_skill("loaded-skill", "A loaded skill"),
-            test_skill("unloaded-skill", "An unloaded skill"),
+            test_skill(root, "loaded-skill", "A loaded skill"),
+            test_skill(root, "unloaded-skill", "An unloaded skill"),
         ];
         let mut loaded = std::collections::HashSet::new();
         loaded.insert("loaded-skill".to_owned());
@@ -268,10 +288,12 @@ mod tests {
     #[rstest::rstest]
     fn format_loaded_instruction_only_appears_once() {
         // Given several skills.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
         let skills = vec![
-            test_skill("a", "A"),
-            test_skill("b", "B"),
-            test_skill("c", "C"),
+            test_skill(root, "a", "A"),
+            test_skill(root, "b", "B"),
+            test_skill(root, "c", "C"),
         ];
         let mut loaded = std::collections::HashSet::new();
         loaded.insert("a".to_owned());
@@ -291,10 +313,12 @@ mod tests {
     #[rstest::rstest]
     fn format_preamble_instruction_appears_exactly_once() {
         // Given several skills.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
         let skills = vec![
-            test_skill("a", "A"),
-            test_skill("b", "B"),
-            test_skill("c", "C"),
+            test_skill(root, "a", "A"),
+            test_skill(root, "b", "B"),
+            test_skill(root, "c", "C"),
         ];
 
         // When formatting.
@@ -311,7 +335,8 @@ mod tests {
     #[rstest::rstest]
     fn format_empty_loaded_set_no_attributes() {
         // Given skills with no loaded set.
-        let skills = vec![test_skill("foo", "Foo")];
+        let dir = tempfile::tempdir().expect("temp dir");
+        let skills = vec![test_skill(dir.path(), "foo", "Foo")];
 
         // When formatting with empty loaded set.
         let result = format_skills_for_prompt(&skills, &std::collections::HashSet::new());

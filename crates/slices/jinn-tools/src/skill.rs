@@ -219,11 +219,13 @@ mod tests {
     use jinn_core_types::{NameFilter, SessionId};
     use jinn_kernel::common::app_state::AppState;
     use jinn_kernel::common::state::State;
-    use std::path::PathBuf;
+    use std::path::Path;
 
-    fn test_ctx() -> ToolContext {
+    /// A context whose cwd is a real, existing scratch directory owned by the
+    /// calling test.
+    fn test_ctx(cwd: &Path) -> ToolContext {
         ToolContext {
-            cwd: PathBuf::from("/tmp"),
+            cwd: cwd.to_owned(),
             config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state: None,
@@ -252,8 +254,12 @@ mod tests {
         }
     }
 
-    /// A session created in the store, its id, and a context bound to it.
-    fn session_ctx() -> (State, SessionId, ToolContext) {
+    /// A session created in the store, its id, a context bound to it, and the
+    /// scratch directory backing the context's cwd. The directory is returned
+    /// so the caller keeps it alive: it is deleted on drop.
+    #[allow(clippy::type_complexity, reason = "test harness tuple")]
+    fn session_ctx() -> (State, SessionId, ToolContext, tempfile::TempDir) {
+        let dir = tempfile::tempdir().expect("create temp dir");
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         {
@@ -263,9 +269,9 @@ mod tests {
         let ctx = ToolContext {
             state: Some(state.clone()),
             session_id: Some(session_id.clone()),
-            ..test_ctx()
+            ..test_ctx(dir.path())
         };
-        (state, session_id, ctx)
+        (state, session_id, ctx, dir)
     }
 
     /// A temp dir holding a project-local `<name>/SKILL.md`, the session
@@ -276,7 +282,7 @@ mod tests {
         description: &str,
         body: &str,
     ) -> (tempfile::TempDir, State, SessionId, ToolContext) {
-        let tmp = tempfile::tempdir().expect("create temp dir");
+        let (state, session_id, ctx, tmp) = session_ctx();
         let skill_dir = tmp.path().join(".agents").join("skills").join(name);
         std::fs::create_dir_all(&skill_dir).expect("create skill dir");
         let skill_file = skill_dir.join("SKILL.md");
@@ -286,7 +292,6 @@ mod tests {
         )
         .expect("write skill");
 
-        let (state, session_id, ctx) = session_ctx();
         {
             let mut guard = state.write();
             let session = guard.session_mut_or_create(&session_id);
@@ -305,14 +310,18 @@ mod tests {
     }
 
     /// Pushes a pinned successful `skill` ToolResult naming `skill_name`, so
-    /// the session reads as already having that skill loaded.
-    fn seed_loaded_skill(state: &State, session_id: &SessionId, skill_name: &str) {
+    /// the session reads as already having that skill loaded. `location` is
+    /// interpolated into the seeded XML; the idempotency check matches on the
+    /// skill name only.
+    fn seed_loaded_skill(state: &State, session_id: &SessionId, skill_name: &str, location: &Path) {
         use jinn_kernel::protocol::ToolResultStatus;
         use jinn_kernel::protocol::{ChatEntry, PinPosition};
 
         let mut guard = state.write();
         let session = guard.session_mut_or_create(session_id);
-        let seeded_xml = format!("<skill name=\"{skill_name}\" location=\"/tmp\">\nbody\n</skill>");
+        let location = location.display().to_string();
+        let seeded_xml =
+            format!("<skill name=\"{skill_name}\" location=\"{location}\">\nbody\n</skill>");
         let mut entry = ChatEntry::tool_result(
             "seeded_call_id",
             "skill",
@@ -356,7 +365,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_for_nonexistent_skill() {
         // Given a call for a skill that was never discovered for this session.
-        let (_state, _session_id, ctx) = session_ctx();
+        let (_state, _session_id, ctx, _dir) = session_ctx();
         let call = skill_call("nonexistent-skill-xyz");
 
         // When executing.
@@ -439,6 +448,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_empty_name() {
         // Given a call with empty name.
+        let dir = tempfile::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_1".into(),
             name: "skill".into(),
@@ -446,7 +456,7 @@ mod tests {
         };
 
         // When executing.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result indicates failure.
         assert!(!result.success);
@@ -457,6 +467,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_bad_json() {
         // Given a call with invalid JSON.
+        let dir = tempfile::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_1".into(),
             name: "skill".into(),
@@ -464,7 +475,7 @@ mod tests {
         };
 
         // When executing.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result indicates failure.
         assert!(!result.success);
@@ -475,7 +486,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_skill_body_in_tool_result() {
         // Given a skill file in the real skills dir (best-effort).
-        let (_state, _session_id, ctx) = session_ctx();
+        let (_state, _session_id, ctx, _dir) = session_ctx();
         let call = skill_call("phased-task-loop");
 
         // When executing.
@@ -510,8 +521,8 @@ mod tests {
     async fn execute_returns_already_loaded_for_duplicate_load() {
         // Given a session that already has a pinned ToolResult from the `skill` tool
         // for "phased-task-loop" (matches the body-in-ToolResult shape).
-        let (state, session_id, ctx) = session_ctx();
-        seed_loaded_skill(&state, &session_id, "phased-task-loop");
+        let (state, session_id, ctx, dir) = session_ctx();
+        seed_loaded_skill(&state, &session_id, "phased-task-loop", dir.path());
         let call = skill_call("phased-task-loop");
 
         // When executing.
@@ -538,8 +549,8 @@ mod tests {
     #[tokio::test]
     async fn execute_loads_different_skill_when_other_already_loaded() {
         // Given a session that already has a pinned ToolResult for "rust-programming".
-        let (state, session_id, ctx) = session_ctx();
-        seed_loaded_skill(&state, &session_id, "rust-programming");
+        let (state, session_id, ctx, dir) = session_ctx();
+        seed_loaded_skill(&state, &session_id, "rust-programming", dir.path());
         let call = skill_call("phased-task-loop");
 
         // When executing.
@@ -572,6 +583,7 @@ mod tests {
         use jinn_kernel::common::state::State;
 
         // Given a session whose filter withholds "web-coder".
+        let dir = tempfile::tempdir().expect("create temp dir");
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         {
@@ -587,23 +599,9 @@ mod tests {
         };
 
         let ctx = ToolContext {
-            cwd: PathBuf::from("/tmp"),
-            config: jinn_config::testutil::config_layer(""),
-            timeout: None,
             state: Some(state),
             session_id: Some(session_id),
-            app_paths: jinn_kernel::common::app_paths::AppPaths::default(),
-            bus: None,
-            max_output_lines: None,
-            max_output_bytes: None,
-
-            dispatched_at: jiff::Timestamp::now(),
-            mcp_coordinator: None,
-            interactive_term: None,
-            task_spawns: None,
-            session_store: None,
-            trouper_system: None,
-            model_name_resolver: None,
+            ..test_ctx(dir.path())
         };
 
         // When executing.
@@ -629,6 +627,7 @@ mod tests {
         use jinn_kernel::common::state::State;
 
         // Given a session permitted one skill, not this one.
+        let dir = tempfile::tempdir().expect("create temp dir");
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         {
@@ -648,22 +647,9 @@ mod tests {
         };
 
         let ctx = ToolContext {
-            cwd: PathBuf::from("/tmp"),
-            config: jinn_config::testutil::config_layer(""),
-            timeout: None,
             state: Some(state),
             session_id: Some(session_id),
-            app_paths: jinn_kernel::common::app_paths::AppPaths::default(),
-            bus: None,
-            max_output_lines: None,
-            max_output_bytes: None,
-            dispatched_at: jiff::Timestamp::now(),
-            mcp_coordinator: None,
-            interactive_term: None,
-            task_spawns: None,
-            session_store: None,
-            trouper_system: None,
-            model_name_resolver: None,
+            ..test_ctx(dir.path())
         };
 
         // When executing.

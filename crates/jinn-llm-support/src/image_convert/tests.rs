@@ -96,8 +96,9 @@ fn converter_is_unavailable_when_locator_finds_nothing() {
 #[rstest]
 fn converter_is_available_when_locator_resolves() {
     // Given a converter whose locator resolves a binary.
+    let dir = tempfile::tempdir().expect("temp dir");
     let converter = ImageMagickConverter::with_locator(&FakeLocator {
-        resolved: Some(PathBuf::from("/usr/bin/magick")),
+        resolved: Some(dir.path().join("bin").join("magick")),
     });
 
     // When querying availability.
@@ -115,7 +116,9 @@ fn convert_errors_when_binary_unavailable() {
     let converter = ImageMagickConverter::with_locator(&FakeLocator { resolved: None });
 
     // When converting a path.
-    let result = converter.convert_to_png(Path::new("/tmp/x.heic"));
+    let dir = tempfile::tempdir().expect("temp dir");
+    let input = dir.path().join("x.heic");
+    let result = converter.convert_to_png(&input);
 
     // Then it errors without spawning a process.
     assert!(result.is_err());
@@ -158,7 +161,9 @@ fn service_convert_returns_canned_bytes_when_backend_available() {
     }));
 
     // When converting.
-    let result = service.convert_to_png(Path::new("/tmp/x.heic"));
+    let dir = tempfile::tempdir().expect("temp dir");
+    let input = dir.path().join("x.heic");
+    let result = service.convert_to_png(&input);
 
     // Then the canned bytes are returned.
     assert_eq!(result.expect("convert"), png);
@@ -175,7 +180,9 @@ fn service_convert_errors_when_backend_fails() {
 
     // When converting.
     // Then it errors.
-    assert!(service.convert_to_png(Path::new("/tmp/x.heic")).is_err());
+    let dir = tempfile::tempdir().expect("temp dir");
+    let input = dir.path().join("x.heic");
+    assert!(service.convert_to_png(&input).is_err());
 }
 
 #[rstest]

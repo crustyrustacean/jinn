@@ -2,6 +2,7 @@
 
 #![allow(clippy::expect_used, reason = "test code")]
 
+use std::path::Path;
 use std::time::Duration;
 
 use jinn_common::app_paths::AppPaths;
@@ -26,15 +27,21 @@ fn call(arguments: &str) -> ToolCall {
     }
 }
 
-/// Builds a tool context wired to the harness bus and shared state.
-async fn ctx(harness: &TestHarness, state: &State, session_id: SessionId) -> ToolContext {
+/// Builds a tool context wired to the harness bus and shared state, rooted at
+/// `paths_root` — a directory the calling test owns for its whole run.
+async fn ctx(
+    harness: &TestHarness,
+    state: &State,
+    session_id: SessionId,
+    paths_root: &Path,
+) -> ToolContext {
     ToolContext {
-        cwd: std::path::PathBuf::from("/tmp"),
+        cwd: paths_root.to_path_buf(),
         config: jinn_config::testutil::config_layer(""),
         timeout: None,
         state: Some(state.clone()),
         session_id: Some(session_id),
-        app_paths: AppPaths::new_in(std::path::Path::new("/tmp")),
+        app_paths: AppPaths::new_in(paths_root),
         bus: Some(harness.bus()),
         max_output_lines: None,
         max_output_bytes: None,
@@ -57,16 +64,17 @@ fn fixture() -> (State, SessionId) {
     (state, user_id)
 }
 
-/// Writes an attendant file under a fresh temp dir; returns its path.
-fn attendant_file(name: &str, body: &str) -> String {
-    let dir = std::env::temp_dir().join(format!(
-        "jinn_attendant_test_{name}_{p}",
-        p = SessionId::new()
-    ));
-    std::fs::create_dir_all(&dir).expect("temp dir");
-    let path = dir.join("attendant.toml");
+/// Writes an attendant file under a fresh prefixed temp dir; returns the
+/// TempDir (its Drop removes the tree) and the file's path.
+fn attendant_file(name: &str, body: &str) -> (tempfile::TempDir, String) {
+    let dir = tempfile::Builder::new()
+        .prefix(&format!("jinn-load-attendant-{name}-"))
+        .tempdir()
+        .expect("temp dir");
+    let path = dir.path().join("attendant.toml");
     std::fs::write(&path, body).expect("write attendant file");
-    path.display().to_string()
+    let path = path.display().to_string();
+    (dir, path)
 }
 
 const ATTENDANT_BODY: &str = r#"
@@ -84,8 +92,9 @@ async fn load_attaches_a_workflow_attendant_and_stamps_the_marker() {
     let harness = TestHarness::new().await;
     let persists = harness.spawn_recorder::<PersistSession>().await;
     let (state, user_id) = fixture();
-    let path = attendant_file("stamp", ATTENDANT_BODY);
-    let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (_file_dir, path) = attendant_file("stamp", ATTENDANT_BODY);
+    let tool_ctx = ctx(&harness, &state, user_id.clone(), dir.path()).await;
 
     // When the tool loads the file.
     let result = execute(
@@ -123,8 +132,9 @@ async fn children_of_a_workflow_attendant_do_not_inherit_the_marker() {
     // Given an attendant loaded from a workflow-local file.
     let harness = TestHarness::new().await;
     let (state, user_id) = fixture();
-    let path = attendant_file("inherit", ATTENDANT_BODY);
-    let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (_file_dir, path) = attendant_file("inherit", ATTENDANT_BODY);
+    let tool_ctx = ctx(&harness, &state, user_id.clone(), dir.path()).await;
     let result = execute(
         call(&serde_json::json!({ "path": path }).to_string()),
         tool_ctx,
@@ -162,7 +172,8 @@ async fn missing_file_fails_naming_the_path() {
     // Given a session and a path that does not exist.
     let harness = TestHarness::new().await;
     let (state, user_id) = fixture();
-    let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
+    let dir = tempfile::tempdir().expect("temp dir");
+    let tool_ctx = ctx(&harness, &state, user_id.clone(), dir.path()).await;
 
     // When the tool loads the missing file.
     let result = execute(call(r#"{"path":"/definitely/not/here.toml"}"#), tool_ctx).await;
@@ -183,8 +194,9 @@ async fn malformed_attendant_file_fails_with_the_reason() {
     // Given a file that is not a valid attendant entry.
     let harness = TestHarness::new().await;
     let (state, user_id) = fixture();
-    let path = attendant_file("bad", "this is not = toml = ==");
-    let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (_file_dir, path) = attendant_file("bad", "this is not = toml = ==");
+    let tool_ctx = ctx(&harness, &state, user_id.clone(), dir.path()).await;
 
     // When the tool loads it.
     let result = execute(
@@ -210,8 +222,9 @@ async fn attendant_caller_cannot_load_an_attendant() {
     };
     let attendant_id = attendant.session_id().clone();
     state.write().session.insert(attendant);
-    let path = attendant_file("nested", ATTENDANT_BODY);
-    let tool_ctx = ctx(&harness, &state, attendant_id).await;
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (_file_dir, path) = attendant_file("nested", ATTENDANT_BODY);
+    let tool_ctx = ctx(&harness, &state, attendant_id, dir.path()).await;
 
     // When the attendant tries to load another attendant.
     let result = execute(
@@ -296,8 +309,9 @@ async fn personal_attendants_still_save_and_workflow_attendants_refuse() {
     };
     let personal_id = personal.session_id().clone();
     state.write().session.insert(personal);
-    let path = attendant_file("savepath", ATTENDANT_BODY);
-    let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (_file_dir, path) = attendant_file("savepath", ATTENDANT_BODY);
+    let tool_ctx = ctx(&harness, &state, user_id.clone(), dir.path()).await;
     let result = execute(
         call(&serde_json::json!({ "path": path }).to_string()),
         tool_ctx,
@@ -345,12 +359,13 @@ async fn set_name_relabels_the_instance_and_leaves_the_seed_name_alone() {
     // Given a user session and a seed file named "implementer".
     let harness = TestHarness::new().await;
     let (state, user_id) = fixture();
-    let path = attendant_file("setname", ATTENDANT_BODY);
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (_file_dir, path) = attendant_file("setname", ATTENDANT_BODY);
 
     // When the tool loads it with set_name = "implementor-002".
     let result = execute(
         call(&serde_json::json!({ "path": path, "set_name": "implementor-002" }).to_string()),
-        ctx(&harness, &state, user_id.clone()).await,
+        ctx(&harness, &state, user_id.clone(), dir.path()).await,
     )
     .await;
 
@@ -383,13 +398,14 @@ async fn loading_the_same_seed_twice_with_different_set_names_yields_two_named_a
     // Given a user session and one shared seed file.
     let harness = TestHarness::new().await;
     let (state, user_id) = fixture();
-    let path = attendant_file("twice", ATTENDANT_BODY);
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (_file_dir, path) = attendant_file("twice", ATTENDANT_BODY);
 
     // When it is loaded twice under two different labels.
     for label in ["implementor-001", "implementor-002"] {
         let result = execute(
             call(&serde_json::json!({ "path": path.clone(), "set_name": label }).to_string()),
-            ctx(&harness, &state, user_id.clone()).await,
+            ctx(&harness, &state, user_id.clone(), dir.path()).await,
         )
         .await;
         assert!(result.success, "load must succeed: {}", result.content);
@@ -414,8 +430,9 @@ async fn without_set_name_the_seed_files_name_is_used() {
     // Given a user session and a seed file named "implementer".
     let harness = TestHarness::new().await;
     let (state, user_id) = fixture();
-    let path = attendant_file("noname", ATTENDANT_BODY);
-    let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (_file_dir, path) = attendant_file("noname", ATTENDANT_BODY);
+    let tool_ctx = ctx(&harness, &state, user_id.clone(), dir.path()).await;
 
     // When the tool loads it with no set_name argument.
     let result = execute(

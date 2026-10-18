@@ -544,13 +544,15 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+    use std::path::Path;
 
-    fn test_ctx() -> ToolContext {
+    /// A context whose cwd is a real, existing scratch directory owned by the
+    /// calling test. Windows CreateProcess rejects a current_dir that does not
+    /// exist, so a hardcoded fallback directory would fail the spawn before
+    /// bash ever runs.
+    fn test_ctx(cwd: &Path) -> ToolContext {
         ToolContext {
-            // A real scratch directory: Windows CreateProcess rejects a
-            // current_dir that does not exist, so a hardcoded "/tmp" fails
-            // the spawn before bash ever runs.
-            cwd: std::env::temp_dir(),
+            cwd: cwd.to_owned(),
             config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state: None,
@@ -574,6 +576,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_stdout() {
         // Given a bash tool call that echoes text.
+        let dir = tempfile::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_1".into(),
             name: "bash".into(),
@@ -584,7 +587,7 @@ mod tests {
         };
 
         // When executing the bash tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result contains the echoed output.
         assert_eq!(result.tool_call_id.as_str(), "call_1");
@@ -596,6 +599,7 @@ mod tests {
     #[tokio::test]
     async fn execute_runs_through_bash_not_fish_or_dash() {
         // Given a bash tool call using brace expansion (rejected by fish and dash).
+        let dir = tempfile::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_bash".into(),
             name: "bash".into(),
@@ -606,7 +610,7 @@ mod tests {
         };
 
         // When executing the bash tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the output shows bash's brace expansion (1 2 3),
         // proving the executor is bash, not fish or dash.
@@ -618,6 +622,7 @@ mod tests {
     #[tokio::test]
     async fn execute_captures_stderr() {
         // Given a bash tool call that writes to stderr.
+        let dir = tempfile::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: ToolCallId::from("call_2"),
             name: "bash".to_owned(),
@@ -628,7 +633,7 @@ mod tests {
         };
 
         // When executing the bash tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result contains the stderr output.
         assert!(result.success);
@@ -639,6 +644,7 @@ mod tests {
     #[tokio::test]
     async fn execute_reports_nonzero_exit() {
         // Given a bash tool call that exits with code 1.
+        let dir = tempfile::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: ToolCallId::from("call_3"),
             name: "bash".to_owned(),
@@ -649,7 +655,7 @@ mod tests {
         };
 
         // When executing the bash tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result indicates failure with exit code.
         assert!(!result.success);
@@ -718,6 +724,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_empty_command() {
         // Given a bash tool call with an empty command.
+        let dir = tempfile::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: ToolCallId::from("call_5"),
             name: "bash".to_owned(),
@@ -728,7 +735,7 @@ mod tests {
         };
 
         // When executing the bash tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result indicates failure.
         assert!(!result.success);
@@ -739,6 +746,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_bad_json() {
         // Given a bash tool call with invalid JSON.
+        let dir = tempfile::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_6".into(),
             name: "bash".into(),
@@ -746,7 +754,7 @@ mod tests {
         };
 
         // When executing the bash tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result indicates failure.
         assert!(!result.success);
@@ -758,6 +766,7 @@ mod tests {
     #[tokio::test]
     async fn execute_child_has_no_controlling_tty() {
         // Given a bash tool call that tries to open the controlling tty.
+        let dir = tempfile::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_tty".into(),
             name: "bash".into(),
@@ -768,7 +777,7 @@ mod tests {
         };
 
         // When executing the bash tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the child failed to open /dev/tty: it has no controlling
         // terminal, so tty-writers cannot print over the TUI.
@@ -807,7 +816,8 @@ mod tests {
     #[tokio::test]
     async fn execute_no_timeout_when_default_is_none_and_no_per_call() {
         // Given no timeout in the context.
-        let ctx = test_ctx(); // timeout: None
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let ctx = test_ctx(dir.path()); // timeout: None
         let call = ToolCall {
             id: "call_no_to".into(),
             name: "bash".to_owned(),
@@ -892,7 +902,8 @@ mod tests {
         // Given a continuously-emitting command under a tight per-call timeout.
         const ITERATIONS: u32 = 6;
         const TIGHT: Duration = Duration::from_millis(200);
-        let ctx = test_ctx();
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let ctx = test_ctx(dir.path());
 
         // When repeatedly dropping the bash future mid-stream via timeout.
         for i in 0..ITERATIONS {

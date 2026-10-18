@@ -1005,12 +1005,18 @@ fn saving_after_a_skill_freeze_records_the_skill_filter() {
 
 /// A discovered skill named `name`, as the discovery scan would leave it.
 fn skill(name: &str) -> jinn_skills_msg::Skill {
+    // The paths are fixture data nothing reads back from disk: the temp
+    // root only keeps test paths off absolute literals (one root shared by
+    // both fields, as discovery produces), so it is deleted when this helper
+    // returns rather than leaked.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (file_path, base_dir) = (dir.path().join("skill/SKILL.md"), dir.path().join("skill"));
     jinn_skills_msg::Skill {
         name: name.to_owned(),
         description: format!("{name} description"),
         body: String::new(),
-        file_path: std::path::PathBuf::from("/tmp/skill/SKILL.md"),
-        base_dir: std::path::PathBuf::from("/tmp/skill"),
+        file_path,
+        base_dir,
         source: jinn_skills_msg::SkillSource::Global,
     }
 }

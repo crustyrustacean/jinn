@@ -1107,14 +1107,23 @@ mod tests {
     #[rstest::rstest]
     fn render_multiple_named_params() {
         // Given a template with two named placeholders and two arguments.
+        let dir = tempfile::tempdir().expect("temp dir");
+        // Forward-slash form: the value must stay shell-quote-free on every
+        // platform so the assertion isolates positional substitution.
+        let workdir = dir
+            .path()
+            .join("workdir")
+            .to_string_lossy()
+            .replace('\\', "/");
+        let expected = format!("script.sh my-feature {workdir}");
         let tmpl = CommandTemplate::parse("script.sh <branch> <target>");
-        let args = ["my-feature".to_owned(), "/tmp/workdir".to_owned()];
+        let args = ["my-feature".to_owned(), workdir];
 
         // When rendering it.
         let rendered = tmpl.render(&args);
 
         // Then each named placeholder takes the argument in its own position.
-        assert_eq!(rendered, "script.sh my-feature /tmp/workdir");
+        assert_eq!(rendered, expected);
     }
 
     #[rstest::rstest]
@@ -1898,14 +1907,21 @@ mod tests {
 
     #[rstest::rstest]
     fn shell_quote_path_with_slash_is_safe() {
-        // Given a filesystem path.
-        let value = "/tmp/workdir";
+        // Given a filesystem path in forward-slash form (the separator the
+        // test names, on every platform).
+        let dir = tempfile::tempdir().expect("temp dir");
+        let value = dir
+            .path()
+            .join("workdir")
+            .to_string_lossy()
+            .replace('\\', "/");
+        let expected = value.clone();
 
         // When shell-quoting it.
-        let quoted = shell_quote(value);
+        let quoted = shell_quote(&value);
 
         // Then forward slashes are not shell-special, so it passes through.
-        assert_eq!(quoted, "/tmp/workdir");
+        assert_eq!(quoted, expected);
     }
 
     #[rstest::rstest]

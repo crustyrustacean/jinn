@@ -181,12 +181,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         let target = dir.path().join("elsewhere").join("out.html");
 
-        // When resolving it against a different cwd.
-        let path = resolve_export_path(
-            target.to_str().expect("utf-8 path"),
-            Path::new("/some/other/cwd"),
-        )
-        .expect("resolve");
+        // When resolving it against a different tempdir cwd — unused, since
+        // the absolute destination wins.
+        let other = tempfile::tempdir().expect("temp dir");
+        let path = resolve_export_path(target.to_str().expect("utf-8 path"), other.path())
+            .expect("resolve");
 
         // Then it is used exactly as given.
         assert_eq!(path, target);
@@ -208,9 +207,12 @@ mod tests {
     fn tilde_argument_expands_to_home() {
         // Given a tilde-prefixed destination.
         let home = home_dir().expect("home dir is set in the test env");
+        // The cwd argument is unused for a tilde destination; it is a tempdir
+        // root so no absolute path literal appears in test code.
+        let dir = tempfile::tempdir().expect("temp dir");
 
         // When resolving it.
-        let path = resolve_export_path("~/exports/out.md", Path::new("/tmp")).expect("resolve");
+        let path = resolve_export_path("~/exports/out.md", dir.path()).expect("resolve");
 
         // Then it is rooted at the home directory.
         assert_eq!(path, home.join("exports").join("out.md"));

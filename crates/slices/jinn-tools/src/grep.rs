@@ -224,11 +224,13 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
-    fn test_ctx() -> ToolContext {
+    /// A context whose cwd is a real, existing scratch directory owned by the
+    /// calling test.
+    fn test_ctx(cwd: &Path) -> ToolContext {
         ToolContext {
-            cwd: PathBuf::from("/tmp"),
+            cwd: cwd.to_owned(),
             config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state: None,
@@ -421,6 +423,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_empty_pattern() {
         // Given a grep tool call with an empty pattern.
+        let dir = tempfile::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_empty".into(),
             name: "grep".into(),
@@ -428,7 +431,7 @@ mod tests {
         };
 
         // When executing the grep tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result indicates failure.
         assert!(!result.success);
@@ -439,6 +442,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_bad_json() {
         // Given a grep tool call with invalid JSON.
+        let dir = tempfile::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_bad".into(),
             name: "grep".to_owned(),
@@ -446,7 +450,7 @@ mod tests {
         };
 
         // When executing the grep tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result indicates failure.
         assert!(!result.success);

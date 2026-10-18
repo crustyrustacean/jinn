@@ -85,11 +85,15 @@ mod tests {
     #[rstest::rstest]
     fn content_with_body_and_location_returns_name_only() {
         // Given a skill content with a long body and location path.
-        let content = "<skill name=\"rust-programming\" location=\"/home/u/.agents/skills/.../SKILL.md\">\n\
-             lots\nof\nbody\n</skill>";
+        let dir = tempfile::tempdir().expect("temp dir");
+        let location = dir.path().join("u/.agents/skills/.../SKILL.md");
+        let content = format!(
+            "<skill name=\"rust-programming\" location=\"{}\">\nlots\nof\nbody\n</skill>",
+            location.display()
+        );
 
         // When parsing.
-        let name = parse_loaded_skill_name(content);
+        let name = parse_loaded_skill_name(&content);
 
         // Then only the name is returned (not the body or location).
         assert_eq!(name, Some("rust-programming"));

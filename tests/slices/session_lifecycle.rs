@@ -76,22 +76,30 @@ fn registered_argument_hook_dispatches_through_dynamic_intent() {
 
 // ── The project picker's `<c-enter>` opens this picker ───────────────────
 
-/// The configuration both cross-slice tests run against: one project to
-/// create a session at, and one lifecycle to create it with.
-const CROSS_SLICE_DOCUMENT: &str = "\
+/// The project directory both cross-slice tests create a session at, rendered
+/// into the fixture document the pickers activate against. The directory is
+/// derived per-test from the test's own tempdir root.
+fn cross_slice_document(root: &std::path::Path) -> String {
+    format!(
+        "\
 [[project.entry]]
-path = \"/tmp/jinn-cross-slice\"
+path = \"{}\"
 
 [[session_lifecycle.script]]
 name = \"dev\"
 setup_command = \"/bin/true\"
-";
+",
+        root.join("jinn-cross-slice").display()
+    )
+}
 
 /// The project picker open, both pickers activated, and a scoped app state.
 ///
 /// Both slices activate over the *same* registries — the two openers only meet
 /// in production because they share one route table and one cell registry.
 struct CrossSlice {
+    /// Backs the fixture project path; alive for the whole test.
+    _dir: tempfile::TempDir,
     slices: jinn_slices::Slices,
     routes: jinn_slices::KeyRoutes,
     config: jinn_config::ConfigLayer,
@@ -102,6 +110,7 @@ impl CrossSlice {
     /// Activates the project and lifecycle pickers side by side, with the
     /// project picker already open and a row highlighted.
     async fn new() -> Self {
+        let dir = tempfile::tempdir().expect("temp dir");
         let slices = jinn_slices::Slices::new();
         // Production boot seeds every slice cell here, before any activation.
         jinn_cell_catalog::register_all_cells(&slices);
@@ -109,7 +118,7 @@ impl CrossSlice {
         let overlay_views = jinn_slices::OverlayViews::new();
         let routes = jinn_slices::KeyRoutes::new();
         let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
-        let config = jinn_config::testutil::config_layer(CROSS_SLICE_DOCUMENT);
+        let config = jinn_config::testutil::config_layer(&cross_slice_document(dir.path()));
         // `default_with_scope_focus`, not `default`: a scope push is a no-op
         // without the shared scope cell, and `<c-enter>` only acts on a
         // highlighted row.
@@ -127,6 +136,7 @@ impl CrossSlice {
             jinn_session_lifecycle::activate_picker(&mut host);
         }
         let mut this = Self {
+            _dir: dir,
             slices,
             routes,
             config,

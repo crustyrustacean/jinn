@@ -112,7 +112,12 @@ mod tests {
         // via libc. `ps` cannot be used here: procps has `sid`, BSD ps has
         // no working equivalent (`sess` reports 0), and `getsid(2)` needs
         // neither.
+        // SAFETY: `getsid` reads a pid field and cannot fault; a dead child
+        // pid yields ESRCH, which the mismatch assertion below catches.
         let own_sid = unsafe { libc::getsid(0) };
+        // SAFETY: same as above; the child pid is freshly spawned and
+        // reaped immediately after, and ESRCH on a raced exit is harmless
+        // (the mismatch assertion reports it).
         let child_sid = unsafe { libc::getsid(child.id() as libc::pid_t) };
         let _ = child.kill();
         let _ = child.wait();

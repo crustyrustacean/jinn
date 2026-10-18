@@ -251,14 +251,16 @@ mod tests {
     fn estimate_entry_tokens_sums_name_and_content_for_tool_call() {
         // Given a ToolCall entry.
         let estimator = ByteLenEstimator;
-        let entry = ChatEntry::tool_call("id-1", "read_file", "{\"path\": \"/tmp\"}");
+        let dir = tempfile::tempdir().expect("temp dir");
+        let arguments = serde_json::json!({ "path": dir.path().join("tmp") }).to_string();
+        let entry = ChatEntry::tool_call("id-1", "read_file", arguments.clone());
 
         // When estimating tokens.
         let tokens = estimate_entry_tokens(&estimator, &entry);
 
         // Then the estimate is the SUM of name + arguments lengths.
         let name_len = estimator.estimate("read_file");
-        let args_len = estimator.estimate("{\"path\": \"/tmp\"}");
+        let args_len = estimator.estimate(&arguments);
         assert_eq!(
             tokens,
             name_len + args_len,

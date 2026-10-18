@@ -52,6 +52,9 @@ jinn-kernel = { workspace = true }
 jinn-session-state = { workspace = true }
 # The same fake store's `SessionStore` impl names the search-message types.
 jinn-session-store-msg = { workspace = true }
+# The project-narrowing tests root fixture cwds in a temp directory rather
+# than spelling absolute machine paths.
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

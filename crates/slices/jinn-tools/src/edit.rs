@@ -360,9 +360,11 @@ mod tests {
     use jinn_core_types::tool_types::ToolCall;
     use std::path::PathBuf;
 
-    fn test_ctx() -> ToolContext {
+    /// A context whose cwd is a real, existing scratch directory owned by the
+    /// calling test.
+    fn test_ctx(cwd: &Path) -> ToolContext {
         ToolContext {
-            cwd: PathBuf::from("/tmp"),
+            cwd: cwd.to_owned(),
             config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state: None,
@@ -440,7 +442,7 @@ mod tests {
         // When replacing a unique string.
         let result = execute(
             make_call(&file_path.to_string_lossy(), "world", "rust"),
-            test_ctx(),
+            test_ctx(dir.path()),
         )
         .await;
 
@@ -463,7 +465,7 @@ mod tests {
         // When replacing a missing string.
         let result = execute(
             make_call(&file_path.to_string_lossy(), "missing", "x"),
-            test_ctx(),
+            test_ctx(dir.path()),
         )
         .await;
 
@@ -484,7 +486,7 @@ mod tests {
         // When replacing without replace_all.
         let result = execute(
             make_call(&file_path.to_string_lossy(), "x", "y"),
-            test_ctx(),
+            test_ctx(dir.path()),
         )
         .await;
 
@@ -514,7 +516,7 @@ mod tests {
             })
             .to_string(),
         };
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then every occurrence is replaced.
         assert!(result.success, "expected success, got: {}", result.content);
@@ -535,7 +537,7 @@ mod tests {
         // When replacing the middle line.
         let result = execute(
             make_call(&file_path.to_string_lossy(), "beta", "BETA"),
-            test_ctx(),
+            test_ctx(dir.path()),
         )
         .await;
 
@@ -568,7 +570,7 @@ mod tests {
             })
             .to_string(),
         };
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the edit is applied.
         assert!(result.success, "expected success, got: {}", result.content);
@@ -589,7 +591,7 @@ mod tests {
         // When old_string equals new_string.
         let result = execute(
             make_call(&file_path.to_string_lossy(), "world", "world"),
-            test_ctx(),
+            test_ctx(dir.path()),
         )
         .await;
 
@@ -613,7 +615,7 @@ mod tests {
         // When replacing a line.
         let result = execute(
             make_call(&file_path.to_string_lossy(), "line2", "modified"),
-            test_ctx(),
+            test_ctx(dir.path()),
         )
         .await;
 
@@ -636,7 +638,7 @@ mod tests {
         // When replacing a word.
         let result = execute(
             make_call(&file_path.to_string_lossy(), "world", "rust"),
-            test_ctx(),
+            test_ctx(dir.path()),
         )
         .await;
 
@@ -666,7 +668,7 @@ mod tests {
             })
             .to_string(),
         };
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the error names the new parameters.
         assert!(!result.success);
@@ -687,7 +689,7 @@ mod tests {
         let degenerate: String = vec![",".to_owned(); 50].join("\n");
         let result = execute(
             make_call(&file_path.to_string_lossy(), "hello", &degenerate),
-            test_ctx(),
+            test_ctx(dir.path()),
         )
         .await;
 
@@ -711,7 +713,7 @@ mod tests {
         // When old_string includes a read-style line-number prefix.
         let result = execute(
             make_call(&file_path.to_string_lossy(), "1\tfn main() {}", "x"),
-            test_ctx(),
+            test_ctx(dir.path()),
         )
         .await;
 
@@ -724,6 +726,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_bad_json() {
         // Given an edit call with invalid JSON.
+        let dir = tempfile::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_bad".into(),
             name: "edit".to_owned(),
@@ -731,7 +734,7 @@ mod tests {
         };
 
         // When executing the edit tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result indicates failure.
         assert!(!result.success);
@@ -772,8 +775,8 @@ mod tests {
 
         // When both edits run concurrently on the same path.
         let (first, second) = tokio::join!(
-            execute(make_call(&path_str, "alpha", "ALPHA"), test_ctx()),
-            execute(make_call(&path_str, "beta", "BETA"), test_ctx()),
+            execute(make_call(&path_str, "alpha", "ALPHA"), test_ctx(dir.path())),
+            execute(make_call(&path_str, "beta", "BETA"), test_ctx(dir.path())),
         );
 
         // Then both edits succeed.
@@ -800,8 +803,11 @@ mod tests {
 
         // When both are edited concurrently.
         let (rust_result, text_result) = tokio::join!(
-            execute(make_call(&rust_str, "let x = 1;", "let y = 2;"), test_ctx()),
-            execute(make_call(&text_str, "x = 1", "x = 2"), test_ctx()),
+            execute(
+                make_call(&rust_str, "let x = 1;", "let y = 2;"),
+                test_ctx(dir.path())
+            ),
+            execute(make_call(&text_str, "x = 1", "x = 2"), test_ctx(dir.path())),
         );
 
         // Then neither edit hits a shared temp path — both succeed.
@@ -838,10 +844,13 @@ mod tests {
 
         // When two concurrent edits both target that anchor.
         let (first, second) = tokio::join!(
-            execute(make_call(&path_str, "only anchor", "changed"), test_ctx()),
+            execute(
+                make_call(&path_str, "only anchor", "changed"),
+                test_ctx(dir.path())
+            ),
             execute(
                 make_call(&path_str, "only anchor", "also changed"),
-                test_ctx()
+                test_ctx(dir.path())
             ),
         );
 
@@ -887,8 +896,11 @@ mod tests {
 
         // When the edit and the write run concurrently on the same path.
         let (edit_result, write_result) = tokio::join!(
-            execute(make_call(&path_str, "anchor", "ANCHOR"), test_ctx()),
-            { super::super::write::execute(write_call, test_ctx()) }
+            execute(
+                make_call(&path_str, "anchor", "ANCHOR"),
+                test_ctx(dir.path())
+            ),
+            { super::super::write::execute(write_call, test_ctx(dir.path())) }
         );
 
         // Then both tools report success.

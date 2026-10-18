@@ -3,6 +3,7 @@
 
 #![allow(clippy::expect_used, reason = "test code")]
 
+use std::path::Path;
 use std::time::Duration;
 
 use jinn_chat_input_msg::EnqueueUserMessage;
@@ -28,15 +29,21 @@ fn call(arguments: &str) -> ToolCall {
     }
 }
 
-/// Builds a tool context wired to the harness bus and shared state.
-async fn ctx(harness: &TestHarness, state: &State, session_id: SessionId) -> ToolContext {
+/// Builds a tool context wired to the harness bus and shared state, rooted at
+/// `paths_root` — a directory the calling test owns for its whole run.
+async fn ctx(
+    harness: &TestHarness,
+    state: &State,
+    session_id: SessionId,
+    paths_root: &Path,
+) -> ToolContext {
     ToolContext {
-        cwd: std::path::PathBuf::from("/tmp"),
+        cwd: paths_root.to_path_buf(),
         config: jinn_config::testutil::config_layer(""),
         timeout: None,
         state: Some(state.clone()),
         session_id: Some(session_id),
-        app_paths: AppPaths::new_in(std::path::Path::new("/tmp")),
+        app_paths: AppPaths::new_in(paths_root),
         bus: Some(harness.bus()),
         max_output_lines: None,
         max_output_bytes: None,
@@ -102,9 +109,10 @@ async fn idle_attendant_starts_a_run_seeded_with_the_message() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, attendant_id) = fixture();
+    let dir = tempfile::tempdir().expect("temp dir");
     take_out_of_prep(&state, &attendant_id);
     set_template(&state, &attendant_id, "Review the diff. <prior report>");
-    let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
+    let tool_ctx = ctx(&harness, &state, user_id.clone(), dir.path()).await;
 
     // When a message is sent to the attendant.
     let result = execute(
@@ -153,9 +161,10 @@ async fn idle_attendant_with_empty_template_dispatches_the_message_alone() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, attendant_id) = fixture();
+    let dir = tempfile::tempdir().expect("temp dir");
     take_out_of_prep(&state, &attendant_id);
     set_template(&state, &attendant_id, "");
-    let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
+    let tool_ctx = ctx(&harness, &state, user_id.clone(), dir.path()).await;
 
     // When a message is sent.
     let result = execute(
@@ -187,10 +196,11 @@ async fn busy_attendant_queues_and_never_cancels() {
         .spawn_recorder::<jinn_inference_msg::CancelTurn>()
         .await;
     let (state, user_id, attendant_id) = fixture();
+    let dir = tempfile::tempdir().expect("temp dir");
     take_out_of_prep(&state, &attendant_id);
     set_template(&state, &attendant_id, "Review the diff.");
     make_busy(&state, &attendant_id);
-    let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
+    let tool_ctx = ctx(&harness, &state, user_id.clone(), dir.path()).await;
 
     // When a message is sent to the busy attendant.
     let result = execute(
@@ -225,10 +235,11 @@ async fn plain_session_receives_a_context_carrying_entry_from_the_caller() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
+    let dir = tempfile::tempdir().expect("temp dir");
     let caller = ChatSessionState::new();
     let caller_id = caller.session_id().clone();
     state.write().session.insert(caller);
-    let tool_ctx = ctx(&harness, &state, caller_id.clone()).await;
+    let tool_ctx = ctx(&harness, &state, caller_id.clone(), dir.path()).await;
 
     // When a message is sent to it.
     let result = execute(
@@ -272,11 +283,12 @@ async fn plain_delivery_carries_a_titled_caller_in_the_prefix() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
+    let dir = tempfile::tempdir().expect("temp dir");
     let mut caller = ChatSessionState::new();
     caller.set_title("Workflow Run 42".to_owned());
     let caller_id = caller.session_id().clone();
     state.write().session.insert(caller);
-    let tool_ctx = ctx(&harness, &state, caller_id.clone()).await;
+    let tool_ctx = ctx(&harness, &state, caller_id.clone(), dir.path()).await;
 
     // When a message is sent.
     let result = execute(
@@ -306,11 +318,12 @@ async fn plain_delivery_excludes_an_empty_caller_title() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
+    let dir = tempfile::tempdir().expect("temp dir");
     let mut caller = ChatSessionState::new();
     caller.set_title(String::new());
     let caller_id = caller.session_id().clone();
     state.write().session.insert(caller);
-    let tool_ctx = ctx(&harness, &state, caller_id.clone()).await;
+    let tool_ctx = ctx(&harness, &state, caller_id.clone(), dir.path()).await;
 
     // When a message is sent.
     let result = execute(
@@ -343,11 +356,12 @@ async fn plain_delivery_excludes_a_relayed_caller_title() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
+    let dir = tempfile::tempdir().expect("temp dir");
     let mut caller = ChatSessionState::new();
     caller.set_title("[Message from session dead-beef]: stage 1".to_owned());
     let caller_id = caller.session_id().clone();
     state.write().session.insert(caller);
-    let tool_ctx = ctx(&harness, &state, caller_id.clone()).await;
+    let tool_ctx = ctx(&harness, &state, caller_id.clone(), dir.path()).await;
 
     // When a message is sent onward.
     let result = execute(
@@ -380,11 +394,12 @@ async fn plain_delivery_truncates_a_long_caller_title_with_an_ellipsis() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
+    let dir = tempfile::tempdir().expect("temp dir");
     let mut caller = ChatSessionState::new();
     caller.set_title("t".repeat(40));
     let caller_id = caller.session_id().clone();
     state.write().session.insert(caller);
-    let tool_ctx = ctx(&harness, &state, caller_id.clone()).await;
+    let tool_ctx = ctx(&harness, &state, caller_id.clone(), dir.path()).await;
 
     // When a message is sent.
     let result = execute(
@@ -418,11 +433,12 @@ async fn plain_delivery_truncation_counts_graphemes_not_bytes() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
+    let dir = tempfile::tempdir().expect("temp dir");
     let mut caller = ChatSessionState::new();
     caller.set_title("👨‍👩‍👧‍👦".repeat(34));
     let caller_id = caller.session_id().clone();
     state.write().session.insert(caller);
-    let tool_ctx = ctx(&harness, &state, caller_id.clone()).await;
+    let tool_ctx = ctx(&harness, &state, caller_id.clone(), dir.path()).await;
 
     // When a message is sent.
     let result = execute(
@@ -454,11 +470,12 @@ async fn plain_delivery_keeps_a_boundary_length_title_whole() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
+    let dir = tempfile::tempdir().expect("temp dir");
     let mut caller = ChatSessionState::new();
     caller.set_title("y".repeat(32));
     let caller_id = caller.session_id().clone();
     state.write().session.insert(caller);
-    let tool_ctx = ctx(&harness, &state, caller_id.clone()).await;
+    let tool_ctx = ctx(&harness, &state, caller_id.clone(), dir.path()).await;
 
     // When a message is sent.
     let result = execute(
@@ -491,7 +508,8 @@ async fn unknown_session_id_fails_naming_the_target() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
-    let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
+    let dir = tempfile::tempdir().expect("temp dir");
+    let tool_ctx = ctx(&harness, &state, user_id.clone(), dir.path()).await;
     let missing = SessionId::new();
 
     // When a message is sent to the unknown id.
@@ -517,7 +535,8 @@ async fn malformed_session_id_fails_without_publishing() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
-    let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
+    let dir = tempfile::tempdir().expect("temp dir");
+    let tool_ctx = ctx(&harness, &state, user_id.clone(), dir.path()).await;
 
     // When the tool runs with the malformed id.
     let result = execute(
@@ -540,7 +559,8 @@ async fn prep_mode_attendant_refuses_delivery() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, attendant_id) = fixture();
-    let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
+    let dir = tempfile::tempdir().expect("temp dir");
+    let tool_ctx = ctx(&harness, &state, user_id.clone(), dir.path()).await;
     assert!(
         state
             .read()
@@ -575,13 +595,14 @@ async fn reset_behavior_attendant_persists_the_exclusions() {
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let persists = harness.spawn_recorder::<PersistSession>().await;
     let (state, user_id, attendant_id) = fixture();
+    let dir = tempfile::tempdir().expect("temp dir");
     {
         let mut guard = state.write();
         let attendant = guard.session.get_mut(&attendant_id).expect("attendant");
         attendant.set_attendant_is_prepping(false);
         attendant.push_entry(ChatEntry::user("old context"));
     }
-    let tool_ctx = ctx(&harness, &state, user_id.clone()).await;
+    let tool_ctx = ctx(&harness, &state, user_id.clone(), dir.path()).await;
 
     // When a message is delivered.
     let result = execute(

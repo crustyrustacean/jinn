@@ -278,8 +278,11 @@ mod tests {
     #[rstest::rstest]
     fn open_seeds_input_from_session_cwd_and_pushes_scope() {
         // Given a fake state whose session cwd is an absolute path.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let cwd = dir.path().join("some-project");
+        let expected = cwd.display().to_string();
         let mut state = FakeState {
-            cwd: std::path::PathBuf::from("/tmp/some-project"),
+            cwd,
             ..FakeState::default()
         };
         let (slices, cell) = cell();
@@ -288,10 +291,11 @@ mod tests {
         // When the opener action runs.
         let result = open_cwd_input(cx.state, &cell);
 
-        // Then the cell is seeded with the cwd (no tilde: not under $HOME in
-        // the test env) and the result pushes the popup scope.
-        assert_eq!(cell.read().text.input, "/tmp/some-project");
-        assert_eq!(cell.read().text.cursor_pos, "/tmp/some-project".len());
+        // Then the cell is seeded with the cwd (no tilde: the tempdir root is
+        // not under $HOME in the test env) and the result pushes the popup
+        // scope.
+        assert_eq!(cell.read().text.input, expected);
+        assert_eq!(cell.read().text.cursor_pos, expected.len());
         assert!(matches!(result.scope_signal, Some(ScopeSignal::Push(_))));
     }
 
@@ -355,8 +359,9 @@ mod tests {
     #[rstest::rstest]
     fn confirm_nonexistent_path_stays_open_unchanged() {
         // Given a popup seeded with a path that does not exist.
+        let dir = tempfile::tempdir().expect("temp dir");
         let mut state = FakeState {
-            cwd: std::path::PathBuf::from("/tmp"),
+            cwd: dir.path().to_path_buf(),
             ..FakeState::default()
         };
         let (slices, cell) = cell();
@@ -376,8 +381,9 @@ mod tests {
     #[rstest::rstest]
     fn confirm_empty_input_is_noop() {
         // Given a popup with empty input.
+        let dir = tempfile::tempdir().expect("temp dir");
         let mut state = FakeState {
-            cwd: std::path::PathBuf::from("/tmp"),
+            cwd: dir.path().to_path_buf(),
             ..FakeState::default()
         };
         let (slices, cell) = cell();

@@ -133,8 +133,10 @@ fn rows_bind_confirm_and_leave_in_own_scope_and_open_in_picker_scope() {
 #[rstest::rstest]
 fn open_seeds_input_from_session_cwd_and_pushes_scope() {
     // Given a fake state whose session cwd is an absolute path.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let cwd = dir.path().join("some-project");
     let mut state = FakeState::default();
-    state.cwd = std::path::PathBuf::from("/tmp/some-project");
+    state.cwd = cwd.clone();
     let (slices, cell) = cell();
     let cx = ctx(&mut state, &slices);
 
@@ -143,8 +145,9 @@ fn open_seeds_input_from_session_cwd_and_pushes_scope() {
 
     // Then the cell is seeded with the cwd and the result pushes the
     // popup scope.
-    assert_eq!(cell.read().text.input, "/tmp/some-project");
-    assert_eq!(cell.read().text.cursor_pos, "/tmp/some-project".len());
+    let expected = cwd.to_string_lossy().to_string();
+    assert_eq!(cell.read().text.input, expected);
+    assert_eq!(cell.read().text.cursor_pos, expected.len());
     assert!(matches!(result.scope_signal, Some(ScopeSignal::Push(_))));
 }
 
@@ -226,8 +229,10 @@ fn confirm_invalid_dir_stays_open_without_publishing() {
 #[rstest::rstest]
 fn leave_clears_the_cell() {
     // Given a popup with text.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let seeded = dir.path().join("some-project");
     let (_slices, cell) = cell();
-    cell.update(|s| s.text.set("/tmp/some-project".to_owned()));
+    cell.update(|s| s.text.set(seeded.to_string_lossy().to_string()));
 
     // When leaving.
     leave_project_add(&cell);

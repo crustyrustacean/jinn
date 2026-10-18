@@ -126,11 +126,13 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use std::path::PathBuf;
+    use std::path::Path;
 
-    fn test_ctx() -> ToolContext {
+    /// A context whose cwd is a real, existing scratch directory owned by the
+    /// calling test.
+    fn test_ctx(cwd: &Path) -> ToolContext {
         ToolContext {
-            cwd: PathBuf::from("/tmp"),
+            cwd: cwd.to_owned(),
             config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state: None,
@@ -207,7 +209,7 @@ mod tests {
         };
 
         // When executing the save_plan tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the file on disk contains the written content.
         assert!(result.success, "expected success, got: {}", result.content);
@@ -233,7 +235,7 @@ mod tests {
         };
 
         // When executing the save_plan tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result is pinned with Relative.
         assert!(result.success);
@@ -244,6 +246,7 @@ mod tests {
     #[tokio::test]
     async fn execute_no_pin_on_bad_json() {
         // Given a call with invalid JSON.
+        let dir = tempfile::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_3".into(),
             name: "save_plan".into(),
@@ -251,7 +254,7 @@ mod tests {
         };
 
         // When executing the save_plan tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result has no pin and is a failure.
         assert!(!result.success);
@@ -279,7 +282,7 @@ mod tests {
         };
 
         // When executing the save_plan tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result has no pin and is a failure.
         assert!(!result.success);
@@ -312,7 +315,7 @@ mod tests {
         };
 
         // When executing the save_plan tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result has no pin and is a failure.
         assert!(!result.success, "expected failure, got: {}", result.content);
@@ -338,7 +341,7 @@ mod tests {
         };
 
         // When executing the save_plan tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result contains the path and byte count but not the plan body.
         assert!(result.success);
@@ -377,7 +380,7 @@ mod tests {
         };
 
         // When executing the save_plan tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the file was created with parent directories.
         assert!(result.success, "expected success, got: {}", result.content);
@@ -434,6 +437,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_bad_json() {
         // Given a save_plan call with invalid JSON.
+        let dir = tempfile::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_8".into(),
             name: "save_plan".to_owned(),
@@ -441,7 +445,7 @@ mod tests {
         };
 
         // When executing the save_plan tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result indicates failure.
         assert!(!result.success);

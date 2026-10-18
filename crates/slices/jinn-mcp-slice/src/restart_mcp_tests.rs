@@ -20,8 +20,6 @@
     reason = "test assertions"
 )]
 
-use std::path::PathBuf;
-
 use crate::coordinator::{McpCoordinatorActor, McpCoordinatorActorDeps};
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::ToolCall;
@@ -94,20 +92,22 @@ fn call(server: &str) -> ToolCall {
 }
 
 /// Builds a ToolContext wired to the given coordinator ref + state seeded with
-/// `excalimate`.
+/// `excalimate`. Every path derives from the test-owned `dir`, whose `TempDir`
+/// keeps the tree alive for the whole test.
 fn ctx_with_coordinator(
     coordinator: std::sync::Arc<dyn jinn_mcp_msg::McpCoordinatorHandle>,
     session_id: SessionId,
+    dir: &std::path::Path,
 ) -> ToolContext {
     let state = State::new(AppState::default());
 
     ToolContext {
-        cwd: PathBuf::from("/tmp"),
+        cwd: dir.to_path_buf(),
         config: jinn_config::testutil::config_layer(""),
         timeout: None,
         state: Some(state),
         session_id: Some(session_id),
-        app_paths: AppPaths::new_in(std::path::Path::new("/tmp")),
+        app_paths: AppPaths::new_in(dir),
         bus: None,
         max_output_lines: None,
         max_output_bytes: None,
@@ -175,15 +175,16 @@ async fn restart_one_returns_unknown_server_for_unconfigured_server() {
 #[rstest::rstest]
 #[tokio::test]
 async fn execute_fails_when_coordinator_ref_is_none() {
-    // Given a context with no coordinator ref.
+    // Given a context with no coordinator ref, rooted in a test-owned temp dir.
+    let dir = tempfile::tempdir().expect("temp dir");
     let session_id = SessionId::new();
     let ctx = ToolContext {
-        cwd: PathBuf::from("/tmp"),
+        cwd: dir.path().to_path_buf(),
         config: jinn_config::testutil::config_layer(""),
         timeout: None,
         state: Some(State::new(AppState::default())),
         session_id: Some(session_id),
-        app_paths: AppPaths::new_in(std::path::Path::new("/tmp")),
+        app_paths: AppPaths::new_in(dir.path()),
         bus: None,
         max_output_lines: None,
         max_output_bytes: None,
@@ -216,7 +217,8 @@ async fn execute_returns_failure_for_unknown_server_via_ask() {
     let harness = TestHarness::new().await;
     let (coordinator, _services, _state) =
         spawn_coordinator(&harness, &[("unrunnable", unrunnable_server())]).await;
-    let ctx = ctx_with_coordinator(coordinator, SessionId::new());
+    let dir = tempfile::tempdir().expect("temp dir");
+    let ctx = ctx_with_coordinator(coordinator, SessionId::new(), dir.path());
 
     // When executing with an unconfigured server name.
     let result = execute(call("ghost"), ctx).await;
@@ -238,7 +240,8 @@ async fn execute_strips_namespace_and_routes_to_ask() {
     // Given a coordinator with no `stub` server configured.
     let harness = TestHarness::new().await;
     let (coordinator, _services, _state) = spawn_coordinator(&harness, &[]).await;
-    let ctx = ctx_with_coordinator(coordinator, SessionId::new());
+    let dir = tempfile::tempdir().expect("temp dir");
+    let ctx = ctx_with_coordinator(coordinator, SessionId::new(), dir.path());
 
     // When executing with a namespaced tool name.
     let result = execute(

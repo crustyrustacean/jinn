@@ -40,19 +40,21 @@ mod tests {
     #[rstest::rstest]
     fn resolve_path_relative() {
         // Given a relative path and a CWD.
-        let cwd = Path::new("/home/user/project");
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let cwd = dir.path();
 
         // When resolving the path against that CWD.
         let resolved = resolve_path("foo/bar.txt", cwd);
 
         // Then it's joined against CWD.
-        assert_eq!(resolved, PathBuf::from("/home/user/project/foo/bar.txt"));
+        assert_eq!(resolved, dir.path().join("foo/bar.txt"));
     }
 
     #[rstest::rstest]
     fn resolve_path_absolute() {
         // Given an absolute path.
-        let cwd = Path::new("/home/user/project");
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let cwd = dir.path();
 
         // When resolving it against that CWD.
         let resolved = resolve_path("/etc/hosts", cwd);

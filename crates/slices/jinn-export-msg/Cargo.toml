@@ -13,6 +13,9 @@ trouper = { workspace = true }
 [dev-dependencies]
 rstest = { workspace = true }
 serde_json = { workspace = true }
+# The roundtrip test derives its destination from a tempdir, so no absolute
+# path literal ships in test code.
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

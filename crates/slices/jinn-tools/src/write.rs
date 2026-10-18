@@ -134,11 +134,13 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
-    fn test_ctx() -> ToolContext {
+    /// A context whose cwd is a real, existing scratch directory owned by the
+    /// calling test.
+    fn test_ctx(cwd: &Path) -> ToolContext {
         ToolContext {
-            cwd: PathBuf::from("/tmp"),
+            cwd: cwd.to_owned(),
             config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state: None,
@@ -176,7 +178,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result indicates success.
         assert_eq!(result.tool_call_id.as_str(), "call_1");
@@ -202,7 +204,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let _result = execute(call, test_ctx()).await;
+        let _result = execute(call, test_ctx(dir.path())).await;
 
         // Then the file contains the written content.
         let content = std::fs::read_to_string(&file_path).expect("read written file");
@@ -227,7 +229,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result indicates success.
         assert!(result.success, "expected success, got: {}", result.content);
@@ -256,7 +258,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result indicates success.
         assert!(result.success);
@@ -270,6 +272,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_bad_json() {
         // Given a write call with invalid JSON.
+        let dir = tempfile::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_4".into(),
             name: "write".to_owned(),
@@ -277,7 +280,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result indicates failure.
         assert!(!result.success);
@@ -439,7 +442,7 @@ mod tests {
         };
 
         // When executing the write tool with empty content.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the result indicates success.
         assert!(result.success, "expected success, got: {}", result.content);
@@ -468,7 +471,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -495,7 +498,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -522,7 +525,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -549,7 +552,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -576,7 +579,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -603,7 +606,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -630,7 +633,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the content round-trips exactly (byte comparison).
         assert!(result.success);
@@ -657,7 +660,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -684,7 +687,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -711,7 +714,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -738,7 +741,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -767,7 +770,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the file is created with the spaced name.
         assert!(result.success, "expected success, got: {}", result.content);
@@ -793,7 +796,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the file is created with the Unicode name.
         assert!(result.success, "expected success, got: {}", result.content);
@@ -826,7 +829,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then all parent directories are created and the file is written.
         assert!(result.success, "expected success, got: {}", result.content);
@@ -946,7 +949,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the success message reports the correct ASCII byte count.
         assert!(result.success);
@@ -977,7 +980,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the success message reports byte count (4), not character count (1).
         assert!(result.success);
@@ -1008,7 +1011,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the success message reports the correct mixed byte count.
         assert!(result.success);
@@ -1042,7 +1045,7 @@ mod tests {
         };
 
         // When executing.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then it is rejected as degenerate.
         assert!(!result.success);
@@ -1073,7 +1076,7 @@ mod tests {
         };
 
         // When executing.
-        let result = execute(call, test_ctx()).await;
+        let result = execute(call, test_ctx(dir.path())).await;
 
         // Then the write succeeds (49 lines, under the threshold).
         assert!(result.success, "expected success, got: {}", result.content);

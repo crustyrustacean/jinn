@@ -2156,6 +2156,7 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "trouper",
@@ -2284,6 +2285,7 @@ dependencies = [
  "jinn-slices",
  "rstest",
  "serde",
+ "tempfile",
  "trouper",
  "unicode-segmentation",
  "unicode-width 0.2.2",
@@ -2322,6 +2324,7 @@ dependencies = [
  "rstest",
  "serde_json",
  "strip-ansi-escapes",
+ "tempfile",
  "throbber-widgets-tui",
  "tokio",
  "tracing",
@@ -2375,6 +2378,7 @@ dependencies = [
  "error-stack",
  "rstest",
  "serde_json",
+ "tempfile",
  "tokio",
  "toml",
  "wherror",
@@ -2686,6 +2690,7 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
+ "tempfile",
  "trouper",
 ]
 
@@ -2716,6 +2721,7 @@ dependencies = [
  "reasoning-parser",
  "rstest",
  "serde_json",
+ "tempfile",
  "throbber-widgets-tui",
  "tokio",
  "tracing",
@@ -2921,6 +2927,7 @@ dependencies = [
  "rustls 0.23.45",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "trouper",
@@ -3132,6 +3139,7 @@ dependencies = [
  "jinn-theme",
  "ratatui",
  "rstest",
+ "tempfile",
 ]
 
 [[package]]
@@ -3399,6 +3407,7 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
+ "tempfile",
  "tracing",
  "trouper",
  "unicode-segmentation",
@@ -3544,6 +3553,7 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
+ "tempfile",
  "trouper",
  "unicode-width 0.2.2",
 ]
@@ -3633,6 +3643,7 @@ dependencies = [
  "ratatui",
  "rstest",
  "serde_json",
+ "tempfile",
  "textwrap",
  "throbber-widgets-tui",
  "tokio",
@@ -3696,6 +3707,7 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
+ "tempfile",
  "trouper",
 ]
 
@@ -3747,6 +3759,7 @@ dependencies = [
  "jinn-work-time-msg",
  "ratatui",
  "rstest",
+ "tempfile",
  "tokio",
 ]
 
@@ -3821,6 +3834,7 @@ dependencies = [
  "rstest",
  "tempfile",
  "tokio",
+ "toml_edit 0.22.27",
  "tracing",
  "trouper",
 ]
@@ -3865,6 +3879,7 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "trouper",

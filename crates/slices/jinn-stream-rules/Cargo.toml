@@ -26,6 +26,10 @@ tracing = { workspace = true }
 [dev-dependencies]
 rstest = { workspace = true }
 tempfile = { workspace = true }
+# The cwd-matching tests interpolate a tempdir path into their test TOML, so
+# the string is properly escaped and no absolute path literal ships in test
+# code.
+toml_edit = { workspace = true }
 # The end-to-end wiring test publishes over the real fabric; the test's
 # tokio runtime comes from the workspace dev-deps.
 tokio = { workspace = true }

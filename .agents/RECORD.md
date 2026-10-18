@@ -532,3 +532,5 @@ Entries are added or amended **only with human approval**.
 - (sessions) The tree aggregate's wall-clock total is the union of member intervals across live and frozen members, joined from the work-time cell for live members and the frozen node's carried copy for archived ones; it is pinned by aggregate-level behavior tests.
 - (testing) A flip-check on an RwLock-release test must hold the WRITE guard across the guarded region and capture through it — a held read guard blocks no readers, and nesting read-inside-write deadlocks parking_lot on the same thread.
 - (arch) Core id newtypes reject unparseable strings through try_from and never fabricate an id from a parse failure.
+- (testing) Test scratch files and directories are created only through the tempfile crate; no test builds paths from "/tmp" or "/home" literals or from std::env::temp_dir.
+- (testing) The lint-portable-path recipe fails the build on hardcoded absolute path literals in non-vendor Rust sources, with an allowlist for stated exceptions.

@@ -453,38 +453,44 @@ mod tests {
 
     #[rstest::rstest]
     fn shell_escape_simple_path() {
-        // Given a path with no shell metacharacters.
-        let path = "/home/user/project";
+        // Given a temp-rooted path with no shell metacharacters.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let base = dir.path().display().to_string();
+        let path = format!("{base}/project");
 
         // When escaping it for a shell.
-        let escaped = shell_escape(path);
+        let escaped = shell_escape(&path);
 
         // Then it is single-quoted verbatim.
-        assert_eq!(escaped, "'/home/user/project'");
+        assert_eq!(escaped, format!("'{base}/project'"));
     }
 
     #[rstest::rstest]
     fn shell_escape_path_with_spaces() {
-        // Given a path containing spaces.
-        let path = "/home/user/my project";
+        // Given a temp-rooted path containing spaces.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let base = dir.path().display().to_string();
+        let path = format!("{base}/my project");
 
         // When escaping it for a shell.
-        let escaped = shell_escape(path);
+        let escaped = shell_escape(&path);
 
         // Then the whole path is single-quoted, spaces included.
-        assert_eq!(escaped, "'/home/user/my project'");
+        assert_eq!(escaped, format!("'{base}/my project'"));
     }
 
     #[rstest::rstest]
     fn shell_escape_path_with_single_quote() {
-        // Given a path containing a single quote.
-        let path = "/home/user/it's/project";
+        // Given a temp-rooted path containing a single quote.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let base = dir.path().display().to_string();
+        let path = format!("{base}/it's/project");
 
         // When escaping it for a shell.
-        let escaped = shell_escape(path);
+        let escaped = shell_escape(&path);
 
         // Then the quote is closed, escaped, and reopened.
-        assert_eq!(escaped, "'/home/user/it'\\''s/project'");
+        assert_eq!(escaped, format!("'{base}/it'\\''s/project'"));
     }
 
     #[rstest::rstest]
@@ -562,9 +568,10 @@ mod tests {
             let (_system, bridge, buffer) =
                 spawn_system_with_recorder(&tokio::runtime::Handle::current());
 
-            // And a path that does not exist on disk.
-            let missing_path = std::env::temp_dir()
-                .join(format!("jinn-cwd-does-not-exist-{}", std::process::id()));
+            // And a path derived from a test-owned temp dir that does not
+            // exist on disk.
+            let dir = tempfile::tempdir().expect("temp dir");
+            let missing_path = dir.path().join("does-not-exist");
 
             // When applying a nonexistent path.
             let published =

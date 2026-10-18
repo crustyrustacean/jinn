@@ -1416,8 +1416,9 @@ mod tests {
         let configs = [rule("global", "rm -rf")];
 
         // When the set is built for a project it names nothing about.
-        let set =
-            CompiledSet::build(&configs).for_cwd(Some(std::path::Path::new("/anywhere/at/all")));
+        let dir = tempfile::tempdir().expect("temp dir");
+        let anywhere_cwd = dir.path().join("anywhere/at/all");
+        let set = CompiledSet::build(&configs).for_cwd(Some(anywhere_cwd.as_path()));
 
         // Then the rule is live there.
         assert!(!set.is_empty());
@@ -1432,9 +1433,11 @@ mod tests {
             ..rule("scoped", "rm -rf")
         }];
 
-        // When the set is built for that project.
-        let set = CompiledSet::build(&configs)
-            .for_cwd(Some(std::path::Path::new("/home/dev/code/myapp")));
+        // When the set is built for that project: a cwd whose last segment is
+        // the project name, rooted in a tempdir.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let myapp_cwd = dir.path().join("dev/code/myapp");
+        let set = CompiledSet::build(&configs).for_cwd(Some(myapp_cwd.as_path()));
 
         // Then the rule is live.
         assert!(!set.is_empty());
@@ -1449,9 +1452,11 @@ mod tests {
             ..rule("scoped", "rm -rf")
         }];
 
-        // When the set is built for a different project.
-        let set = CompiledSet::build(&configs)
-            .for_cwd(Some(std::path::Path::new("/home/dev/code/other")));
+        // When the set is built for a different project: a sibling directory
+        // under the same tempdir root.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let other_cwd = dir.path().join("dev/code/other");
+        let set = CompiledSet::build(&configs).for_cwd(Some(other_cwd.as_path()));
 
         // Then the rule is not there at all.
         assert!(set.is_empty());
@@ -1519,8 +1524,9 @@ mod tests {
         ];
 
         // When the set is built for the project the scoped rule excludes.
-        let set =
-            CompiledSet::build(&configs).for_cwd(Some(std::path::Path::new("/home/dev/other")));
+        let dir = tempfile::tempdir().expect("temp dir");
+        let other_cwd = dir.path().join("dev/other");
+        let set = CompiledSet::build(&configs).for_cwd(Some(other_cwd.as_path()));
 
         // Then the global rule still fires there and the scoped one does not.
         let mut session = set.new_session(&SessionId::new());
@@ -1548,8 +1554,9 @@ mod tests {
         }];
 
         // When the set is built for an unrelated project.
-        let set =
-            CompiledSet::build(&configs).for_cwd(Some(std::path::Path::new("/home/dev/other")));
+        let dir = tempfile::tempdir().expect("temp dir");
+        let other_cwd = dir.path().join("dev/other");
+        let set = CompiledSet::build(&configs).for_cwd(Some(other_cwd.as_path()));
 
         // Then the rule applies over-broad rather than being disarmed.
         assert!(!set.is_empty());

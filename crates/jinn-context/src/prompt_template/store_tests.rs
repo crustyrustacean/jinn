@@ -18,10 +18,11 @@ fn write_template(dir: &Path, filename: &str, content: &str) {
 #[rstest::rstest]
 fn load_from_dir_returns_empty_when_missing() {
     // Given a path that does not exist.
-    let path = Path::new("/tmp/jinn-nonexistent-test-dir");
+    let dir = TempDir::new().expect("temp dir");
+    let path = dir.path().join("jinn-nonexistent-test-dir");
 
     // When loading from that path.
-    let store = PromptTemplateStore::load_from_dir(path).expect("load");
+    let store = PromptTemplateStore::load_from_dir(&path).expect("load");
 
     // Then the store is empty.
     assert!(store.is_empty());

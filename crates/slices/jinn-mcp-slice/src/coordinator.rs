@@ -938,12 +938,13 @@ mod lifecycle_tests {
         let (_actor, _services, state) =
             spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
         let session_id = insert_session_with_enablement(&state, &single_enabled("unrunnable"));
+        let dir = tempfile::tempdir().expect("temp dir");
 
         // When publishing SessionCreated for that session.
         harness
             .publish(jinn_session_lifecycle_msg::SessionCreated {
                 session_id,
-                cwd: std::env::temp_dir(),
+                cwd: dir.path().to_path_buf(),
             })
             .await;
 
@@ -995,13 +996,14 @@ mod lifecycle_tests {
         let (_actor, _services, state) =
             spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
         let session_id = insert_session_with_enablement(&state, &single_enabled("unrunnable"));
+        let dir = tempfile::tempdir().expect("temp dir");
 
         // When both SessionCreated and McpEnablementChanged carry the same
         // desired set (the common seeding flow emits both).
         harness
             .publish(jinn_session_lifecycle_msg::SessionCreated {
                 session_id: session_id.clone(),
-                cwd: std::env::temp_dir(),
+                cwd: dir.path().to_path_buf(),
             })
             .await;
         harness
@@ -1033,6 +1035,7 @@ mod lifecycle_tests {
         let recorder = harness.spawn_recorder::<McpServerStatus>().await;
         let (_actor, _services, state) =
             spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
+        let dir = tempfile::tempdir().expect("temp dir");
         let session_id = {
             let sid = insert_session_with_enablement(&state, &single_enabled("unrunnable"));
             harness
@@ -1056,7 +1059,7 @@ mod lifecycle_tests {
         harness
             .publish(jinn_session_lifecycle_msg::SessionCreated {
                 session_id: session_id.clone(),
-                cwd: std::env::temp_dir(),
+                cwd: dir.path().to_path_buf(),
             })
             .await;
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;

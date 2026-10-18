@@ -120,12 +120,65 @@ fmt:
 fmt-fix:
     cargo fmt
 
-# Run all linters (check + clippy + fmt check + test-attr guard)
+# Run all linters (check + clippy + fmt check + test-attr guard + portable-path guard)
 lint:
     cargo check --workspace
     just clippy
     cargo fmt -- --check
     just lint-testattr
+    just lint-portable-path
+
+[doc("Fail on hardcoded absolute path literals or std::env::temp_dir in Rust sources.")]
+lint-portable-path:
+   #!/usr/bin/env python3
+   import os
+   import re
+   import sys
+
+   # Each entry: relative path -> why the absolute literal is legitimate there.
+   ALLOWLIST = {
+       "crates/jinn-mcp/tests/excalimate_live.rs":
+           "its /tmp/excalimate/... default names where the OPTIONAL excalimate "
+           "server binary is installed; nothing creates it at runtime, so a "
+           "tempdir root would point the skip-if-absent lookup at a path that "
+           "does not exist",
+   }
+   SKIP_DIRS = {"target", "vendor"}
+
+   # A double-quoted string starting with /tmp or /home (bare "/tmp" included),
+   # or the exact std::env::temp_dir token (not the substring temp_dir).
+   OFFENSE = re.compile(r'"/(?:tmp|home)(?:[/"]|$)|std::env::temp_dir')
+
+   offenders = []
+   for dirpath, dirnames, filenames in os.walk(os.getcwd()):
+       dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+       for fn in filenames:
+           if not fn.endswith(".rs"):
+               continue
+           fpath = os.path.join(dirpath, fn)
+           rel = os.path.normpath(os.path.relpath(fpath, os.getcwd()))
+           if rel in ALLOWLIST:
+               continue
+           with open(fpath, encoding="utf-8") as f:
+               for ln, line in enumerate(f, start=1):
+                   m = OFFENSE.search(line)
+                   if m:
+                       offenders.append((rel, ln, m.group(0)))
+
+   for rel, ln, hit in offenders:
+       print(f"ERROR: {rel}:{ln}: {hit}", file=sys.stderr)
+   if offenders:
+       print(
+           f"\n{len(offenders)} site(s) hardcode an absolute path or use\n"
+           "std::env::temp_dir. In tests, build paths from a tempfile root:\n"
+           '  let dir = tempfile::tempdir().expect("temp dir");\n'
+           '  let path = dir.path().join("name");\n'
+           "and derive BOTH sides of each assertion from the same expression.\n"
+           "(If a literal is genuinely legitimate, add the file to ALLOWLIST\n"
+           "in the lint-portable-path recipe with a stated reason.)",
+           file=sys.stderr,
+       )
+       sys.exit(1)
 
 [doc("Fail on bare test attributes missing their rstest companion.")]
 lint-testattr:

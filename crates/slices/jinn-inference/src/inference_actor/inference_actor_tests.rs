@@ -1630,9 +1630,11 @@ fn project_scoped_rule_set(
 async fn a_rule_scoped_to_a_project_fires_for_a_session_in_that_project() {
     // Given a rule whose `project` glob names one codebase, and a session
     // whose live working directory sits inside that codebase.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let cwd = dir.path().join("someone/code/myapp");
     let (actor, session_id) = actor_with_session_cwd(
         project_scoped_rule_set("FORBIDDEN", Some("**/myapp")),
-        "/home/someone/code/myapp",
+        &cwd.to_string_lossy(),
     )
     .await;
 
@@ -1690,10 +1692,11 @@ async fn a_rule_scoped_to_a_project_is_inactive_for_a_session_elsewhere() {
     // whose working directory is a different codebase — the shape a
     // project-scoped rule exists to prevent.
     let set = project_scoped_rule_set("FORBIDDEN", Some("**/myapp"));
+    let dir = tempfile::tempdir().expect("temp dir");
     let sid = SessionId::new();
 
     // When the set is narrowed against another project's session.
-    let narrowed = set.for_cwd(Some(std::path::Path::new("/home/someone/code/otherapp")));
+    let narrowed = set.for_cwd(Some(dir.path().join("someone/code/otherapp").as_path()));
     let mut session = narrowed.new_session(&sid);
 
     // Then the rule does not fire: a project-scoped rule must not leak into

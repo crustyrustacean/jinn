@@ -3248,8 +3248,9 @@ mod new_session_from_entry_tests {
     #[rstest::rstest]
     fn new_session_from_entry_inherits_active_session_cwd() {
         // Given a state whose active session has a distinct CWD.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let inherited_cwd = dir.path().join("inherited-project");
         let mut state = AppState::default_with_scope_focus();
-        let inherited_cwd = std::path::PathBuf::from("/tmp/inherited-project");
         state.active_session_mut().set_cwd(inherited_cwd.clone());
         state
             .active_session_mut()

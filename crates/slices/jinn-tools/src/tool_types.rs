@@ -177,13 +177,14 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use std::path::PathBuf;
 
     #[rstest::rstest]
     fn tool_context_debug_contains_cwd_and_timeout() {
         // Given a ToolContext with known values.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let cwd = dir.path().join("test");
         let ctx = ToolContext {
-            cwd: PathBuf::from("/tmp/test"),
+            cwd: cwd.clone(),
             timeout: Some(std::time::Duration::from_secs(30)),
             state: None,
             config: jinn_config::testutil::config_layer(""),
@@ -205,7 +206,10 @@ mod tests {
         let debug_str = format!("{ctx:?}");
 
         // Then the output contains cwd, timeout, and session_id.
-        assert!(debug_str.contains("/tmp/test"), "debug should contain cwd");
+        assert!(
+            debug_str.contains(&cwd.to_string_lossy().into_owned()),
+            "debug should contain cwd"
+        );
         assert!(
             debug_str.contains("timeout"),
             "debug should contain timeout"

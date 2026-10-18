@@ -378,10 +378,11 @@ mod tests {
     #[rstest::rstest]
     fn the_success_notice_names_the_written_file() {
         // Given a written path inside a session directory.
-        let path = Path::new("/home/dev/project/chat-export.html");
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("dev/project/chat-export.html");
 
         // When building the chat notice.
-        let notice = written_notice(path);
+        let notice = written_notice(&path);
 
         // Then it names the file, not the whole path.
         assert_eq!(notice, "Exported to chat-export.html");
@@ -390,10 +391,11 @@ mod tests {
     #[rstest::rstest]
     fn the_success_notice_survives_a_directory_destination() {
         // Given a destination that names a directory.
-        let path = Path::new("/home/dev/project");
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("dev/project");
 
         // When building the chat notice.
-        let notice = written_notice(path);
+        let notice = written_notice(&path);
 
         // Then it still renders a name rather than an empty one.
         assert_eq!(notice, "Exported to project");

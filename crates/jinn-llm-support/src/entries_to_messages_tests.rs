@@ -1425,11 +1425,17 @@ fn message_sequence_validator_accepts_complete_multi_call_batch_in_order() {
 #[test]
 fn message_sequence_validator_accepts_real_empty_assistant_tool_parent() {
     // Given a real empty assistant entry created by the streaming lifecycle.
+    let dir = tempfile::tempdir().expect("temp dir");
     let entries = vec![
         ChatEntry::user("run the command"),
         ChatEntry::assistant(""),
         ChatEntry::tool_call("call-1", "bash", r#"{"command":"pwd"}"#),
-        ChatEntry::tool_result("call-1", "bash", "/tmp", ToolResultStatus::Success),
+        ChatEntry::tool_result(
+            "call-1",
+            "bash",
+            dir.path().join("tmp").to_string_lossy().into_owned(),
+            ToolResultStatus::Success,
+        ),
     ];
 
     // When converting the complete tool loop to provider-neutral messages.

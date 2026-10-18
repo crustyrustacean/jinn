@@ -588,8 +588,9 @@ mod tests {
     #[tokio::test]
     async fn spawned_child_echoes_input_back_through_screen() {
         // Given a `cat` session in a pty (cat echoes pty line-discipline input).
+        let dir = tempfile::tempdir().expect("temp dir");
         let (mut session, pump) =
-            PtySession::spawn("cat", Path::new("/tmp"), default_size(), wiring().await)
+            PtySession::spawn("cat", dir.path(), default_size(), wiring().await)
                 .expect("spawn cat");
 
         // When writing bytes to the pty.
@@ -626,13 +627,10 @@ mod tests {
     #[tokio::test]
     async fn kill_terminates_whole_group_leaving_no_orphans() {
         // Given a session running a long sleep (the whole group to kill).
-        let (mut session, pump) = PtySession::spawn(
-            "sleep 65",
-            Path::new("/tmp"),
-            default_size(),
-            wiring().await,
-        )
-        .expect("spawn sleep");
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (mut session, pump) =
+            PtySession::spawn("sleep 65", dir.path(), default_size(), wiring().await)
+                .expect("spawn sleep");
         let pid = session.pid().expect("child pid");
         // And the child is its own group leader (the invariant the group kill
         // relies on) — captured before the kill, since the group ceases to
@@ -667,8 +665,9 @@ mod tests {
     #[tokio::test]
     async fn try_wait_reports_exit_code_after_natural_exit() {
         // Given a session whose command exits with a known code.
+        let dir = tempfile::tempdir().expect("temp dir");
         let (session, pump) =
-            PtySession::spawn("exit 7", Path::new("/tmp"), default_size(), wiring().await)
+            PtySession::spawn("exit 7", dir.path(), default_size(), wiring().await)
                 .expect("spawn exit");
 
         // When polling until the child terminates.
@@ -697,13 +696,10 @@ mod tests {
     #[tokio::test]
     async fn dropping_session_kills_child() {
         // Given a session running a long sleep.
-        let (session, _pump) = PtySession::spawn(
-            "sleep 66",
-            Path::new("/tmp"),
-            default_size(),
-            wiring().await,
-        )
-        .expect("spawn sleep");
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (session, _pump) =
+            PtySession::spawn("sleep 66", dir.path(), default_size(), wiring().await)
+                .expect("spawn sleep");
 
         // When dropping the session (the guard's whole point).
         drop(session);
@@ -728,8 +724,9 @@ mod tests {
     #[tokio::test]
     async fn resize_updates_pty_and_deduplicates_noop() {
         // Given a session at the default size.
+        let dir = tempfile::tempdir().expect("temp dir");
         let (mut session, pump) =
-            PtySession::spawn("cat", Path::new("/tmp"), default_size(), wiring().await)
+            PtySession::spawn("cat", dir.path(), default_size(), wiring().await)
                 .expect("spawn cat");
 
         // When resizing to 40x120.
@@ -795,13 +792,10 @@ mod tests {
         // Given a session whose program exits on its own right away (`exec`
         // replaces bash, so the pty child IS the program — the reported btop
         // zombie).
-        let (session, pump) = PtySession::spawn(
-            "exec true",
-            Path::new("/tmp"),
-            default_size(),
-            wiring().await,
-        )
-        .expect("spawn true");
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (session, pump) =
+            PtySession::spawn("exec true", dir.path(), default_size(), wiring().await)
+                .expect("spawn true");
 
         // When the program terminates naturally and the watcher reaps it.
         let deadline = tokio::time::Instant::now() + wait_timeout();
@@ -830,13 +824,10 @@ mod tests {
     #[tokio::test]
     async fn killed_session_is_reaped_immediately_on_drop() {
         // Given a session running a long sleep.
-        let (session, pump) = PtySession::spawn(
-            "exec sleep 68",
-            Path::new("/tmp"),
-            default_size(),
-            wiring().await,
-        )
-        .expect("spawn sleep");
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (session, pump) =
+            PtySession::spawn("exec sleep 68", dir.path(), default_size(), wiring().await)
+                .expect("spawn sleep");
 
         // When dropping the session (kills + bounded reap in drop).
         drop(session);

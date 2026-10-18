@@ -155,9 +155,12 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn a_global_rule_merged_with_a_project_rule_keeps_both_blocks() {
-        // Given the same two rules, compiled for the scoped project.
+        // Given the same two rules, compiled for the scoped project. The
+        // session cwd sits in a tempdir root shared with nothing else.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let myapp_cwd = dir.path().join("dev/code/myapp");
         let set = CompiledSet::build(&read_rules(&mixed_project_config(), &temp_prefs()))
-            .for_cwd(Some(std::path::Path::new("/home/dev/code/myapp")));
+            .for_cwd(Some(myapp_cwd.as_path()));
 
         // When each command's arguments stream in that project.
         let global = {
@@ -188,10 +191,13 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn a_project_rule_merged_with_a_global_rule_is_silent_outside_its_project() {
-        // Given the same two rules, resolved for a project that is not myapp.
+        // Given the same two rules, resolved for a project that is not myapp:
+        // a sibling directory under the same tempdir root.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let other_cwd = dir.path().join("dev/code/other");
         let set =
             crate::matcher::CompiledSet::build(&read_rules(&mixed_project_config(), &temp_prefs()))
-                .for_cwd(Some(std::path::Path::new("/home/dev/code/other")));
+                .for_cwd(Some(other_cwd.as_path()));
 
         // When the global rule's command's arguments stream there.
         let global = {
@@ -249,24 +255,36 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn a_legacy_project_rule_merges_with_a_global_one() {
-        // Given a legacy global rule beside a legacy project rule.
-        let config = layer(
-            r#"
-            [[tools.bash_command_policy]]
-            pattern = 'drop\s+table'
-            message = 'No.'
+        // Given a legacy global rule beside a legacy project rule. The
+        // project's path and the session cwd derive from the same tempdir
+        // root, so the rule matches there and nowhere else. The path is
+        // written with forward slashes — the matcher normalizes every cwd to
+        // forward slashes before globbing, so a backslash pattern would
+        // never match on Windows — and `toml_edit::Value` interpolates it as
+        // a properly escaped TOML string.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let myapp_cwd = dir.path().join("dev/code/myapp");
+        let config = {
+            let project_glob = myapp_cwd.to_string_lossy().replace('\\', "/");
+            let project = toml_edit::Value::from(project_glob);
+            layer(&format!(
+                r#"
+                [[tools.bash_command_policy]]
+                pattern = 'drop\s+table'
+                message = 'No.'
 
-            [[project.entry]]
-            path = "/home/dev/code/myapp"
-            [[project.entry.command_policy]]
-            pattern = 'truncate'
-            message = 'Not here.'
-        "#,
-        );
+                [[project.entry]]
+                path = {project}
+                [[project.entry.command_policy]]
+                pattern = 'truncate'
+                message = 'Not here.'
+            "#
+            ))
+        };
 
         // When the rules are read and compiled for that project.
         let set = crate::matcher::CompiledSet::build(&read_rules(&config, &temp_prefs()))
-            .for_cwd(Some(std::path::Path::new("/home/dev/code/myapp")));
+            .for_cwd(Some(myapp_cwd.as_path()));
 
         // Then both fire: the project rule adds its block beside the global.
         let mut session = set.new_session(&jinn_core_types::SessionId::new());

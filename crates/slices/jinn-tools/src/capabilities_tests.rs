@@ -20,16 +20,17 @@ use jinn_mcp_msg::McpEnablementChanged;
 use jinn_preferences_config::schemas::mcp::{McpServerConfig, McpServersConfig};
 use jinn_session_state::ChatSessionState;
 use jinn_session_store_msg::PersistSession;
-use std::path::PathBuf;
+use std::path::Path;
 
 // ---------------------------------------------------------------------------
 // Harness
 // ---------------------------------------------------------------------------
 
-/// A bare context with nothing attached: both tools must fail gracefully.
-fn bare_ctx() -> ToolContext {
+/// A bare context whose cwd is a real, existing scratch directory owned by
+/// the calling test: both tools must fail gracefully.
+fn bare_ctx(cwd: &Path) -> ToolContext {
     ToolContext {
-        cwd: PathBuf::from("/tmp"),
+        cwd: cwd.to_owned(),
         config: jinn_config::testutil::config_layer(""),
         timeout: None,
         state: None,
@@ -113,7 +114,7 @@ impl Harness {
             state: Some(state.clone()),
             session_id: Some(session_id.clone()),
             bus: Some(bus),
-            ..bare_ctx()
+            ..bare_ctx(tmp.path())
         };
         Self {
             state,
@@ -334,7 +335,8 @@ async fn an_allow_filter_session_reports_unlisted_entries_as_off() {
 #[tokio::test]
 async fn query_fails_gracefully_without_state() {
     // Given a bare context with no state and no session.
-    let ctx = bare_ctx();
+    let dir = tempfile::tempdir().expect("temp dir");
+    let ctx = bare_ctx(dir.path());
 
     // When querying capabilities.
     let result = query_execute(query_call(), ctx).await;

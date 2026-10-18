@@ -325,7 +325,8 @@ mod tests {
     #[rstest::rstest]
     fn load_returns_none_when_file_missing() {
         // Given a path to a nonexistent file.
-        let path = PathBuf::from("/tmp/jinn_test_nonexistent_cache.json");
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("jinn_test_nonexistent_cache.json");
 
         // When loading.
         let result = ModelCache::load(&path);

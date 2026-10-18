@@ -55,6 +55,9 @@ jinn-preferences-config = { workspace = true }
 jinn-config = { workspace = true }
 jinn-testutil = { workspace = true }
 jinn-sidebar-msg = { workspace = true }
+# The cwd-inheritance test derives its fixture from a tempdir, so no absolute
+# path literal ships in test code.
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

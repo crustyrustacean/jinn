@@ -424,8 +424,10 @@ fn model_shows_no_model_selected_when_unset() {
 #[rstest::rstest]
 fn cwd_shows_on_its_own_row_above_the_info_row() {
     // Given a session with a cwd and a model.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let cwd = dir.path().join("test-project");
     let mut session = ChatSessionState::new();
-    session.set_cwd(std::path::PathBuf::from("/tmp/test-project"));
+    session.set_cwd(cwd.clone());
     session.set_model(ModelSelection::Single("ollama/llama3".to_owned()));
 
     // When rendering the preview.
@@ -433,10 +435,11 @@ fn cwd_shows_on_its_own_row_above_the_info_row() {
 
     // Then the cwd sits on the row directly above the info row, and the info
     // row carries the model — two rows, not one combined line.
+    let cwd_label = cwd.display().to_string();
     let cwd_y = popup_area.y + popup_area.height - 3;
     let cwd_row = buffer_row(&buffer, cwd_y, popup_area.x + popup_area.width);
     assert!(
-        cwd_row.contains("/tmp/test-project"),
+        cwd_row.contains(cwd_label.as_str()),
         "cwd row should contain the cwd, got: {cwd_row}"
     );
     let info_y = popup_area.y + popup_area.height - 2;
@@ -1238,8 +1241,10 @@ mod loading_state {
     #[rstest::rstest]
     fn the_loading_state_shows_the_previewed_sessions_cwd() {
         // Given a session with a distinctive cwd whose preview has not rendered.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let cwd = dir.path().join("loadtest-cwd");
         let mut session = make_session_with_title("busy");
-        session.set_cwd(std::path::PathBuf::from("/tmp/loadtest-cwd"));
+        session.set_cwd(cwd.clone());
 
         // When drawing the loading popup.
         let (buffer, popup_area) = draw_loading(&session, 100, 40);
@@ -1247,10 +1252,11 @@ mod loading_state {
         // Then the loading footer already carries the shared status line — the
         // cwd row shows the session's own directory — because loading and ready
         // share one inner renderer, so the footer never flickers.
+        let cwd_label = cwd.display().to_string();
         let cwd_y = popup_area.y + popup_area.height - 3;
         let cwd_row = buffer_row(&buffer, cwd_y, popup_area.x + popup_area.width);
         assert!(
-            cwd_row.contains("/tmp/loadtest-cwd"),
+            cwd_row.contains(cwd_label.as_str()),
             "the loading footer should already show the previewed session's cwd, got: {cwd_row}"
         );
     }
