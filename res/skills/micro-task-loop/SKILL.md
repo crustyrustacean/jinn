@@ -13,11 +13,10 @@ A fast path for implementing simple phased plans. Trades per-phase safety checkp
 
 1.  **Stay on your branch.** Never commit to the project's main line (e.g. `trunk`/`main`/`master`). Your environment is on the correct branch.
 2.  **No reverse merge.** Never merge your branch onto the main line.
-3.  **No builds or checks mid-loop.** Do not run the project's `check`/`test` commands during phases — not per-package, not per-module, not "just this once." Compile guidance comes only after the final phase. This is the entire point of this skill: avoid rebuild-thrash while stepping through phases of a straightforward plan.
-4.  **Continuous execution.** Proceed from one phase to the next without stopping. Only stop when all phases are complete or an unrecoverable error blocks progress.
-5.  **Stay in `.plans/<task>/`.** All execution plans go here. Do not create new directories.
-6.  **Never rewrite the spec.** The spec (`plan.md`) is annotate only (strikethrough, divergence notes). The task list tracks status, not checkboxes in the spec.
-7.  **Todo list management.** Update the todo list as you work on the overall task. This helps to keep track of what still needs to be done.
+3.  **Continuous execution.** Proceed from one phase to the next without stopping. Only stop when all phases are complete or an unrecoverable error blocks progress.
+4.  **Stay in `.plans/<task>/`.** All execution plans go here. Do not create new directories.
+5.  **Never rewrite the spec.** The spec (`plan.md`) is annotate only (strikethrough, divergence notes). The task list tracks status, not checkboxes in the spec.
+6.  **Todo list management.** Update the todo list as you work on the overall task. This helps to keep track of what still needs to be done.
 
 ---
 
