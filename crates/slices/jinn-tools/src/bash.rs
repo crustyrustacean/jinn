@@ -544,11 +544,13 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use std::path::PathBuf;
 
     fn test_ctx() -> ToolContext {
         ToolContext {
-            cwd: PathBuf::from("/tmp"),
+            // A real scratch directory: Windows CreateProcess rejects a
+            // current_dir that does not exist, so a hardcoded "/tmp" fails
+            // the spawn before bash ever runs.
+            cwd: std::env::temp_dir(),
             config: jinn_config::testutil::config_layer(""),
             timeout: None,
             state: None,
