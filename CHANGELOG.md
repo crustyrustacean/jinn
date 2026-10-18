@@ -3,6 +3,7 @@
 ## (development)
 
 - Update git worktree lifecycle script so it handles symlinks better.
+- `autodev` workflow implementors should get started faster with less exploration.
 
 ## 2026-10-16 v1.8.2
 
