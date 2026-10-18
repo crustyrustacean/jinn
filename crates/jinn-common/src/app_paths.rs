@@ -138,6 +138,15 @@ impl AppPaths {
         self.data_dir.join(APP_NAME)
     }
 
+    /// Parent directory for builtin graph databases (`~/.local/share/jinn/graph`).
+    ///
+    /// The builtin overgraph MCP server opens one database directory per
+    /// configured server entry beneath this dir (default: `graph/default`).
+    #[must_use]
+    pub fn graph_db_dir(&self) -> PathBuf {
+        self.data_dir.join(APP_NAME).join("graph")
+    }
+
     /// Base directory for persistent browser profiles (`~/.local/share/jinn/browser-profile`).
     ///
     /// Per-mode profiles live under subdirs (`browser-profile/headless`,
@@ -319,6 +328,16 @@ impl AppPaths {
     #[must_use]
     pub fn openrouter_cache_dir(&self) -> PathBuf {
         self.cache_dir.join(APP_NAME).join("openrouter")
+    }
+
+    /// Embedding-model cache directory (`~/.cache/jinn/embed-models`).
+    ///
+    /// Holds the overgraph server's local embedding model weights,
+    /// downloaded from HuggingFace on first use and reused offline after
+    /// that. Re-downloadable content, so it lives under the cache dir.
+    #[must_use]
+    pub fn embed_models_dir(&self) -> PathBuf {
+        self.cache_dir.join(APP_NAME).join("embed-models")
     }
 
     // -- Merged resource paths (system + user) ---------------------------------
@@ -754,6 +773,22 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn new_in_embed_models_dir_is_under_root_cache() {
+        // Given an AppPaths created with new_in.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        let paths = AppPaths::new_in(root.path());
+
+        // When reading the embedding-model cache dir.
+        let dir = paths.embed_models_dir();
+
+        // Then it is root/cache/jinn/embed-models.
+        assert_eq!(
+            dir,
+            root.path().join("cache").join("jinn").join("embed-models")
+        );
+    }
+
+    #[rstest::rstest]
     fn new_in_system_skills_dir_is_under_root() {
         // Given an AppPaths created with new_in.
         let root = tempfile::TempDir::new().expect("temp dir");
@@ -828,5 +863,18 @@ mod tests {
             headless,
             root.path().join("data/jinn/browser-profile/headless")
         );
+    }
+
+    #[rstest::rstest]
+    fn graph_db_dir_lands_under_data_base() {
+        // Given an AppPaths rooted at a temp dir.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        let paths = AppPaths::new_in(root.path());
+
+        // When resolving the graph database dir.
+        let dir = paths.graph_db_dir();
+
+        // Then it is data/jinn/graph.
+        assert_eq!(dir, root.path().join("data/jinn/graph"));
     }
 }

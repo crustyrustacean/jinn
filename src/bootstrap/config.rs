@@ -60,6 +60,17 @@ pub struct LaunchServices {
 pub enum Prepared {
     /// A recovery subcommand already ran and the process should exit.
     Handled,
+    /// A bundled MCP server should run over stdio with this database
+    /// directory, then the process should exit. Carries the `--db` override
+    /// so `dispatch` never re-reads the CLI.
+    ServeBundled {
+        /// Database directory override; `None` uses the jinn-managed default.
+        db: Option<std::path::PathBuf>,
+        /// Embedding-model override; `None` uses the catalog default.
+        embed_model: Option<jinn_mcp_overgraph::embedder::EmbedderModel>,
+        /// Warm the embedding model's cache and exit without serving.
+        fetch_model: bool,
+    },
     /// The run is configured; carry on to wire the actors.
     Ready(LaunchServices),
 }
@@ -256,6 +267,52 @@ fn run_recovery_subcommand(cli: &jinn_cli::cli::Cli) -> Result<Option<Prepared>,
                 return Err(report.change_context(AppError));
             }
         }
+    }
+
+    // The bundled MCP servers (`jinn mcp overgraph`) are child-process
+    // programs: they speak stdio MCP and touch nothing from the parent's
+    // environment — no jinn.toml, no providers, no sessions.db. They
+    // intercept here so a server spawn never opens the session store or
+    // mutates the user's config as a side effect; `dispatch` runs the
+    // server from the returned variant.
+    if let Some(Commands::Mcp {
+        subcommand:
+            jinn_cli::cli::McpCommands::Overgraph {
+                db,
+                embed_model,
+                fetch_model,
+            },
+    }) = &cli.command
+    {
+        // A malformed --embed-model is a CLI-level usage error: it is
+        // rendered here (before any transport exists) and exits the process,
+        // matching how a bad flag itself would fail. The server never starts.
+        let embed_model = match embed_model {
+            Some(name) => match jinn_mcp_overgraph::embedder::EmbedderModel::from_arg(name) {
+                Some(model) => Some(model),
+                None => {
+                    #[expect(
+                        clippy::print_stderr,
+                        reason = "fatal CLI usage failure before any transport starts"
+                    )]
+                    let () = {
+                        eprintln!(
+                            "error: unknown embedding model `{name}`; \
+                                 valid models: bge-small-en-v1.5"
+                        );
+                    };
+                    return Err(
+                        Report::new(AppError).attach(format!("unknown --embed-model `{name}`"))
+                    );
+                }
+            },
+            None => None,
+        };
+        return Ok(Some(Prepared::ServeBundled {
+            db: db.clone(),
+            embed_model,
+            fetch_model: *fetch_model,
+        }));
     }
 
     Ok(None)

@@ -69,3 +69,4 @@ the current truth — and echo that.
 | `references/models-and-providers.md`   | Model/provider pickers, alloys, endpoint pinning, reasoning effort                         |
 | `references/configuration.md`          | Config file map, snippets, apply-to-user-config protocol                                   |
 | `references/extending-jinn.md`         | Adding capabilities or extending jinn: MCP servers, skills, prompts, personas, themes, etc |
+| `references/graph-database.md`         | The bundled overgraph graph+vector DB: usage patterns, batch ingestion, gotchas             |

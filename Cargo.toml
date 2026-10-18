@@ -90,6 +90,7 @@ jinn-mcp-msg = { workspace = true }
 jinn-context-assembly = { workspace = true }
 jinn-theme-slice = { workspace = true }
 jinn-cli = { workspace = true }
+jinn-mcp-overgraph = { workspace = true }
 jinn-chat-input = { workspace = true }
 jinn-chat-log-view = { workspace = true }
 jinn-scope-focus = { workspace = true }
@@ -156,6 +157,8 @@ mockito = { workspace = true }
 toml = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tempfile = { workspace = true }
+jinn-mcp = { workspace = true }
+rmcp = { workspace = true }
 jinn-preferences-config = { workspace = true }
 ctor = "0.8"
 zip = { workspace = true }
@@ -273,6 +276,7 @@ jinn-testutil = { path = "crates/jinn-testutil" }
 
 jinn-theme = { path = "crates/jinn-theme" }
 jinn-mcp = { path = "crates/jinn-mcp" }
+jinn-mcp-overgraph = { path = "crates/jinn-mcp-overgraph" }
 jinn-mcp-slice = { path = "crates/slices/jinn-mcp-slice" }
 jinn-chat-input-msg = { path = "crates/slices/jinn-chat-input-msg" }
 jinn-chat-log-view-msg = { path = "crates/slices/jinn-chat-log-view-msg" }
@@ -437,6 +441,17 @@ zip = { version = "8.6", default-features = false, features = ["deflate"] }
 csv = "1.3"
 # Database
 daow = "0.2.0"
+# Embedded graph database behind the builtin MCP server (`crates/jinn-mcp-overgraph`).
+# Exact pin: a 0.x crate whose API may break on minor bumps; upgrade deliberately.
+# When bumping this version, re-vendor the updated docs/gql-subset.md into
+# crates/jinn-mcp-overgraph/resources/ — the graph_docs tool serves that file
+# verbatim, and it must stay at the pinned engine's syntax.
+overgraph = "=0.17.1"
+# Local embedding models behind the overgraph server's vector tools
+# (`graph_upsert_node` + `embed_text`, `graph_vector_search`): ONNX models
+# run on CPU via ort, weights fetched from HuggingFace on first use. Exact
+# pin: the fastembed/ort surface is young and breaking; upgrade deliberately.
+fastembed = "=7.1.1"
 # `bundled` is deliberately NOT in this spec for the host-side graph: host
 # consumers (build scripts, daow's proc-macro validation) link the system
 # libsqlite3 on Linux/macOS — a bundled build there would recompile the whole

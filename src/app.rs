@@ -117,154 +117,178 @@ impl App {
 
         // Read config and build every service the actors will hold. This
         // also runs the recovery subcommands (`config init`,
-        // `config providers`, `install`), which return before the session
-        // store is opened — so those stay usable when the file they would
-        // repair is unreadable. See `bootstrap::config` for why the order
-        // there is behavioural.
-        let services =
-            match bootstrap::config::prepare(&cli, &self.runtime).change_context(AppError)? {
-                bootstrap::config::Prepared::Handled => return Ok(()),
-                bootstrap::config::Prepared::Ready(services) => services,
-            };
-        let LaunchServices {
-            config_storage,
-            api_keys: resolved_api_keys,
-            provider_registry,
-            llm_service,
-            session_store,
-            session_pool,
-            config,
-            app_state_storage,
-        } = services;
-        #[cfg(debug_assertions)]
-        let _db_path = cli.db_path_opt().cloned();
-        match cli.command.unwrap_or(Commands::Tui) {
-            Commands::Completions { shell } => {
-                use clap::CommandFactory;
-                let mut cmd = Cli::command();
-                let name = cmd.get_name().to_string();
-                clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
-                return Ok(());
-            }
-            // No bundled MCP server ships today, so `jinn mcp noop` falls
-            // through to a normal startup: the command exists as the spawn
-            // point for future bundled servers (see `McpCommands`).
-            Commands::Tui | Commands::Mcp { .. } => {
-                let compaction_prompt = jinn_tui::load_compaction_prompt(
-                    &jinn_kernel::AppPaths::default().prompts_dir(),
-                    &jinn_kernel::AppPaths::default().system_prompts_dir(),
-                )
-                .change_context(AppError)?;
-                let (core, services, discord_activated) = self
-                    .runtime
-                    .block_on(async {
-                        actor_wiring::ActorSystemBuilder::new(
-                            actor_wiring::ActorSystemBuilderArgs {
-                                handle: self.handle(),
-                                llm_service: llm_service.clone(),
-                                provider_registry: provider_registry.clone(),
-                                api_keys: resolved_api_keys.clone(),
-                                config_storage: config_storage.clone(),
-                                session_store: session_store.clone(),
-                                config: config.clone(),
-                                app_state_storage: app_state_storage.clone(),
-                                paths: jinn_kernel::AppPaths::default(),
-                                dump_requests: cli.dump_requests.clone(),
-                                compaction_prompt,
-                            },
-                        )
-                        .build()
-                        .await
-                    })
+        // `config providers`, `install`) — and intercepts the bundled MCP
+        // servers, which never open the session store or the config (see
+        // `bootstrap::config` for why the order there is behavioural).
+        match bootstrap::config::prepare(&cli, &self.runtime).change_context(AppError)? {
+            // A bundled server runs over stdio until the client disconnects,
+            // then the process returns; no TUI, no session store. With
+            // --fetch-model, the child warms the embedding model's cache and
+            // exits instead of serving — never touching stdout.
+            bootstrap::config::Prepared::ServeBundled {
+                db,
+                embed_model,
+                fetch_model,
+            } => {
+                let args = jinn_mcp_overgraph::OvergraphServeArgs {
+                    db,
+                    embed_model,
+                    fetch_model,
+                };
+                if fetch_model {
+                    return jinn_mcp_overgraph::fetch_model(&args)
+                        .change_context(AppError)
+                        .attach("overgraph embedding model pre-fetch failed");
+                }
+                self.runtime
+                    .block_on(jinn_mcp_overgraph::serve(args))
                     .change_context(AppError)
-                    .attach("slice activation failed")?;
-
-                // The discord frontend consumes the slice activation's
-                // parked channels + config; no-ops when disabled.
-                jinn_discord::spawn_gateway(
-                    &self.handle(),
-                    &core,
-                    &services,
-                    session_pool.clone(),
-                    discord_activated,
-                );
-
-                let app = jinn_tui::launch(core, services, bootstrap::ui::build_ui_registry())
-                    .change_context(AppError)?;
-                let runner = Runner::Tui(Box::new(app));
-                self.run_and_shutdown(runner, &session_store)?;
+                    .attach("overgraph MCP server failed")
             }
-            #[cfg(debug_assertions)]
-            Commands::Headless { command, .. } => {
-                let store_for_shutdown = session_store.clone();
-                let compaction_prompt = jinn_tui::load_compaction_prompt(
-                    &jinn_kernel::AppPaths::default().prompts_dir(),
-                    &jinn_kernel::AppPaths::default().system_prompts_dir(),
-                )
-                .change_context(AppError)?;
-                let (core, services, _discord_activated) = self
-                    .runtime
-                    .block_on(async {
-                        actor_wiring::ActorSystemBuilder::new(
-                            actor_wiring::ActorSystemBuilderArgs {
-                                handle: self.handle(),
-                                llm_service: llm_service.clone(),
-                                provider_registry,
-                                api_keys: resolved_api_keys,
-                                config_storage,
-                                session_store,
-                                config: config.clone(),
-                                app_state_storage,
-                                paths: jinn_kernel::AppPaths::default(),
-                                dump_requests: cli.dump_requests.clone(),
-                                compaction_prompt,
-                            },
-                        )
-                        .build()
-                        .await
-                    })
-                    .change_context(AppError)
-                    .attach("slice activation failed")?;
-
-                jinn_tui::load_theme(
-                    &core.state,
-                    &services.paths.themes_dir(),
-                    &services.paths.system_themes_dir(),
-                );
-                let mut headless = HeadlessApp::new(core, services);
-                match command {
-                    Some(HeadlessCommands::SendChat { message }) => {
-                        headless.send_chat(&message).change_context(AppError)?;
+            bootstrap::config::Prepared::Handled => Ok(()),
+            bootstrap::config::Prepared::Ready(services) => {
+                let LaunchServices {
+                    config_storage,
+                    api_keys: resolved_api_keys,
+                    provider_registry,
+                    llm_service,
+                    session_store,
+                    session_pool,
+                    config,
+                    app_state_storage,
+                } = services;
+                #[cfg(debug_assertions)]
+                let _db_path = cli.db_path_opt().cloned();
+                match cli.command.unwrap_or(Commands::Tui) {
+                    Commands::Completions { shell } => {
+                        use clap::CommandFactory;
+                        let mut cmd = Cli::command();
+                        let name = cmd.get_name().to_string();
+                        clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
+                        return Ok(());
                     }
-                    Some(HeadlessCommands::Script { path }) => {
-                        let file = std::fs::File::open(&path)
+                    // `jinn mcp noop` falls through to a normal startup: the
+                    // variant remains for argv-shape compatibility; the real
+                    // bundled servers were intercepted in `prepare`.
+                    Commands::Tui | Commands::Mcp { .. } => {
+                        let compaction_prompt = jinn_tui::load_compaction_prompt(
+                            &jinn_kernel::AppPaths::default().prompts_dir(),
+                            &jinn_kernel::AppPaths::default().system_prompts_dir(),
+                        )
+                        .change_context(AppError)?;
+                        let (core, services, discord_activated) = self
+                            .runtime
+                            .block_on(async {
+                                actor_wiring::ActorSystemBuilder::new(
+                                    actor_wiring::ActorSystemBuilderArgs {
+                                        handle: self.handle(),
+                                        llm_service: llm_service.clone(),
+                                        provider_registry: provider_registry.clone(),
+                                        api_keys: resolved_api_keys.clone(),
+                                        config_storage: config_storage.clone(),
+                                        session_store: session_store.clone(),
+                                        config: config.clone(),
+                                        app_state_storage: app_state_storage.clone(),
+                                        paths: jinn_kernel::AppPaths::default(),
+                                        dump_requests: cli.dump_requests.clone(),
+                                        compaction_prompt,
+                                    },
+                                )
+                                .build()
+                                .await
+                            })
                             .change_context(AppError)
-                            .attach("failed to open script file")?;
-                        headless.run_script(file).change_context(AppError)?;
-                    }
-                    None => {}
-                }
-                let runner = Runner::Headless(Box::new(headless));
-                self.run_and_shutdown(runner, &store_for_shutdown)?;
-            }
-            Commands::Fetch { subcommand } => {
-                use jinn_cli::cli::FetchCommands;
+                            .attach("slice activation failed")?;
 
-                match subcommand {
-                    FetchCommands::Models => {
-                        self.runtime
-                            .block_on(async { fetch_models().await })
-                            .change_context(AppError)?;
+                        // The discord frontend consumes the slice activation's
+                        // parked channels + config; no-ops when disabled.
+                        jinn_discord::spawn_gateway(
+                            &self.handle(),
+                            &core,
+                            &services,
+                            session_pool.clone(),
+                            discord_activated,
+                        );
+
+                        let app =
+                            jinn_tui::launch(core, services, bootstrap::ui::build_ui_registry())
+                                .change_context(AppError)?;
+                        let runner = Runner::Tui(Box::new(app));
+                        self.run_and_shutdown(runner, &session_store)?;
                     }
+                    #[cfg(debug_assertions)]
+                    Commands::Headless { command, .. } => {
+                        let store_for_shutdown = session_store.clone();
+                        let compaction_prompt = jinn_tui::load_compaction_prompt(
+                            &jinn_kernel::AppPaths::default().prompts_dir(),
+                            &jinn_kernel::AppPaths::default().system_prompts_dir(),
+                        )
+                        .change_context(AppError)?;
+                        let (core, services, _discord_activated) = self
+                            .runtime
+                            .block_on(async {
+                                actor_wiring::ActorSystemBuilder::new(
+                                    actor_wiring::ActorSystemBuilderArgs {
+                                        handle: self.handle(),
+                                        llm_service: llm_service.clone(),
+                                        provider_registry,
+                                        api_keys: resolved_api_keys,
+                                        config_storage,
+                                        session_store,
+                                        config: config.clone(),
+                                        app_state_storage,
+                                        paths: jinn_kernel::AppPaths::default(),
+                                        dump_requests: cli.dump_requests.clone(),
+                                        compaction_prompt,
+                                    },
+                                )
+                                .build()
+                                .await
+                            })
+                            .change_context(AppError)
+                            .attach("slice activation failed")?;
+
+                        jinn_tui::load_theme(
+                            &core.state,
+                            &services.paths.themes_dir(),
+                            &services.paths.system_themes_dir(),
+                        );
+                        let mut headless = HeadlessApp::new(core, services);
+                        match command {
+                            Some(HeadlessCommands::SendChat { message }) => {
+                                headless.send_chat(&message).change_context(AppError)?;
+                            }
+                            Some(HeadlessCommands::Script { path }) => {
+                                let file = std::fs::File::open(&path)
+                                    .change_context(AppError)
+                                    .attach("failed to open script file")?;
+                                headless.run_script(file).change_context(AppError)?;
+                            }
+                            None => {}
+                        }
+                        let runner = Runner::Headless(Box::new(headless));
+                        self.run_and_shutdown(runner, &store_for_shutdown)?;
+                    }
+                    Commands::Fetch { subcommand } => {
+                        use jinn_cli::cli::FetchCommands;
+
+                        match subcommand {
+                            FetchCommands::Models => {
+                                self.runtime
+                                    .block_on(async { fetch_models().await })
+                                    .change_context(AppError)?;
+                            }
+                        }
+                    }
+                    // Config subcommands are dispatched above, before the early
+                    // preferences parse. Reaching this match arm is impossible.
+                    Commands::Config { .. } => {}
+                    Commands::Install { .. } => {}
                 }
+
+                Ok(())
             }
-            // Config subcommands are dispatched above, before the early
-            // preferences parse. Reaching this match arm is impossible.
-            Commands::Config { .. } => {}
-            Commands::Install { .. } => {}
         }
-
-        Ok(())
     }
 }
 

@@ -26,7 +26,8 @@ Authorization = "Bearer ${MY_API_KEY}" # ${VAR} expanded once at startup
 # Singleton servers. A server marked `singleton = true` spawns one instance
 # that has a shared connection across all sessions. Use this for servers that
 # consume a lot of resources, or are already designed to support multiple clients.
-# This only applies for `local_http` servers.
+# Works for every transport — stdio included: one child process is shared
+# no matter how the server speaks.
 #
 # Singleton example — one shared process speaking streamable HTTP. The
 # child binds the port jinn picks; `<port>` and `<ip>` expand to the
@@ -50,6 +51,30 @@ Adding, removing, or editing a server requires a **jinn restart**.
 - Header values support `${VAR}` expansion; an unset variable blocks that
   connection with an error naming the variable, and header values are never
   logged or rendered.
+
+## Bundled servers
+
+jinn ships one builtin server: **overgraph**, an embedded graph database
+speaking GQL. It is configured out of the box — no `[mcp.*]` block needed —
+but disabled per session until you enable it in the picker:
+
+```toml
+[mcp.overgraph]        # shipped in default_jinn.toml; shown here for reference
+command = "<jinn>"     # <jinn> expands to the running jinn executable
+args = ["mcp", "overgraph"]
+singleton = true       # one shared graph process for all sessions
+auto_enable = false
+```
+
+Six tools: `graph_query` (GQL — reads, writes, schema DDL),
+`graph_upsert_node`, `graph_upsert_edge`, `graph_vector_search` (semantic
+search over nodes carrying embeddings), `graph_ingest_file` (bulk-load a
+JSONL batch file in one call), and `graph_docs` (bundled GQL reference; call
+it before writing queries you are unsure of). Data persists under a
+jinn-managed directory across sessions; add your own entry with
+`args = ["mcp", "overgraph", "--db", "/path/to/dir"]` to work against a
+different graph database. For usage patterns, worked examples, and batch
+ingestion, see `graph-database.md`.
 
 ## Enabling for a session
 

@@ -187,6 +187,11 @@ impl McpActorDeps {
 
 /// Builds the [`ServerCommand`] for an [`McpServerConfig`].
 ///
+/// The `<jinn>` token in the program name or any argument expands to the
+/// running jinn executable's path (see [`expand_jinn_token`]) — how the
+/// shipped builtin-server entries name jinn itself. `<ip>`/`<port>` stay
+/// local_http-only (see `connect_for_transport`).
+///
 /// # Panics
 ///
 /// Panics if `command` is `None` — only valid for `RemoteHttp` servers,
@@ -196,12 +201,27 @@ impl McpActorDeps {
     reason = "invariant: documented, only called for Stdio/LocalHttp"
 )]
 fn server_command(config: &McpServerConfig) -> ServerCommand {
+    // current_exe failure (exotic sandbox) leaves the token unexpanded; the
+    // spawn then fails naming the literal `<jinn>`, which is legible.
+    let jinn_exe = std::env::current_exe().ok();
+    let expand = |value: String| match &jinn_exe {
+        Some(path) => jinn_mcp::transport::expand_jinn_token(&value, path),
+        None => {
+            tracing::warn!(
+                value = %value,
+                "could not resolve the jinn executable; leaving <jinn> unexpanded"
+            );
+            value
+        }
+    };
     ServerCommand {
-        program: config
-            .command
-            .clone()
-            .expect("command required for Stdio/LocalHttp servers"),
-        args: config.args.clone(),
+        program: expand(
+            config
+                .command
+                .clone()
+                .expect("command required for Stdio/LocalHttp servers"),
+        ),
+        args: config.args.iter().map(|a| expand(a.clone())).collect(),
     }
 }
 
@@ -1077,6 +1097,53 @@ mod tests {
         // Then the program and args are copied.
         assert_eq!(cmd.program, "npx");
         assert_eq!(cmd.args, vec!["@excalimate/mcp-server", "--stdio"]);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn server_command_expands_jinn_token_in_program_and_args() {
+        // Given a config naming jinn itself via the <jinn> token.
+        let config = McpServerConfig {
+            command: Some("<jinn>".to_owned()),
+            args: vec![
+                "mcp".to_owned(),
+                "overgraph".to_owned(),
+                "--parent".to_owned(),
+                "<jinn>".to_owned(),
+            ],
+            ..Default::default()
+        };
+
+        // When building the command.
+        let cmd = server_command(&config);
+
+        // Then every <jinn> occurrence is the running executable's path.
+        let exe = std::env::current_exe().expect("test binary has an exe path");
+        assert_eq!(cmd.program, exe.to_string_lossy());
+        assert_eq!(
+            cmd.args,
+            vec!["mcp", "overgraph", "--parent", &exe.to_string_lossy()]
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn server_command_leaves_configs_without_the_token_untouched() {
+        // Given a config with no <jinn> token.
+        let config = McpServerConfig {
+            command: Some("npx".to_owned()),
+            args: vec!["--stdio".to_owned()],
+            ..Default::default()
+        };
+
+        // When building the command.
+        let cmd = server_command(&config);
+
+        // Then nothing changes and no token remains anywhere.
+        assert_eq!(cmd.program, "npx");
+        assert_eq!(cmd.args, vec!["--stdio"]);
+        assert!(!cmd.program.contains("<jinn>"));
+        assert!(cmd.args.iter().all(|a| !a.contains("<jinn>")));
     }
 
     /// Verifies tool-name filtering strips the namespace correctly.

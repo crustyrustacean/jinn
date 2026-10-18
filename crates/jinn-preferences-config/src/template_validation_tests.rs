@@ -19,11 +19,11 @@
 //! Nor is it asserted that every section appears in the template. The
 //! template ships active tables for `tools`, `chat_log`, `skills`,
 //! `session_lifecycle.script`, `context_curation.*`, `provider.*`,
-//! `ui.*`, `watchdog.*`, and `term`. There is deliberately no `[mcp]`
-//! block and no `[discord]` block; both sections read as their defaults
-//! when absent, and a stock install looks exactly like that. Adding
-//! either block to the template is a product decision, not something
-//! this test should force.
+//! `ui.*`, `watchdog.*`, `term`, and `mcp` (the builtin overgraph
+//! server). There is deliberately no `[discord]` block; that section
+//! reads as its defaults when absent, and a stock install looks exactly
+//! like that. Adding it to the template is a product decision, not
+//! something this test should force.
 
 #![expect(
     clippy::expect_used,
@@ -308,29 +308,62 @@ fn shipped_rules_drop_the_removed_trigger_key() {
     }
 }
 
-/// `#[case]`-free guard: the two sections the template deliberately does
-/// not ship a block for still read as their defaults, so a stock
-/// install is valid rather than incomplete.
+/// `#[case]`-free guard: the one section the template deliberately does
+/// not ship a block for still reads as its default, so a stock install
+/// is valid rather than incomplete.
 #[rstest::rstest]
 #[test]
 fn sections_absent_from_the_template_read_as_defaults() {
-    // Given a document with no `[mcp]` and no `[discord]` table.
+    // Given a document with no `[discord]` table.
     let config = jinn_config::testutil::config_layer("[tools]\ndefault_timeout_secs = 300");
     register_all_sections(&config);
 
-    // When the layer validates and both absent sections are read.
+    // When the layer validates and the absent section is read.
     let valid = config.validate();
-    let mcp = config.get::<McpServersConfig>();
     let discord = config.get::<DiscordConfig>();
 
-    // Then validation passes and both read as their disabled defaults.
+    // Then validation passes and the section reads as its disabled default.
     assert!(valid.is_ok(), "a stock document validates");
-    assert!(
-        mcp.expect("absent section reads a default").is_empty(),
-        "absent [mcp] reads no servers"
-    );
     assert!(
         !discord.expect("absent section reads a default").enabled,
         "absent [discord] reads disabled"
+    );
+}
+
+/// The shipped `[mcp.overgraph]` entry is the builtin graph database
+/// server: one shared process (`singleton`) that sessions opt into
+/// through the picker (`auto_enable = false`), served by jinn itself
+/// (`<jinn>` token, no `command`/`url` of its own).
+#[rstest::rstest]
+#[test]
+fn template_ships_overgraph_as_a_disabled_singleton_builtin() {
+    // Given the shipped template parsed as a config layer.
+    let config = jinn_config::testutil::config_layer(DEFAULT_CONFIG);
+    register_all_sections(&config);
+
+    // When reading the mcp section.
+    let mcp = config
+        .get::<McpServersConfig>()
+        .expect("mcp section parses");
+
+    // Then the overgraph entry exists with the builtin's exact shape.
+    let overgraph = mcp
+        .get("overgraph")
+        .expect("shipped template configures the builtin overgraph server");
+    assert_eq!(overgraph.command.as_deref(), Some("<jinn>"));
+    assert_eq!(overgraph.args, ["mcp", "overgraph"]);
+    assert!(
+        overgraph.singleton,
+        "the shared graph db needs one owner process"
+    );
+    assert!(!overgraph.auto_enable, "sessions opt in through the picker");
+    assert!(overgraph.url.is_none(), "stdio server needs no url");
+
+    // And the template's own singleton comment carries no transport
+    // restriction — the claim was verified wrong and the shipped entry
+    // relies on it working over stdio.
+    assert!(
+        !DEFAULT_CONFIG.contains("only applies for `local_http`"),
+        "stale singleton claim reintroduced into default_jinn.toml"
     );
 }

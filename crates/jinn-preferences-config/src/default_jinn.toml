@@ -237,7 +237,8 @@ teardown_command = """[ -z "$(git status --porcelain)" ] || { echo "TEARDOWN-DIR
 # > Singleton servers. A server marked `singleton = true` spawns one instance
 # > that has a shared connection across all sessions. Use this for servers that
 # > consume a lot of resources, or are already designed to support multiple clients.
-# > This only applies for `local_http` servers.
+# > Works for every transport — stdio included: one child process is shared
+# > no matter how the server speaks.
 #
 # > Singleton example — one shared process speaking streamable HTTP. The
 # > child binds the port jinn picks; `<port>` and `<ip>` expand to the
@@ -249,6 +250,48 @@ teardown_command = """[ -z "$(git status --porcelain)" ] || { echo "TEARDOWN-DIR
 # transport = "local_http"
 # url = "http://127.0.0.1:<port>/mcp"
 # singleton = true
+
+# ---------------------------------------------------------------------------
+# Bundled servers
+# ---------------------------------------------------------------------------
+#
+# > jinn ships one builtin server: overgraph, an embedded graph database
+# > speaking GQL. The entry is active (no config needed) but disabled per
+# > session by default — enable it in the MCP picker. `<jinn>` in `command`
+# > or `args` expands to the running jinn executable, so the entry works no
+# > matter how jinn was installed. Data lands under a jinn-managed
+# > directory and persists across sessions; point `--db` at your own
+# > directory to keep a separate graph. Each `[mcp.<name>]` entry is its
+# > own server instance, so a second entry with a different `--db` is a
+# > second graph database.
+# >
+# > The server embeds text locally for semantic search. Two pieces:
+# > pass `embed_text` to graph_upsert_node to store an embedding of that
+# > text on the node, and call graph_vector_search with a `query` to find
+# > nodes by meaning (hits come back with label, key, props, and a
+# > similarity score). The embedding model runs on your CPU; it downloads
+# > once from HuggingFace on first use (~130MB into the jinn cache) and
+# > works offline after that — pre-fetch it headlessly with
+# > `jinn mcp overgraph --fetch-model`, which also shows progress on
+# > stderr. `--embed-model <name>` picks a different model; the model's
+# > dimension is locked into the database permanently at its first open,
+# > so switching models later requires a fresh `--db`. Default model:
+# > bge-small-en-v1.5 (384-dim cosine).
+# >
+# > Bulk-loading a corpus: write a JSONL batch file with a script (one
+# > object per line; each line carries exactly one of "node": {...} or
+# > "edge": {...}, with edge endpoints referenced as "Label:key") and call
+# > graph_ingest_file with its path — one tool call per file instead of one
+# > upsert call per record. Nodes may be declared anywhere in the file
+# > relative to the edges that reference them, and every endpoint is
+# > verified before anything is written: an edge naming a missing node
+# > aborts the whole file with zero writes. Upserts are idempotent by
+# > (label, key), so a failed or interrupted run can re-run the same file.
+[mcp.overgraph]
+command = "<jinn>"
+args = ["mcp", "overgraph"]
+singleton = true
+auto_enable = false
 
 # > Compaction command + auto compaction.
 [context_curation.compaction]

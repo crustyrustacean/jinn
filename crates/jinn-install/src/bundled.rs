@@ -302,4 +302,35 @@ mod tests {
         // Then it is an error, never a silent skip.
         assert!(result.is_err(), "{path} should not resolve to a kind");
     }
+
+    /// Pins the singleton-flag documentation: the claim that `singleton`
+    /// applies only to `local_http` servers was verified wrong (a stdio
+    /// singleton shares one child across sessions), and the shipped
+    /// `[mcp.overgraph]` entry relies on that. If this test fails, someone
+    /// reintroduced the stale claim into a shipped doc.
+    #[rstest::rstest]
+    #[test]
+    fn shipped_docs_never_claim_singleton_is_local_http_only() {
+        // Given the bundled resources and the shipped jinn.toml template.
+        let catalogue = bundled_catalogue().expect("derive catalogue");
+        let skills = catalogue
+            .iter()
+            .filter(|b| b.kind == Kind::Skill && b.relative.ends_with("mcp-servers.md"))
+            .collect::<Vec<_>>();
+
+        // Then the reference ships, and it carries no transport-restricted
+        // singleton claim anywhere in its text.
+        let reference = skills
+            .iter()
+            .find_map(|b| {
+                RESOURCES
+                    .get_file(format!("skills/{}", b.relative.display()))
+                    .map(|f| String::from_utf8_lossy(f.contents()).into_owned())
+            })
+            .expect("mcp-servers.md ships as a bundled skill reference");
+        assert!(
+            !reference.contains("only applies for `local_http`"),
+            "stale singleton claim reintroduced into mcp-servers.md"
+        );
+    }
 }

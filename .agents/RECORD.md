@@ -489,7 +489,25 @@ Entries are added or amended **only with human approval**.
 - (mcp) A singleton MCP server's tools register globally, so every session whose enablement admits the server dispatches to the one shared process.
 - (mcp) A singleton MCP server survives session close, archive, and teardown, and stops only at app exit or an explicit restart.
 - (mcp) A singleton MCP server's global registration is per-session withdrawable: disabling it in one session hides its tools there while other sessions keep them.
-- (mcp) jinn bundles no MCP server: the jinn mcp CLI subcommand parses with a no-op variant and exists as the spawn point for future bundled servers.
+- (mcp) jinn bundles the overgraph embedded graph database as a builtin MCP server, spawned as a stdio child process through the jinn mcp overgraph subcommand.
+- (mcp) The builtin overgraph server ships as an active entry in default_jinn.toml with singleton = true and auto_enable = false.
+- (mcp) The singleton MCP flag spawns one shared connection regardless of transport; stdio and HTTP servers both honor it.
+- (mcp) A <jinn> replacement token in an MCP server's command or args expands to the running jinn executable at spawn, so bundled-server entries work without jinn being on PATH.
+- (mcp) Bundled MCP servers are intercepted during config prepare, so a server child runs without opening the session store or reading the user's jinn.toml.
+
+- (graph) The overgraph server's database directory defaults to a jinn-managed AppPaths location and is overridden per entry with a --db argument, so each [mcp.<name>] entry is its own graph database.
+- (graph) The overgraph server exposes six tools: graph_query (GQL), graph_upsert_node, graph_upsert_edge, graph_vector_search, graph_ingest_file, and graph_docs (bundled GQL reference).
+- (graph) The overgraph server vendors overgraph's gql-subset.md verbatim from the pinned upstream source and serves it through the graph_docs tool, refreshed only when the overgraph pin is bumped.
+- (graph) The overgraph server opens its database with dense vector configuration derived from its embedder, and a database's dimension and metric lock permanently at the first open carrying them.
+- (graph) The overgraph server opens its database with edge_uniqueness enabled, so repeated (from, to, label) edge upserts update the existing edge instead of creating parallel ones — the basis of graph_upsert_edge's and graph_ingest_file's re-run safety.
+- (graph) The graph_ingest_file tool reads a self-describing JSONL batch file where each line carries either a node or an edge with Label:key endpoint references.
+- (graph) The graph_ingest_file tool upserts all nodes in the batch file before resolving any edge endpoint.
+- (graph) The graph_ingest_file tool aborts the entire file before any write when an edge names an endpoint that resolves to no node, reporting the offending line.
+- (graph) The graph_ingest_file tool embeds node embed_text values with the resident embedder, chunked into engine-sized WAL batches.
+- (graph) The graph_ingest_file tool returns upsert and embed counts plus timing, never node ids.
+- (graph) The overgraph server embeds node text locally via fastembed with bge-small-en-v1.5 on CPU; the model loads at first embed and stays resident until the server process exits.
+- (graph) The embedder model downloads from HuggingFace on first use into a jinn-managed cache directory, is announced on the server's stderr, and is pre-fetchable headlessly via jinn mcp overgraph --fetch-model.
+- (graph) graph_upsert_node embeds only when the caller passes embed_text; graph_vector_search embeds its query text server-side.
 
 - (workflows) Workflow definitions are authored by convention under the config dir's workflows folder: one directory per workflow holding a workflow.md flow description and per-step prompt files.
 - (skills) The bundled workflows skill teaches running workflows on the session task list: stamping steps as task entries, dispatching each step to a subagent as an orchestrator, and materializing loop iterations by adding task entries.

@@ -43,6 +43,23 @@ pub fn expand_tokens(args: &[String], ip: &str, port: u16) -> Vec<String> {
         .collect()
 }
 
+/// Expand the `<jinn>` replacement token in one command component (the
+/// program name or a single argument): each `<jinn>` substring becomes the
+/// path of the running jinn executable.
+///
+/// Lets a shipped `[mcp.<name>]` entry name jinn itself without assuming
+/// jinn is on `PATH` — the config works identically for `cargo run`, a
+/// release tarball, or a binstall layout. Mirrors `<ip>`/`<port>`.
+///
+/// A failed `current_exe` (near-impossible off exotic sandboxes) leaves the
+/// token unexpanded; the spawn then fails naming the literal `<jinn>`, which
+/// is legible enough for a condition that basically cannot happen. Pure and
+/// allocation-only.
+#[must_use]
+pub fn expand_jinn_token(value: &str, jinn_exe: &std::path::Path) -> String {
+    value.replace("<jinn>", &jinn_exe.to_string_lossy())
+}
+
 /// Extracts the host portion from a URL template like `http://127.0.0.1:<port>/mcp`.
 ///
 /// Strips the scheme prefix and takes everything up to the first `:` (port
@@ -185,5 +202,42 @@ mod tests {
 
         // Then the port token is replaced with the allocated port.
         assert_eq!(expanded, vec!["http://127.0.0.1:42365/mcp"]);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn expand_jinn_token_replaces_program_and_args() {
+        // Given a program name and an arg both carrying the <jinn> token.
+        let exe = std::path::Path::new("/opt/jinn/bin/jinn");
+
+        // When expanding.
+        let program = expand_jinn_token("<jinn>", exe);
+        let arg = expand_jinn_token("mcp overgraph --parent <jinn>", exe);
+
+        // Then every occurrence becomes the executable path.
+        assert_eq!(program, "/opt/jinn/bin/jinn");
+        assert_eq!(arg, "mcp overgraph --parent /opt/jinn/bin/jinn");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn expand_jinn_token_passes_through_without_token() {
+        // Given a value with no token.
+        // When expanding.
+        let out = expand_jinn_token("npx", std::path::Path::new("/usr/bin/jinn"));
+
+        // Then the value passes through unchanged.
+        assert_eq!(out, "npx");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn expand_jinn_token_handles_multiple_occurrences_in_one_value() {
+        // Given one value naming jinn twice.
+        // When expanding.
+        let out = expand_jinn_token("<jinn> --jinn <jinn>", std::path::Path::new("/j/jinn"));
+
+        // Then both occurrences are replaced.
+        assert_eq!(out, "/j/jinn --jinn /j/jinn");
     }
 }

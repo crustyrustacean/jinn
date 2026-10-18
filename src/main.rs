@@ -14,6 +14,14 @@ fn main() {
 
     let cli = Cli::parse();
 
+    // Debug-build guard: `--db-path` is required for session-store commands.
+    // Enforced post-parse (not by clap) so bundled MCP servers stay spawnable
+    // without the flag — they never open the session store.
+    if let Err(e) = cli.debug_db_path_required() {
+        eprintln!("error: {e}");
+        std::process::exit(2);
+    }
+
     let paths = jinn_kernel::AppPaths::default();
     let log_path = cli.log_file.clone().unwrap_or_else(|| paths.log_path());
 

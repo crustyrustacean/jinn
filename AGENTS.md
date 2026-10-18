@@ -75,7 +75,7 @@ Adding a cell means two edits: one `register!` entry in the catalog, and bumping
 
 Keybinds are **data, not enum variants**. A slice registers `RouteRow`s at activation; composition turns them into keymap bindings after every slice has activated.
 
-A `RouteRow` says: *in this scope, this key, produce this outcome.* The outcome is one of:
+A `RouteRow` says: _in this scope, this key, produce this outcome._ The outcome is one of:
 
 - `RouteOutcome::Action` — a closure `ActionFn` that runs in the handler, resolved by a linear scan over `(slice, action)`.
 - `RouteOutcome::StaticIntent` — a shared-chrome key (quit, which-key, tab switch) that composition binds to a real `KernelIntent` via the `static_intent` table in `crates/jinn-tui/src/keymap_gen.rs`. A route id missing from that table logs a warning and leaves the key unbound; it is a wiring bug, not a compile error.
@@ -250,7 +250,7 @@ impl BusService {
 
 ### Module System
 
-There is no rule about *where* `mod.rs` goes, because the tree does not follow one. It uses three shapes, and all three are correct:
+There is no rule about _where_ `mod.rs` goes, because the tree does not follow one. It uses three shapes, and all three are correct:
 
 - **Flat siblings** — `handler.rs`, `validator.rs`, `intent.rs` in one directory. The common case.
 - **`foo.rs` beside `foo/`** — the parent module's own code in `foo.rs`, its children under `foo/`. Used wherever a parent has real content of its own, such as `crates/jinn-kernel/src/feat.rs` beside `feat/`, and `crates/slices/jinn-session-store/src/session_store_actor.rs` beside `session_store_actor/`.
@@ -651,7 +651,7 @@ When implementing features, locate each concern by convention rather than hardco
 **Adding a message type that crosses a slice boundary:**
 
 1. **Define the struct** in the owning slice's `-msg` crate, deriving the message schema the sibling structs use plus `BusMessage`.
-2. **Add the enum variant or struct** to whatever the boundary names — a `-msg` crate has no central enum, so the definition *is* the registration.
+2. **Add the enum variant or struct** to whatever the boundary names — a `-msg` crate has no central enum, so the definition _is_ the registration.
 3. **Declare it** on the sending side: for an actor, add `.emits::<M>()` to its spawn builder, or it will be dropped at runtime. For a route action, the `PublishClosure` carries it.
 
 **In every case:** write tests with Given/When/Then structure, stacking `#[rstest::rstest]`; add module docs, type docs, and error docs describing behavior and purpose, not implementation.
@@ -664,18 +664,18 @@ Read the `justfile` to see what else is available. Prioritize running recipes fr
 
 Skills refer to commands by **role**; the table below resolves each role to this project's actual command.
 
-| Role          | Command                   | Description                                                                                       |
-| ------------- | ------------------------- | ------------------------------------------------------------------------------------------------- |
-| `vcs`         | Fossil                    | This project uses Fossil for version control (`fossil status`, `fossil diff`, `fossil timeline`, ...). |
-| `check`       | `just check`              | Compile-check the workspace without codegen. Fast; use it instead of a speculative test run.      |
-| `test`        | `just test`               | Run the workspace suite, capture to `target/test-output.log`, print a summary. **All tests must pass before committing.** |
-| `test-failures` | `just test-failures`    | Show failing test names from the last run. Reads the captured log; re-runs nothing.               |
-| `test-one`    | `just test-one <filter>`  | Run only tests matching a name filter, across the workspace. The cheap fix loop.                 |
-| `lint`        | `just lint`               | Compile check, clippy, format check, and the test-attribute guard.                                |
-| `test-attr`   | `just lint-testattr`      | Fail on a bare test attribute missing its `rstest` companion.                                     |
-| `format`      | `just fmt-fix`            | Apply formatting fixes.                                                                           |
-| `commit`      | `just commit '<message>'` | Commit changes (uses `--dotfiles` so `.agents/` is included).                                     |
-| `sync-trunk`  | `fossil merge trunk`      | Sync latest changes with your branch (resolve conflicts, re-test, commit).                        |
+| Role            | Command                   | Description                                                                                                               |
+| --------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `vcs`           | `git`                     | This project uses git for version control .                                                                               |
+| `check`         | `just check`              | Compile-check the workspace without codegen. Fast; use it instead of a speculative test run.                              |
+| `test`          | `just test`               | Run the workspace suite, capture to `target/test-output.log`, print a summary. **All tests must pass before committing.** |
+| `test-failures` | `just test-failures`      | Show failing test names from the last run. Reads the captured log; re-runs nothing.                                       |
+| `test-one`      | `just test-one <filter>`  | Run only tests matching a name filter, across the workspace. The cheap fix loop.                                          |
+| `lint`          | `just lint`               | Compile check, clippy, format check, and the test-attribute guard.                                                        |
+| `test-attr`     | `just lint-testattr`      | Fail on a bare test attribute missing its `rstest` companion.                                                             |
+| `format`        | `just fmt-fix`            | Apply formatting fixes.                                                                                                   |
+| `commit`        | `just commit '<message>'` | Commit changes (uses `--dotfiles` so `.agents/` is included).                                                             |
+| `sync-trunk`    | `git merge main`          | Sync latest changes with your branch (resolve conflicts, re-test, commit).                                                |
 
 ## 8. Misc
 
