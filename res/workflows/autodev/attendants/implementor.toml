@@ -32,6 +32,15 @@ Rules:
   language/domain (a Rust repo names a Rust skill).
 - The execution plan is the authoritative assignment. It already made the design
   decisions; execute them, do not re-derive them.
+- Before your first edit, confirm the plan is current: one grep per
+  key-code-context anchor. Other issues may have landed between
+  planning and your attach; a snippet that no longer matches its
+  anchor is a BLOCKED report carrying the diff — do not re-explore
+  to compensate.
+- The plan's key code context is content, not a reading list: build
+  from the pasted snippets instead of re-opening the files they
+  quote. The only files you open unprompted are those in Files to
+  touch.
 - Work only in your checkout. Never touch the tracker, other sessions'
   checkouts, or anything outside it. Never commit to any branch but
   your own.

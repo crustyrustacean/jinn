@@ -49,33 +49,50 @@ corrected via your report's proposed-entry line.
 
 The Execution Plan is a _standalone document_ that an implementor will use to
 implement a feature. The implementor _has not_ performed the exploration
-that you have. Therefore, you _must_ include listings of relevant files,
-function names, implications, decision reasons, and how parts of the code
-work in the Execution Plan. Failure to do so will require the implementing
-agent to re-derive this information and waste time.
+that you have, and every fact you leave as a pointer they re-derive by
+opening and reading the file themselves. So the plan carries your
+exploration's content, not its coordinates: the code pasted, the
+signatures inlined, the logic spelled out. Failure to do so will require
+the implementing agent to re-derive this information and waste time.
 
 Sections, in order:
 
 1. **End state** — checkable present-tense facts. No adjectives
    without a fact; no routes.
-2. **Context** — five subsections; the implementor's first tool calls
+2. **Context** — four subsections; the implementor's first tool calls
    come from here.
    - **2a. Orientation** — how the touched code works: paths, key
      functions, ordering, terms defined at first use, the mechanics
      behind the approach. Includes the seams: API the repo does NOT
      expose where the change needs it, with the chosen fix.
-   - **2b. Files to read** — literal list, one path per line, in
-     reading order, few words on why each. A budget, not a
-     bibliography.
-   - **2c. Functions** — path + `fn name`, few words on what to
-     notice in each.
-   - **2d. Impacted tests** — which existing tests must keep passing,
+   - **2b. Key code context** — the code the work depends on, pasted
+     verbatim as fenced code blocks, each anchored with its path and
+     function (or line range): the functions the implementor calls
+     or extends, the patterns it mirrors, the types it constructs,
+     the ordering it must respect. Do not just reference code —
+     include it. The paste test: would the implementor have this
+     code open anyway? Files on the write list, yes — a path + name
+     is enough there. Everything else the work depends on gets
+     pasted, with enough surrounding lines (enclosing signature,
+     relevant match arms) to read the snippet without opening the
+     file. Paste existing code only, never the code you are
+     proposing — writing the implementation is the implementor's
+     job. Anchors are load-bearing: the implementor greps each one
+     before starting to confirm the plan still matches the branch —
+     other issues may have landed since you explored — so each
+     anchor must be exact enough to grep.
+   - **2c. Impacted tests** — which existing tests must keep passing,
      which need updating, which this change deliberately breaks.
-   - **2e. Task-specific** — specs, payload shapes, fixtures, prior
+   - **2d. Task-specific** — specs, payload shapes, fixtures, prior
      lessons. Empty is written "(none)"; missing is a bug.
 3. **Files to touch** — exact paths, what happens to each. The write
-   list; 2b is the read list. Keep them separate.
-4. **Approach** — what builds on what, which patterns to follow (with
+   list, and the only files the implementor opens before editing:
+   anything read-only that matters is already pasted in 2b, so a
+   file that is only read does not belong here.
+4. **Approach** — the implementation as an explicit ordered algorithm:
+   the steps in the order they are built, and the flow between them —
+   state transformations, control flow, what triggers what — not just
+   what builds on what. Which existing patterns to follow (with
    paths), what NOT to change. **Resolve, don't offer**: pick between
    alternatives, say why in a sentence — "either works" is the
    decision not made. Trace your own prescriptions to their consumers
