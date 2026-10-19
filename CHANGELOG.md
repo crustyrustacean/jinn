@@ -1,10 +1,11 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
-## (development)
+## 2026-10-18 v1.9.0
 
 - Update git worktree lifecycle script so it handles symlinks better.
 - `autodev` workflow implementors should get started faster with less exploration.
 - `micro-task-loop` skill should respect the code check/test cadence specified in the plan.
+- Add `overgraph` graph+vector database MCP.
 
 ## 2026-10-16 v1.8.2
 
