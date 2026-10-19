@@ -8,6 +8,67 @@
 use super::*;
 use crate::epoch::EciScore;
 
+// ── Crossing-schema contract ─────────────────────────────────────────
+
+#[rstest::rstest]
+#[test]
+fn refresh_all_is_still_a_command() {
+    // Given the canonical refresh contract.
+    // When reading its schema definition.
+    let def = <RefreshAll as trouper::schema::Schema>::schema_def();
+
+    // Then the name and kind are stable: the name is the wire contract,
+    // and the kind is load-bearing. `RefreshAll` is an imperative
+    // instruction ("refresh now"), not a fact about the past, so it is a
+    // Command. It has exactly one handler — the OpenRouter market actor
+    // — so the route resolves to that actor and the delivery is
+    // unambiguous. Re-declaring it as an Event to get broadcast
+    // semantics would make the schema kind lie about the message.
+    assert_eq!(def.name, "RefreshAll");
+    assert!(matches!(def.kind, trouper::schema::SchemaKind::Command));
+}
+
+#[rstest::rstest]
+#[test]
+fn refresh_epoch_force_is_a_command() {
+    // Given the epoch actor's forced-refresh contract.
+    // When reading its schema definition.
+    let def = <RefreshEpochForce as trouper::schema::Schema>::schema_def();
+
+    // Then the name and kind are stable: it is an imperative
+    // instruction, and the epoch actor is its only declarant, so the
+    // route resolves to exactly that actor.
+    assert_eq!(def.name, "RefreshEpochForce");
+    assert!(matches!(def.kind, trouper::schema::SchemaKind::Command));
+}
+
+#[rstest::rstest]
+#[test]
+fn market_models_refreshed_is_an_event() {
+    // Given the refresh chain's contract.
+    // When reading its schema definition.
+    let def = <MarketModelsRefreshed as trouper::schema::Schema>::schema_def();
+
+    // Then the name and kind are stable: it is a past-tense fact
+    // ("the models table was refreshed"), so it is an Event and
+    // broadcasts to its single declarant — the epoch actor.
+    assert_eq!(def.name, "MarketModelsRefreshed");
+    assert!(matches!(def.kind, trouper::schema::SchemaKind::Event));
+}
+
+#[rstest::rstest]
+#[test]
+fn market_models_refreshed_serializes_as_null() {
+    // Given the chain event — a unit struct.
+    // When serializing it the way the erased publish path does.
+    let payload = serde_json::to_value(MarketModelsRefreshed).expect("the event serializes");
+
+    // Then the payload is `null`, not `{}` — a unit struct's serde
+    // representation. The erased publish path carries that value
+    // verbatim, so a hand-rolled publish of `{}` would not match it.
+    assert!(payload.is_null());
+}
+
 // ── Cell payload behavior ────────────────────────────────────────────
 
 #[rstest::rstest]

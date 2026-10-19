@@ -1,7 +1,8 @@
 //! The epoch actor — loads, caches, and refreshes the epoch benchmark
 //! data off the key thread.
 //!
-//! Handles [`RefreshEpoch`] and [`RefreshAll`]; writes only the
+//! Handles [`RefreshEpoch`], [`RefreshEpochForce`], and
+//! [`MarketModelsRefreshed`]; writes only the
 //! [`MarketDataState`] cell (`eci`, `epoch_fetched_at`, `epoch_loading`,
 //! `epoch_source`, `last_error`); emits [`EpochLoaded`] and
 //! [`RefreshFailed`].
@@ -13,17 +14,33 @@
 //! populates and the status line reports the source. The seed bytes are
 //! never written to disk as a download stand-in.
 //!
-//! RefreshAll drops the epoch cache dir first, then forces the download
-//! path — refresh means refresh — and reports a failed drop as
-//! `RefreshFailed` without skipping the download attempt.
+//! # Two triggers, one duty
+//!
+//! The forced refresh — drop the epoch cache dir, then force the
+//! download path, refresh means refresh — is reached by two triggers:
+//! the [`RefreshEpochForce`] command, and the [`MarketModelsRefreshed`]
+//! event the OpenRouter market actor emits when the models half of
+//! `<c-r>` is done. Both run the same body, so one press refreshes the
+//! whole popup.
+//!
+//! A failed cache drop is reported as `RefreshFailed` without skipping
+//! the download attempt.
+//!
+//! # Delivery story
+//!
+//! This actor is the only declarant of [`RefreshEpochForce`] and of
+//! [`MarketModelsRefreshed`], and the only emitter of [`EpochLoaded`].
+//! One declarant per schema means the route table never engages its
+//! round-robin, so no refresh is silently lost to a second handler.
 
 use jinn_kernel::common::actor_deps::ActorDeps;
 use jinn_kernel::common::actor_deps::BusPublish;
 use jinn_model_market_msg::EpochLoaded;
 use jinn_model_market_msg::EpochSource;
 use jinn_model_market_msg::MarketDataState;
-use jinn_model_market_msg::RefreshAll;
+use jinn_model_market_msg::MarketModelsRefreshed;
 use jinn_model_market_msg::RefreshEpoch;
+use jinn_model_market_msg::RefreshEpochForce;
 use jinn_model_market_msg::RefreshFailed;
 use jinn_slices::cell::TypedCell;
 use trouper::actor::ActorPath;
@@ -128,12 +145,15 @@ impl EpochMarketActor {
                     })
                 }
             })
-            // Both command subscriptions and BOTH event emissions are
+            // Every subscription and BOTH event emissions are
             // load-bearing: a message the actor handles but does not
             // declare is never delivered; an event it sends but does not
-            // declare is dead-lettered at flush and never routes.
+            // declare is dead-lettered at flush and never routes. The
+            // chain event is declared (subscribed), never emitted — the
+            // models actor is its emitter.
             .handles::<RefreshEpoch>()
-            .handles::<RefreshAll>()
+            .handles::<RefreshEpochForce>()
+            .handles::<MarketModelsRefreshed>()
             .emits::<EpochLoaded>()
             .emits::<RefreshFailed>()
             .start();
@@ -147,9 +167,15 @@ impl MsgHandler<RefreshEpoch> for EpochMarketActor {
     }
 }
 
-impl MsgHandler<RefreshAll> for EpochMarketActor {
-    async fn handle(&mut self, _msg: &RefreshAll, _ctx: &mut MsgCtx<'_>) {
-        self.handle_refresh_all().await;
+impl MsgHandler<RefreshEpochForce> for EpochMarketActor {
+    async fn handle(&mut self, _msg: &RefreshEpochForce, _ctx: &mut MsgCtx<'_>) {
+        self.handle_force_refresh().await;
+    }
+}
+
+impl MsgHandler<MarketModelsRefreshed> for EpochMarketActor {
+    async fn handle(&mut self, _msg: &MarketModelsRefreshed, _ctx: &mut MsgCtx<'_>) {
+        self.handle_force_refresh().await;
     }
 }
 

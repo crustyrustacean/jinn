@@ -17,8 +17,8 @@ use jinn_kernel::common::actor_deps::ActorDeps;
 use jinn_kernel::common::bus::HarnessServices as _;
 use jinn_model_market_msg::EpochLoaded;
 use jinn_model_market_msg::EpochSource;
-use jinn_model_market_msg::RefreshAll;
 use jinn_model_market_msg::RefreshEpoch;
+use jinn_model_market_msg::RefreshEpochForce;
 use jinn_model_market_msg::RefreshFailed;
 use jinn_slices::cell::TypedCell;
 use jinn_testutil::bus_harness::TestHarness;
@@ -274,7 +274,7 @@ async fn expired_epoch_ttl_refetches_from_the_served_zip() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn refresh_all_drops_every_cache_epoch_half() {
+async fn refresh_epoch_force_drops_every_cache() {
     // Given a complete cache dir (the fixture's own) and a mock serving
     // the zip.
     let (server, _mock) = serve_zip().await;
@@ -285,8 +285,8 @@ async fn refresh_all_drops_every_cache_epoch_half() {
     assert!(epoch_dir.exists(), "precondition: cache present");
     let loads = fixture.harness.spawn_recorder::<EpochLoaded>().await;
 
-    // When a RefreshAll arrives (forced download against the up mock).
-    fixture.harness.publish(RefreshAll).await;
+    // When a RefreshEpochForce arrives (forced download against the up mock).
+    fixture.harness.publish(RefreshEpochForce).await;
     let landed = await_recorded::<EpochLoaded>(&loads, 1, Duration::from_secs(5)).await;
 
     // Then the old dir was dropped, the download re-extracted exactly
@@ -315,7 +315,7 @@ async fn refresh_all_drops_every_cache_epoch_half() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn refresh_all_reports_a_failing_download_and_the_seed_stands() {
+async fn refresh_epoch_force_reports_a_failing_download_and_the_seed_stands() {
     // Given a cache dir (the fixture's own) and a refresh whose download
     // fails (no server).
     let fixture = epoch_fixture_at("http://127.0.0.1:9/data/benchmark_data.zip".to_owned()).await;
@@ -324,8 +324,8 @@ async fn refresh_all_reports_a_failing_download_and_the_seed_stands() {
         .expect("seed the cache");
     let loads = fixture.harness.spawn_recorder::<EpochLoaded>().await;
 
-    // When a RefreshAll arrives.
-    fixture.harness.publish(RefreshAll).await;
+    // When a RefreshEpochForce arrives.
+    fixture.harness.publish(RefreshEpochForce).await;
     let landed = await_recorded::<EpochLoaded>(&loads, 1, Duration::from_secs(5)).await;
 
     // Then the dropped dir is gone (refresh drops even when the later

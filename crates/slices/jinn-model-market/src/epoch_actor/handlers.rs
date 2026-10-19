@@ -1,5 +1,5 @@
-//! The epoch actor's handlers — one named function per message, plus
-//! the shared load pipeline both messages run.
+//! The epoch actor's handlers — one named function per trigger, plus
+//! the shared load pipeline they run.
 
 use std::sync::Arc;
 
@@ -16,9 +16,15 @@ impl EpochMarketActor {
         run_epoch_load(self, false).await;
     }
 
-    /// `RefreshAll`: drop the epoch cache dir unconditionally, then run
-    /// the same load pipeline forced to download.
-    pub(super) async fn handle_refresh_all(&mut self) {
+    /// The forced refresh: drop the epoch cache dir unconditionally,
+    /// then run the same load pipeline forced to download.
+    ///
+    /// Two triggers reach this body, and both mean the same thing — the
+    /// epoch cache must go and the data must be refetched: the
+    /// `RefreshEpochForce` command, and the `MarketModelsRefreshed`
+    /// event the models actor emits when the models half of `<c-r>` is
+    /// done.
+    pub(super) async fn handle_force_refresh(&mut self) {
         if let Err(report) = crate::epoch_cache::drop_cache(&self.cache_dir) {
             self.publish(RefreshFailed {
                 what: "epoch".to_owned(),
@@ -73,8 +79,8 @@ impl EpochMarketActor {
 
 /// The load pipeline: fresh cache → (forced) download → seed.
 ///
-/// `force` is `RefreshAll`'s mandate: skip the fresh-cache read and go
-/// straight to the network, so a refresh actually refreshes.
+/// `force` is the forced refresh's mandate: skip the fresh-cache read
+/// and go straight to the network, so a refresh actually refreshes.
 pub(super) async fn run_epoch_load(actor: &EpochMarketActor, force: bool) {
     actor.data_cell.update(|state| state.epoch_loading = true);
     let now = (actor.now_ms)();

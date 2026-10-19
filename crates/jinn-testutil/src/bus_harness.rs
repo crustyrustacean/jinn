@@ -82,6 +82,15 @@ impl TestHarness {
     /// round-trips through `BusService` and the schema broadcast before
     /// the recorder sees the decoded message — tests validate the real
     /// delivery path.
+    ///
+    /// **The recorder is a DECLARANT.** Its tap actor registers
+    /// `.handles::<M>()`, so the schema's route now has a second handler —
+    /// and a Command schema's route rotates between them. Recording a
+    /// Command therefore changes the delivery the test is exercising, and
+    /// a test that taps the very message whose routing it means to check
+    /// will not see the bug. Record the message's *outputs* (the events a
+    /// handler emits) instead of the command under test, or use a
+    /// separate world for a tap on a Command.
     #[expect(
         clippy::unused_async,
         reason = "API symmetry with other async harness methods"

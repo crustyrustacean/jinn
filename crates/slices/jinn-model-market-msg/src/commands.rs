@@ -39,7 +39,10 @@ impl BusMessage for FetchEndpoints {}
 
 /// Re-download the epoch zip and re-extract the three CSVs.
 ///
-/// `<c-r>` publishes this; on total failure (no network, first run) the
+/// The boot kick publishes this: the actor serves a fresh disk cache
+/// when one exists, else downloads, else seeds. The refresh path uses
+/// [`RefreshEpochForce`] instead — a refresh always drops the cache and
+/// goes to the network. On total failure (no network, first run) the
 /// actor emits [`RefreshFailed`] and the seed data stands.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
 #[schema(description = "Re-download and re-extract the epoch benchmark data.")]
@@ -47,17 +50,67 @@ pub struct RefreshEpoch;
 
 impl BusMessage for RefreshEpoch {}
 
-/// Drop ALL cached market data and refetch everything.
+/// Drop the OR models cache and the endpoint-detail caches, then refetch.
 ///
-/// `<c-r>`'s real work: the OR models cache (memory + disk), the
-/// endpoint-detail cache, and the epoch cache dir all go, then epoch,
-/// models, and endpoints refetch. Refresh means refresh — a later step
+/// The models half of `<c-r>`: the OR models cache (memory + disk) and
+/// every `endpoints-*` detail file go, then the models table and the
+/// displayed model's detail refetch. Refresh means refresh — a later step
 /// failing does not roll back the earlier drops.
+///
+/// The epoch half is not this message's business. The models actor
+/// finishes its work and emits [`MarketModelsRefreshed`]; the epoch
+/// actor subscribes to that fact and refreshes the ECI index in
+/// reaction, so one press refreshes the whole popup.
+///
+/// The kind is a Command, and it stays one: an imperative instruction
+/// ("refresh now") is not a fact about the past. This schema has exactly
+/// one handler — the OpenRouter market actor — so the route resolves to
+/// that actor and the delivery is unambiguous. A schema declared by two
+/// actors would be routed to one of them round-robin, silently losing
+/// half of every press; that is why the epoch half rides the chain
+/// event instead of sharing this command.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
 #[schema(description = "Drop every market cache and refetch models, endpoints, and epoch data.")]
 pub struct RefreshAll;
 
 impl BusMessage for RefreshAll {}
+
+/// Drop the epoch cache and force a fresh download of the epoch data.
+///
+/// The forced counterpart of [`RefreshEpoch`]: `RefreshEpoch` serves a
+/// fresh disk cache when one exists, while this command always drops the
+/// cache dir and goes to the network. The refresh half of `<c-r>` uses
+/// it; the boot kick uses `RefreshEpoch`.
+///
+/// One handler, by design: the epoch actor is the only actor that owns
+/// the epoch cache, so the command's route resolves to exactly that
+/// actor — a schema declared by two actors would be routed to one of
+/// them round-robin, and half the refresh would be lost.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Drop the epoch cache and force a fresh download of the epoch data.")]
+pub struct RefreshEpochForce;
+
+impl BusMessage for RefreshEpochForce {}
+
+/// The OpenRouter models table was refreshed.
+///
+/// A past-tense fact: the models half of `<c-r>` has dropped its caches
+/// and refetched the listing. The epoch actor subscribes to it and
+/// refreshes the ECI index in reaction, so one press refreshes the whole
+/// popup.
+///
+/// The event is a fact, not an instruction, and it is named for what
+/// happened. The models table is the join key source for the rows'
+/// ECI columns, so the epoch half runs after this fact lands — its own
+/// `EpochLoaded` then re-joins the rows against the fresh index.
+///
+/// The OpenRouter market actor emits it and the epoch actor declares it:
+/// exactly one declarant, so the broadcast reaches exactly that actor.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
+#[schema(description = "The OpenRouter models table was refreshed.")]
+pub struct MarketModelsRefreshed;
+
+impl BusMessage for MarketModelsRefreshed {}
 
 /// The models table landed in the data cell.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]

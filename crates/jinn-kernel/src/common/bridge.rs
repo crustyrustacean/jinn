@@ -3,9 +3,25 @@
 //! The TUI's intent handler is synchronous and cannot `.await`. This bridge
 //! accepts typed message closures through a kanal channel (sync send), then
 //! an async drain task calls each closure with the fabric's publish sink —
-//! the same `BusService` every actor publishes through. Each closure's
-//! publication therefore rides the identical path (schema broadcast,
-//! recording mode, delivery semantics) as a direct `publish`.
+//! the same `BusService` every actor publishes through.
+//!
+//! A closure's publication rides the same recording mode as a direct
+//! `publish`, but the two paths differ in *transport*, and the difference
+//! is load-bearing:
+//!
+//! - A **direct** `publish` (the typed path, `BusService::publish`) always
+//!   broadcasts: one copy per actor that declared `.handles::<M>()`,
+//!   whatever the schema's kind.
+//! - A **bridge** closure is an *erased* publish: the sink hands the
+//!   message to the system as a schema id and a JSON payload, and the
+//!   system picks the transport from the schema's **declared kind**.
+//!   An Event schema broadcasts to every declarant; a Command schema
+//!   routes to **one** handler.
+//!
+//! So a Command declared by two actors is delivered to one of them — the
+//! route table rotates between them — while the same message published
+//! directly reaches both. Give a message more than one declarant and the
+//! two paths disagree; give it one declarant and they cannot.
 
 use jinn_slices::PublishSink;
 
@@ -54,8 +70,9 @@ impl Bridge {
     ///
     /// The closure minted by
     /// [`Bridge::publish_closure`](Self::publish_closure) publishes through
-    /// the service, so the delivery path (schema broadcast to every
-    /// declarant subscriber) matches every other emitter.
+    /// the service, so the delivery path matches every other emitter —
+    /// subject to the erased publish's rule: the transport comes from the
+    /// schema's declared kind, and a Command routes to one handler.
     #[must_use]
     pub fn with_system(
         bus: &jinn_slices::bus::BusService,

@@ -4,12 +4,24 @@
 //! Subscribes to `FetchModels`, `FetchEndpoints`, `RefreshAll`, and
 //! `EpochLoaded`; writes [`MarketDataState`] (the data cell — this
 //! actor is its only OR-side writer) and emits `ModelsLoaded`,
-//! `EndpointsLoaded`, and `RefreshFailed`. `RefreshEpoch` is the epoch
-//! actor's; `EpochLoaded` is *consumed* here: rows join against the ECI
-//! index at build time, so when the epoch data lands after the models
-//! (the common cold-open race), the handler rebuilds the rows from the
-//! retained raw listings without a refetch. `RefreshAll` drops the OR
-//! caches and refetches models plus the endpoints currently on display.
+//! `EndpointsLoaded`, `RefreshFailed`, and `MarketModelsRefreshed`.
+//! `RefreshEpoch` is the epoch actor's; `EpochLoaded` is *consumed*
+//! here: rows join against the ECI index at build time, so when the
+//! epoch data lands after the models (the common cold-open race), the
+//! handler rebuilds the rows from the retained raw listings without a
+//! refetch. `RefreshAll` drops the OR caches and refetches models plus
+//! the endpoints currently on display; the refresh's epoch half is
+//! driven by the `MarketModelsRefreshed` event this actor emits, which
+//! the epoch actor subscribes to.
+//!
+//! # Delivery story
+//!
+//! `RefreshAll` has exactly one handler — this actor. A schema declared
+//! by two actors is routed to one of them round-robin, so a shared
+//! command would silently lose half of every press. The epoch half
+//! therefore rides the chain fact: this actor emits
+//! `MarketModelsRefreshed` once its models refresh is done, and the
+//! epoch actor acts on that fact.
 //!
 //! # Cache shape
 //!
@@ -58,6 +70,7 @@ use jinn_model_market_msg::FetchModels;
 use jinn_model_market_msg::MarketDataState;
 use jinn_model_market_msg::MarketDetail;
 use jinn_model_market_msg::MarketEndpointRow;
+use jinn_model_market_msg::MarketModelsRefreshed;
 use jinn_model_market_msg::MarketUiState;
 use jinn_model_market_msg::ModelsLoaded;
 use jinn_model_market_msg::RefreshAll;
@@ -202,6 +215,7 @@ impl OpenRouterMarketActor {
             .emits::<ModelsLoaded>()
             .emits::<EndpointsLoaded>()
             .emits::<RefreshFailed>()
+            .emits::<MarketModelsRefreshed>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
         path
@@ -447,8 +461,10 @@ impl OpenRouterMarketActor {
     ///
     /// Refresh means refresh: the drops happen first and are not rolled
     /// back if a refetch fails; each failure emits `RefreshFailed` and
-    /// the next step still runs. The epoch half of `<c-r>` is the epoch
-    /// actor's own `RefreshAll` subscription.
+    /// the next step still runs. The refresh's epoch half is not this
+    /// handler's duty: once the models half is done, the chain fact
+    /// `MarketModelsRefreshed` goes out and the epoch actor refreshes the
+    /// ECI index in reaction.
     async fn handle_refresh_all(&mut self) {
         self.raw_models = None;
         self.models = None;
@@ -467,6 +483,11 @@ impl OpenRouterMarketActor {
         if let Some(id) = &stale {
             self.fetch_endpoints_for(id).await;
         }
+
+        // The models half is done — the fact goes out even when the
+        // models fetch failed: the epoch half's refresh does not depend
+        // on it, and the popup's ECI column should still be fresh.
+        self.publish(MarketModelsRefreshed).await;
     }
 
     /// `EpochLoaded`: the ECI index changed under the rows — rebuild

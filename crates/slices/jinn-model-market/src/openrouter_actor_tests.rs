@@ -1,10 +1,11 @@
 //! `OpenRouterMarketActor` tests — the caching contract's heart.
 //!
 //! The mandatory named tests live here: warm-cache-no-request,
-//! TTL-expiry-refetch, refresh-all-drops, debounce-drops-stale. Every
-//! test drives the real actor over the real bus ([`TestHarness`]) with
-//! a mockito server as OpenRouter, so "no outbound request" is measured
-//! by the mock expecting zero hits, not by an internal flag.
+//! TTL-expiry-refetch, refresh-all-drops, debounce-drops-stale,
+//! refresh-reaches-both-actors. Every test drives the real actor over
+//! the real bus ([`TestHarness`]) with a mockito server as OpenRouter,
+//! so "no outbound request" is measured by the mock expecting zero
+//! hits, not by an internal flag.
 
 #![allow(
     clippy::expect_used,
@@ -16,15 +17,18 @@
 
 use jinn_kernel::common::bus::HarnessServices;
 use jinn_model_market_msg::EndpointsLoaded;
+use jinn_model_market_msg::EpochLoaded;
 use jinn_model_market_msg::FetchEndpoints;
 use jinn_model_market_msg::FetchModels;
 use jinn_model_market_msg::MarketDataState;
 use jinn_model_market_msg::MarketEndpointRow;
+use jinn_model_market_msg::MarketModelsRefreshed;
 use jinn_model_market_msg::MarketUiState;
 use jinn_model_market_msg::ModelsLoaded;
 use jinn_model_market_msg::RefreshAll;
 use jinn_model_market_msg::market_data_slot;
 use jinn_model_market_msg::market_ui_slot;
+use jinn_slices::RouteResult;
 use jinn_slices::Slices;
 use jinn_slices::TypedCell;
 use jinn_testutil::bus_harness::TestHarness;
@@ -33,6 +37,8 @@ use std::time::Duration;
 
 use super::OpenRouterMarketActor;
 use super::OpenRouterMarketActorDeps;
+use crate::epoch_actor::EpochMarketActor;
+use crate::epoch_actor::EpochMarketActorDeps;
 
 /// The harness wait: past the 250ms debounce, small enough to keep the
 /// suite snappy. Tests that wait on a full refresh — two network fetches
@@ -44,6 +50,10 @@ const SETTLE: Duration = Duration::from_millis(700);
 
 /// The wait for tests that ride a RefreshAll through the mockito server.
 const REFRESH_SETTLE: Duration = Duration::from_secs(5);
+
+/// The epoch zip URL pointing at a port nothing listens on — the epoch
+/// actor's download fails fast, which is all a delivery test needs.
+const DEAD_ZIP_URL: &str = "http://127.0.0.1:9/data/benchmark_data.zip";
 
 /// One wired test world: harness bus, the two cells, mockito URL.
 struct World {
@@ -59,6 +69,9 @@ struct World {
     /// The market cache dir (a tempdir under the harness).
     #[expect(dead_code, reason = "kept so the tempdir outlives the test")]
     cache_dir: std::path::PathBuf,
+    /// The epoch cache dir inside the market cache dir — the epoch
+    /// actor's own drop target.
+    epoch_dir: std::path::PathBuf,
 }
 
 impl World {
@@ -93,8 +106,33 @@ impl World {
             data,
             ui,
             base_url: base_url.to_owned(),
+            epoch_dir: cache_dir.join("epoch"),
             cache_dir,
         }
+    }
+
+    /// Builds the world with BOTH market actors on the bus: the
+    /// OpenRouter models actor and the epoch actor.
+    ///
+    /// The epoch actor's zip URL points at a dead port, so its download
+    /// fails fast and it falls back to the shipped seed — the delivery
+    /// test is about which actors act, not about the epoch download
+    /// succeeding.
+    async fn start_with_epoch_actor(base_url: &str, cache_dir: std::path::PathBuf) -> Self {
+        let world = Self::start(base_url, cache_dir).await;
+        let deps = world.harness.actor_deps().await;
+        EpochMarketActor::spawn(
+            world.harness.system(),
+            EpochMarketActorDeps {
+                deps,
+                data_cell: world.data.clone(),
+                cache_dir: world.epoch_dir.clone(),
+                client: reqwest::Client::new(),
+                zip_url: DEAD_ZIP_URL.to_owned(),
+                now_ms: crate::epoch_actor::epoch_market_clock(),
+            },
+        );
+        world
     }
 
     /// Records `ModelsLoaded` deliveries.
@@ -361,6 +399,144 @@ async fn refresh_all_drops_every_cache() {
     let detail = world.data.read().detail.clone().expect("detail refetched");
     assert_eq!(detail.model_id, "openrouter/test/model");
     assert_eq!(detail.endpoints[0].tag, "testup");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn one_refresh_publish_reaches_both_market_actors_exactly_once() {
+    // Given the market's two actors on one bus — the OpenRouter models
+    // actor and the epoch actor — with both caches seeded on disk.
+    let mut server = mockito::Server::new_async().await;
+    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let at = jiff::Timestamp::now() - jiff::SignedDuration::from_hours(1);
+    crate::market_cache::store(
+        &dir.path().join("models.json"),
+        &crate::market_cache::stamped(fixture_rows(), at),
+    )
+    .expect("seed models cache");
+    let world = World::start_with_epoch_actor(&server.url(), dir.path().to_path_buf()).await;
+    let epoch_dir = world.epoch_dir.clone();
+    std::fs::create_dir_all(&epoch_dir).expect("seed epoch cache dir");
+    // The recorders watch the halves' OUTPUTS. A recorder is a trouper
+    // tap — a declarant — so tapping `RefreshAll` or the chain event
+    // would add a second handler and flip the refresh path's route
+    // policy inside the test. The outputs are inert: `ModelsLoaded` and
+    // `EpochLoaded` are events, and the tap only observes them.
+    let models_recorder = world.models_recorder().await;
+    let epoch_recorder = world.harness.spawn_recorder::<EpochLoaded>().await;
+    let models_mock = expect_models_once(&mut server).await;
+
+    // When ONE `RefreshAll` rides the ERASED publish path — the route
+    // action's path (`PublishClosure` → `sink.publish_schema` →
+    // `deliver_schema_value`), whose transport the schema's declared
+    // kind picks.
+    let result = RouteResult::new_message(RefreshAll);
+    let sink = world.harness.bus();
+    for closure in result.messages {
+        closure(&sink);
+    }
+    let models_loaded = await_recorded(&models_recorder, 1, REFRESH_SETTLE).await;
+    let epoch_loaded = await_recorded(&epoch_recorder, 1, REFRESH_SETTLE).await;
+
+    // Then BOTH halves acted on the single publish: the models actor
+    // refetched (its cache is gone and the one allowed GET was spent)
+    // and the epoch actor dropped its cache dir.
+    assert_eq!(models_loaded.len(), 1, "the models actor refetched");
+    assert!(!models_loaded[0].from_cache, "a refresh is not from_cache");
+    models_mock.assert_async().await;
+    assert_eq!(epoch_loaded.len(), 1, "the epoch actor refreshed");
+    assert!(
+        !epoch_dir.exists(),
+        "one publish must reach the epoch actor's cache drop too"
+    );
+    // And one publish is one refresh, not two: neither half ran twice.
+    tokio::time::sleep(SETTLE).await;
+    assert!(
+        models_recorder.is_empty() && epoch_recorder.is_empty(),
+        "one publish must deliver one refresh per half, got models: {:?}, epoch: {:?}",
+        models_recorder.drain(),
+        epoch_recorder.drain(),
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn refresh_all_emits_the_chain_fact_exactly_once() {
+    // Given an actor whose models cache is warm and a mock serving the
+    // refetch.
+    let mut server = mockito::Server::new_async().await;
+    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let at = jiff::Timestamp::now() - jiff::SignedDuration::from_hours(1);
+    crate::market_cache::store(
+        &dir.path().join("models.json"),
+        &crate::market_cache::stamped(fixture_rows(), at),
+    )
+    .expect("seed the warm cache");
+    let world = World::start(&server.url(), dir.path().to_path_buf()).await;
+    // The chain fact's declarant set is the epoch actor's alone in
+    // production. A tap here makes it two declarants of an EVENT, which
+    // still broadcasts to both — the tap observes without changing the
+    // chain's delivery.
+    let chain_recorder = world
+        .harness
+        .spawn_recorder::<MarketModelsRefreshed>()
+        .await;
+    let models_mock = expect_models_once(&mut server).await;
+
+    // When a RefreshAll arrives.
+    world.harness.publish(RefreshAll).await;
+    let chained = await_recorded(&chain_recorder, 1, REFRESH_SETTLE).await;
+
+    // Then the models refresh announced itself with the chain fact.
+    assert_eq!(chained.len(), 1, "exactly one chain fact");
+    models_mock.assert_async().await;
+    // And the refresh announced itself once — a second fact would mean a
+    // second refresh.
+    tokio::time::sleep(SETTLE).await;
+    assert!(
+        chain_recorder.is_empty(),
+        "one refresh emits one chain fact, got: {:?}",
+        chain_recorder.drain(),
+    );
+}
+
+#[rstest::rstest]
+fn refresh_route_action_publishes_only_the_refresh_command() {
+    // Given the popup's route table with the market rows attached.
+    let slices = Slices::new();
+    let ui = slices
+        .register(market_ui_slot(), MarketUiState::default())
+        .expect("fresh Slices never has the UI slot registered");
+    let data = slices
+        .register(market_data_slot(), MarketDataState::default())
+        .expect("fresh Slices never has the data slot registered");
+    let routes = jinn_slices::KeyRoutes::new();
+    crate::routes::attach_market_rows(&routes, &ui, &data);
+    let mut state = jinn_kernel::AppState::default();
+
+    // When the refresh action is dispatched.
+    let result = routes
+        .action_for(
+            &jinn_slices::DynamicIntent::new(
+                jinn_model_market_msg::market_ui_scope(),
+                "refresh-model-market",
+                "refresh",
+            ),
+            jinn_slices::ActionCtx {
+                state: &mut state,
+                slices: &slices,
+                config: jinn_slices::empty_config_layer(),
+                key_bytes: Vec::new(),
+            },
+        )
+        .expect("the popup attaches a refresh action");
+
+    // Then the action publishes exactly one message, the refresh
+    // command. A second message would put two publishes on the wire
+    // with no ordering between them — the chain is the epoch half's
+    // trigger, not a second publish.
+    assert_eq!(result.message_names, vec!["RefreshAll"]);
+    assert_eq!(result.messages.len(), 1);
 }
 
 #[rstest::rstest]

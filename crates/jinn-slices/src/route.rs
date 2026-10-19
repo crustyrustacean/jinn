@@ -62,8 +62,13 @@ pub use crate::route_publish::PublishSink;
 ///
 /// The kernel's drain task calls each closure with the publish sink (the
 /// kernel's bus wrapper); the closure publishes through it so schema-id
-/// routing, recording mode, and delivery semantics all match a direct
-/// `publish` — the synchronous intent handler never awaits.
+/// routing and recording mode match a direct `publish` — the synchronous
+/// intent handler never awaits.
+///
+/// Delivery follows the schema's declared kind, because the publish is
+/// erased: an Event schema reaches every declarant, a Command schema
+/// reaches one. A schema with a single declarant is delivered the same way
+/// on both paths.
 pub type PublishClosure = Box<dyn FnOnce(&dyn PublishSink) + Send + 'static>;
 
 /// A message that may travel the kernel's message fabric.
