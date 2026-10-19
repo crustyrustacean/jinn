@@ -213,7 +213,7 @@ async fn anchored_fetch_passes_entry_id_and_context() {
         5,
         ChatEntry::assistant("we decided the junction rewrites were fine"),
     )]);
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (ctx, stub) = ctx_with(StubStore::with_window(window), dir.path());
 
     // When fetching with an entry_id and context.
@@ -236,7 +236,7 @@ async fn tail_read_without_entry_id_uses_limit() {
         entry(1, ChatEntry::user("hello")),
         entry(2, ChatEntry::assistant("hi")),
     ]);
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (ctx, stub) = ctx_with(StubStore::with_window(window), dir.path());
 
     // When fetching without entry_id.
@@ -258,7 +258,7 @@ async fn transcript_renders_header_and_positioned_lines() {
             ChatEntry::assistant("the junction rewrites made it moot"),
         ),
     ]);
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (ctx, _stub) = ctx_with(StubStore::with_window(window), dir.path());
 
     // When fetching.
@@ -284,7 +284,7 @@ async fn gap_in_window_is_announced() {
         entry(2, ChatEntry::user("a")),
         entry(5, ChatEntry::user("b")),
     ]);
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (ctx, _stub) = ctx_with(StubStore::with_window(window), dir.path());
 
     // When fetching.
@@ -314,7 +314,7 @@ async fn excluded_entry_is_flagged() {
     };
     excluded.excluded = true;
     let window = window(vec![entry(411, ChatEntry::user("run grep")), excluded]);
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (ctx, _stub) = ctx_with(StubStore::with_window(window), dir.path());
 
     // When fetching.
@@ -341,7 +341,7 @@ async fn oversized_entry_text_is_elided_with_note() {
     // Given a window whose assistant entry far exceeds the per-entry cap.
     let long = "word ".repeat(900);
     let window = window(vec![entry(1, ChatEntry::assistant(long.trim().to_owned()))]);
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (ctx, _stub) = ctx_with(StubStore::with_window(window), dir.path());
 
     // When fetching.
@@ -366,7 +366,7 @@ async fn oversized_entry_text_is_elided_with_note() {
 #[tokio::test]
 async fn unknown_session_or_anchor_is_a_legible_error() {
     // Given a stub store that returns no window.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (ctx, _stub) = ctx_with(StubStore::default(), dir.path());
 
     // When fetching by a non-UUID entry id.
@@ -386,7 +386,7 @@ async fn unknown_session_or_anchor_is_a_legible_error() {
 #[tokio::test]
 async fn no_session_and_no_current_is_an_error() {
     // Given a context with no session store and no current session.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let arc = std::sync::Arc::new(StubStore::default());
     let ctx = ToolContext {
         cwd: dir.path().to_path_buf(),
@@ -441,7 +441,7 @@ async fn outer_truncated_result_carries_full_content() {
         .map(|i| entry(i, ChatEntry::user(format!("entry number {i} here"))))
         .collect();
     let (ctx, _stub, _dir) = {
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let arc = std::sync::Arc::new(StubStore::with_window(window(entries)));
         let ctx = ToolContext {
             cwd: dir.path().to_path_buf(),

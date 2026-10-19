@@ -66,7 +66,7 @@ mod tests {
     #[test]
     fn roundtrips_through_json() {
         // Given a command naming a session and a destination path.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let expected = dir.path().join("out.html");
         let session_id = SessionId::new();
         let cmd = ExportSessionToFile {

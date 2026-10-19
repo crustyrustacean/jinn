@@ -134,7 +134,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_finds_valid_skill() {
         // Given a temp directory with a valid skill.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let skill_dir = dir.path().join("my-skill");
         fs::create_dir_all(&skill_dir).expect("create skill dir");
         fs::write(
@@ -158,7 +158,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_uses_dir_name_when_no_frontmatter_name() {
         // Given a skill without name in frontmatter.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let skill_dir = dir.path().join("fallback-name");
         fs::create_dir_all(&skill_dir).expect("create skill dir");
         fs::write(
@@ -178,7 +178,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_skips_empty_description() {
         // Given a skill with an empty description.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let skill_dir = dir.path().join("empty-desc");
         fs::create_dir_all(&skill_dir).expect("create skill dir");
         fs::write(
@@ -197,7 +197,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_skips_missing_description() {
         // Given a skill without description.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let skill_dir = dir.path().join("no-desc");
         fs::create_dir_all(&skill_dir).expect("create skill dir");
         fs::write(
@@ -216,7 +216,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_skips_dirs_without_skill_md() {
         // Given a directory with a subdirectory but no SKILL.md.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let sub = dir.path().join("no-skill-here");
         fs::create_dir_all(&sub).expect("create sub dir");
 
@@ -242,7 +242,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_skips_invalid_frontmatter() {
         // Given a skill dir with SKILL.md but no frontmatter.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let skill_dir = dir.path().join("no-frontmatter");
         fs::create_dir_all(&skill_dir).expect("create skill dir");
         fs::write(
@@ -261,7 +261,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_finds_multiple_skills() {
         // Given a directory with multiple skills.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
 
         for name in ["skill-a", "skill-b", "skill-c"] {
             let skill_dir = dir.path().join(name);
@@ -287,7 +287,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_body_is_empty_for_frontmatter_only_file() {
         // Given a skill with frontmatter but no body content.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let skill_dir = dir.path().join("no-body");
         fs::create_dir_all(&skill_dir).expect("create skill dir");
         fs::write(
@@ -307,7 +307,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_merged_global_only() {
         // Given a global dir with one skill and no project dirs.
-        let global = tempfile::tempdir().expect("create global dir");
+        let global = jinn_testutil::tempdir().expect("create global dir");
         let skill_dir = global.path().join("g-skill");
         fs::create_dir_all(&skill_dir).expect("create skill dir");
         fs::write(
@@ -329,7 +329,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_merged_project_overrides_global() {
         // Given a global skill and a project skill with the same name.
-        let global = tempfile::tempdir().expect("create global dir");
+        let global = jinn_testutil::tempdir().expect("create global dir");
         let g_skill = global.path().join("shared");
         fs::create_dir_all(&g_skill).expect("create g skill");
         fs::write(
@@ -338,7 +338,7 @@ mod tests {
         )
         .expect("write SKILL.md");
 
-        let project = tempfile::tempdir().expect("create project dir");
+        let project = jinn_testutil::tempdir().expect("create project dir");
         let p_skill = project.path().join(".agents").join("skills").join("shared");
         fs::create_dir_all(&p_skill).expect("create p skill");
         fs::write(
@@ -368,7 +368,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_merged_most_local_ancestor_wins() {
         // Given two project ancestors each with a skill of the same name.
-        let ancestor = tempfile::tempdir().expect("create ancestor dir");
+        let ancestor = jinn_testutil::tempdir().expect("create ancestor dir");
         let a_skill = ancestor.path().join(".agents").join("skills").join("dup");
         fs::create_dir_all(&a_skill).expect("create a skill");
         fs::write(
@@ -377,7 +377,7 @@ mod tests {
         )
         .expect("write SKILL.md");
 
-        let local = tempfile::tempdir().expect("create local dir");
+        let local = jinn_testutil::tempdir().expect("create local dir");
         let l_skill = local.path().join(".agents").join("skills").join("dup");
         fs::create_dir_all(&l_skill).expect("create l skill");
         fs::write(
@@ -411,7 +411,7 @@ mod tests {
     #[test]
     fn scan_skills_merged_system_only() {
         // Given a system dir with one skill, no global, no project dirs.
-        let system = tempfile::TempDir::new().expect("temp dir");
+        let system = jinn_testutil::tempdir().expect("temp dir");
         let skill_dir = system.path().join("sys-skill");
         std::fs::create_dir_all(&skill_dir).expect("create skill dir");
         std::fs::write(
@@ -434,7 +434,7 @@ mod tests {
     #[test]
     fn scan_skills_merged_global_overrides_system() {
         // Given a system dir and a global dir with same-named skill.
-        let system = tempfile::TempDir::new().expect("temp dir");
+        let system = jinn_testutil::tempdir().expect("temp dir");
         let sys_skill = system.path().join("shared");
         std::fs::create_dir_all(&sys_skill).expect("create sys skill dir");
         std::fs::write(
@@ -443,7 +443,7 @@ mod tests {
         )
         .expect("write system SKILL.md");
 
-        let global = tempfile::TempDir::new().expect("temp dir");
+        let global = jinn_testutil::tempdir().expect("temp dir");
         let g_skill = global.path().join("shared");
         std::fs::create_dir_all(&g_skill).expect("create global skill dir");
         std::fs::write(

@@ -139,7 +139,7 @@ mod tests {
     #[rstest::rstest]
     fn bare_argument_yields_default_filename() {
         // Given a session cwd.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
 
         // When resolving an empty argument.
         let path = resolve_export_path("", dir.path()).expect("resolve");
@@ -151,7 +151,7 @@ mod tests {
     #[rstest::rstest]
     fn taken_default_name_yields_numbered_filename() {
         // Given a cwd where the default filename already exists.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         std::fs::write(dir.path().join("chat-export.html"), "old").expect("write");
 
         // When resolving an empty argument.
@@ -164,7 +164,7 @@ mod tests {
     #[rstest::rstest]
     fn two_taken_default_names_yields_third() {
         // Given a cwd where the first two ladder names are taken.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         std::fs::write(dir.path().join("chat-export.html"), "a").expect("write");
         std::fs::write(dir.path().join("chat-export-2.html"), "b").expect("write");
 
@@ -178,12 +178,12 @@ mod tests {
     #[rstest::rstest]
     fn absolute_argument_is_unchanged() {
         // Given an absolute destination.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let target = dir.path().join("elsewhere").join("out.html");
 
         // When resolving it against a different tempdir cwd — unused, since
         // the absolute destination wins.
-        let other = tempfile::tempdir().expect("temp dir");
+        let other = jinn_testutil::tempdir().expect("temp dir");
         let path = resolve_export_path(target.to_str().expect("utf-8 path"), other.path())
             .expect("resolve");
 
@@ -194,7 +194,7 @@ mod tests {
     #[rstest::rstest]
     fn relative_argument_joins_the_session_cwd() {
         // Given a relative destination.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
 
         // When resolving it against the session cwd.
         let path = resolve_export_path("notes/session.md", dir.path()).expect("resolve");
@@ -209,7 +209,7 @@ mod tests {
         let home = home_dir().expect("home dir is set in the test env");
         // The cwd argument is unused for a tilde destination; it is a tempdir
         // root so no absolute path literal appears in test code.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
 
         // When resolving it.
         let path = resolve_export_path("~/exports/out.md", dir.path()).expect("resolve");
@@ -221,7 +221,7 @@ mod tests {
     #[rstest::rstest]
     fn default_path_carries_the_default_extension() {
         // Given a fresh cwd.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
 
         // When picking the default path.
         let path = default_export_path(dir.path());

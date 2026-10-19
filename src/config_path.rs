@@ -114,7 +114,7 @@ mod tests {
 
     /// The default location for a test: a `jinn.toml` that does not exist.
     fn absent_default() -> (tempfile::TempDir, PathBuf) {
-        let root = tempfile::tempdir().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let path = root.path().join("jinn.toml");
         (root, path)
     }
@@ -154,7 +154,7 @@ mod tests {
     fn existing_override_is_chosen() {
         // Given a default path and a separate override file that exists.
         let (_root, default) = absent_default();
-        let override_root = tempfile::tempdir().expect("temp dir");
+        let override_root = jinn_testutil::tempdir().expect("temp dir");
         let override_path = override_root.path().join("alt.toml");
         std::fs::write(&override_path, "# alt\n").expect("write");
 
@@ -172,7 +172,7 @@ mod tests {
     fn missing_override_is_rejected() {
         // Given an override path that does not exist.
         let (_root, default) = absent_default();
-        let override_root = tempfile::tempdir().expect("temp dir");
+        let override_root = jinn_testutil::tempdir().expect("temp dir");
         let override_path = override_root.path().join("missing.toml");
 
         // When resolving.
@@ -191,7 +191,7 @@ mod tests {
     fn missing_override_ignores_a_missing_default() {
         // Given a missing override alongside a default that also does not exist.
         let (_root, default) = absent_default();
-        let override_root = tempfile::tempdir().expect("temp dir");
+        let override_root = jinn_testutil::tempdir().expect("temp dir");
         let override_path = override_root.path().join("missing.toml");
 
         // When resolving.

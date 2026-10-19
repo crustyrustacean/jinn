@@ -1003,7 +1003,7 @@ mod tests {
         // Given a file whose own nodes cover alice, a database that covers
         // the platform team, and two endpoints that exist nowhere (bob is
         // referenced but never declared, Ghost:nobody is pure fiction).
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let db =
             overgraph::DatabaseEngine::open(dir.path(), &overgraph::types::DbOptions::default())
                 .expect("engine opens");
@@ -1047,7 +1047,7 @@ mod tests {
     #[test]
     fn missing_endpoints_deduplicates_repeated_references() {
         // Given a file where two edges reference the same missing node.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let db =
             overgraph::DatabaseEngine::open(dir.path(), &overgraph::types::DbOptions::default())
                 .expect("engine opens");

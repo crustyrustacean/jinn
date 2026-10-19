@@ -333,7 +333,7 @@ mod tests {
     #[rstest::rstest]
     fn writes_an_html_file_to_the_typed_path() {
         // Given a job targeting a markdown-ineligible html path in a temp dir.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
 
         // When running the blocking write.
         let path = render_and_write_blocking(&job("out.html", dir.path())).expect("write succeeds");
@@ -348,7 +348,7 @@ mod tests {
     #[rstest::rstest]
     fn writes_a_markdown_file_when_the_extension_says_so() {
         // Given a job targeting a `.md` path.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
 
         // When running the blocking write.
         let path = render_and_write_blocking(&job("out.md", dir.path())).expect("write succeeds");
@@ -362,7 +362,7 @@ mod tests {
     #[rstest::rstest]
     fn unsupported_extension_writes_no_file() {
         // Given a job targeting a `.pdf` path.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
 
         // When running the blocking write.
         let result = render_and_write_blocking(&job("out.pdf", dir.path()));
@@ -378,7 +378,7 @@ mod tests {
     #[rstest::rstest]
     fn the_success_notice_names_the_written_file() {
         // Given a written path inside a session directory.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("dev/project/chat-export.html");
 
         // When building the chat notice.
@@ -391,7 +391,7 @@ mod tests {
     #[rstest::rstest]
     fn the_success_notice_survives_a_directory_destination() {
         // Given a destination that names a directory.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("dev/project");
 
         // When building the chat notice.
@@ -404,7 +404,7 @@ mod tests {
     #[rstest::rstest]
     fn a_text_file_is_refused_with_the_exporter_wording() {
         // Given a job targeting a `.txt` path.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
 
         // When running the blocking write.
         let result = render_and_write_blocking(&job("chat.txt", dir.path()));
@@ -418,7 +418,7 @@ mod tests {
     #[rstest::rstest]
     fn empty_argument_writes_the_default_filename() {
         // Given a job with no typed path.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
 
         // When running the blocking write.
         let path = render_and_write_blocking(&job("", dir.path())).expect("write succeeds");
@@ -431,7 +431,7 @@ mod tests {
     #[rstest::rstest]
     fn unwritable_destination_reports_the_reason() {
         // Given a job targeting a path inside a file, not a directory.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let blocker = dir.path().join("blocker");
         std::fs::write(&blocker, "i am a file").expect("write");
 
@@ -485,7 +485,7 @@ mod bus_tests {
     async fn a_published_export_command_writes_a_file() {
         // Given a spawned export actor over a real bus, and a session whose
         // working directory is a temp dir.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let (harness, session_id) = actor_over(dir.path()).await;
         let rec = harness.spawn_recorder::<PushChatEntry>().await;
 
@@ -516,7 +516,7 @@ mod bus_tests {
     #[tokio::test]
     async fn an_unsupported_extension_reports_an_error_in_the_chat() {
         // Given a spawned actor over a temp-dir session.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let (harness, session_id) = actor_over(dir.path()).await;
         let rec = harness.spawn_recorder::<PushChatEntry>().await;
 
@@ -546,7 +546,7 @@ mod bus_tests {
     #[tokio::test]
     async fn an_unknown_session_reports_an_error_in_the_chat() {
         // Given a spawned actor over a temp-dir session.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let (harness, _) = actor_over(dir.path()).await;
         let rec = harness.spawn_recorder::<PushChatEntry>().await;
 

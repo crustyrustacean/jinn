@@ -1138,7 +1138,7 @@ async fn fork_inherits_project_from_source() {
 #[tokio::test]
 async fn set_cwd_does_not_alter_project() {
     // Given a session with a project stamp.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let project = dir.path().join("user/projects/jinn");
     let mut session = ChatSessionState::new();
     session.set_project(Some(project.clone()));
@@ -1794,7 +1794,7 @@ fn metadata_blob_is_unchanged_by_group_composition() {
     session.restore_updated_at(timestamp);
     session.restore_created_at(timestamp);
     session.set_title("Lifecycle title".to_owned());
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     session.set_cwd(std::path::PathBuf::from("/workspace/project"));
     session.set_home(dir.path().join("home/developer"));
     session.set_lifecycle_name(Some("dev".to_owned()));
@@ -2086,7 +2086,7 @@ async fn legacy_blob_without_origin_loads_as_user() {
 #[tokio::test]
 async fn legacy_blob_without_project_defaults_to_none() {
     // Given a project-stamped session serialized to the persisted blob shape.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let mut session = ChatSessionState::new();
     session.set_project(Some(dir.path().join("user/projects/jinn")));
     let blob = serde_json::to_string(&crate::sqlite::PersistableCore::from(

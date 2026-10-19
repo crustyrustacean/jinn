@@ -102,7 +102,7 @@ async fn set_session_cwd_updates_session_working_directory() {
     // Given a running lifecycle actor and a session.
     let fixture = plain_fixture().await;
     let session_id = fixture.state.read().session.active_session_id().clone();
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let cwd = dir.path().join("lifecycle-cwd");
 
     // When SetSessionCwd is published.
@@ -134,7 +134,7 @@ async fn set_session_cwd_publishes_session_cwd_changed() {
     let fixture = plain_fixture().await;
     let changed = fixture.harness.spawn_recorder::<SessionCwdChanged>().await;
     let session_id = fixture.state.read().session.active_session_id().clone();
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let cwd = dir.path().join("lifecycle-event-cwd");
 
     // When SetSessionCwd is published.
@@ -183,7 +183,7 @@ async fn cancel_lifecycle_command_is_noop_without_running_child() {
 #[tokio::test]
 async fn builtin_setup_completes_with_setup_completed() {
     // Given a running lifecycle actor with a successful builtin setup.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let mut registry = BuiltinRegistry::new();
     registry.register(
         BuiltinId("test-builtin".to_owned()),
@@ -223,7 +223,7 @@ async fn builtin_setup_completes_with_setup_completed() {
 #[tokio::test]
 async fn builtin_setup_publishes_setup_completion_event() {
     // Given a running lifecycle actor with a successful builtin setup.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let mut registry = BuiltinRegistry::new();
     registry.register(
         BuiltinId("test-builtin".to_owned()),
@@ -1015,7 +1015,7 @@ async fn builtin_teardown_receives_recorded_values_in_template_order() {
         }
     }
 
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let received: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let mut registry = BuiltinRegistry::new();
     registry.register(

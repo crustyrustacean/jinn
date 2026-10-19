@@ -160,7 +160,7 @@ mod tests {
     #[test]
     fn resolve_empty_filter_returns_cwd() {
         // Given a cwd and home.
-        let root = tempfile::tempdir().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let cwd = root.path().join("proj");
         let home = root.path().join("u");
 
@@ -176,7 +176,7 @@ mod tests {
     fn resolve_absolute_filter_returns_path_as_is() {
         // Given a cwd, home, and an absolute filter.
         let cwd = PathBuf::from("/proj");
-        let home_root = tempfile::tempdir().expect("temp dir");
+        let home_root = jinn_testutil::tempdir().expect("temp dir");
         let home = home_root.path().join("u");
 
         // When resolving an absolute path.
@@ -190,7 +190,7 @@ mod tests {
     #[test]
     fn resolve_tilde_filter_returns_home() {
         // Given a cwd and home.
-        let root = tempfile::tempdir().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let cwd = root.path().join("proj");
         let home = root.path().join("u");
 
@@ -205,7 +205,7 @@ mod tests {
     #[test]
     fn resolve_tilde_slash_filter_returns_home_subpath() {
         // Given a cwd and home.
-        let root = tempfile::tempdir().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let cwd = root.path().join("proj");
         let home = root.path().join("u");
 
@@ -220,7 +220,7 @@ mod tests {
     #[test]
     fn resolve_relative_filter_joins_cwd() {
         // Given a cwd and home.
-        let root = tempfile::tempdir().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let cwd = root.path().join("proj");
         let home = root.path().join("u");
 

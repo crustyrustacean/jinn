@@ -28,7 +28,6 @@ jinn-testutil = { workspace = true }
 dirs = { workspace = true }
 # The render tests derive their cwd fixture from a tempdir, so no absolute
 # path literal ships in test code.
-tempfile = { workspace = true }
 
 [lints]
 workspace = true

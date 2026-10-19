@@ -56,7 +56,7 @@ fn text_of(result: &rmcp::model::CallToolResult) -> String {
 async fn served_child_advertises_and_executes_the_graph_tools() {
     // Given the real jinn binary serving overgraph on a fresh db dir.
     let bin = jinn_bin();
-    let db = tempfile::tempdir().expect("temp dir");
+    let db = jinn_testutil::tempdir().expect("temp dir");
     let mut client = connect(&bin, db.path()).await;
 
     // When listing tools.
@@ -124,7 +124,7 @@ async fn served_child_advertises_and_executes_the_graph_tools() {
 async fn graph_data_persists_across_child_processes() {
     // Given a first child that upserted a node and exited.
     let bin = jinn_bin();
-    let db = tempfile::tempdir().expect("temp dir");
+    let db = jinn_testutil::tempdir().expect("temp dir");
     {
         let mut first = connect(&bin, db.path()).await;
         first

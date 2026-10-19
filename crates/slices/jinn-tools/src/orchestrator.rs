@@ -1211,7 +1211,7 @@ mod timeout_tests {
     #[tokio::test]
     async fn tool_exceeding_timeout_returns_failed_result() {
         // Given a tool timeout of 50ms and a tool that sleeps 500ms.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         // When running with the timeout.
         let result = run_builtin_with_timeout(
             make_call(),
@@ -1243,7 +1243,7 @@ mod timeout_tests {
     #[tokio::test]
     async fn tool_completing_under_timeout_returns_normal_result() {
         // Given a tool timeout of 500ms and a tool that completes immediately.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         // When running with the timeout.
         let result = run_builtin_with_timeout(
             make_call(),
@@ -1336,7 +1336,7 @@ mod timeout_tests {
     #[tokio::test]
     async fn override_in_args_overrides_global_timeout() {
         // Given a 50ms override in args and a long global timeout.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut call = make_call();
         call.arguments = r#"{"max_duration_secs":1}"#.to_owned();
         let mut ctx = empty_ctx(dir.path());
@@ -1354,7 +1354,7 @@ mod timeout_tests {
     #[tokio::test]
     async fn zero_override_disables_timeout() {
         // Given a 0 override (disable sentinel) and no global timeout.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut call = make_call();
         call.arguments = r#"{"max_duration_secs":0}"#.to_owned();
 
@@ -1369,7 +1369,7 @@ mod timeout_tests {
     #[tokio::test]
     async fn no_override_uses_global_timeout() {
         // Given no override in args and a 50ms global timeout.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let call = make_call(); // arguments = "{}"
         let mut ctx = empty_ctx(dir.path());
         ctx.timeout = Some(Duration::from_millis(50));
@@ -1410,7 +1410,7 @@ mod panic_safety_tests {
         }
 
         // Paths live in a test-owned temp dir; the TempDir cleans up on drop.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let tool_call = ToolCall {
             id: "call_panic".into(),
             name: "boom".into(),

@@ -75,7 +75,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_finds_a_workflow_with_valid_frontmatter() {
         // Given a workflows dir with one admissible workflow.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         write_workflow(
             dir.path(),
             "research-report",
@@ -96,7 +96,7 @@ mod tests {
     fn scan_skips_a_workflow_md_without_frontmatter() {
         // Given a directory whose workflow.md carries the legacy H1 header
         // and no +++ block.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         write_workflow(
             dir.path(),
             "legacy",
@@ -113,7 +113,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_skips_malformed_frontmatter() {
         // Given a workflow.md whose +++ block is not valid TOML.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         write_workflow(dir.path(), "broken", "+++\nname = [unclosed\n+++\nbody");
 
         // When scanning.
@@ -126,7 +126,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_skips_a_missing_or_blank_description() {
         // Given one workflow with no description and one with a blank one.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         write_workflow(dir.path(), "no-desc", "+++\nname = \"no-desc\"\n+++\nbody");
         write_workflow(
             dir.path(),
@@ -144,7 +144,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_falls_back_to_the_directory_name() {
         // Given an admissible workflow whose frontmatter omits the name.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         write_workflow(
             dir.path(),
             "fallback-name",
@@ -163,7 +163,7 @@ mod tests {
     fn scan_ignores_stray_files_and_directories_without_workflow_md() {
         // Given a dir holding a bare file and a subdir without workflow.md
         // beside one admissible workflow.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         write_workflow(
             dir.path(),
             "real",
@@ -196,7 +196,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_sorts_case_insensitively_by_name() {
         // Given three admissible workflows in non-alphabetical order.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         write_workflow(
             dir.path(),
             "zeta",

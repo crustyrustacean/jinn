@@ -805,7 +805,7 @@ mod tests {
     #[test]
     fn write_panic_record_appends_message_and_location() {
         // Given a temp directory as the panic-log location.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let panic_path = dir.path().join("jinn-panic.log");
 
         // When writing a panic record.
@@ -839,7 +839,7 @@ mod tests {
 
         // When installing our hook (which chains to the sentinel) and then
         // triggering a real panic in a child thread.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let panic_path = dir.path().join("jinn-panic.log");
         install_panic_hook(panic_path.clone());
         let _ = std::thread::spawn(|| panic!("chain test")).join();

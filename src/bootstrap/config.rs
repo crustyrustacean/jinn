@@ -462,7 +462,7 @@ mod tests {
     #[rstest::rstest]
     fn providers_load_error_report_fails_with_parse_detail_on_malformed_file() {
         // Given a config storage backed by a malformed providers.toml.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("providers.toml");
         std::fs::write(
             &path,
@@ -487,7 +487,7 @@ mod tests {
     #[rstest::rstest]
     fn providers_load_error_report_ok_when_file_missing() {
         // Given a config storage backed by a directory with no providers.toml.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("providers.toml");
         let storage =
             ConfigStorageService::new(Arc::new(FilesystemConfigStorage::new(path.clone())));

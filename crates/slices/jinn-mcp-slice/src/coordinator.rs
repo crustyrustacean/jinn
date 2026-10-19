@@ -938,7 +938,7 @@ mod lifecycle_tests {
         let (_actor, _services, state) =
             spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
         let session_id = insert_session_with_enablement(&state, &single_enabled("unrunnable"));
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
 
         // When publishing SessionCreated for that session.
         harness
@@ -996,7 +996,7 @@ mod lifecycle_tests {
         let (_actor, _services, state) =
             spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
         let session_id = insert_session_with_enablement(&state, &single_enabled("unrunnable"));
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
 
         // When both SessionCreated and McpEnablementChanged carry the same
         // desired set (the common seeding flow emits both).
@@ -1035,7 +1035,7 @@ mod lifecycle_tests {
         let recorder = harness.spawn_recorder::<McpServerStatus>().await;
         let (_actor, _services, state) =
             spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let session_id = {
             let sid = insert_session_with_enablement(&state, &single_enabled("unrunnable"));
             harness

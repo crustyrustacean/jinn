@@ -1009,7 +1009,7 @@ fn skill(name: &str) -> jinn_skills_msg::Skill {
     // root only keeps test paths off absolute literals (one root shared by
     // both fields, as discovery produces), so it is deleted when this helper
     // returns rather than leaked.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (file_path, base_dir) = (dir.path().join("skill/SKILL.md"), dir.path().join("skill"));
     jinn_skills_msg::Skill {
         name: name.to_owned(),

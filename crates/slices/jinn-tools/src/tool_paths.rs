@@ -40,7 +40,7 @@ mod tests {
     #[rstest::rstest]
     fn resolve_path_relative() {
         // Given a relative path and a CWD.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let cwd = dir.path();
 
         // When resolving the path against that CWD.
@@ -53,7 +53,7 @@ mod tests {
     #[rstest::rstest]
     fn resolve_path_absolute() {
         // Given an absolute path.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let cwd = dir.path();
 
         // When resolving it against that CWD.

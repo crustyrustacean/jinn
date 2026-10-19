@@ -178,7 +178,7 @@ mod tests {
     /// the sibling `stream_rules.toml` it names is part of that set — so
     /// every test passes its own path back in.
     fn layer_over_file(body: &str) -> (ConfigLayer, std::path::PathBuf, tempfile::TempDir) {
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(&path, body).expect("write");
         let layer = ConfigLayer::load(Arc::new(FilesystemConfigStorage::new(path.clone())))
@@ -490,7 +490,7 @@ mod tests {
         // Given an in-memory layer — the shape a route action's `ActionCtx`
         // hands the picker — over a temp preferences path it can assemble
         // from.
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         let storage = Arc::new(InMemoryConfigStorage::new(
             "[[stream_rules.entry]]\nname = \"alpha\"\nconditions = ['a']\nbody = \"A.\"\n"

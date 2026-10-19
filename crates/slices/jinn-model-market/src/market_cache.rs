@@ -162,7 +162,7 @@ mod market_cache_tests {
     #[rstest::rstest]
     fn load_returns_a_fresh_payload() {
         // Given a stored payload stamped now.
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("probe.json");
         let now = jiff::Timestamp::now();
         store(&path, &stamped(Probe::First(7), now)).expect("store");
@@ -177,7 +177,7 @@ mod market_cache_tests {
     #[rstest::rstest]
     fn load_returns_none_once_the_ttl_has_passed() {
         // Given a payload stamped 8 days ago — one day past MODELS_TTL.
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("probe.json");
         let now = jiff::Timestamp::now();
         let fetched_at = now - jiff::SignedDuration::from_hours(8 * 24);
@@ -197,7 +197,7 @@ mod market_cache_tests {
     #[rstest::rstest]
     fn load_serves_a_payload_exactly_at_the_ttl_boundary() {
         // Given a payload stamped exactly MODELS_TTL ago.
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("probe.json");
         let now = jiff::Timestamp::now();
         let fetched_at = now - jiff::SignedDuration::from_hours(7 * 24);
@@ -213,7 +213,7 @@ mod market_cache_tests {
     #[rstest::rstest]
     fn load_treats_a_corrupt_file_as_a_miss() {
         // Given a cache file that is not a market cache payload.
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("probe.json");
         std::fs::write(&path, b"not json at all").expect("write junk");
 
@@ -227,7 +227,7 @@ mod market_cache_tests {
     #[rstest::rstest]
     fn load_treats_an_absent_file_as_a_miss() {
         // Given a path that was never written.
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("never.json");
 
         // When loading it.
@@ -240,7 +240,7 @@ mod market_cache_tests {
     #[rstest::rstest]
     fn load_rejects_a_type_mismatch_even_within_the_ttl() {
         // Given a fresh file stamped with a different payload type.
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("probe.json");
         let now = jiff::Timestamp::now();
         store(&path, &stamped(Probe::First(1), now)).expect("store");
@@ -256,7 +256,7 @@ mod market_cache_tests {
     #[rstest::rstest]
     fn loaded_at_reads_the_stamp_back() {
         // Given a stored payload stamped at a known time.
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("probe.json");
         let now = jiff::Timestamp::now();
         store(&path, &stamped(Probe::First(3), now)).expect("store");
@@ -271,7 +271,7 @@ mod market_cache_tests {
     #[rstest::rstest]
     fn drop_file_removes_only_an_existing_file() {
         // Given a stored payload and a path that was never written.
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("probe.json");
         let absent = dir.path().join("absent.json");
         store(&path, &stamped(Probe::First(0), jiff::Timestamp::now())).expect("store");

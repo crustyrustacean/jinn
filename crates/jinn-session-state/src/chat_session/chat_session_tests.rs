@@ -140,7 +140,7 @@ const TINY_PNG: &[u8] = &[
 #[rstest::rstest]
 fn push_entry_at_path_creates_attachment_and_file_uri() {
     // Given a session and a temp png file referenced via @path.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let path = dir.path().join("img.png");
     std::fs::write(&path, TINY_PNG).expect("write");
     let abs = path.to_string_lossy().into_owned();
@@ -2113,7 +2113,7 @@ fn visible_entry_range_uses_rendered_scroll_offset_not_scroll_offset() {
 #[rstest::rstest]
 fn cwd_preserved_across_serialization_round_trip() {
     // Given a session with a temp-rooted CWD.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let cwd = dir.path().to_path_buf();
     let mut session = ChatSessionState::new();
     session.set_cwd(cwd.clone());
@@ -6775,7 +6775,7 @@ fn tool_age_window_exclude_refused_on_included_todo_pair() {
 fn new_attendant_links_parent_without_inheriting_conversation() {
     // Given a parent session with a temp-rooted project stamp, cwd, home,
     // and MCP servers.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let mut parent = ChatSessionState::new();
     parent.set_project(Some(dir.path().join("demo-project")));
     parent.set_cwd(dir.path().join("demo-cwd"));
@@ -6801,7 +6801,7 @@ fn new_attendant_links_parent_without_inheriting_conversation() {
 #[test]
 fn new_attendant_copies_parent_environment() {
     // Given a parent session with temp-rooted environment values set.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let mut parent = ChatSessionState::new();
     parent.set_project(Some(dir.path().join("demo-project")));
     parent.set_cwd(dir.path().join("demo-cwd"));

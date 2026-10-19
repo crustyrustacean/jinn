@@ -278,7 +278,7 @@ mod tests {
     #[rstest::rstest]
     fn open_seeds_input_from_session_cwd_and_pushes_scope() {
         // Given a fake state whose session cwd is an absolute path.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let cwd = dir.path().join("some-project");
         let expected = cwd.display().to_string();
         let mut state = FakeState {
@@ -327,7 +327,7 @@ mod tests {
     fn confirm_valid_relative_dir_publishes_and_pops() {
         // Given a real tempdir next to the session cwd, with the popup seeded
         // with the tempdir's basename.
-        let temp = tempfile::tempdir().expect("tempdir");
+        let temp = jinn_testutil::tempdir().expect("tempdir");
         let target = temp.path();
         let mut state = FakeState {
             cwd: target.parent().expect("parent").to_path_buf(),
@@ -359,7 +359,7 @@ mod tests {
     #[rstest::rstest]
     fn confirm_nonexistent_path_stays_open_unchanged() {
         // Given a popup seeded with a path that does not exist.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut state = FakeState {
             cwd: dir.path().to_path_buf(),
             ..FakeState::default()
@@ -381,7 +381,7 @@ mod tests {
     #[rstest::rstest]
     fn confirm_empty_input_is_noop() {
         // Given a popup with empty input.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut state = FakeState {
             cwd: dir.path().to_path_buf(),
             ..FakeState::default()

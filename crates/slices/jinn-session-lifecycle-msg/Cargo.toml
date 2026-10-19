@@ -22,9 +22,9 @@ trouper = { workspace = true }
 unicode-segmentation = { workspace = true }
 
 [dev-dependencies]
+jinn-testutil = { workspace = true }
 rstest = { workspace = true }
 serde_json = { workspace = true }
-tempfile = { workspace = true }
 
 [lints]
 workspace = true

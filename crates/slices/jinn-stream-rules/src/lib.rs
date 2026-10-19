@@ -132,12 +132,8 @@ mod tests {
             body = 'Finish it.'
             "#,
         );
-        let prefs = {
-            let dir = tempfile::tempdir().expect("temp dir");
-            let path = dir.path().join("jinn.toml");
-            std::mem::forget(dir);
-            path
-        };
+        let prefs_dir = jinn_testutil::tempdir().expect("temp dir");
+        let prefs = prefs_dir.path().join("jinn.toml");
         let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
         let mut viewport = jinn_slices::view::Viewport::new();
         let overlay_views = jinn_slices::OverlayViews::new();

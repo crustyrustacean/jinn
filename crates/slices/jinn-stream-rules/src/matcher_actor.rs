@@ -120,27 +120,31 @@ mod tests {
         ))
     }
 
-    /// A temp preferences path with no sibling rules file, leaked so the
-    /// read outlives the test (the read never writes to it).
-    fn temp_prefs() -> std::path::PathBuf {
-        let dir = tempfile::tempdir().expect("temp dir");
+    /// A temp preferences path with no sibling rules file. Returns the
+    /// owned dir so the caller keeps it alive as long as the path is in use.
+    fn temp_prefs() -> (tempfile::TempDir, std::path::PathBuf) {
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("jinn.toml");
-        std::mem::forget(dir);
-        path
+        (dir, path)
     }
 
     /// An actor over a fresh matcher cell.
-    fn actor() -> (StreamRuleMatcherActor, TypedCell<StreamRules>) {
+    fn actor() -> (
+        StreamRuleMatcherActor,
+        TypedCell<StreamRules>,
+        tempfile::TempDir,
+    ) {
         let slices = jinn_slices::Slices::new();
         let cell = slices
             .register(jinn_slices::stream_rules_slot(), StreamRules::empty())
             .expect("a fresh registry never has the stream-rules slot taken");
+        let (prefs_dir, prefs) = temp_prefs();
         let actor = StreamRuleMatcherActor {
             cell: cell.clone(),
             config: layer_with_rule("rebuildable"),
-            preferences_path: temp_prefs(),
+            preferences_path: prefs,
         };
-        (actor, cell)
+        (actor, cell, prefs_dir)
     }
 
     /// Whether a prose delta naming the rule trips the installed matcher,
@@ -162,7 +166,7 @@ mod tests {
     #[rstest::rstest]
     fn a_refresh_installs_the_configured_rules() {
         // Given an actor whose cell holds no matcher.
-        let (actor, cell) = actor();
+        let (actor, cell, _prefs_dir) = actor();
         assert!(cell.read().installed().is_none());
 
         // When a refresh command is handled.
@@ -178,7 +182,7 @@ mod tests {
     #[rstest::rstest]
     fn a_disabled_rule_is_gone_after_a_refresh() {
         // Given a cell whose matcher was refreshed with the rule armed.
-        let (actor, cell) = actor();
+        let (actor, cell, _prefs_dir) = actor();
         actor.handle_refresh();
         assert!(fires(&cell, "REBUILD-MARKER-rebuildable").is_some());
 
@@ -197,7 +201,7 @@ mod tests {
     #[rstest::rstest]
     fn a_re_enabled_rule_is_back_after_a_refresh() {
         // Given a cell whose matcher was refreshed with the rule disabled.
-        let (actor, cell) = actor();
+        let (actor, cell, _prefs_dir) = actor();
         actor
             .config
             .set_stream_rule_disabled(&actor.preferences_path, "rebuildable", true)

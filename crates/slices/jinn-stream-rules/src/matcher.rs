@@ -1416,7 +1416,7 @@ mod tests {
         let configs = [rule("global", "rm -rf")];
 
         // When the set is built for a project it names nothing about.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let anywhere_cwd = dir.path().join("anywhere/at/all");
         let set = CompiledSet::build(&configs).for_cwd(Some(anywhere_cwd.as_path()));
 
@@ -1435,7 +1435,7 @@ mod tests {
 
         // When the set is built for that project: a cwd whose last segment is
         // the project name, rooted in a tempdir.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let myapp_cwd = dir.path().join("dev/code/myapp");
         let set = CompiledSet::build(&configs).for_cwd(Some(myapp_cwd.as_path()));
 
@@ -1454,7 +1454,7 @@ mod tests {
 
         // When the set is built for a different project: a sibling directory
         // under the same tempdir root.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let other_cwd = dir.path().join("dev/code/other");
         let set = CompiledSet::build(&configs).for_cwd(Some(other_cwd.as_path()));
 
@@ -1524,7 +1524,7 @@ mod tests {
         ];
 
         // When the set is built for the project the scoped rule excludes.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let other_cwd = dir.path().join("dev/other");
         let set = CompiledSet::build(&configs).for_cwd(Some(other_cwd.as_path()));
 
@@ -1554,7 +1554,7 @@ mod tests {
         }];
 
         // When the set is built for an unrelated project.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let other_cwd = dir.path().join("dev/other");
         let set = CompiledSet::build(&configs).for_cwd(Some(other_cwd.as_path()));
 

@@ -181,7 +181,7 @@ mod tests {
     #[rstest::rstest]
     fn tool_context_debug_contains_cwd_and_timeout() {
         // Given a ToolContext with known values.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let cwd = dir.path().join("test");
         let ctx = ToolContext {
             cwd: cwd.clone(),

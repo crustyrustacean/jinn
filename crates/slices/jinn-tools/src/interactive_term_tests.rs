@@ -66,7 +66,7 @@ fn ctx_with(session_id: Option<SessionId>, app_paths_root: &Path, cwd: &Path) ->
 #[tokio::test]
 async fn spawn_without_a_chat_session_is_rejected() {
     // Given a tool context with no chat session (no conversation is active).
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let ctx = ctx_with(None, dir.path(), dir.path());
 
     // When executing the spawn tool.
@@ -85,7 +85,7 @@ async fn spawn_without_a_chat_session_is_rejected() {
 #[tokio::test]
 async fn spawn_without_a_coordinator_reports_unavailable() {
     // Given a context with a chat session but no coordinator (test harnesses).
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let ctx = ctx_with(Some(SessionId::new()), dir.path(), dir.path());
 
     // When executing the spawn tool.
@@ -100,7 +100,7 @@ async fn spawn_without_a_coordinator_reports_unavailable() {
 #[tokio::test]
 async fn spawn_without_a_command_is_rejected() {
     // Given a context with a chat session but a call missing `command`.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let ctx = ctx_with(Some(SessionId::new()), dir.path(), dir.path());
     let call = ToolCall {
         id: "call-2".into(),
@@ -196,7 +196,7 @@ fn started_result_has_no_model_facing_session_id() {
 #[tokio::test]
 async fn send_requires_a_chat_session_context() {
     // Given a tool context with no chat session.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let ctx = ctx_with(None, dir.path(), dir.path());
     let call = ToolCall {
         id: "call-3".into(),
@@ -220,7 +220,7 @@ async fn send_requires_a_chat_session_context() {
 #[tokio::test]
 async fn kill_requires_a_chat_session_context() {
     // Given a tool context with no chat session.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let ctx = ctx_with(None, dir.path(), dir.path());
     let call = ToolCall {
         id: "call-4".into(),
@@ -244,7 +244,7 @@ async fn kill_requires_a_chat_session_context() {
 #[tokio::test]
 async fn send_without_a_coordinator_reports_unavailable() {
     // Given a context with a chat session but no coordinator.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let ctx = ctx_with(Some(SessionId::new()), dir.path(), dir.path());
     let call = ToolCall {
         id: "call-5".into(),
@@ -409,7 +409,7 @@ impl jinn_term_msg::TermHandle for FakeTermHandle {
 async fn spawn_tool_uses_the_term_handle_trait() {
     // Given a tool context carrying a fake term handle.
     let fake = FakeTermHandle::default();
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let mut ctx = ctx_with(Some(SessionId::new()), dir.path(), dir.path());
     ctx.interactive_term = Some(std::sync::Arc::new(fake.clone()));
     let call = call("htop");
@@ -428,7 +428,7 @@ async fn spawn_tool_uses_the_term_handle_trait() {
 async fn kill_tool_uses_the_term_handle_trait() {
     // Given a tool context carrying a fake term handle.
     let fake = FakeTermHandle::default();
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let mut ctx = ctx_with(Some(SessionId::new()), dir.path(), dir.path());
     ctx.interactive_term = Some(std::sync::Arc::new(fake.clone()));
     let call = ToolCall {
@@ -453,7 +453,7 @@ async fn kill_tool_uses_the_term_handle_trait() {
 #[tokio::test]
 async fn tools_fail_gracefully_when_the_handle_is_unset() {
     // Given a tool context with no handle (slice not activated).
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let ctx = ctx_with(Some(SessionId::new()), dir.path(), dir.path());
     let call = call("htop");
 

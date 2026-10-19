@@ -191,7 +191,7 @@ mod tests {
     fn a_change_loop_persists_every_change_in_order() {
         // Given a layer over a temp jinn.toml defining two rules, and a
         // job toggling both — one off, one on.
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("jinn.toml");
         std::fs::write(
             &path,
@@ -231,7 +231,7 @@ mod tests {
     #[rstest::rstest]
     fn the_first_failing_change_stops_the_loop_with_the_shared_line() {
         // Given a job whose second change names a rule no source defines.
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("jinn.toml");
         std::fs::write(
             &path,
@@ -297,7 +297,7 @@ mod tests {
             }
         }
         let layer = ConfigLayer::load(Arc::new(Failing)).expect("layer loads");
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let job = PersistJob {
             preferences_path: dir.path().join("jinn.toml"),
             changes: vec![StreamRuleDisabledChange {
@@ -366,7 +366,7 @@ mod bus_tests {
     /// the dir itself — kept alive by the caller, because the actor's
     /// write lands after the helper returns.
     fn layer_over_pref_dir() -> (ConfigLayer, PathBuf, tempfile::TempDir) {
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("jinn.toml");
         std::fs::write(
             &path,
@@ -452,7 +452,7 @@ mod bus_tests {
             }
         }
         let layer = ConfigLayer::load(Arc::new(Failing)).expect("layer loads");
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let harness = TestHarness::new().await;
         let _ = StreamRulePersistActor::spawn(harness.system(), layer);
         let refreshes = harness.spawn_recorder::<RefreshStreamRuleMatcher>().await;

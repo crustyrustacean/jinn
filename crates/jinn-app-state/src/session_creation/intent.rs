@@ -518,7 +518,7 @@ mod tests {
         // Set the active session's cwd to a distinct temp-rooted value so
         // inheritance is distinguishable from default_cwd() (the app launch
         // dir).
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let inherited_cwd = dir.path().join("inherited-project");
         state.active_session_mut().set_cwd(inherited_cwd.clone());
         let old_id = state.session.active_session_id().clone();
@@ -552,7 +552,7 @@ mod tests {
     fn explicit_cwd_override_overrides_inherited_cwd() {
         // Given a state whose active session has a distinct CWD and a
         // pending creation stashed on the frontend (as the project picker does).
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut state = AppState::default_with_scope_focus();
         state
             .active_session_mut()
@@ -583,7 +583,7 @@ mod tests {
     fn pending_creation_cwd_is_used_when_no_explicit_cwd_given() {
         // Given a state whose active session has a distinct CWD and a
         // pending creation stashed on the frontend.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut state = AppState::default_with_scope_focus();
         state
             .active_session_mut()
@@ -613,7 +613,7 @@ mod tests {
     #[rstest::rstest]
     fn setup_stamps_project_from_pending_creation() {
         // Given a state with a pending creation stashed from the projects UI.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut state = AppState::default_with_scope_focus();
         let project = dir.path().join("projects/jinn");
         state.frontend.pending_creation = Some(crate::frontend_state::PendingSessionCreation {
@@ -655,7 +655,7 @@ mod tests {
     #[rstest::rstest]
     fn setup_consumes_stash_exactly_once() {
         // Given a state that already consumed a pending creation.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut state = AppState::default_with_scope_focus();
         let first_project = dir.path().join("first-project");
         state.frontend.pending_creation = Some(crate::frontend_state::PendingSessionCreation {
@@ -690,7 +690,7 @@ mod tests {
     fn scripted_lifecycle_setup_pre_seeds_inherited_cwd_in_memory() {
         // Given a state whose active session has a distinct CWD, and a
         // lifecycle with a setup_command (so the script path is taken).
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut state = AppState::default_with_scope_focus();
         let inherited_cwd = dir.path().join("inherited-project");
         state.active_session_mut().set_cwd(inherited_cwd.clone());
@@ -714,7 +714,7 @@ mod tests {
     #[rstest::rstest]
     fn session_lifecycle_setup_with_lifecycle_emits_command() {
         // Given a state with a lifecycle that has a setup_command.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut state = AppState::default_with_scope_focus();
         let old_id = state.session.active_session_id().clone();
         let config = lifecycle_config(
@@ -811,7 +811,7 @@ mod tests {
     #[rstest::rstest]
     fn session_close_with_teardown_emits_close_session() {
         // Given a session with a lifecycle that has a teardown_command.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut state = AppState::default_with_scope_focus();
         let _config = lifecycle_config(
             "fossil branch",
@@ -1048,7 +1048,7 @@ mod tests {
     #[rstest::rstest]
     fn scripted_lifecycle_setup_with_auto_enable_attaches_enablement_message() {
         // Given a scripted lifecycle and one auto-enabled server.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut state = AppState::default_with_scope_focus();
         let config = jinn_config::testutil::config_layer(&format!(
             "[[session_lifecycle.script]]\nname = \"fossil branch\"\n\
@@ -1085,7 +1085,7 @@ mod tests {
         assert_eq!(state.session.session_count(), 1);
 
         // When creating a new session with a lifecycle.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let config = lifecycle_config(
             "fossil branch",
             Some(&format!("echo {}", dir.path().join("workdir").display())),
@@ -1196,7 +1196,7 @@ mod tests {
         // Given a session stamped with a workflow-local lifecycle file whose
         // entry has a teardown — and a config layer that does NOT know the
         // name (the source must be the only thing consulted).
-        let file = tempfile::tempdir().expect("temp dir");
+        let file = jinn_testutil::tempdir().expect("temp dir");
         let path = file.path().join("lifecycle.toml");
         std::fs::write(&path, WORKFLOW_DOC).expect("write");
         let mut state = AppState::default_with_scope_focus();
@@ -1229,7 +1229,7 @@ mod tests {
     fn build_run_session_teardown_names_the_file_when_it_vanished() {
         // Given a session stamped with a source file that no longer exists
         // (the joined subdirectories are never created).
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let gone_path = dir.path().join("gone/workflow/lifecycle.toml");
         let mut state = AppState::default_with_scope_focus();
         let session_id = state.session.active_session_id().clone();
@@ -1260,7 +1260,7 @@ mod tests {
     fn build_run_session_teardown_names_the_file_and_entry_when_the_entry_vanished() {
         // Given a stamped source whose file exists but no longer defines
         // the recorded entry.
-        let file = tempfile::tempdir().expect("temp dir");
+        let file = jinn_testutil::tempdir().expect("temp dir");
         let path = file.path().join("lifecycle.toml");
         std::fs::write(&path, "[[session_lifecycle.script]]\nname = \"other\"\n").expect("write");
         let mut state = AppState::default_with_scope_focus();
@@ -1289,7 +1289,7 @@ mod tests {
     fn a_source_carrying_session_bypasses_the_config_entirely() {
         // Given a stamped source whose file defines the entry with a
         // DIFFERENT teardown than a config entry of the same name.
-        let file = tempfile::tempdir().expect("temp dir");
+        let file = jinn_testutil::tempdir().expect("temp dir");
         let path = file.path().join("lifecycle.toml");
         std::fs::write(&path, WORKFLOW_DOC).expect("write");
         let mut state = AppState::default_with_scope_focus();

@@ -1425,7 +1425,7 @@ fn message_sequence_validator_accepts_complete_multi_call_batch_in_order() {
 #[test]
 fn message_sequence_validator_accepts_real_empty_assistant_tool_parent() {
     // Given a real empty assistant entry created by the streaming lifecycle.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let entries = vec![
         ChatEntry::user("run the command"),
         ChatEntry::assistant(""),

@@ -34,7 +34,7 @@ wherror = { workspace = true }
 rstest = { workspace = true }
 tokio = { workspace = true }
 trouper = { workspace = true }
-tempfile = { workspace = true }
+jinn-testutil = { workspace = true }
 
 [lints]
 workspace = true

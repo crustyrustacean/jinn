@@ -46,7 +46,7 @@ struct ActorFixture {
 }
 
 async fn actor_fixture() -> ActorFixture {
-    let dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let store = Arc::new(
         SqliteSessionStore::new_in(dir.path())
             .await

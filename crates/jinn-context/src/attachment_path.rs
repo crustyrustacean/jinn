@@ -351,7 +351,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_resolves_relative_path_against_cwd() {
         // Given a cwd-rooted temp dir and a relative path token.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let text = "describe @img.png here";
 
         // When scanning with a context rooted at the temp dir.
@@ -366,7 +366,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_resolves_tilde_path_against_home() {
         // Given a home-rooted temp dir and a tilde path token.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let text = "describe @~/photo.png here";
 
         // When scanning with home pointing at the temp dir.
@@ -381,7 +381,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_tilde_alone_resolves_to_home() {
         // Given a tilde token with no subpath.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let text = "@~/bare.png";
 
         // When scanning with home at the temp dir.
@@ -400,7 +400,7 @@ mod tests {
         let text = "describe @my file.png here";
 
         // When scanning with cwd at a temp dir.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let ctx = PathResolveContext::new(dir.path(), std::path::Path::new("/"));
         let result = scan_at_paths(text, &ctx);
 
@@ -412,7 +412,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_relative_path_descends_into_subdirectory() {
         // Given a relative path into a subdirectory.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let text = "see @sub/img.png";
 
         // When scanning with cwd at the temp dir root.

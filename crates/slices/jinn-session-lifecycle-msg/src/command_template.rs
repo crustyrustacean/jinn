@@ -1107,7 +1107,7 @@ mod tests {
     #[rstest::rstest]
     fn render_multiple_named_params() {
         // Given a template with two named placeholders and two arguments.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         // Forward-slash form: the value must stay shell-quote-free on every
         // platform so the assertion isolates positional substitution.
         let workdir = dir
@@ -1909,7 +1909,7 @@ mod tests {
     fn shell_quote_path_with_slash_is_safe() {
         // Given a filesystem path in forward-slash form (the separator the
         // test names, on every platform).
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let value = dir
             .path()
             .join("workdir")

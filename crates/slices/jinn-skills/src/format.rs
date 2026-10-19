@@ -121,7 +121,7 @@ mod tests {
     #[rstest::rstest]
     fn format_produces_available_skills_block() {
         // Given one skill.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let skills = vec![test_skill(dir.path(), "my-skill", "A test skill")];
 
         // When formatting.
@@ -152,7 +152,7 @@ mod tests {
     #[rstest::rstest]
     fn format_includes_usage_instructions() {
         // Given one skill.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let skills = vec![test_skill(dir.path(), "test", "Test skill")];
 
         // When formatting.
@@ -216,7 +216,7 @@ mod tests {
     #[rstest::rstest]
     fn format_handles_multiple_skills() {
         // Given three skills.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let root = dir.path();
         let skills = vec![
             test_skill(root, "skill-a", "First skill"),
@@ -236,7 +236,7 @@ mod tests {
     #[rstest::rstest]
     fn format_returns_stable_skill_list() {
         // Given three skills.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let root = dir.path();
         let skills = vec![
             test_skill(root, "skill-a", "First skill"),
@@ -262,7 +262,7 @@ mod tests {
     #[rstest::rstest]
     fn format_marks_loaded_skill_with_attribute() {
         // Given one loaded and one unloaded skill.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let root = dir.path();
         let skills = vec![
             test_skill(root, "loaded-skill", "A loaded skill"),
@@ -288,7 +288,7 @@ mod tests {
     #[rstest::rstest]
     fn format_loaded_instruction_only_appears_once() {
         // Given several skills.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let root = dir.path();
         let skills = vec![
             test_skill(root, "a", "A"),
@@ -313,7 +313,7 @@ mod tests {
     #[rstest::rstest]
     fn format_preamble_instruction_appears_exactly_once() {
         // Given several skills.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let root = dir.path();
         let skills = vec![
             test_skill(root, "a", "A"),
@@ -335,7 +335,7 @@ mod tests {
     #[rstest::rstest]
     fn format_empty_loaded_set_no_attributes() {
         // Given skills with no loaded set.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let skills = vec![test_skill(dir.path(), "foo", "Foo")];
 
         // When formatting with empty loaded set.

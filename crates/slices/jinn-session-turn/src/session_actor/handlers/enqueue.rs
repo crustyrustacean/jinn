@@ -851,7 +851,7 @@ mod tests {
             guard.session.active_session_id().clone()
         };
         // Write the image to a temp file and seed the capability table.
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let png_path = dir.path().join("img.png");
         std::fs::write(&png_path, MULTIMODAL_TINY_PNG).expect("write png");
         seed_models_dev(&actor, "text-only-model", false);
@@ -894,7 +894,7 @@ mod tests {
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let png_path = dir.path().join("photo.png");
         std::fs::write(&png_path, MULTIMODAL_TINY_PNG).expect("write png");
         seed_models_dev(&actor, "vision-model", true);
@@ -937,7 +937,7 @@ mod tests {
                 .active_session_mut()
                 .set_model(ModelSelection::Single("my-uncatalogued-llama".to_owned()));
         }
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let png_path = dir.path().join("img.png");
         std::fs::write(&png_path, MULTIMODAL_TINY_PNG).expect("write png");
         let display = format!("describe this @{}", png_path.to_string_lossy());
@@ -1173,7 +1173,7 @@ mod tests {
     async fn existing_non_image_at_path_dispatches() {
         // Given an idle vision-model session and an existing non-image file.
         let (actor, state, audit, session_id) = idle_vision_session().await;
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let notes = dir.path().join("notes.txt");
         std::fs::write(&notes, b"not an image").expect("write");
 
@@ -1201,7 +1201,7 @@ mod tests {
     async fn existing_non_image_at_path_keeps_literal_expanded() {
         // Given an idle vision-model session and an existing non-image file.
         let (actor, state, _audit, session_id) = idle_vision_session().await;
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let notes = dir.path().join("notes.txt");
         std::fs::write(&notes, b"not an image").expect("write");
         let token = format!("@{}", notes.to_string_lossy());
@@ -1233,7 +1233,7 @@ mod tests {
     async fn recognizable_image_without_converter_blocks_with_error() {
         // Given an idle vision-model session and a recognizable HEIC file (test converter is unavailable).
         let (actor, state, audit, session_id) = idle_vision_session().await;
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let heic = dir.path().join("photo.heic");
         let mut bytes = vec![0x00, 0x00, 0x00, 0x18];
         bytes.extend_from_slice(b"ftypheicpayload");
@@ -1274,7 +1274,7 @@ mod tests {
     async fn mixed_native_image_and_nonexistent_token_dispatches_with_one_attachment() {
         // Given an idle vision-model session, a real PNG, and a nonexistent path in one message.
         let (actor, state, audit, session_id) = idle_vision_session().await;
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let png = dir.path().join("real.png");
         std::fs::write(&png, MULTIMODAL_TINY_PNG).expect("write png");
         let display = format!("see @{} and @/nonexistent/x", png.to_string_lossy());
@@ -1317,7 +1317,7 @@ mod tests {
     async fn mixed_native_image_and_existing_non_image_dispatches_with_one_attachment() {
         // Given an idle vision-model session, a real PNG, and an existing non-image file.
         let (actor, state, audit, session_id) = idle_vision_session().await;
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let png = dir.path().join("real.png");
         std::fs::write(&png, MULTIMODAL_TINY_PNG).expect("write png");
         let notes = dir.path().join("notes.txt");
@@ -1403,7 +1403,7 @@ mod tests {
     async fn multiple_native_images_all_attach() {
         // Given an idle vision-model session and a message with two real PNGs.
         let (actor, state, _audit, session_id) = idle_vision_session().await;
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let png_a = dir.path().join("a.png");
         let png_b = dir.path().join("b.png");
         std::fs::write(&png_a, MULTIMODAL_TINY_PNG).expect("write a");
@@ -1437,7 +1437,7 @@ mod tests {
     async fn mixed_native_image_and_conversion_failing_image_blocks() {
         // Given an idle vision-model session, a real PNG, and a recognizable HEIC (converter unavailable).
         let (actor, state, audit, session_id) = idle_vision_session().await;
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let png = dir.path().join("real.png");
         std::fs::write(&png, MULTIMODAL_TINY_PNG).expect("write png");
         let heic = dir.path().join("photo.heic");

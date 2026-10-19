@@ -973,10 +973,7 @@ mod tests {
         // Given a coordinator and a real scratch directory.
         let harness = TestHarness::new().await;
         let (actor, _system) = spawn_coordinator(&harness, TermControls::default()).await;
-        let dir = tempfile::Builder::new()
-            .prefix("jinn-term-cwd")
-            .tempdir()
-            .expect("temp dir");
+        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-term-cwd").expect("temp dir");
         let expected = dir.path().to_str().expect("utf8 path");
 
         // When spawning `pwd` with that directory as cwd.

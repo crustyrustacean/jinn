@@ -29,7 +29,6 @@ jinn-cell-catalog = { workspace = true }
 jinn-testutil = { workspace = true }
 rstest = { workspace = true }
 serde_json = { workspace = true }
-tempfile = { workspace = true }
 tokio = { workspace = true }
 
 [lints]

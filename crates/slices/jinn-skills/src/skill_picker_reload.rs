@@ -92,7 +92,7 @@ mod tests {
     #[rstest::rstest]
     fn reload_keeps_the_spec_row_renderer() {
         // Given a skill picker cell and one discovered skill.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut state = SkillPickerState::default();
         let skills = vec![skill(dir.path(), "alpha", "does things", "# body")];
 
@@ -109,7 +109,7 @@ mod tests {
     #[rstest::rstest]
     fn reload_keeps_the_spec_preview_renderer() {
         // Given a skill picker cell and one discovered skill with a markdown body.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut state = SkillPickerState::default();
         let skills = vec![skill(dir.path(), "alpha", "does things", "# Title")];
 
@@ -128,7 +128,7 @@ mod tests {
     #[rstest::rstest]
     fn reload_sorts_entries_case_insensitively_by_name() {
         // Given discovered skills in non-alphabetical order.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let root = dir.path();
         let skills = vec![
             skill(root, "zeta", "last", ""),

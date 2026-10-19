@@ -252,7 +252,7 @@ impl TestServices {
         let (paths, tempdir) = if let Some(p) = self.paths {
             (p, None)
         } else {
-            let td = Arc::new(tempfile::TempDir::new().expect("test temp dir"));
+            let td = Arc::new(jinn_testutil::retained_tempdir().expect("test temp dir"));
             (
                 crate::common::app_paths::AppPaths::new_in(td.path()),
                 Some(td),

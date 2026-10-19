@@ -267,14 +267,13 @@ mod tests {
 
     /// A `jinn.toml` path in a temp dir with no sibling rules file, for the
     /// tests that only exercise the jinn.toml half of the assembly.
-    fn temp_prefs() -> std::path::PathBuf {
-        let dir = tempfile::tempdir().expect("temp dir");
+    ///
+    /// Returns the owned dir so the caller keeps it alive as long as the
+    /// path is in use.
+    fn temp_prefs() -> (tempfile::TempDir, std::path::PathBuf) {
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("jinn.toml");
-        // Leak the temp dir: the file must outlive the test's read, and the
-        // read never writes to it, so a leaked empty dir is the cheapest
-        // correct lifetime answer here.
-        std::mem::forget(dir);
-        path
+        (dir, path)
     }
 
     /// A `jinn.toml` path inside `dir`, so the sibling rules file resolves
@@ -305,7 +304,7 @@ mod tests {
     #[test]
     fn the_embedded_set_loads_when_no_user_file_exists() {
         // Given an empty temp dir (no user rules file) and an empty config.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let config = layer("");
 
         // When the rules are assembled.
@@ -323,7 +322,7 @@ mod tests {
     #[test]
     fn a_user_file_replaces_the_embedded_set_wholesale() {
         // Given a user rules file carrying exactly one rule.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let prefs = prefs_path_in(dir.path());
         write_user_rules(
             &prefs,
@@ -352,7 +351,7 @@ mod tests {
     #[test]
     fn an_existing_but_empty_user_file_disarms_every_shipped_guard() {
         // Given an existing but empty user rules file.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let prefs = prefs_path_in(dir.path());
         write_user_rules(&prefs, "");
         let config = layer("");
@@ -372,7 +371,7 @@ mod tests {
     #[test]
     fn a_malformed_user_file_falls_back_to_the_embedded_set() {
         // Given a user rules file that is not valid TOML.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let prefs = prefs_path_in(dir.path());
         write_user_rules(&prefs, "NOT [valid toml");
         let config = layer("");
@@ -392,7 +391,7 @@ mod tests {
     #[test]
     fn a_jinn_toml_rule_appends_after_the_base_set() {
         // Given a jinn.toml carrying one rule and no user file.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let prefs = prefs_path_in(dir.path());
         let config = layer(
             r#"
@@ -420,7 +419,7 @@ mod tests {
     #[test]
     fn a_jinn_toml_rule_appends_after_a_user_file_set() {
         // Given a user file and a jinn.toml rule.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let prefs = prefs_path_in(dir.path());
         write_user_rules(
             &prefs,
@@ -457,7 +456,7 @@ mod tests {
     fn a_name_in_the_user_file_and_jinn_toml_resolves_to_the_jinn_toml_definition() {
         // Given a user file and a jinn.toml entry sharing a name, each with
         // its own body.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let prefs = prefs_path_in(dir.path());
         write_user_rules(
             &prefs,
@@ -517,7 +516,8 @@ mod tests {
         );
 
         // When the rules are assembled.
-        let rules = assemble_stream_rules(&config, &temp_prefs());
+        let (_prefs_dir, prefs) = temp_prefs();
+        let rules = assemble_stream_rules(&config, &prefs);
 
         // Then one entry survives and it is the later definition — the
         // file's last word on the name is the one that fires.
@@ -544,7 +544,8 @@ mod tests {
         );
 
         // When the rules are assembled.
-        let rules = assemble_stream_rules(&config, &temp_prefs());
+        let (_prefs_dir, prefs) = temp_prefs();
+        let rules = assemble_stream_rules(&config, &prefs);
 
         // Then it is a stream rule scoped to the bash tool.
         let converted = rules
@@ -572,7 +573,8 @@ mod tests {
         );
 
         // When the rules are assembled.
-        let rules = assemble_stream_rules(&config, &temp_prefs());
+        let (_prefs_dir, prefs) = temp_prefs();
+        let rules = assemble_stream_rules(&config, &prefs);
 
         // Then the guidance the author wrote is what the model will be told.
         let converted = rules
@@ -586,7 +588,7 @@ mod tests {
     #[test]
     fn a_projects_own_command_policy_becomes_a_project_scoped_rule() {
         // Given two projects, the second carrying its own blocked-command rule.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let myapp = dir.path().join("dev/code/myapp");
         let other = dir.path().join("dev/code/other");
         // The paths ride through `toml_edit::Value` so the interpolated text
@@ -607,7 +609,8 @@ mod tests {
         ));
 
         // When the rules are assembled.
-        let rules = assemble_stream_rules(&config, &temp_prefs());
+        let (_prefs_dir, prefs) = temp_prefs();
+        let rules = assemble_stream_rules(&config, &prefs);
 
         // Then the rule is scoped to the project that declared it.
         assert!(
@@ -638,7 +641,8 @@ mod tests {
         );
 
         // When the rules are assembled.
-        let rules = assemble_stream_rules(&config, &temp_prefs());
+        let (_prefs_dir, prefs) = temp_prefs();
+        let rules = assemble_stream_rules(&config, &prefs);
 
         // Then the rule is there and the migration contributed nothing.
         assert!(
@@ -674,7 +678,8 @@ mod tests {
         let config = mixed_project_config();
 
         // When the rules are assembled.
-        let rules = assemble_stream_rules(&config, &temp_prefs());
+        let (_prefs_dir, prefs) = temp_prefs();
+        let rules = assemble_stream_rules(&config, &prefs);
 
         // Then both are present, each with its own scope intact.
         let global = rules.iter().find(|r| r.name == "global-rule");

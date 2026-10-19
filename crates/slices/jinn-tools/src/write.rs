@@ -164,7 +164,7 @@ mod tests {
     #[tokio::test]
     async fn execute_writes_file_content() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("output.txt");
 
         let call = ToolCall {
@@ -190,7 +190,7 @@ mod tests {
     #[tokio::test]
     async fn execute_creates_file_with_content() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("output.txt");
 
         let call = ToolCall {
@@ -215,7 +215,7 @@ mod tests {
     #[tokio::test]
     async fn execute_creates_parent_dirs() {
         // Given a temp directory with a nested path.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("nested").join("deep").join("file.txt");
 
         let call = ToolCall {
@@ -243,7 +243,7 @@ mod tests {
     #[tokio::test]
     async fn execute_overwrites_existing_file() {
         // Given a temp file with existing content.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("existing.txt");
         std::fs::write(&file_path, "old content").expect("write existing file");
 
@@ -272,7 +272,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_bad_json() {
         // Given a write call with invalid JSON.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_4".into(),
             name: "write".to_owned(),
@@ -291,7 +291,7 @@ mod tests {
     #[tokio::test]
     async fn execute_resolves_relative_path() {
         // Given a temp directory as CWD.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
             config: jinn_config::testutil::config_layer(""),
@@ -428,7 +428,7 @@ mod tests {
     #[tokio::test]
     async fn execute_writes_empty_string() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("empty.txt");
 
         let call = ToolCall {
@@ -456,7 +456,7 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_newlines_and_tabs() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("whitespace.txt");
         let original = "line1\nline2\ttab";
 
@@ -483,7 +483,7 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_embedded_quotes() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("quotes.txt");
         let original = r#"he said "hello\""#;
 
@@ -510,7 +510,7 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_angle_brackets() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("angles.txt");
         let original = "HashMap<String, Vec<usize>>";
 
@@ -537,7 +537,7 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_ampersands() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("ampersands.txt");
         let original = "foo & bar < baz";
 
@@ -564,7 +564,7 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_backslashes() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("backslashes.txt");
         let original = r"C:\Users\test\file.txt";
 
@@ -591,7 +591,7 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_mixed_line_endings() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("endings.txt");
         let original = "line1\r\nline2\nline3";
 
@@ -618,7 +618,7 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_null_bytes() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("nulls.bin");
         let original = "before\0after";
 
@@ -645,7 +645,7 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_unicode_emoji() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("emoji.txt");
         let original = "Hello \u{1F30D}\u{1F980}\u{1F389}";
 
@@ -672,7 +672,7 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_cjk() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("cjk.txt");
         let original = "\u{4F60}\u{597D}\u{4E16}\u{754C}";
 
@@ -699,7 +699,7 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_combining_characters() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("combining.txt");
         let original = "e\u{0301}";
 
@@ -726,7 +726,7 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_large_payload() {
         // Given a temp directory and a 1MB payload.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("large.txt");
         let original = "x".repeat(1_000_000);
 
@@ -756,7 +756,7 @@ mod tests {
     #[tokio::test]
     async fn execute_writes_file_with_spaces_in_name() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("my file.txt");
 
         let call = ToolCall {
@@ -782,7 +782,7 @@ mod tests {
     #[tokio::test]
     async fn execute_writes_file_with_unicode_name() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("\u{30D5}\u{30A1}\u{30A4}\u{30EB}.txt");
 
         let call = ToolCall {
@@ -808,7 +808,7 @@ mod tests {
     #[tokio::test]
     async fn execute_writes_deeply_nested_path() {
         // Given a temp directory with a 6-level deep path.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir
             .path()
             .join("a")
@@ -841,7 +841,7 @@ mod tests {
     #[tokio::test]
     async fn execute_resolves_dot_slash_relative_path() {
         // Given a temp directory as CWD.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
             config: jinn_config::testutil::config_layer(""),
@@ -886,7 +886,7 @@ mod tests {
     #[tokio::test]
     async fn execute_writes_absolute_path() {
         // Given a temp directory with an absolute path.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("absolute.txt");
 
         let ctx = ToolContext {
@@ -934,7 +934,7 @@ mod tests {
     #[tokio::test]
     async fn execute_reports_correct_byte_count_for_ascii() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("ascii.txt");
         let content = "hello";
 
@@ -965,7 +965,7 @@ mod tests {
     #[tokio::test]
     async fn execute_reports_correct_byte_count_for_multibyte() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("multibyte.txt");
         let content = "\u{1F389}"; // 🎉 - 4 bytes in UTF-8
 
@@ -996,7 +996,7 @@ mod tests {
     #[tokio::test]
     async fn execute_reports_correct_byte_count_for_mixed() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("mixed.txt");
         let content = "Hello \u{1F30D}"; // Hello + space + 🌍 = 5 + 1 + 4 = 10 bytes
 
@@ -1027,7 +1027,7 @@ mod tests {
     #[tokio::test]
     async fn execute_rejects_content_with_long_repetition() {
         // Given a temp dir that does not yet contain the target file.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("out.txt");
 
         // `content` with 50 identical consecutive lines — degenerate.
@@ -1058,7 +1058,7 @@ mod tests {
     #[tokio::test]
     async fn execute_accepts_content_with_49_repetition() {
         // Given a temp dir.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("out.txt");
 
         // `content` with 49 identical consecutive lines — below threshold.

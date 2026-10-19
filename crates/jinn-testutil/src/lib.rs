@@ -1,6 +1,13 @@
-//! Shared test utilities for jinn TUI rendering tests.
+//! Shared test utilities for jinn TUI rendering tests, actor-fabric
+//! harnesses, and temp-directory creation.
 
 pub mod bus_harness;
+pub mod temp;
+
+pub use temp::{
+    TEST_PREFIX, TestTempBuilder, builder, retained_tempdir, tempdir, tempdir_in,
+    tempdir_with_prefix,
+};
 
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;

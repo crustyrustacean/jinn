@@ -93,7 +93,7 @@ impl Harness {
     /// The servers are seeded through the layer (the real resolution path),
     /// not a hand-written TOML document.
     fn with_config(servers: &[&str]) -> Self {
-        let tmp = tempfile::tempdir().expect("temp dir");
+        let tmp = jinn_testutil::tempdir().expect("temp dir");
         let state = State::new(AppState::default_with_scope_focus());
         // The default SessionMap already holds one active session; its id is
         // what every seeded edit and the tool context bind to.
@@ -335,7 +335,7 @@ async fn an_allow_filter_session_reports_unlisted_entries_as_off() {
 #[tokio::test]
 async fn query_fails_gracefully_without_state() {
     // Given a bare context with no state and no session.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let ctx = bare_ctx(dir.path());
 
     // When querying capabilities.

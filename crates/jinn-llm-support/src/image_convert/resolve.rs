@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn native_png_attaches_without_conversion() {
         // Given a native PNG file.
-        let tmp = tempfile::tempdir().expect("tmp");
+        let tmp = jinn_testutil::tempdir().expect("tmp");
         let path = tmp.path().join("native.png");
         std::fs::write(&path, png_bytes()).expect("write");
         let converter = service(true, false);
@@ -254,7 +254,7 @@ mod tests {
     #[test]
     fn non_native_image_is_converted_when_converter_available() {
         // Given a recognizable-but-non-native image (HEIC magic bytes).
-        let tmp = tempfile::tempdir().expect("tmp");
+        let tmp = jinn_testutil::tempdir().expect("tmp");
         let path = tmp.path().join("photo.heic");
         // ftyp box: [size][ftyp][brand=heic]
         let mut heic = vec![0x00, 0x00, 0x00, 0x08];
@@ -278,7 +278,7 @@ mod tests {
     #[test]
     fn non_native_image_errors_when_converter_unavailable() {
         // Given a non-native image and an unavailable converter.
-        let tmp = tempfile::tempdir().expect("tmp");
+        let tmp = jinn_testutil::tempdir().expect("tmp");
         let path = tmp.path().join("photo.heic");
         let mut heic = vec![0x00, 0x00, 0x00, 0x08];
         heic.extend_from_slice(b"ftypheicpayload");
@@ -296,7 +296,7 @@ mod tests {
     #[test]
     fn non_native_image_errors_when_conversion_fails() {
         // Given a non-native image and a failing converter.
-        let tmp = tempfile::tempdir().expect("tmp");
+        let tmp = jinn_testutil::tempdir().expect("tmp");
         let path = tmp.path().join("photo.heic");
         let mut heic = vec![0x00, 0x00, 0x00, 0x08];
         heic.extend_from_slice(b"ftypheicpayload");
@@ -314,7 +314,7 @@ mod tests {
     #[test]
     fn not_an_image_degrades() {
         // Given a non-image file.
-        let tmp = tempfile::tempdir().expect("tmp");
+        let tmp = jinn_testutil::tempdir().expect("tmp");
         let path = tmp.path().join("notes.txt");
         std::fs::write(&path, b"hello world").expect("write");
         let converter = service(true, false);
@@ -350,7 +350,7 @@ mod tests {
     #[test]
     fn mixed_native_and_non_native_all_resolve() {
         // Given one native PNG and one non-native HEIC.
-        let tmp = tempfile::tempdir().expect("tmp");
+        let tmp = jinn_testutil::tempdir().expect("tmp");
         let png_path = tmp.path().join("a.png");
         std::fs::write(&png_path, png_bytes()).expect("write");
         let heic_path = tmp.path().join("b.heic");
@@ -375,7 +375,7 @@ mod tests {
     #[test]
     fn mixed_native_png_and_missing_path_attaches_and_degrades() {
         // Given one native PNG and one nonexistent path in the same batch.
-        let tmp = tempfile::tempdir().expect("tmp");
+        let tmp = jinn_testutil::tempdir().expect("tmp");
         let png_path = tmp.path().join("a.png");
         std::fs::write(&png_path, png_bytes()).expect("write");
         let missing_path = PathBuf::from("/nonexistent/b.png");

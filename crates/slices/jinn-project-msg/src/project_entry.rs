@@ -153,7 +153,7 @@ mod tests {
     #[rstest::rstest]
     fn render_row_unselected_has_leading_spaces() {
         // Given a project entry.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("proj");
         let entry = ProjectEntry::new(path.clone(), default_theme());
 
@@ -168,7 +168,7 @@ mod tests {
     #[rstest::rstest]
     fn render_row_selected_has_arrow() {
         // Given a project entry.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("proj");
         let entry = ProjectEntry::new(path.clone(), default_theme());
 

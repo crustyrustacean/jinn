@@ -110,7 +110,7 @@ impl CrossSlice {
     /// Activates the project and lifecycle pickers side by side, with the
     /// project picker already open and a row highlighted.
     async fn new() -> Self {
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let slices = jinn_slices::Slices::new();
         // Production boot seeds every slice cell here, before any activation.
         jinn_cell_catalog::register_all_cells(&slices);

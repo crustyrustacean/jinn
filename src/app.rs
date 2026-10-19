@@ -428,7 +428,7 @@ mod tests {
     #[rstest::rstest]
     fn load_compaction_prompt_populates_state() {
         // Given a user dir with a compaction prompt file.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         std::fs::write(dir.path().join("_compaction.md"), "test compaction prompt")
             .expect("write compaction prompt");
 
@@ -444,8 +444,8 @@ mod tests {
     #[rstest::rstest]
     fn load_compaction_prompt_returns_err_when_missing() {
         // Given empty user and system dirs.
-        let user_dir = tempfile::tempdir().expect("temp dir");
-        let system_dir = tempfile::tempdir().expect("temp dir");
+        let user_dir = jinn_testutil::tempdir().expect("temp dir");
+        let system_dir = jinn_testutil::tempdir().expect("temp dir");
 
         // When loading the compaction prompt with no file present.
         let result = load_compaction_prompt(user_dir.path(), system_dir.path());
@@ -463,7 +463,7 @@ mod tests {
     #[rstest::rstest]
     fn load_theme_updates_state_from_file() {
         // Given a temp directory with a custom theme file.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let theme_content = "focus_accent = \"magenta\"\nborder_unfocused = \"blue\"";
         std::fs::write(dir.path().join("custom.toml"), theme_content).expect("write theme");
 
@@ -528,7 +528,7 @@ mod tests {
             .await;
 
         let url = format!("{}/api.json", server.url());
-        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let temp_dir = jinn_testutil::tempdir().expect("temp dir");
         let output_path = temp_dir.path().join("models.dev.json");
 
         // When fetching models.
@@ -557,7 +557,7 @@ mod tests {
             .await;
 
         let url = format!("{}/api.json", server.url());
-        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let temp_dir = jinn_testutil::tempdir().expect("temp dir");
         let output_path = temp_dir.path().join("models.dev.json");
 
         // When fetching models.
@@ -596,7 +596,7 @@ mod tests {
             .await;
 
         let url = format!("{}/api.json", server.url());
-        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let temp_dir = jinn_testutil::tempdir().expect("temp dir");
         let output_path = temp_dir.path().join("models.dev.json");
 
         // When fetching models.
@@ -613,7 +613,7 @@ mod tests {
     #[rstest::rstest]
     fn seed_config_template_preserves_template_comments() {
         // Given a config path inside a directory that does not exist yet.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("nested").join("jinn.toml");
 
         // When seeding the template.
@@ -634,7 +634,7 @@ mod tests {
     #[rstest::rstest]
     fn config_init_honors_the_config_override() {
         // Given a --config path that does not exist yet.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let override_path = dir.path().join("nested").join("alt.toml");
 
         // When `jinn config init` picks its target.
@@ -659,7 +659,7 @@ mod tests {
     #[rstest::rstest]
     fn config_init_override_is_accepted_though_runtime_resolver_rejects_it() {
         // Given a --config path that does not exist.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let override_path = dir.path().join("alt.toml");
 
         // When the two choosers are consulted.
@@ -676,7 +676,7 @@ mod tests {
     #[rstest::rstest]
     fn malformed_config_under_an_override_fails_naming_the_override() {
         // Given an override path holding invalid TOML.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let override_path = dir.path().join("alt.toml");
         std::fs::write(&override_path, "[section\nkey = ").expect("write");
 

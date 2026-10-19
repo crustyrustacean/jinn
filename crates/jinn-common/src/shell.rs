@@ -118,10 +118,7 @@ mod tests {
     #[test]
     fn existing_candidate_wins_over_later_candidates() {
         // Given a list where an existing file comes before the bare fallback.
-        let dir = tempfile::Builder::new()
-            .prefix("jinn-shell-resolver")
-            .tempdir()
-            .expect("temp dir");
+        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver").expect("temp dir");
         let existing = dir.path().join("shell-resolver-probe");
         std::fs::write(&existing, b"probe").expect("write probe");
 
@@ -147,10 +144,7 @@ mod tests {
     #[test]
     fn duplicate_existing_candidate_is_not_double_matched() {
         // Given the same existing file twice around a bare fallback.
-        let dir = tempfile::Builder::new()
-            .prefix("jinn-shell-resolver")
-            .tempdir()
-            .expect("temp dir");
+        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver").expect("temp dir");
         let existing = dir.path().join("shell-resolver-dup");
         std::fs::write(&existing, b"probe").expect("write probe");
 

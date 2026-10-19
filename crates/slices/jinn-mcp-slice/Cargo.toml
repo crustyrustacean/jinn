@@ -43,7 +43,6 @@ jinn-testutil = { workspace = true }
 jinn-config = { workspace = true }
 jinn-tools = { workspace = true }
 rstest = { workspace = true }
-tempfile = { workspace = true }
 ctor = "0.8"
 rustls = { workspace = true }
 

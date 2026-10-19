@@ -133,7 +133,7 @@ fn rows_bind_confirm_and_leave_in_own_scope_and_open_in_picker_scope() {
 #[rstest::rstest]
 fn open_seeds_input_from_session_cwd_and_pushes_scope() {
     // Given a fake state whose session cwd is an absolute path.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let cwd = dir.path().join("some-project");
     let mut state = FakeState::default();
     state.cwd = cwd.clone();
@@ -155,7 +155,7 @@ fn open_seeds_input_from_session_cwd_and_pushes_scope() {
 fn confirm_valid_dir_appends_project_optimistically_and_emits_update() {
     // Given a real tempdir next to the session cwd, with the popup seeded
     // with the tempdir's basename.
-    let temp = tempfile::tempdir().expect("tempdir");
+    let temp = jinn_testutil::tempdir().expect("tempdir");
     let target = temp.path();
     let mut state = FakeState::default();
     state.cwd = target.parent().expect("parent").to_path_buf();
@@ -198,7 +198,7 @@ fn confirm_valid_dir_appends_project_optimistically_and_emits_update() {
 #[rstest::rstest]
 fn confirm_invalid_dir_stays_open_without_publishing() {
     // Given a popup seeded with a path that is not a directory.
-    let temp = tempfile::tempdir().expect("tempdir");
+    let temp = jinn_testutil::tempdir().expect("tempdir");
     let mut state = FakeState::default();
     state.cwd = temp.path().to_path_buf();
     let (slices, cell) = cell();
@@ -229,7 +229,7 @@ fn confirm_invalid_dir_stays_open_without_publishing() {
 #[rstest::rstest]
 fn leave_clears_the_cell() {
     // Given a popup with text.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let seeded = dir.path().join("some-project");
     let (_slices, cell) = cell();
     cell.update(|s| s.text.set(seeded.to_string_lossy().to_string()));

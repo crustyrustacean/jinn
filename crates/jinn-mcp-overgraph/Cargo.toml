@@ -28,6 +28,7 @@ embed-parity = []
 rstest = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tempfile = { workspace = true }
+jinn-testutil = { workspace = true }
 jinn-mcp = { workspace = true, features = ["testkit"] }
 overgraph = { workspace = true }
 serde_json = { workspace = true }

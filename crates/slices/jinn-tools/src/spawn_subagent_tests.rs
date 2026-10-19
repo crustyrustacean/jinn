@@ -301,7 +301,7 @@ async fn settle_child_discovery(
 async fn spawn_subagent_spawns_child_linked_and_inheriting() {
     // Given a parent session with distinctive config and recorders on the bus.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let expected_cwd = parent_paths(dir.path()).0;
     let (state, parent_id) = parent_fixture(dir.path());
     let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone(), dir.path()).await;
@@ -359,7 +359,7 @@ async fn spawn_subagent_child_has_spawn_subagent_tool_suppressed() {
     // Given a parent session whose disabled set does not include the spawn_subagent
     // tool (it is enabled: this session could spawn).
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     {
         let snapshot = state.read();
@@ -403,7 +403,7 @@ async fn spawn_subagent_child_has_spawn_subagent_tool_suppressed() {
 async fn spawn_subagent_child_inherits_parent_project() {
     // Given a parent session stamped with a project.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let expected_project = parent_paths(dir.path()).1;
     let (state, parent_id) = parent_fixture(dir.path());
     {
@@ -441,7 +441,7 @@ async fn spawn_subagent_child_inherits_parent_project() {
 async fn spawn_subagent_child_task_list_starts_empty() {
     // Given a parent session with a seeded task list.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     {
         let mut w = state.write();
@@ -484,7 +484,7 @@ async fn spawn_subagent_child_task_list_starts_empty() {
 async fn spawn_subagent_child_task_list_does_not_propagate_to_parent() {
     // Given a parent session and a spawned child.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone(), dir.path()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
@@ -521,7 +521,7 @@ async fn spawn_subagent_child_task_list_does_not_propagate_to_parent() {
 async fn spawn_subagent_publishes_session_created_then_enqueue_user_message() {
     // Given a parent session and recorders on the bus.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone(), dir.path()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
@@ -552,7 +552,7 @@ async fn spawn_subagent_publishes_session_created_then_enqueue_user_message() {
 async fn spawn_subagent_stamps_spawned_child_session_on_parent_tool_call() {
     // Given a parent session whose history holds the tool call being executed.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     {
         let mut w = state.write();
@@ -602,7 +602,7 @@ async fn spawn_subagent_stamps_spawned_child_session_on_parent_tool_call() {
 async fn spawn_subagent_stamp_leaves_unrelated_tool_call_entries_untouched() {
     // Given a parent session holding the executed call and an unrelated call.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     {
         let mut w = state.write();
@@ -654,7 +654,7 @@ async fn spawn_subagent_stamp_leaves_unrelated_tool_call_entries_untouched() {
 async fn spawn_subagent_rejects_an_empty_prompt_with_a_legible_result() {
     // Given a parent session.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     let ctx = spawn_subagent_ctx(&harness, &state, parent_id, dir.path()).await;
 
@@ -673,7 +673,7 @@ async fn spawn_subagent_rejects_an_empty_prompt_with_a_legible_result() {
 async fn spawn_subagent_title_falls_back_to_the_prompt_first_line() {
     // Given a parent session.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone(), dir.path()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
@@ -704,7 +704,7 @@ async fn spawn_subagent_model_unknown_name_fails_without_spawning() {
     // Given a parent session with the production resolver wiring and
     // recorders on the bus.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     let baseline_sessions = state.read().session.session_count();
     let ctx = spawn_subagent_ctx_with_resolver(&harness, &state, parent_id, dir.path()).await;
@@ -743,7 +743,7 @@ async fn spawn_subagent_model_alias_spawns_child_on_alias_target() {
     // Given a parent session with the production resolver wiring over a
     // registry that configures `fast` → `ollama/llama3`.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     let ctx =
         spawn_subagent_ctx_with_resolver(&harness, &state, parent_id.clone(), dir.path()).await;
@@ -776,7 +776,7 @@ async fn spawn_subagent_model_alias_spawns_child_on_alias_target() {
 async fn spawn_subagent_model_expanded_id_spawns_child_on_that_id() {
     // Given a parent session with the production resolver wiring.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     let ctx =
         spawn_subagent_ctx_with_resolver(&harness, &state, parent_id.clone(), dir.path()).await;
@@ -810,7 +810,7 @@ async fn spawn_subagent_model_expanded_id_spawns_child_on_that_id() {
 async fn spawn_subagent_without_model_inherits_parent_whole_model_selection() {
     // Given a parent session running an alloy.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     let alloy = ModelSelection::Alloy {
         models: vec!["a/one".to_owned(), "b/two".to_owned()],
@@ -852,7 +852,7 @@ async fn spawn_subagent_without_model_inherits_parent_whole_model_selection() {
 async fn spawn_subagent_blank_model_argument_inherits_parent_model() {
     // Given a parent session on a single model with the resolver wired.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     let ctx =
         spawn_subagent_ctx_with_resolver(&harness, &state, parent_id.clone(), dir.path()).await;
@@ -885,7 +885,7 @@ async fn spawn_subagent_without_resolver_takes_explicit_model_name_as_final() {
     // Given a bare test context carrying no resolver — the fixture wiring,
     // which production never produces.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone(), dir.path()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
@@ -921,7 +921,7 @@ async fn spawn_subagent_without_resolver_takes_explicit_model_name_as_final() {
 async fn spawn_subagent_result_is_child_last_entry() {
     // Given a parent session.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone(), dir.path()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
@@ -952,7 +952,7 @@ async fn spawn_subagent_result_is_child_last_entry() {
 async fn spawn_subagent_child_cancel_forwards_error_entry() {
     // Given a parent session.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone(), dir.path()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
@@ -978,7 +978,7 @@ async fn spawn_subagent_child_cancel_forwards_error_entry() {
 async fn spawn_subagent_timeout_cancels_child_and_fails() {
     // Given a parent session and a recorder for cancel commands.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone(), dir.path()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;
@@ -1018,7 +1018,7 @@ async fn spawn_subagent_timeout_cancels_child_and_fails() {
 async fn concurrent_spawn_subagent_calls_resolve_independently() {
     // Given a parent session and two in-flight spawn_subagent calls.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     let ctx_a = spawn_subagent_ctx(&harness, &state, parent_id.clone(), dir.path()).await;
     let ctx_b = spawn_subagent_ctx(&harness, &state, parent_id.clone(), dir.path()).await;
@@ -1053,7 +1053,7 @@ async fn concurrent_spawn_subagent_calls_resolve_independently() {
 async fn parent_cancel_leaves_child_running_and_unregisters_pair() {
     // GIVEN an in-flight spawn_subagent call awaiting its child.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone(), dir.path()).await;
     // The registry inside the ctx is the one to observe — `spawn_subagent_ctx` clones
@@ -1114,7 +1114,7 @@ async fn parent_cancel_leaves_child_running_and_unregisters_pair() {
 async fn spawn_subagent_fails_when_parent_session_is_missing() {
     // Given a context naming a session that was never seeded.
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let state = State::new(AppState::default_with_scope_focus());
     let ctx = spawn_subagent_ctx(&harness, &state, SessionId::new(), dir.path()).await;
 
@@ -1211,7 +1211,7 @@ struct InFlightSubagentCall {
 /// leg stays pending, so the gate still holds until a server reports status.
 async fn in_flight_subagent_call() -> InFlightSubagentCall {
     let harness = TestHarness::new().await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());
     let ctx = spawn_subagent_ctx(&harness, &state, parent_id.clone(), dir.path()).await;
     let created_rec = harness.spawn_recorder::<SessionCreated>().await;

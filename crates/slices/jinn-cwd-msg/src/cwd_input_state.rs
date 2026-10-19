@@ -203,12 +203,11 @@ mod tests {
     use super::*;
     use rstest::rstest;
     use std::fs;
-    use tempfile::tempdir;
 
     #[rstest]
     fn empty_input_is_empty() {
         // Given a temp dir to resolve against.
-        let dir = tempdir().unwrap();
+        let dir = jinn_testutil::tempdir().unwrap();
 
         // When resolving an empty input.
         // Then the resolution is Empty.
@@ -218,7 +217,7 @@ mod tests {
     #[rstest]
     fn whitespace_only_input_is_empty() {
         // Given a temp dir to resolve against.
-        let dir = tempdir().unwrap();
+        let dir = jinn_testutil::tempdir().unwrap();
 
         // When resolving an input made only of whitespace.
         // Then the resolution is Empty.
@@ -231,7 +230,7 @@ mod tests {
     #[rstest]
     fn nonexistent_path_is_not_a_dir() {
         // Given a temp dir as the cwd.
-        let dir = tempdir().unwrap();
+        let dir = jinn_testutil::tempdir().unwrap();
 
         // When resolving a path that does not exist.
         let res = resolve_cwd_input("nope/does/not/exist", dir.path());
@@ -243,7 +242,7 @@ mod tests {
     #[rstest]
     fn regular_file_is_not_a_dir() {
         // Given a temp dir holding a regular file.
-        let dir = tempdir().unwrap();
+        let dir = jinn_testutil::tempdir().unwrap();
         let file = dir.path().join("a_file.txt");
         fs::write(&file, "x").unwrap();
 
@@ -257,7 +256,7 @@ mod tests {
     #[rstest]
     fn relative_subdir_resolves_against_current_cwd() {
         // Given a temp dir containing a `sub` directory.
-        let dir = tempdir().unwrap();
+        let dir = jinn_testutil::tempdir().unwrap();
         let sub = dir.path().join("sub");
         fs::create_dir_all(&sub).unwrap();
 
@@ -271,7 +270,7 @@ mod tests {
     #[rstest]
     fn dot_segments_collapse() {
         // Given a temp dir holding sibling/sub.
-        let dir = tempdir().unwrap();
+        let dir = jinn_testutil::tempdir().unwrap();
         let sub = dir.path().join("sibling").join("sub");
         fs::create_dir_all(&sub).unwrap();
 
@@ -288,7 +287,7 @@ mod tests {
     #[rstest]
     fn parent_relative_resolves() {
         // Given a temp dir with parent/child, using child as the cwd.
-        let root = tempdir().unwrap();
+        let root = jinn_testutil::tempdir().unwrap();
         let parent = root.path().join("parent");
         let child = parent.join("child");
         fs::create_dir_all(&child).unwrap();
@@ -303,7 +302,7 @@ mod tests {
     #[rstest]
     fn tilde_expands_to_home() {
         // Given a temp home containing the target directory.
-        let home = tempdir().unwrap();
+        let home = jinn_testutil::tempdir().unwrap();
         let name = format!("jinn_cwd_test_{}", std::process::id());
         let target = home.path().join(&name);
         fs::create_dir_all(&target).unwrap();
@@ -323,7 +322,7 @@ mod tests {
     #[rstest]
     fn bare_tilde_resolves_to_home() {
         // Given a temp home.
-        let home = tempdir().unwrap();
+        let home = jinn_testutil::tempdir().unwrap();
 
         // When resolving a bare `~` from an unrelated cwd against that home.
         let res = resolve_cwd_input_with_home("~", Path::new("/some/unrelated/cwd"), home.path());
@@ -335,7 +334,7 @@ mod tests {
     #[rstest]
     fn native_separator_tilde_input_resolves() {
         // Given a temp home containing the target directory.
-        let home = tempdir().unwrap();
+        let home = jinn_testutil::tempdir().unwrap();
         let name = format!("jinn_cwd_test_{}", std::process::id());
         let target = home.path().join(&name);
         fs::create_dir_all(&target).unwrap();
@@ -359,7 +358,7 @@ mod tests {
     #[rstest]
     fn absolute_path_passes_through() {
         // Given a temp dir to resolve against.
-        let dir = tempdir().unwrap();
+        let dir = jinn_testutil::tempdir().unwrap();
 
         // When resolving that absolute path from an unrelated cwd.
         let res = resolve_cwd_input(&dir.path().to_string_lossy(), Path::new("/unrelated"));

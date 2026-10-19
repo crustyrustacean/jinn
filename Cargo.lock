@@ -923,13 +923,29 @@ dependencies = [
 
 [[package]]
 name = "ctor"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec09e802f5081de6157da9a75701d6c713d8dc3ba52571fd4bd25f412644e8a6"
+dependencies = [
+ "ctor-proc-macro 0.0.6",
+ "dtor 0.0.6",
+]
+
+[[package]]
+name = "ctor"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "352d39c2f7bef1d6ad73db6f5160efcaed66d94ef8c6c573a8410c00bf909a98"
 dependencies = [
- "ctor-proc-macro",
- "dtor",
+ "ctor-proc-macro 0.0.7",
+ "dtor 0.3.0",
 ]
+
+[[package]]
+name = "ctor-proc-macro"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2931af7e13dc045d8e9d26afccc6fa115d64e115c9c84b1166288b46f6782c2"
 
 [[package]]
 name = "ctor-proc-macro"
@@ -1282,12 +1298,27 @@ checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 
 [[package]]
 name = "dtor"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97cbdf2ad6846025e8e25df05171abfb30e3ababa12ee0a0e44b9bbe570633a8"
+dependencies = [
+ "dtor-proc-macro 0.0.5",
+]
+
+[[package]]
+name = "dtor"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1057d6c64987086ff8ed0fd3fbf377a6b7d205cc7715868cd401705f715cbe4"
 dependencies = [
- "dtor-proc-macro",
+ "dtor-proc-macro 0.0.6",
 ]
+
+[[package]]
+name = "dtor-proc-macro"
+version = "0.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7454e41ff9012c00d53cf7f475c5e3afa3b91b7c90568495495e8d9bf47a1055"
 
 [[package]]
 name = "dtor-proc-macro"
@@ -2472,7 +2503,7 @@ dependencies = [
  "clap-verbosity-flag",
  "clap_complete",
  "crossterm",
- "ctor",
+ "ctor 0.8.0",
  "dirs",
  "dotenvy",
  "error-stack",
@@ -2612,13 +2643,13 @@ dependencies = [
  "jinn-sidebar-msg",
  "jinn-slices",
  "jinn-term-msg",
+ "jinn-testutil",
  "jinn-theme",
  "jinn-theme-msg",
  "jinn-tools-msg",
  "parking_lot",
  "rstest",
  "serde_json",
- "tempfile",
  "tokio",
  "trouper",
  "wherror",
@@ -2659,7 +2690,6 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
- "tempfile",
  "tokio",
  "tracing",
  "trouper",
@@ -2700,7 +2730,6 @@ dependencies = [
  "jinn-testutil",
  "kanal",
  "rstest",
- "tempfile",
  "tokio",
  "toml",
  "tracing",
@@ -2786,9 +2815,9 @@ version = "1.9.0"
 dependencies = [
  "jinn-core-types",
  "jinn-slices",
+ "jinn-testutil",
  "rstest",
  "serde",
- "tempfile",
  "trouper",
  "unicode-segmentation",
  "unicode-width 0.2.2",
@@ -2827,7 +2856,6 @@ dependencies = [
  "rstest",
  "serde_json",
  "strip-ansi-escapes",
- "tempfile",
  "throbber-widgets-tui",
  "tokio",
  "tracing",
@@ -2879,9 +2907,9 @@ dependencies = [
  "clap-verbosity-flag",
  "clap_complete",
  "error-stack",
+ "jinn-testutil",
  "rstest",
  "serde_json",
- "tempfile",
  "tokio",
  "toml",
  "wherror",
@@ -2893,12 +2921,12 @@ version = "1.9.0"
 dependencies = [
  "dirs",
  "error-stack",
+ "jinn-testutil",
  "kill_tree",
  "libc",
  "rstest",
  "serde",
  "serde_json",
- "tempfile",
  "tokio",
  "toml",
  "toml_edit 0.22.27",
@@ -2915,7 +2943,6 @@ dependencies = [
  "parking_lot",
  "rstest",
  "serde",
- "tempfile",
  "toml",
  "toml_edit 0.22.27",
  "tracing",
@@ -2930,6 +2957,7 @@ dependencies = [
  "fuzzy-matcher",
  "jinn-persona-msg",
  "jinn-slices",
+ "jinn-testutil",
  "regex",
  "rstest",
  "serde",
@@ -3008,7 +3036,6 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
- "tempfile",
  "tokio",
  "toml",
  "tracing",
@@ -3054,10 +3081,10 @@ dependencies = [
  "jinn-core-types",
  "jinn-cwd-msg",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-theme",
  "ratatui",
  "rstest",
- "tempfile",
  "tokio",
  "unicode-segmentation",
  "wherror",
@@ -3071,9 +3098,9 @@ dependencies = [
  "jinn-common",
  "jinn-core-types",
  "jinn-slices",
+ "jinn-testutil",
  "rstest",
  "serde",
- "tempfile",
 ]
 
 [[package]]
@@ -3176,7 +3203,6 @@ dependencies = [
  "jinn-testutil",
  "pulldown-cmark",
  "rstest",
- "tempfile",
  "tokio",
  "tracing",
  "trouper",
@@ -3190,10 +3216,10 @@ version = "1.9.0"
 dependencies = [
  "jinn-core-types",
  "jinn-slices",
+ "jinn-testutil",
  "rstest",
  "serde",
  "serde_json",
- "tempfile",
  "trouper",
 ]
 
@@ -3224,7 +3250,6 @@ dependencies = [
  "reasoning-parser",
  "rstest",
  "serde_json",
- "tempfile",
  "throbber-widgets-tui",
  "tokio",
  "tracing",
@@ -3265,7 +3290,7 @@ name = "jinn-kernel"
 version = "1.9.0"
 dependencies = [
  "async-trait",
- "ctor",
+ "ctor 0.8.0",
  "derive_more",
  "dirs",
  "error-stack",
@@ -3346,10 +3371,10 @@ dependencies = [
  "jinn-context-curation",
  "jinn-core-types",
  "jinn-provider",
+ "jinn-testutil",
  "rstest",
  "serde",
  "serde_json",
- "tempfile",
  "tiktoken",
  "tracing",
  "unicode-segmentation",
@@ -3362,7 +3387,7 @@ name = "jinn-mcp"
 version = "1.9.0"
 dependencies = [
  "axum",
- "ctor",
+ "ctor 0.8.0",
  "error-stack",
  "jinn-common",
  "jinn-provider",
@@ -3408,6 +3433,7 @@ dependencies = [
  "hf-hub",
  "jinn-common",
  "jinn-mcp",
+ "jinn-testutil",
  "overgraph",
  "rmcp",
  "rstest",
@@ -3424,7 +3450,7 @@ name = "jinn-mcp-slice"
 version = "1.9.0"
 dependencies = [
  "async-trait",
- "ctor",
+ "ctor 0.8.0",
  "error-stack",
  "jiff",
  "jinn-cell-catalog",
@@ -3452,7 +3478,6 @@ dependencies = [
  "rustls 0.23.45",
  "serde",
  "serde_json",
- "tempfile",
  "tokio",
  "tracing",
  "trouper",
@@ -3465,7 +3490,7 @@ name = "jinn-model-market"
 version = "1.9.0"
 dependencies = [
  "csv",
- "ctor",
+ "ctor 0.8.0",
  "error-stack",
  "fuzzy-matcher",
  "jiff",
@@ -3525,11 +3550,11 @@ dependencies = [
  "jinn-selection-widget",
  "jinn-session-msg",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-theme",
  "ratatui",
  "rstest",
  "serde",
- "tempfile",
  "tokio",
  "toml",
  "tracing",
@@ -3589,7 +3614,6 @@ dependencies = [
  "ratatui",
  "rstest",
  "serde_json",
- "tempfile",
  "tokio",
  "tracing",
  "trouper",
@@ -3605,6 +3629,7 @@ dependencies = [
  "jinn-config",
  "jinn-core-types",
  "jinn-slices",
+ "jinn-testutil",
  "parking_lot",
  "regex",
  "rstest",
@@ -3641,10 +3666,10 @@ dependencies = [
  "jinn-selection-widget",
  "jinn-session-lifecycle-msg",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-theme",
  "ratatui",
  "rstest",
- "tempfile",
  "tracing",
  "unicode-segmentation",
  "uuid",
@@ -3661,10 +3686,10 @@ dependencies = [
  "jinn-preferences-config",
  "jinn-selection-widget",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-theme",
  "ratatui",
  "rstest",
- "tempfile",
 ]
 
 [[package]]
@@ -3673,7 +3698,7 @@ version = "1.9.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
- "ctor",
+ "ctor 0.8.0",
  "error-stack",
  "futures",
  "jiff",
@@ -3701,6 +3726,7 @@ dependencies = [
  "jinn-common",
  "jinn-preferences-config",
  "jinn-provider",
+ "jinn-testutil",
  "parking_lot",
  "rstest",
  "serde",
@@ -3737,7 +3763,6 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
- "tempfile",
  "tokio",
  "tracing",
  "trouper",
@@ -3908,7 +3933,6 @@ dependencies = [
  "rstest",
  "serde",
  "strip-ansi-escapes",
- "tempfile",
  "tokio",
  "tracing",
  "trouper",
@@ -3926,13 +3950,13 @@ dependencies = [
  "jinn-selection-widget",
  "jinn-session-store-msg",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-theme",
  "ratatui",
  "regex",
  "rstest",
  "serde",
  "serde_json",
- "tempfile",
  "tracing",
  "trouper",
  "unicode-segmentation",
@@ -4001,6 +4025,7 @@ dependencies = [
  "jinn-session-store-msg",
  "jinn-skills-msg",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-token-count-msg",
  "jinn-tools-msg",
  "jinn-turn-dispatch-msg",
@@ -4009,7 +4034,6 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
- "tempfile",
  "tracing",
  "wherror",
 ]
@@ -4073,12 +4097,12 @@ dependencies = [
  "jinn-picker",
  "jinn-selection-widget",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-theme",
  "ratatui",
  "rstest",
  "serde",
  "serde_json",
- "tempfile",
  "trouper",
  "unicode-width 0.2.2",
 ]
@@ -4117,7 +4141,6 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
- "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -4168,7 +4191,6 @@ dependencies = [
  "ratatui",
  "rstest",
  "serde_json",
- "tempfile",
  "textwrap",
  "throbber-widgets-tui",
  "tokio",
@@ -4208,12 +4230,12 @@ dependencies = [
  "jinn-session-msg",
  "jinn-skills-msg",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-theme",
  "ratatui",
  "rstest",
  "serde",
  "serde_json",
- "tempfile",
  "tokio",
  "trouper",
 ]
@@ -4226,13 +4248,13 @@ dependencies = [
  "jinn-picker",
  "jinn-selection-widget",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-theme",
  "parking_lot",
  "ratatui",
  "rstest",
  "serde",
  "serde_json",
- "tempfile",
  "trouper",
 ]
 
@@ -4252,7 +4274,6 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
- "tempfile",
  "throbber-widgets-tui",
  "tokio",
  "tracing",
@@ -4284,7 +4305,6 @@ dependencies = [
  "jinn-work-time-msg",
  "ratatui",
  "rstest",
- "tempfile",
  "tokio",
 ]
 
@@ -4355,6 +4375,7 @@ dependencies = [
  "jinn-preferences-config",
  "jinn-slices",
  "jinn-stream-rules-msg",
+ "jinn-testutil",
  "regex",
  "rstest",
  "tempfile",
@@ -4404,7 +4425,6 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
- "tempfile",
  "tokio",
  "tracing",
  "trouper",
@@ -4432,12 +4452,15 @@ dependencies = [
 name = "jinn-testutil"
 version = "1.9.0"
 dependencies = [
+ "ctor 0.4.3",
  "error-stack",
  "jinn-slices",
  "parking_lot",
  "ratatui",
+ "rstest",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "trouper",
 ]
@@ -4485,11 +4508,11 @@ dependencies = [
  "jinn-preferences-config",
  "jinn-selection-widget",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-theme",
  "jinn-theme-msg",
  "ratatui",
  "rstest",
- "tempfile",
  "tokio",
  "wherror",
 ]
@@ -4647,7 +4670,6 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
- "tempfile",
  "tokio",
  "tracing",
  "trouper",
@@ -4767,7 +4789,6 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
- "tempfile",
  "tokio",
  "trouper",
  "wherror",

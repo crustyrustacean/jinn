@@ -38,7 +38,6 @@ ratatui = { workspace = true }
 rstest = { workspace = true }
 
 [dev-dependencies]
-tempfile = { workspace = true }
 dirs = { workspace = true }
 tokio = { workspace = true }
 

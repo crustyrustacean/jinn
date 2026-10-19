@@ -275,7 +275,7 @@ fn reset_run_seeds_through_the_template_with_the_prior_report() {
 #[test]
 fn attendant_created_from_parent_links_and_defaults() {
     // Given a parent with environment values.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let project = dir.path().join("p");
     let mut parent = ChatSessionState::new();
     parent.set_project(Some(project.clone()));

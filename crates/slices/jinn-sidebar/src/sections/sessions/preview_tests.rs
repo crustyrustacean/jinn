@@ -424,7 +424,7 @@ fn model_shows_no_model_selected_when_unset() {
 #[rstest::rstest]
 fn cwd_shows_on_its_own_row_above_the_info_row() {
     // Given a session with a cwd and a model.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let cwd = dir.path().join("test-project");
     let mut session = ChatSessionState::new();
     session.set_cwd(cwd.clone());
@@ -1241,7 +1241,7 @@ mod loading_state {
     #[rstest::rstest]
     fn the_loading_state_shows_the_previewed_sessions_cwd() {
         // Given a session with a distinctive cwd whose preview has not rendered.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let cwd = dir.path().join("loadtest-cwd");
         let mut session = make_session_with_title("busy");
         session.set_cwd(cwd.clone());

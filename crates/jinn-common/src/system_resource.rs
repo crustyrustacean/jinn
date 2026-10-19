@@ -75,7 +75,7 @@ mod tests {
     #[rstest::rstest]
     fn load_returns_content_from_user_dir() {
         // Given a user dir with the resource and an empty system dir.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let user_dir = root.path().join("config/jinn/prompts");
         let system_dir = root.path().join("share/prompts");
         std::fs::create_dir_all(&user_dir).expect("create user dir");
@@ -91,7 +91,7 @@ mod tests {
     #[rstest::rstest]
     fn load_falls_back_to_system_dir() {
         // Given an empty user dir and a system dir with the resource.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let user_dir = root.path().join("config/jinn/prompts");
         let system_dir = root.path().join("share/prompts");
         std::fs::create_dir_all(&user_dir).expect("create user dir");
@@ -108,7 +108,7 @@ mod tests {
     #[rstest::rstest]
     fn load_prefers_user_over_system() {
         // Given both dirs have the resource with different content.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let user_dir = root.path().join("config/jinn/prompts");
         let system_dir = root.path().join("share/prompts");
         std::fs::create_dir_all(&user_dir).expect("create user dir");
@@ -126,7 +126,7 @@ mod tests {
     #[rstest::rstest]
     fn load_returns_err_when_neither_exists() {
         // Given empty user and system dirs.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let user_dir = root.path().join("config/jinn/prompts");
         let system_dir = root.path().join("share/prompts");
 
@@ -146,7 +146,7 @@ mod tests {
     #[rstest::rstest]
     fn load_returns_err_on_read_failure() {
         // Given a system dir with an unreadable file (permission denied).
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let user_dir = root.path().join("config/jinn/prompts");
         let system_dir = root.path().join("share/prompts");
         std::fs::create_dir_all(&user_dir).expect("create user dir");

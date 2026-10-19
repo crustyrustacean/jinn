@@ -85,7 +85,7 @@ mod tests {
     #[rstest::rstest]
     fn content_with_body_and_location_returns_name_only() {
         // Given a skill content with a long body and location path.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let location = dir.path().join("u/.agents/skills/.../SKILL.md");
         let content = format!(
             "<skill name=\"rust-programming\" location=\"{}\">\nlots\nof\nbody\n</skill>",

@@ -488,7 +488,7 @@ mod tests {
             return;
         };
         // Given a command that echoes a directory path.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().to_string_lossy().to_string();
         let expected = canonicalize_display(dir.path()).expect("canonicalize");
 
@@ -507,7 +507,7 @@ mod tests {
             return;
         };
         // Given a command that outputs multiple lines.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().to_string_lossy().to_string();
         let expected = canonicalize_display(dir.path()).expect("canonicalize");
 
@@ -527,7 +527,7 @@ mod tests {
             return;
         };
         // Given a command that echoes with trailing whitespace.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().to_string_lossy().to_string();
         let expected = canonicalize_display(dir.path()).expect("canonicalize");
 
@@ -614,7 +614,7 @@ mod tests {
             return;
         };
         // Given a real subdirectory of the current working directory.
-        let dir = tempfile::tempdir_in(".").expect("temp dir in cwd");
+        let dir = jinn_testutil::tempdir_in(".").expect("temp dir in cwd");
         let dir_name = dir
             .path()
             .file_name()
@@ -666,7 +666,7 @@ mod tests {
             return;
         };
         // Given a setup command that outputs a file path (not a directory).
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let file_path = dir.path().join("some-file.txt");
         std::fs::write(&file_path, b"contents").expect("write file");
 
@@ -714,7 +714,7 @@ mod tests {
             return;
         };
         // Given a teardown command that removes a marker file (no stdout).
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let marker = dir.path().join("teardown-marker");
         std::fs::write(&marker, b"present").expect("write marker");
         assert!(marker.exists(), "marker should exist before teardown");
@@ -755,7 +755,7 @@ mod tests {
             return;
         };
         // Given two marker files.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let marker_a = dir.path().join("a");
         let marker_b = dir.path().join("b");
         std::fs::write(&marker_a, b"a").expect("write a");
@@ -802,7 +802,7 @@ mod tests {
         // We observe the spawned shell's *own* working dir (printed by the
         // script itself), so the assertion is independent of where the jinn
         // test process or its reader task runs.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let expected = canonicalize_display(dir.path()).expect("canonicalize dir");
 
         // When spawning a setup that echoes its own working directory.
@@ -830,7 +830,7 @@ mod tests {
             return;
         };
         // Given a tempdir as the session CWD.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let out_file = dir.path().join("out.txt");
         assert!(!out_file.exists(), "out.txt should not exist before setup");
 
@@ -859,7 +859,7 @@ mod tests {
         // Using tempdir() rather than tempdir_in(".") guarantees the session
         // cwd differs from jinn's process cwd, so a relative echo can only
         // resolve if canonicalize uses the session cwd as the base.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let subdir = dir.path().join("workspace");
         std::fs::create_dir_all(&subdir).expect("create subdir");
         let expected = canonicalize_display(&subdir).expect("canonicalize subdir");
@@ -886,7 +886,7 @@ mod tests {
             return;
         };
         // Given a tempdir as the session CWD.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let marker = dir.path().join("cleanup.log");
         assert!(
             !marker.exists(),

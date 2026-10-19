@@ -137,7 +137,7 @@ mod tests {
         // The cwd is fixture data nothing reads back from disk: the temp root
         // only keeps test paths off absolute literals, so it is deleted when
         // this helper returns and no tempdir lifetime reaches the call sites.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let cwd = dir.path().join("work");
         ExportDocument {
             title: "Test session".to_owned(),

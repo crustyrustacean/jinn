@@ -472,7 +472,7 @@ mod tests {
     #[rstest::rstest]
     fn default_honors_paths_root_env_for_every_base() {
         // Given a set JINN_PATHS_ROOT.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let _guard = PathsRootEnvGuard::set(root.path());
 
         // When constructing the default AppPaths.
@@ -497,7 +497,7 @@ mod tests {
     #[rstest::rstest]
     fn default_with_paths_root_env_matches_new_in() {
         // Given a set JINN_PATHS_ROOT.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let _guard = PathsRootEnvGuard::set(root.path());
 
         // When constructing the default and a new_in AppPaths from the
@@ -514,7 +514,7 @@ mod tests {
     fn default_without_paths_root_env_uses_platform_dirs() {
         // Given no JINN_PATHS_ROOT in the environment (set then clear, both
         // under the lock, so the test is hermetic against ambient env).
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let _guard = PathsRootEnvGuard::set(root.path());
         let _cleared = ClearPathsRootGuard::new();
 
@@ -553,7 +553,7 @@ mod tests {
     #[rstest::rstest]
     fn workflows_dir_sits_beside_personas_under_config() {
         // Given an AppPaths rooted at a temp tree.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let paths = AppPaths::new_in(root.path());
 
         // When resolving the workflows dir.
@@ -580,7 +580,7 @@ mod tests {
     #[rstest::rstest]
     fn resolve_theme_paths_returns_empty_when_both_dirs_missing() {
         // Given an AppPaths with nonexistent system and user dirs.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let paths = AppPaths::new_in(root.path());
 
         // When resolving theme paths.
@@ -593,7 +593,7 @@ mod tests {
     #[rstest::rstest]
     fn resolve_theme_paths_finds_system_files() {
         // Given an AppPaths with a system themes dir containing one theme.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let system_dir = root.path().join("share/themes");
         std::fs::create_dir_all(&system_dir).expect("create dir");
         std::fs::write(system_dir.join("ocean.toml"), "focus_accent = \"blue\"").expect("write");
@@ -611,7 +611,7 @@ mod tests {
     #[rstest::rstest]
     fn resolve_theme_paths_finds_user_files() {
         // Given an AppPaths with a user themes dir containing one theme.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let user_dir = root.path().join("config/jinn/themes");
         std::fs::create_dir_all(&user_dir).expect("create dir");
         std::fs::write(user_dir.join("forest.toml"), "focus_accent = \"green\"").expect("write");
@@ -629,7 +629,7 @@ mod tests {
     #[rstest::rstest]
     fn resolve_theme_paths_user_overrides_system() {
         // Given system and user dirs both with a theme named "ocean".
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
 
         let system_dir = root.path().join("share/themes");
         std::fs::create_dir_all(&system_dir).expect("create dir");
@@ -654,7 +654,7 @@ mod tests {
     #[rstest::rstest]
     fn resolve_theme_paths_merges_both_dirs() {
         // Given system has "ocean", user has "forest".
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
 
         let system_dir = root.path().join("share/themes");
         std::fs::create_dir_all(&system_dir).expect("create dir");
@@ -678,7 +678,7 @@ mod tests {
     #[rstest::rstest]
     fn resolve_prompt_paths_uses_md_extension() {
         // Given a system prompts dir with a .md file.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let system_dir = root.path().join("share/prompts");
         std::fs::create_dir_all(&system_dir).expect("create dir");
         std::fs::write(system_dir.join("example.md"), "content").expect("write");
@@ -698,7 +698,7 @@ mod tests {
         // Given a default AppPaths, constructed with no ambient override —
         // the lock is held so a parallel test's transient JINN_PATHS_ROOT
         // cannot leak into this construction.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let _guard = PathsRootEnvGuard::set(root.path());
         let _cleared = ClearPathsRootGuard::new();
         let paths = AppPaths::default();
@@ -713,7 +713,7 @@ mod tests {
     #[rstest::rstest]
     fn new_in_system_data_dir_is_under_root() {
         // Given an AppPaths created with new_in.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let paths = AppPaths::new_in(root.path());
 
         // When reading the system data dir.
@@ -726,7 +726,7 @@ mod tests {
     #[rstest::rstest]
     fn new_in_epoch_cache_dir_is_under_root_cache() {
         // Given an AppPaths created with new_in.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let paths = AppPaths::new_in(root.path());
 
         // When reading the epoch cache dir.
@@ -742,7 +742,7 @@ mod tests {
     #[rstest::rstest]
     fn new_in_openrouter_cache_dir_is_under_root_cache() {
         // Given an AppPaths created with new_in.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let paths = AppPaths::new_in(root.path());
 
         // When reading the OpenRouter market cache dir.
@@ -760,7 +760,7 @@ mod tests {
         // Given a default AppPaths, constructed with no ambient override —
         // the lock is held so a parallel test's transient JINN_PATHS_ROOT
         // cannot leak into this construction.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let _guard = PathsRootEnvGuard::set(root.path());
         let _cleared = ClearPathsRootGuard::new();
         let paths = AppPaths::default();
@@ -775,7 +775,7 @@ mod tests {
     #[rstest::rstest]
     fn new_in_embed_models_dir_is_under_root_cache() {
         // Given an AppPaths created with new_in.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let paths = AppPaths::new_in(root.path());
 
         // When reading the embedding-model cache dir.
@@ -791,7 +791,7 @@ mod tests {
     #[rstest::rstest]
     fn new_in_system_skills_dir_is_under_root() {
         // Given an AppPaths created with new_in.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let paths = AppPaths::new_in(root.path());
 
         // When reading the system skills dir.
@@ -804,7 +804,7 @@ mod tests {
     #[rstest::rstest]
     fn log_path_under_state_dir_in_new_in() {
         // Given an AppPaths rooted in a temp dir.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let paths = AppPaths::new_in(root.path());
 
         // When reading the log path.
@@ -820,7 +820,7 @@ mod tests {
     #[rstest::rstest]
     fn state_file_path_under_state_dir_in_new_in() {
         // Given an AppPaths rooted in a temp dir.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let paths = AppPaths::new_in(root.path());
 
         // When reading the state file path.
@@ -836,7 +836,7 @@ mod tests {
     #[rstest::rstest]
     fn log_path_filename_is_app_name_dot_log() {
         // Given an AppPaths.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let paths = AppPaths::new_in(root.path());
 
         // When reading the filename component of the log path.
@@ -850,7 +850,7 @@ mod tests {
     #[rstest::rstest]
     fn browser_profile_dir_for_mode_lands_under_data_base() {
         // Given an AppPaths rooted at a temp dir.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let paths = AppPaths::new_in(root.path());
 
         // When resolving the headed profile dir.
@@ -868,7 +868,7 @@ mod tests {
     #[rstest::rstest]
     fn graph_db_dir_lands_under_data_base() {
         // Given an AppPaths rooted at a temp dir.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let paths = AppPaths::new_in(root.path());
 
         // When resolving the graph database dir.

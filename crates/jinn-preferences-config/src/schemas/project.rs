@@ -42,7 +42,7 @@ mod tests {
     #[rstest::rstest]
     fn project_entries_read_from_the_umbrella_key() {
         // Given a document listing two projects under the umbrella.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let first = dir.path().join("a");
         let second = dir.path().join("b");
         // The paths ride through `toml_edit::Value` so the interpolated text is
@@ -89,7 +89,7 @@ mod tests {
     #[rstest::rstest]
     fn a_project_renders_as_a_path_and_reads_back() {
         // Given a project with no rules of its own.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let project = ProjectConfig {
             path: dir.path().join("demo"),
         };

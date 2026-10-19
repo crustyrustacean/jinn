@@ -52,7 +52,7 @@ impl Wired {
     /// letting tests shorten the settle budget. Spawns the notifier so
     /// settles surface as summary entries.
     async fn wire_with_args(args_template: trouper::json::Json) -> Self {
-        let dir = Box::new(tempfile::tempdir().expect("temp dir"));
+        let dir = Box::new(jinn_testutil::tempdir().expect("temp dir"));
         let home = dir.path().to_path_buf();
         let project = home.join("proj");
         std::fs::create_dir_all(project.join(".git")).expect("project dir");

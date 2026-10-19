@@ -320,7 +320,7 @@ mod tests {
     #[tokio::test]
     async fn execute_reads_file_content() {
         // Given a temp file with known content.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("test.txt");
         std::fs::write(&file_path, "file contents here").expect("write temp file");
 
@@ -351,7 +351,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_missing_file() {
         // Given a read call for a nonexistent file.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_2".into(),
             name: "read".into(),
@@ -374,7 +374,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_bad_json() {
         // Given a read call with invalid JSON.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_3".into(),
             name: "read".into(),
@@ -393,7 +393,7 @@ mod tests {
     #[tokio::test]
     async fn execute_resolves_relative_path() {
         // Given a temp directory with a file.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("test.txt");
         std::fs::write(&file_path, "relative content").expect("write temp file");
 
@@ -443,7 +443,7 @@ mod tests {
     #[tokio::test]
     async fn execute_with_offset_and_limit() {
         // Given a temp file with 5 lines.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("lines.txt");
         std::fs::write(&file_path, "a\nb\nc\nd\ne").expect("write temp file");
 
@@ -478,7 +478,7 @@ mod tests {
     #[tokio::test]
     async fn execute_truncated_file_shows_correct_line_numbers_in_notice() {
         // Given a file with 10 lines and a small max_lines limit.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("big.txt");
         let content: String = (1..=10).map(|i| format!("line {i}\n")).collect();
         std::fs::write(&file_path, &content).expect("write temp file");
@@ -527,7 +527,7 @@ mod tests {
     #[tokio::test]
     async fn execute_truncated_with_offset_shows_correct_start_line() {
         // Given a file with 10 lines.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("big2.txt");
         let content: String = (1..=10).map(|i| format!("line {i}\n")).collect();
         std::fs::write(&file_path, &content).expect("write temp file");

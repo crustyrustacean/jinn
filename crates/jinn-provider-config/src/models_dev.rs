@@ -239,7 +239,7 @@ mod tests {
     #[rstest::rstest]
     fn load_parses_context_length_correctly() {
         // Given a valid models.dev file with multiple providers and models.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let user_path = write_json(dir.path(), "models.dev.json", minimal_models_dev_json());
 
         // When loading.
@@ -256,8 +256,8 @@ mod tests {
     #[rstest::rstest]
     fn load_prefers_user_over_system() {
         // Given different data in user and system files.
-        let user_dir = tempfile::tempdir().expect("temp dir");
-        let system_dir = tempfile::tempdir().expect("temp dir");
+        let user_dir = jinn_testutil::tempdir().expect("temp dir");
+        let system_dir = jinn_testutil::tempdir().expect("temp dir");
         let user_path = write_json(
             user_dir.path(),
             "models.dev.json",
@@ -279,7 +279,7 @@ mod tests {
     #[rstest::rstest]
     fn load_falls_back_to_system_when_user_missing() {
         // Given only a system file.
-        let system_dir = tempfile::tempdir().expect("temp dir");
+        let system_dir = jinn_testutil::tempdir().expect("temp dir");
         let system_path = write_json(
             system_dir.path(),
             "models.dev.json",
@@ -310,7 +310,7 @@ mod tests {
     #[rstest::rstest]
     fn load_handles_missing_limit_field() {
         // Given a model entry with no limit key.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let user_path = write_json(
             dir.path(),
             "models.dev.json",
@@ -328,7 +328,7 @@ mod tests {
     #[rstest::rstest]
     fn load_handles_zero_context() {
         // Given a model with context: 0 (e.g., embedding model).
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let user_path = write_json(
             dir.path(),
             "models.dev.json",
@@ -345,8 +345,8 @@ mod tests {
     #[rstest::rstest]
     fn load_handles_corrupted_user_file() {
         // Given garbage in user path and valid data in system path.
-        let user_dir = tempfile::tempdir().expect("temp dir");
-        let system_dir = tempfile::tempdir().expect("temp dir");
+        let user_dir = jinn_testutil::tempdir().expect("temp dir");
+        let system_dir = jinn_testutil::tempdir().expect("temp dir");
         let user_path = user_dir.path().join("models.dev.json");
         std::fs::write(&user_path, "NOT VALID JSON!!!").expect("write garbage");
         let system_path = write_json(
@@ -365,7 +365,7 @@ mod tests {
     #[rstest::rstest]
     fn first_provider_wins_for_duplicate_model_ids() {
         // Given two providers listing the same model ID with different contexts.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let user_path = write_json(
             dir.path(),
             "models.dev.json",
@@ -406,7 +406,7 @@ mod tests {
     fn is_empty_returns_false_when_data_present() {
         // If is_empty always returned true, data loading would appear to never work.
         // Given a models.dev file holding one model.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let user_path = write_json(
             dir.path(),
             "models.dev.json",
@@ -427,7 +427,7 @@ mod tests {
     #[rstest::rstest]
     fn supports_images_true_for_vision_model() {
         // Given a models.dev file with a vision-capable model.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let user_path = write_json(dir.path(), "models.dev.json", minimal_models_dev_json());
         let data = ModelsDevData::load(&user_path, Path::new("/nonexistent"));
 
@@ -439,7 +439,7 @@ mod tests {
     #[rstest::rstest]
     fn supports_images_false_for_text_only_model() {
         // Given a models.dev file with a text-only model.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let user_path = write_json(dir.path(), "models.dev.json", minimal_models_dev_json());
         let data = ModelsDevData::load(&user_path, Path::new("/nonexistent"));
 
@@ -451,7 +451,7 @@ mod tests {
     #[rstest::rstest]
     fn supports_images_none_for_unknown_model() {
         // Given a models.dev file.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let user_path = write_json(dir.path(), "models.dev.json", minimal_models_dev_json());
         let data = ModelsDevData::load(&user_path, Path::new("/nonexistent"));
 

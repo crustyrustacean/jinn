@@ -454,7 +454,7 @@ mod tests {
     #[rstest::rstest]
     fn shell_escape_simple_path() {
         // Given a temp-rooted path with no shell metacharacters.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let base = dir.path().display().to_string();
         let path = format!("{base}/project");
 
@@ -468,7 +468,7 @@ mod tests {
     #[rstest::rstest]
     fn shell_escape_path_with_spaces() {
         // Given a temp-rooted path containing spaces.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let base = dir.path().display().to_string();
         let path = format!("{base}/my project");
 
@@ -482,7 +482,7 @@ mod tests {
     #[rstest::rstest]
     fn shell_escape_path_with_single_quote() {
         // Given a temp-rooted path containing a single quote.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let base = dir.path().display().to_string();
         let path = format!("{base}/it's/project");
 
@@ -515,7 +515,7 @@ mod tests {
             let (_system, bridge, buffer) =
                 spawn_system_with_recorder(&tokio::runtime::Handle::current());
 
-            let dir = tempfile::tempdir().expect("temp dir");
+            let dir = jinn_testutil::tempdir().expect("temp dir");
             let expected = std::fs::canonicalize(dir.path()).expect("canonicalize");
 
             // When applying a real directory path.
@@ -543,7 +543,7 @@ mod tests {
                 spawn_system_with_recorder(&tokio::runtime::Handle::current());
 
             // And a real file (not a directory) inside a temp dir.
-            let dir = tempfile::tempdir().expect("temp dir");
+            let dir = jinn_testutil::tempdir().expect("temp dir");
             let file_path = dir.path().join("not_a_dir.txt");
             std::fs::write(&file_path, b"contents").expect("write file");
 
@@ -570,7 +570,7 @@ mod tests {
 
             // And a path derived from a test-owned temp dir that does not
             // exist on disk.
-            let dir = tempfile::tempdir().expect("temp dir");
+            let dir = jinn_testutil::tempdir().expect("temp dir");
             let missing_path = dir.path().join("does-not-exist");
 
             // When applying a nonexistent path.

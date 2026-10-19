@@ -1837,7 +1837,7 @@ fn enter_normal_mode_returns_to_normal_scope() {
 #[rstest::rstest]
 fn enter_normal_mode_clears_pending_creation() {
     // Given a state with a stale pending session creation stash.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let stale = dir.path().join("stale");
     let mut state = AppState::default_with_scope_focus();
     state.frontend.pending_creation =
@@ -4818,10 +4818,7 @@ async fn create_harness() -> (TestHarness, State, ActorDeps) {
 fn make_temp_dir(entries: &[(&str, bool)]) -> tempfile::TempDir {
     // The `TempDir` binding is the cleanup: it removes the whole tree on
     // drop, at the end of whichever test owns it.
-    let dir = tempfile::Builder::new()
-        .prefix("jinn-file-lister-test")
-        .tempdir()
-        .expect("temp dir");
+    let dir = jinn_testutil::tempdir_with_prefix("jinn-test-file-lister-").expect("temp dir");
     for (name, is_dir) in entries {
         let path = dir.path().join(name);
         if *is_dir {
@@ -5021,7 +5018,7 @@ async fn actor_lists_hidden_files() {
 fn enter_normal_mode_clears_pending_session_creation() {
     // Given a state with a pending session creation stashed from a
     // project-picker confirm (midway through the lifecycle/args chain).
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let project_a = dir.path().join("project-a");
     let mut state = AppState::default_with_scope_focus();
     let active_cwd = state.active_session().cwd().to_path_buf();

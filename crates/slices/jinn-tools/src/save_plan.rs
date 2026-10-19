@@ -195,7 +195,7 @@ mod tests {
     #[tokio::test]
     async fn execute_writes_file_content() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("plan.md");
 
         let call = ToolCall {
@@ -221,7 +221,7 @@ mod tests {
     #[tokio::test]
     async fn execute_pins_on_success() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("plan.md");
 
         let call = ToolCall {
@@ -246,7 +246,7 @@ mod tests {
     #[tokio::test]
     async fn execute_no_pin_on_bad_json() {
         // Given a call with invalid JSON.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_3".into(),
             name: "save_plan".into(),
@@ -266,7 +266,7 @@ mod tests {
     async fn execute_no_pin_on_dir_creation_failure() {
         // Given a regular file where the plan's parent directory would have
         // to be created — create_dir_all fails on the existing file.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let blocking_file = dir.path().join("blocked");
         std::fs::write(&blocking_file, "a file, not a directory").expect("create blocking file");
         let file_path = blocking_file.join("plan.md");
@@ -295,7 +295,7 @@ mod tests {
     async fn execute_no_pin_on_file_write_failure() {
         // Given a temp directory with a read-only subdirectory so that
         // create_dir_all succeeds but the file write fails.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let readonly = dir.path().join("readonly");
         std::fs::create_dir_all(&readonly).expect("create readonly dir");
         let _perms = std::fs::set_permissions(
@@ -326,7 +326,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_path_not_content() {
         // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("plan.md");
         let plan_body = "# My Secret Plan\nStep 1: Do the thing.";
 
@@ -366,7 +366,7 @@ mod tests {
     #[tokio::test]
     async fn execute_creates_parent_dirs() {
         // Given a nested path like .plans/my-task/plan.md.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join(".plans").join("my-task").join("plan.md");
 
         let call = ToolCall {
@@ -392,7 +392,7 @@ mod tests {
     #[tokio::test]
     async fn execute_resolves_relative_path() {
         // Given a temp directory as CWD.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
             config: jinn_config::testutil::config_layer(""),
@@ -437,7 +437,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_bad_json() {
         // Given a save_plan call with invalid JSON.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_8".into(),
             name: "save_plan".to_owned(),

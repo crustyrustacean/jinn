@@ -297,7 +297,7 @@ mod tests {
     #[tokio::test]
     async fn load_project_context_files_finds_agents_md() {
         // Given a temp directory with AGENTS.md.
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         std::fs::write(dir.path().join("AGENTS.md"), "# Test").expect("write");
 
         // When loading context files.
@@ -313,7 +313,7 @@ mod tests {
     #[tokio::test]
     async fn load_project_context_files_returns_empty_for_missing() {
         // Given a directory with no context files.
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
 
         // When loading context files.
         let files = load_project_context_files(dir.path()).await;
@@ -412,7 +412,7 @@ mod tests {
     #[tokio::test]
     async fn load_project_context_files_stops_at_root() {
         // Given a deeply nested temp dir with no context files anywhere.
-        let root = tempfile::TempDir::new().expect("temp dir");
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let deep = root.path().join("a/b/c");
         std::fs::create_dir_all(&deep).expect("create");
 
@@ -427,7 +427,7 @@ mod tests {
     #[tokio::test]
     async fn load_project_context_files_finds_file_in_parent() {
         // Given parent/AGENTS.md and child/ as CWD.
-        let parent = tempfile::TempDir::new().expect("temp dir");
+        let parent = jinn_testutil::tempdir().expect("temp dir");
         std::fs::write(parent.path().join("AGENTS.md"), "parent context").expect("write");
         let child = parent.path().join("subdir");
         std::fs::create_dir_all(&child).expect("create");
@@ -443,7 +443,7 @@ mod tests {
     #[rstest::rstest]
     fn sync_load_finds_agents_md() {
         // Given a temp directory with AGENTS.md.
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         std::fs::write(dir.path().join("AGENTS.md"), "# Sync Test").expect("write");
 
         // When loading context files synchronously.
@@ -458,7 +458,7 @@ mod tests {
     #[rstest::rstest]
     fn sync_load_returns_empty_for_missing() {
         // Given a directory with no context files.
-        let dir = tempfile::TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
 
         // When loading context files synchronously.
         let files = load_project_context_files_sync(dir.path());
@@ -470,7 +470,7 @@ mod tests {
     #[rstest::rstest]
     fn sync_load_finds_file_in_parent() {
         // Given parent/AGENTS.md and child/ as CWD.
-        let parent = tempfile::TempDir::new().expect("temp dir");
+        let parent = jinn_testutil::tempdir().expect("temp dir");
         std::fs::write(parent.path().join("AGENTS.md"), "parent sync context").expect("write");
         let child = parent.path().join("subdir");
         std::fs::create_dir_all(&child).expect("create");

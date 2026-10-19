@@ -171,7 +171,7 @@ async fn warm_models_cache_makes_no_outbound_request() {
     // with NO registered route: mockito answers 501 to any outbound
     // request, so a hidden fetch fails and never emits ModelsLoaded.
     let server = mockito::Server::new_async().await;
-    let dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let at = jiff::Timestamp::now() - jiff::SignedDuration::from_hours(1);
     crate::market_cache::store(
         &dir.path().join("models.json"),
@@ -200,7 +200,7 @@ async fn expired_models_ttl_refetches() {
     // Given a disk cache stamped 8 days ago — past the 7-day TTL — and
     // a mock expecting exactly one GET.
     let mut server = mockito::Server::new_async().await;
-    let dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let at = jiff::Timestamp::now() - jiff::SignedDuration::from_hours(8 * 24);
     crate::market_cache::store(
         &dir.path().join("models.json"),
@@ -231,7 +231,7 @@ async fn epoch_loaded_rejoins_rows_without_a_refetch() {
     // FAIL if hit again (the re-join must not refetch). The catalog
     // carries a real seed joinable (Claude Sonnet 4.5, dot-vs-space).
     let mut server = mockito::Server::new_async().await;
-    let dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let joinable_catalog = serde_json::json!({
         "data": [
             {
@@ -293,7 +293,7 @@ async fn refresh_all_drops_every_cache() {
     // Given warm models AND endpoints caches at both levels, with mocks
     // expecting exactly one GET each for the refetch.
     let mut server = mockito::Server::new_async().await;
-    let dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let at = jiff::Timestamp::now() - jiff::SignedDuration::from_hours(1);
     let detail = vec![MarketEndpointRow {
         tag: "stale".to_owned(),
@@ -369,7 +369,7 @@ async fn endpoint_debounce_drops_stale_fetches() {
     // Given an actor with an empty cache and a mock for the NEWEST
     // model only — a hit for the stale model would fail the test.
     let mut server = mockito::Server::new_async().await;
-    let dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let world = World::start(&server.url(), dir.path().to_path_buf()).await;
     let recorder = world.endpoints_recorder().await;
     let newest = expect_endpoints_once(&mut server).await;
@@ -408,7 +408,7 @@ async fn equal_seq_fetch_still_serves_after_the_debounce() {
     // Given an actor whose UI sequence has not advanced since the
     // request was minted.
     let mut server = mockito::Server::new_async().await;
-    let dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let world = World::start(&server.url(), dir.path().to_path_buf()).await;
     let recorder = world.endpoints_recorder().await;
     let mock = expect_endpoints_once(&mut server).await;
@@ -434,7 +434,7 @@ async fn fetch_models_without_a_key_still_serves_the_table() {
     // Given a world whose API-key store carries no OPENROUTER_API_KEY
     // (the harness's default) and a mock that requires NO auth header.
     let mut server = mockito::Server::new_async().await;
-    let dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let world = World::start(&server.url(), dir.path().to_path_buf()).await;
     let recorder = world.models_recorder().await;
     let mock = server
@@ -461,7 +461,7 @@ async fn fetch_models_without_a_key_still_serves_the_table() {
 async fn fetch_models_failure_emits_refresh_failed_and_keeps_stale_rows() {
     // Given an actor whose first fetch succeeded, then the mock breaks.
     let mut server = mockito::Server::new_async().await;
-    let dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let world = World::start(&server.url(), dir.path().to_path_buf()).await;
     world.data.update(|d| {
         d.rows = fixture_rows();
@@ -492,7 +492,7 @@ async fn fetch_models_fetches_no_detail() {
     // a models load alone must make no endpoints request, whichever
     // row the table would highlight.
     let mut server = mockito::Server::new_async().await;
-    let dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let catalog = serde_json::json!({
         "data": [
             {

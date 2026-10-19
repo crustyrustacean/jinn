@@ -93,7 +93,7 @@ mod tests {
     fn dump_is_noop_when_dir_is_none() {
         // Given a disabled service (dir = None) and an empty temp dir.
         let svc = RequestDumpService::default();
-        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let tmp = jinn_testutil::tempdir().expect("temp dir");
 
         // When dumping a record.
         svc.dump(&sample());
@@ -111,7 +111,7 @@ mod tests {
     #[test]
     fn dump_writes_pretty_json_at_first_counter_value() {
         // Given a service pointing at a temp dir.
-        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let tmp = jinn_testutil::tempdir().expect("temp dir");
         let svc = RequestDumpService::new(Some(tmp.path().to_path_buf()));
         let record = sample();
 
@@ -131,7 +131,7 @@ mod tests {
     #[test]
     fn dump_increments_counter_across_calls() {
         // Given a service pointing at a temp dir.
-        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let tmp = jinn_testutil::tempdir().expect("temp dir");
         let svc = RequestDumpService::new(Some(tmp.path().to_path_buf()));
 
         // When dumping twice.
@@ -148,7 +148,7 @@ mod tests {
     #[test]
     fn dump_produces_unique_filenames_across_clones() {
         // Given a service and two clones of it (one source counter).
-        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let tmp = jinn_testutil::tempdir().expect("temp dir");
         let svc = RequestDumpService::new(Some(tmp.path().to_path_buf()));
         let svc_b = svc.clone();
 

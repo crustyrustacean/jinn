@@ -30,10 +30,8 @@ use crate::common::test_app;
 /// stays alive for the whole test and removes the tree on drop.
 async fn composed_app_with_project() -> (TuiApp, tempfile::TempDir, SessionId) {
     let app = test_app().await;
-    let project = tempfile::Builder::new()
-        .prefix("session-init-e2e")
-        .tempdir()
-        .expect("temp dir");
+    let project =
+        jinn_testutil::tempdir_with_prefix("jinn-test-session-init-e2e").expect("temp dir");
     let skills_dir = project
         .path()
         .join(".agents")

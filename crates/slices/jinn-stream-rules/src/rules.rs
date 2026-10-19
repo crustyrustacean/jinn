@@ -69,14 +69,13 @@ mod tests {
 
     /// A `jinn.toml` path in a temp dir with no sibling rules file, for the
     /// tests that only exercise the jinn.toml half of the read.
-    fn temp_prefs() -> std::path::PathBuf {
-        let dir = tempfile::tempdir().expect("temp dir");
+    ///
+    /// Returns the owned dir so the caller keeps it alive as long as the
+    /// path is in use.
+    fn temp_prefs() -> (tempfile::TempDir, std::path::PathBuf) {
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("jinn.toml");
-        // Leak the temp dir: the file must outlive the test's read, and the
-        // read never writes to it, so a leaked empty dir is the cheapest
-        // correct lifetime answer here.
-        std::mem::forget(dir);
-        path
+        (dir, path)
     }
 
     /// A `jinn.toml` path inside `dir`, so the sibling rules file resolves
@@ -118,7 +117,8 @@ mod tests {
         );
 
         // When the rule is compiled and the offending command streams.
-        let set = CompiledSet::build(&read_rules(&config, &temp_prefs()));
+        let (_prefs_dir, prefs) = temp_prefs();
+        let set = CompiledSet::build(&read_rules(&config, &prefs));
         let mut session = set.new_session(&jinn_core_types::SessionId::new());
         let fired = session
             .check(
@@ -157,9 +157,10 @@ mod tests {
     fn a_global_rule_merged_with_a_project_rule_keeps_both_blocks() {
         // Given the same two rules, compiled for the scoped project. The
         // session cwd sits in a tempdir root shared with nothing else.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let myapp_cwd = dir.path().join("dev/code/myapp");
-        let set = CompiledSet::build(&read_rules(&mixed_project_config(), &temp_prefs()))
+        let (_prefs_dir, prefs) = temp_prefs();
+        let set = CompiledSet::build(&read_rules(&mixed_project_config(), &prefs))
             .for_cwd(Some(myapp_cwd.as_path()));
 
         // When each command's arguments stream in that project.
@@ -193,11 +194,11 @@ mod tests {
     fn a_project_rule_merged_with_a_global_rule_is_silent_outside_its_project() {
         // Given the same two rules, resolved for a project that is not myapp:
         // a sibling directory under the same tempdir root.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let other_cwd = dir.path().join("dev/code/other");
-        let set =
-            crate::matcher::CompiledSet::build(&read_rules(&mixed_project_config(), &temp_prefs()))
-                .for_cwd(Some(other_cwd.as_path()));
+        let (_prefs_dir, prefs) = temp_prefs();
+        let set = crate::matcher::CompiledSet::build(&read_rules(&mixed_project_config(), &prefs))
+            .for_cwd(Some(other_cwd.as_path()));
 
         // When the global rule's command's arguments stream there.
         let global = {
@@ -233,7 +234,8 @@ mod tests {
         );
 
         // When the rules are read and compiled.
-        let rules = read_rules(&config, &temp_prefs());
+        let (_prefs_dir, prefs) = temp_prefs();
+        let rules = read_rules(&config, &prefs);
         let set = crate::matcher::CompiledSet::build(&rules);
 
         // Then both are live: the legacy one fires on the tool stream, the
@@ -262,7 +264,7 @@ mod tests {
         // forward slashes before globbing, so a backslash pattern would
         // never match on Windows — and `toml_edit::Value` interpolates it as
         // a properly escaped TOML string.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let myapp_cwd = dir.path().join("dev/code/myapp");
         let config = {
             let project_glob = myapp_cwd.to_string_lossy().replace('\\', "/");
@@ -283,7 +285,8 @@ mod tests {
         };
 
         // When the rules are read and compiled for that project.
-        let set = crate::matcher::CompiledSet::build(&read_rules(&config, &temp_prefs()))
+        let (_prefs_dir, prefs) = temp_prefs();
+        let set = crate::matcher::CompiledSet::build(&read_rules(&config, &prefs))
             .for_cwd(Some(myapp_cwd.as_path()));
 
         // Then both fire: the project rule adds its block beside the global.
@@ -316,7 +319,8 @@ mod tests {
         );
 
         // When the rules are read with no user file.
-        let names = assembled_names(&config, &temp_prefs());
+        let (_prefs_dir, prefs) = temp_prefs();
+        let names = assembled_names(&config, &prefs);
 
         // Then the named shipped rule is gone and its siblings stay armed —
         // the array reaches a rule with no jinn.toml entry of its own.
@@ -334,7 +338,7 @@ mod tests {
     #[test]
     fn a_disabled_name_disarms_a_user_file_rule() {
         // Given a user rules file and an array naming its rule.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let prefs = prefs_path_in(dir.path());
         write_user_rules(
             &prefs,
@@ -382,7 +386,8 @@ mod tests {
         );
 
         // When the rules are read.
-        let names = assembled_names(&config, &temp_prefs());
+        let (_prefs_dir, prefs) = temp_prefs();
+        let names = assembled_names(&config, &prefs);
 
         // Then only the named rule is gone; the base set stays armed.
         assert!(
@@ -412,7 +417,8 @@ mod tests {
         );
 
         // When the rules are read.
-        let names = assembled_names(&config, &temp_prefs());
+        let (_prefs_dir, prefs) = temp_prefs();
+        let names = assembled_names(&config, &prefs);
 
         // Then the converted rule is disarmed by name too: conversions pass
         // through the same choke point as every other source.
@@ -434,7 +440,8 @@ mod tests {
         );
 
         // When the rules are read.
-        let names = assembled_names(&config, &temp_prefs());
+        let (_prefs_dir, prefs) = temp_prefs();
+        let names = assembled_names(&config, &prefs);
 
         // Then the set is unchanged: names match at read time against
         // whatever assembled, and a stale name is inert, not an error.
@@ -459,7 +466,8 @@ mod tests {
         );
 
         // When the rules are read.
-        let names = assembled_names(&config, &temp_prefs());
+        let (_prefs_dir, prefs) = temp_prefs();
+        let names = assembled_names(&config, &prefs);
 
         // Then the rule is back: a name's absence means armed, so removing
         // it re-arms on the next read or refresh.
@@ -488,7 +496,8 @@ mod tests {
 
         // When the assembled set is compiled and prose matching its
         // pattern streams.
-        let set = CompiledSet::build(&read_rules(&config, &temp_prefs()));
+        let (_prefs_dir, prefs) = temp_prefs();
+        let set = CompiledSet::build(&read_rules(&config, &prefs));
         let mut session = set.new_session(&jinn_core_types::SessionId::new());
         let fired = session
             .check("leave a TODO here", StreamContext::text())
@@ -524,7 +533,8 @@ mod tests {
         // When the delta that matches both streams — probed the way
         // production probes it: `check` per delta, then `finalize` at the
         // stream's end, the pair a real response always performs.
-        let set = CompiledSet::build(&read_rules(&config, &temp_prefs()));
+        let (_prefs_dir, prefs) = temp_prefs();
+        let set = CompiledSet::build(&read_rules(&config, &prefs));
         let mut session = set.new_session(&jinn_core_types::SessionId::new());
         let fired = session
             .check("TODO", StreamContext::text())

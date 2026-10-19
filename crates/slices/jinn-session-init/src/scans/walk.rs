@@ -192,7 +192,7 @@ mod tests {
         /// output. Linux is identity; Windows loses only the verbatim
         /// prefix, which [`canonicalize_display`] already strips.
         fn new(marker: Option<&str>) -> Self {
-            let tmp = tempfile::tempdir().expect("temp dir");
+            let tmp = jinn_testutil::tempdir().expect("temp dir");
             let root = canonicalize_display(tmp.path()).expect("temp dir canonicalizes");
             std::fs::create_dir_all(root.join("sub").join("leaf")).expect("create dir chain");
             if let Some(m) = marker {
@@ -297,7 +297,7 @@ mod tests {
     fn walk_home_reached_before_vcs_excludes_home() {
         // Given home is an ANCESTOR of cwd, and a VCS marker exists BELOW home
         // (so home would be reached first walking up).
-        let tmp = tempfile::tempdir().expect("temp dir");
+        let tmp = jinn_testutil::tempdir().expect("temp dir");
         let home = canonicalize_display(tmp.path())
             .expect("temp dir canonicalizes")
             .join("home");
@@ -319,7 +319,7 @@ mod tests {
     #[rstest::rstest]
     fn walk_vcs_root_above_home_stops_at_home() {
         // Given a VCS marker ABOVE home — home should bound first.
-        let tmp = tempfile::tempdir().expect("temp dir");
+        let tmp = jinn_testutil::tempdir().expect("temp dir");
         let outer = canonicalize_display(tmp.path()).expect("temp dir canonicalizes");
         let home = outer.join("home");
         let cwd = home.join("project");
@@ -336,7 +336,7 @@ mod tests {
     #[rstest::rstest]
     fn walk_nonexistent_cwd_falls_back_to_input() {
         // Given a cwd path that does not exist.
-        let tmp = tempfile::tempdir().expect("temp dir");
+        let tmp = jinn_testutil::tempdir().expect("temp dir");
         // The base is canonicalized so the literal fallback form and home
         // compare in the same form on every platform (see `Tree::new`).
         let home = canonicalize_display(tmp.path()).expect("temp dir canonicalizes");
@@ -441,7 +441,7 @@ mod tests {
     #[rstest::rstest]
     fn project_context_files_first_candidate_wins_per_dir() {
         // Given a dir with both AGENTS.md and CLAUDE.md.
-        let tmp = tempfile::tempdir().expect("temp dir");
+        let tmp = jinn_testutil::tempdir().expect("temp dir");
         let root = tmp.path().to_path_buf();
         std::fs::write(root.join("AGENTS.md"), "# agents").expect("write");
         std::fs::write(root.join("CLAUDE.md"), "# claude").expect("write");
@@ -457,7 +457,7 @@ mod tests {
     #[rstest::rstest]
     fn walk_canonicalizes_symlinked_cwd() {
         // Given a real dir and a symlink to it, with home elsewhere.
-        let tmp = tempfile::tempdir().expect("temp dir");
+        let tmp = jinn_testutil::tempdir().expect("temp dir");
         let real = canonicalize_display(tmp.path())
             .expect("temp dir canonicalizes")
             .join("real");

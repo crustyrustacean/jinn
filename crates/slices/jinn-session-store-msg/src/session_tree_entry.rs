@@ -366,7 +366,7 @@ mod tests {
     #[rstest::rstest]
     fn entry_with_project_renders_leaf_directory_name() {
         // Given a session tree entry with a project path.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let project = dir.path().join("user/code/jinn");
         let entry = SessionTreeEntry::new(
             SessionId::new(),

@@ -124,7 +124,7 @@ mod tests {
     #[rstest::rstest]
     fn open_snapshots_the_filter_for_revert() {
         // Given a session withholding one skill.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let filter = NameFilter::deny(["beta".to_owned()]);
 
         // When opening the picker.
@@ -137,7 +137,7 @@ mod tests {
     #[rstest::rstest]
     fn open_seeds_a_row_from_an_allow_filter_that_omits_it() {
         // Given an allow filter naming only one of the two skills.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let filter = NameFilter {
             mode: jinn_core_types::FilterMode::Allow,
             names: ["alpha".to_owned()].into_iter().collect(),
@@ -160,7 +160,7 @@ mod tests {
     #[rstest::rstest]
     fn cancel_restores_the_snapshot_verbatim() {
         // Given a picker opened with an allow filter, then toggled.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let filter = NameFilter {
             mode: jinn_core_types::FilterMode::Allow,
             names: ["alpha".to_owned()].into_iter().collect(),
@@ -180,7 +180,7 @@ mod tests {
     #[rstest::rstest]
     fn toggle_flips_the_highlighted_row_and_keeps_the_picker_open() {
         // Given a freshly opened picker with the first row highlighted.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut state = opened(dir.path(), &[]);
 
         // When toggling.
@@ -200,7 +200,7 @@ mod tests {
     #[rstest::rstest]
     fn confirm_returns_the_toggled_disabled_set_and_clears_the_snapshot() {
         // Given a picker whose first row was toggled off.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut state = opened(dir.path(), &[]);
         toggle_highlighted(&mut state);
 

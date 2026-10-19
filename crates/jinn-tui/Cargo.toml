@@ -49,6 +49,5 @@ jinn-sidebar-msg = { workspace = true }
 jinn-testutil = { workspace = true }
 jinn-tools-msg = { workspace = true }
 rstest = { workspace = true }
-tempfile = { workspace = true }
 [lints]
 workspace = true

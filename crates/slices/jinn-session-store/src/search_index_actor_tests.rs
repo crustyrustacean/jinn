@@ -22,7 +22,7 @@ async fn sqlite_actor_deps() -> (
     jinn_kernel::common::actor_deps::ActorDeps,
     std::sync::Arc<SqliteSessionStore>,
 ) {
-    let dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let store = std::sync::Arc::new(SqliteSessionStore::new_in(dir.path()).await.expect("store"));
     let harness = TestHarness::new().await;
     let mut services = harness.services().await;

@@ -175,7 +175,7 @@ mod tests {
     #[rstest::rstest]
     fn scan_returns_personas_sorted_by_name() {
         // Given a directory with persona files written out of name order.
-        let dir = tempfile::tempdir().expect("tmpdir");
+        let dir = jinn_testutil::tempdir().expect("tmpdir");
         write_persona(dir.path(), "beta", "beta", "B");
         write_persona(dir.path(), "alpha", "alpha", "A");
         write_persona(dir.path(), "gamma", "gamma", "G");
@@ -192,7 +192,7 @@ mod tests {
     fn same_name_persona_is_deduplicated_by_file_name() {
         // Given two files declaring the same persona name with different
         // descriptions (BTreeMap insert-overwrite: the later file wins).
-        let dir = tempfile::tempdir().expect("tmpdir");
+        let dir = jinn_testutil::tempdir().expect("tmpdir");
         write_persona(dir.path(), "a-first", "dup", "First");
         write_persona(dir.path(), "b-second", "dup", "Second");
 
@@ -206,7 +206,7 @@ mod tests {
     #[rstest::rstest]
     fn one_bad_file_never_drops_the_batch() {
         // Given one broken and one valid persona file.
-        let user = tempfile::tempdir().expect("tmpdir");
+        let user = jinn_testutil::tempdir().expect("tmpdir");
         std::fs::create_dir_all(user.path()).expect("mkdir");
         std::fs::write(user.path().join("invalid.md"), "Not a valid persona file.").expect("write");
         write_persona(user.path(), "valid", "valid", "V");
@@ -222,7 +222,7 @@ mod tests {
     #[rstest::rstest]
     fn non_md_files_are_ignored() {
         // Given a .txt file with valid persona content.
-        let user = tempfile::tempdir().expect("tmpdir");
+        let user = jinn_testutil::tempdir().expect("tmpdir");
         std::fs::create_dir_all(user.path()).expect("mkdir");
         std::fs::write(
             user.path().join("notes.txt"),
@@ -240,7 +240,7 @@ mod tests {
     #[rstest::rstest]
     fn empty_name_persona_is_skipped_but_batch_continues() {
         // Given a blank-name persona and a valid one.
-        let user = tempfile::tempdir().expect("tmpdir");
+        let user = jinn_testutil::tempdir().expect("tmpdir");
         std::fs::create_dir_all(user.path()).expect("mkdir");
         std::fs::write(
             user.path().join("blank.md"),

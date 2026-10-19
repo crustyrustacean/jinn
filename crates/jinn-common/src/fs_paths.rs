@@ -128,7 +128,7 @@ mod tests {
     #[test]
     fn canonicalize_display_errors_for_nonexistent_path() {
         // Given an existing temp directory and a path inside it that does not exist.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let missing = dir.path().join("does-not-exist.txt");
 
         // When canonicalizing the missing path.
@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn canonicalize_display_output_recanonicalizes_to_the_same_file() {
         // Given a real file in a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file = dir.path().join("marker.txt");
         std::fs::write(&file, b"x").expect("write marker file");
 
@@ -168,7 +168,7 @@ mod tests {
         #[test]
         fn canonicalize_display_returns_a_plain_path() {
             // Given a real temp directory.
-            let dir = tempfile::tempdir().expect("create temp dir");
+            let dir = jinn_testutil::tempdir().expect("create temp dir");
 
             // When canonicalizing it through the helper.
             let out = canonicalize_display(dir.path()).expect("canonicalize temp dir");
@@ -260,7 +260,7 @@ mod tests {
         #[test]
         fn canonicalize_display_is_a_passthrough_of_std_canonicalize() {
             // Given a real temp directory.
-            let dir = tempfile::tempdir().expect("create temp dir");
+            let dir = jinn_testutil::tempdir().expect("create temp dir");
 
             // When canonicalizing it through the helper.
             let out = canonicalize_display(dir.path()).expect("canonicalize temp dir");

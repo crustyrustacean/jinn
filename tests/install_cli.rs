@@ -297,6 +297,6 @@ fn config_init_without_force_skips_an_existing_stream_rules_file() {
 // jinn path base — including home, and therefore `.agents/skills` —
 // rebinds inside this tree and the run touches nothing real.
 fn temp_env() -> (PathBuf, tempfile::TempDir) {
-    let dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     (dir.path().to_path_buf(), dir)
 }

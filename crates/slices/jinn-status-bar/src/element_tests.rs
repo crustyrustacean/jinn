@@ -810,7 +810,7 @@ fn render_shows_cwd_on_first_line() {
 #[rstest::rstest]
 fn render_shows_absolute_path_for_non_home_cwd() {
     // Given a session with a non-home CWD.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let cwd = dir.path().join("test-project");
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();

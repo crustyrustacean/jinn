@@ -172,7 +172,7 @@ mod tests {
     fn session_new_inherits_active_session_cwd() {
         // Given a state whose active session has a distinct CWD (not the app
         // launch dir).
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut state = AppState::default_with_scope_focus();
         let inherited_cwd = dir.path().join("inherited-project");
         state.active_session_mut().set_cwd(inherited_cwd.clone());

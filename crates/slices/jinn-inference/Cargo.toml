@@ -54,7 +54,6 @@ jinn-session-state = { workspace = true }
 jinn-session-store-msg = { workspace = true }
 # The project-narrowing tests root fixture cwds in a temp directory rather
 # than spelling absolute machine paths.
-tempfile = { workspace = true }
 
 [lints]
 workspace = true

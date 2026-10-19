@@ -259,7 +259,7 @@ mod tests {
     /// so the caller keeps it alive: it is deleted on drop.
     #[allow(clippy::type_complexity, reason = "test harness tuple")]
     fn session_ctx() -> (State, SessionId, ToolContext, tempfile::TempDir) {
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         {
@@ -448,7 +448,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_empty_name() {
         // Given a call with empty name.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_1".into(),
             name: "skill".into(),
@@ -467,7 +467,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_bad_json() {
         // Given a call with invalid JSON.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_1".into(),
             name: "skill".into(),
@@ -583,7 +583,7 @@ mod tests {
         use jinn_kernel::common::state::State;
 
         // Given a session whose filter withholds "web-coder".
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         {
@@ -627,7 +627,7 @@ mod tests {
         use jinn_kernel::common::state::State;
 
         // Given a session permitted one skill, not this one.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         {

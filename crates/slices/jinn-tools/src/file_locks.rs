@@ -74,7 +74,7 @@ mod tests {
     #[tokio::test]
     async fn same_path_acquires_serialize() {
         // Given a lock held for a path.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let path = dir.path().join("target.txt");
         let first = acquire(&path).await;
 
@@ -105,7 +105,7 @@ mod tests {
     #[tokio::test]
     async fn different_paths_acquire_independently() {
         // Given a lock held for one path.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let held = dir.path().join("held.txt");
         let other = dir.path().join("other.txt");
         let _first = acquire(&held).await;

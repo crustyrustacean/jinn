@@ -106,7 +106,7 @@ mod tests {
     #[test]
     fn registry_register_and_get_roundtrip() {
         // Given an empty registry.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut registry = BuiltinRegistry::new();
 
         // When registering a handler.
@@ -122,7 +122,7 @@ mod tests {
     #[test]
     fn registry_get_returns_none_for_unknown() {
         // Given a registry with one handler.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut registry = BuiltinRegistry::new();
         registry.register(BuiltinId("known".to_owned()), MockHandler::new(dir.path()));
 
@@ -150,7 +150,7 @@ mod tests {
     #[test]
     fn registry_is_empty_false_after_register() {
         // Given a registry with one handler.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut registry = BuiltinRegistry::new();
         registry.register(BuiltinId("test".to_owned()), MockHandler::new(dir.path()));
 
@@ -165,7 +165,7 @@ mod tests {
     #[test]
     fn registry_debug_shows_count() {
         // Given a registry with two handlers.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut registry = BuiltinRegistry::new();
         registry.register(BuiltinId("a".to_owned()), MockHandler::new(dir.path()));
         registry.register(BuiltinId("b".to_owned()), MockHandler::new(dir.path()));

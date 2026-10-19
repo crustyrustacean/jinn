@@ -27,7 +27,7 @@ default = []
 testing = []
 
 [dev-dependencies]
-tempfile = { workspace = true }
+jinn-testutil = { workspace = true }
 rstest = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]

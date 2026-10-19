@@ -76,8 +76,12 @@ pub struct Services {
     pub app_state_storage: AppStateStorageService,
     /// Test-only owned temp directory. `None` in production.
     ///
-    /// Held here so the dir outlives the [`AppPaths`] that points at it
-    /// and is cleaned up when the last `Services` clone is dropped.
+    /// Held here so the dir outlives the [`AppPaths`] that points at it.
+    /// Cleanup cannot rely on `Drop`: spawned actors retain their `Services`
+    /// (via their deps structs) in trouper's registry for the process
+    /// lifetime, so the dir is created kept (`keep(true)`) by
+    /// [`jinn_testutil::retained_tempdir`] and removed by that module's
+    /// exit destructor when the test binary exits.
     /// Production code passes `None` because [`AppPaths::default`] resolves
     /// real user dirs.
     #[debug(skip)]
@@ -172,7 +176,7 @@ impl Services {
     pub async fn new_fake() -> Self {
         let handle = test_services::shared_test_handle();
 
-        let tempdir = Arc::new(tempfile::TempDir::new().expect("test temp dir"));
+        let tempdir = Arc::new(jinn_testutil::retained_tempdir().expect("test temp dir"));
 
         // Create the fabric once; the bus publishes through it and the
         // `Services` container carries it for actor spawns — one system.
@@ -244,7 +248,7 @@ impl Services {
     )]
     pub async fn new_fake_with_bus(bus: bus_service::BusService) -> Self {
         let handle = test_services::shared_test_handle();
-        let tempdir = Arc::new(tempfile::TempDir::new().expect("test temp dir"));
+        let tempdir = Arc::new(jinn_testutil::retained_tempdir().expect("test temp dir"));
 
         let bridge = crate::common::bridge::Bridge::new_for_test();
         let trouper_system =
@@ -320,4 +324,43 @@ fn seeded_slices() -> jinn_slices::Slices {
     let slices = jinn_slices::Slices::new();
     jinn_cell_catalog::register_all_cells(&slices);
     slices
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, reason = "test-only assertions")]
+
+    use super::*;
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn new_fake_fixture_paths_are_prefixed() {
+        // Given the fake services fixture.
+        let services = Services::new_fake().await;
+
+        // When reading the fixture's config dir.
+        let config_dir = services.paths.config_dir();
+
+        // Then it sits under a root carrying the jinn test prefix, and the
+        // fixture's retained tempdir is that same root.
+        let root = services
+            .tempdir
+            .as_ref()
+            .expect("new_fake always carries a tempdir")
+            .path()
+            .to_path_buf();
+        let root_name = root
+            .file_name()
+            .and_then(std::ffi::OsStr::to_str)
+            .expect("named temp root");
+        assert!(
+            root_name.starts_with(jinn_testutil::TEST_PREFIX),
+            "fixture root {root_name:?} lacks the jinn test prefix"
+        );
+        assert_eq!(
+            config_dir,
+            root.join("config"),
+            "config_dir must derive from the prefixed fixture root"
+        );
+    }
 }

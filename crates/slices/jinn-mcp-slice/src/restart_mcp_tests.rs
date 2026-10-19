@@ -176,7 +176,7 @@ async fn restart_one_returns_unknown_server_for_unconfigured_server() {
 #[tokio::test]
 async fn execute_fails_when_coordinator_ref_is_none() {
     // Given a context with no coordinator ref, rooted in a test-owned temp dir.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let session_id = SessionId::new();
     let ctx = ToolContext {
         cwd: dir.path().to_path_buf(),
@@ -217,7 +217,7 @@ async fn execute_returns_failure_for_unknown_server_via_ask() {
     let harness = TestHarness::new().await;
     let (coordinator, _services, _state) =
         spawn_coordinator(&harness, &[("unrunnable", unrunnable_server())]).await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let ctx = ctx_with_coordinator(coordinator, SessionId::new(), dir.path());
 
     // When executing with an unconfigured server name.
@@ -240,7 +240,7 @@ async fn execute_strips_namespace_and_routes_to_ask() {
     // Given a coordinator with no `stub` server configured.
     let harness = TestHarness::new().await;
     let (coordinator, _services, _state) = spawn_coordinator(&harness, &[]).await;
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let ctx = ctx_with_coordinator(coordinator, SessionId::new(), dir.path());
 
     // When executing with a namespaced tool name.

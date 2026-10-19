@@ -113,7 +113,7 @@ mod tests {
     fn run_discovery_shard_key_roundtrips_as_uuid_string() {
         // Given a RunDiscovery command with a real session id.
         let id = SessionId::new();
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let command = RunDiscovery {
             session_id: id.clone(),
             cwd: dir.path().to_path_buf(),

@@ -109,7 +109,7 @@ async fn idle_attendant_starts_a_run_seeded_with_the_message() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, attendant_id) = fixture();
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     take_out_of_prep(&state, &attendant_id);
     set_template(&state, &attendant_id, "Review the diff. <prior report>");
     let tool_ctx = ctx(&harness, &state, user_id.clone(), dir.path()).await;
@@ -161,7 +161,7 @@ async fn idle_attendant_with_empty_template_dispatches_the_message_alone() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, attendant_id) = fixture();
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     take_out_of_prep(&state, &attendant_id);
     set_template(&state, &attendant_id, "");
     let tool_ctx = ctx(&harness, &state, user_id.clone(), dir.path()).await;
@@ -196,7 +196,7 @@ async fn busy_attendant_queues_and_never_cancels() {
         .spawn_recorder::<jinn_inference_msg::CancelTurn>()
         .await;
     let (state, user_id, attendant_id) = fixture();
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     take_out_of_prep(&state, &attendant_id);
     set_template(&state, &attendant_id, "Review the diff.");
     make_busy(&state, &attendant_id);
@@ -235,7 +235,7 @@ async fn plain_session_receives_a_context_carrying_entry_from_the_caller() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let caller = ChatSessionState::new();
     let caller_id = caller.session_id().clone();
     state.write().session.insert(caller);
@@ -283,7 +283,7 @@ async fn plain_delivery_carries_a_titled_caller_in_the_prefix() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let mut caller = ChatSessionState::new();
     caller.set_title("Workflow Run 42".to_owned());
     let caller_id = caller.session_id().clone();
@@ -318,7 +318,7 @@ async fn plain_delivery_excludes_an_empty_caller_title() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let mut caller = ChatSessionState::new();
     caller.set_title(String::new());
     let caller_id = caller.session_id().clone();
@@ -356,7 +356,7 @@ async fn plain_delivery_excludes_a_relayed_caller_title() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let mut caller = ChatSessionState::new();
     caller.set_title("[Message from session dead-beef]: stage 1".to_owned());
     let caller_id = caller.session_id().clone();
@@ -394,7 +394,7 @@ async fn plain_delivery_truncates_a_long_caller_title_with_an_ellipsis() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let mut caller = ChatSessionState::new();
     caller.set_title("t".repeat(40));
     let caller_id = caller.session_id().clone();
@@ -433,7 +433,7 @@ async fn plain_delivery_truncation_counts_graphemes_not_bytes() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let mut caller = ChatSessionState::new();
     caller.set_title("👨‍👩‍👧‍👦".repeat(34));
     let caller_id = caller.session_id().clone();
@@ -470,7 +470,7 @@ async fn plain_delivery_keeps_a_boundary_length_title_whole() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let mut caller = ChatSessionState::new();
     caller.set_title("y".repeat(32));
     let caller_id = caller.session_id().clone();
@@ -508,7 +508,7 @@ async fn unknown_session_id_fails_naming_the_target() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let tool_ctx = ctx(&harness, &state, user_id.clone(), dir.path()).await;
     let missing = SessionId::new();
 
@@ -535,7 +535,7 @@ async fn malformed_session_id_fails_without_publishing() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, _attendant_id) = fixture();
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let tool_ctx = ctx(&harness, &state, user_id.clone(), dir.path()).await;
 
     // When the tool runs with the malformed id.
@@ -559,7 +559,7 @@ async fn prep_mode_attendant_refuses_delivery() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, user_id, attendant_id) = fixture();
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let tool_ctx = ctx(&harness, &state, user_id.clone(), dir.path()).await;
     assert!(
         state
@@ -595,7 +595,7 @@ async fn reset_behavior_attendant_persists_the_exclusions() {
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let persists = harness.spawn_recorder::<PersistSession>().await;
     let (state, user_id, attendant_id) = fixture();
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     {
         let mut guard = state.write();
         let attendant = guard.session.get_mut(&attendant_id).expect("attendant");

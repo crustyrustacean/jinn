@@ -56,7 +56,7 @@ impl Wired {
     /// Spawns the supervisor on a fresh fabric over a real temp home.
     /// The session's cwd lives only in test payloads — no state seeding.
     async fn wire() -> Self {
-        let dir = Box::new(tempfile::tempdir().expect("temp dir"));
+        let dir = Box::new(jinn_testutil::tempdir().expect("temp dir"));
         let home = dir.path().to_path_buf();
         let paths = AppPaths::new_in(&home);
         let state = State::new(AppState::default());

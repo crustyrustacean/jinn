@@ -86,7 +86,7 @@ struct EpochFixture {
 /// resolves through `AppPaths::epoch_cache_dir()` — the same one layout
 /// constant production uses.
 async fn epoch_fixture_at(zip_url: String) -> EpochFixture {
-    let dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let harness = TestHarness::new().await;
     let mut services = harness.services().await;
     services.paths = jinn_common::app_paths::AppPaths::new_in(dir.path());
@@ -355,7 +355,7 @@ async fn refresh_all_reports_a_failing_download_and_the_seed_stands() {
 #[test]
 fn extraction_writes_exactly_the_three_csvs_plus_stamp() {
     // Given a temp cache root and a real zip.
-    let dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let epoch_dir = jinn_common::app_paths::AppPaths::new_in(dir.path()).epoch_cache_dir();
 
     // When extracting.
@@ -385,7 +385,7 @@ fn extraction_writes_exactly_the_three_csvs_plus_stamp() {
 #[test]
 fn load_fresh_returns_none_when_any_csv_is_missing() {
     // Given a cache dir with only one of the three CSVs.
-    let dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let epoch_dir = jinn_common::app_paths::AppPaths::new_in(dir.path()).epoch_cache_dir();
     std::fs::create_dir_all(&epoch_dir).expect("mkdir");
     std::fs::write(epoch_dir.join("fetched_at"), "1000").expect("stamp");
@@ -402,7 +402,7 @@ fn load_fresh_returns_none_when_any_csv_is_missing() {
 #[test]
 fn load_fresh_returns_none_past_the_ttl() {
     // Given a complete, stamped cache dir.
-    let dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let epoch_dir = jinn_common::app_paths::AppPaths::new_in(dir.path()).epoch_cache_dir();
     crate::epoch_cache::download_and_extract(&epoch_dir, &zip_bytes(), 1_000).expect("extraction");
 
@@ -417,7 +417,7 @@ fn load_fresh_returns_none_past_the_ttl() {
 #[test]
 fn load_fresh_serves_a_complete_cache_inside_the_ttl() {
     // Given a complete, stamped cache dir.
-    let dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let epoch_dir = jinn_common::app_paths::AppPaths::new_in(dir.path()).epoch_cache_dir();
     crate::epoch_cache::download_and_extract(&epoch_dir, &zip_bytes(), 1_000).expect("extraction");
 
@@ -435,7 +435,7 @@ fn load_fresh_serves_a_complete_cache_inside_the_ttl() {
 #[test]
 fn drop_cache_is_success_when_nothing_is_there() {
     // Given a cache root with no epoch dir.
-    let dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let epoch_dir = jinn_common::app_paths::AppPaths::new_in(dir.path()).epoch_cache_dir();
 
     // When dropping.

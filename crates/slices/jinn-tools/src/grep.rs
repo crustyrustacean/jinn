@@ -298,7 +298,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_matching_lines() {
         // Given a directory with a file containing known text.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         std::fs::write(
             dir.path().join("sample.txt"),
             "hello world\nfoo bar\nhello rust\n",
@@ -321,7 +321,7 @@ mod tests {
     #[tokio::test]
     async fn execute_with_path_searches_specific_dir() {
         // Given two directories with different files.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let sub_a = dir.path().join("a");
         let sub_b = dir.path().join("b");
         std::fs::create_dir_all(&sub_a).expect("create dir a");
@@ -345,7 +345,7 @@ mod tests {
     #[tokio::test]
     async fn execute_with_glob_filters_files() {
         // Given a directory with .rs and .txt files.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         std::fs::write(dir.path().join("code.rs"), "fn special_func() {}\n").expect("write rs");
         std::fs::write(dir.path().join("notes.txt"), "special_func is great\n").expect("write txt");
 
@@ -365,7 +365,7 @@ mod tests {
     #[tokio::test]
     async fn execute_with_file_type_filters_by_language() {
         // Given a directory with .rs files.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         std::fs::write(dir.path().join("main.rs"), "fn my_unique_func() {}\n").expect("write rs");
 
         let call =
@@ -384,7 +384,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_empty_on_no_matches() {
         // Given a directory with a file.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         std::fs::write(dir.path().join("sample.txt"), "hello world\n").expect("write file");
 
         let call = tool_call("xyzzy_no_match_12345");
@@ -402,7 +402,7 @@ mod tests {
     #[tokio::test]
     async fn execute_reports_rg_error_on_invalid_pattern() {
         // Given an invalid regex pattern that will cause rg to error.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         std::fs::write(dir.path().join("sample.txt"), "hello\n").expect("write file");
 
         let call = ToolCall {
@@ -423,7 +423,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_empty_pattern() {
         // Given a grep tool call with an empty pattern.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_empty".into(),
             name: "grep".into(),
@@ -442,7 +442,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_bad_json() {
         // Given a grep tool call with invalid JSON.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_bad".into(),
             name: "grep".to_owned(),
@@ -461,7 +461,7 @@ mod tests {
     #[tokio::test]
     async fn execute_truncates_large_output() {
         // Given a file with many matching lines.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let content: String = (0..3000).fold(String::new(), |mut s, i| {
             s.push_str(&format!("match_line_{i}\n"));
             s

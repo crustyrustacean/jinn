@@ -435,7 +435,7 @@ mod tests {
     #[tokio::test]
     async fn execute_replaces_unique_string() {
         // Given a temp file with content.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("test.txt");
         std::fs::write(&file_path, "hello world").expect("write temp file");
 
@@ -458,7 +458,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_not_found() {
         // Given a temp file with content.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("test.txt");
         std::fs::write(&file_path, "hello world").expect("write temp file");
 
@@ -479,7 +479,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_when_not_unique() {
         // Given a temp file with a repeated string.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("test.txt");
         std::fs::write(&file_path, "x is here\nx again").expect("write temp file");
 
@@ -500,7 +500,7 @@ mod tests {
     #[tokio::test]
     async fn execute_replace_all_swaps_every_occurrence() {
         // Given a temp file with a repeated string.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("test.txt");
         std::fs::write(&file_path, "count\nnot_count\ncount").expect("write temp file");
 
@@ -530,7 +530,7 @@ mod tests {
     #[tokio::test]
     async fn execute_success_response_contains_snippet() {
         // Given a temp file with three lines.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("test.txt");
         std::fs::write(&file_path, "alpha\nbeta\ngamma\n").expect("write temp file");
 
@@ -555,7 +555,7 @@ mod tests {
     #[tokio::test]
     async fn execute_accepts_alias_arguments() {
         // Given a temp file with content.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("test.txt");
         std::fs::write(&file_path, "hello world").expect("write temp file");
 
@@ -584,7 +584,7 @@ mod tests {
     #[tokio::test]
     async fn execute_identical_strings_is_noop() {
         // Given a temp file with content.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("test.txt");
         std::fs::write(&file_path, "hello world").expect("write temp file");
 
@@ -608,7 +608,7 @@ mod tests {
     #[tokio::test]
     async fn execute_preserves_crlf() {
         // Given a temp file with CRLF line endings.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("test.txt");
         std::fs::write(&file_path, "line1\r\nline2\r\nline3\r\n").expect("write temp file");
 
@@ -631,7 +631,7 @@ mod tests {
     #[tokio::test]
     async fn execute_preserves_bom() {
         // Given a temp file with a UTF-8 BOM.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("test.txt");
         std::fs::write(&file_path, "\u{feff}hello world").expect("write temp file");
 
@@ -654,7 +654,7 @@ mod tests {
     #[tokio::test]
     async fn execute_rejects_legacy_edits_array() {
         // Given a temp file with content.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("test.txt");
         std::fs::write(&file_path, "hello world").expect("write temp file");
 
@@ -680,7 +680,7 @@ mod tests {
     #[tokio::test]
     async fn execute_rejects_degenerate_new_string() {
         // Given a temp file with content.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("test.txt");
         let original = "hello\nworld\n";
         std::fs::write(&file_path, original).expect("write temp file");
@@ -706,7 +706,7 @@ mod tests {
     #[tokio::test]
     async fn execute_line_number_prefix_misses() {
         // Given a temp file with content.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("test.txt");
         std::fs::write(&file_path, "fn main() {}\n").expect("write temp file");
 
@@ -726,7 +726,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_bad_json() {
         // Given an edit call with invalid JSON.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let call = ToolCall {
             id: "call_bad".into(),
             name: "edit".to_owned(),
@@ -745,7 +745,7 @@ mod tests {
     #[tokio::test]
     async fn execute_resolves_relative_path() {
         // Given a temp directory as CWD with a file.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("test.txt");
         std::fs::write(&file_path, "hello world").expect("write temp file");
 
@@ -768,7 +768,7 @@ mod tests {
     #[tokio::test]
     async fn concurrent_non_overlapping_edits_all_land() {
         // Given a temp file two concurrent edits will anchor on separately.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("batch.txt");
         std::fs::write(&file_path, "alpha\nbeta\n").expect("write temp file");
         let path_str = file_path.to_string_lossy().into_owned();
@@ -793,7 +793,7 @@ mod tests {
     #[tokio::test]
     async fn concurrent_edits_two_files_same_extension_both_succeed() {
         // Given two files in one directory with the same extension.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let rust_path = dir.path().join("notes.rs");
         let text_path = dir.path().join("notes.txt");
         std::fs::write(&rust_path, "let x = 1;\n").expect("write temp file");
@@ -837,7 +837,7 @@ mod tests {
     #[tokio::test]
     async fn concurrent_edits_second_overlap_fails_with_not_found() {
         // Given a temp file with a single anchor.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("single.txt");
         std::fs::write(&file_path, "only anchor\n").expect("write temp file");
         let path_str = file_path.to_string_lossy().into_owned();
@@ -879,7 +879,7 @@ mod tests {
     #[tokio::test]
     async fn concurrent_edit_and_write_file_is_exactly_one_tools_output() {
         // Given a temp file an edit and a write will race on.
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("race.txt");
         std::fs::write(&file_path, "anchor\n").expect("write temp file");
         let path_str = file_path.to_string_lossy().into_owned();

@@ -264,7 +264,7 @@ mod tests {
     #[rstest::rstest]
     fn filesystem_load_returns_default_when_missing() {
         // Given a temp directory with no file.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("state.toml");
         let storage = FilesystemAppStateStorage::new(path.clone());
 
@@ -284,7 +284,7 @@ mod tests {
     #[rstest::rstest]
     fn filesystem_save_then_load_round_trips() {
         // Given a FilesystemAppStateStorage in a temp dir.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("state.toml");
         let storage = FilesystemAppStateStorage::new(path);
 

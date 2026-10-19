@@ -56,7 +56,6 @@ serde = { workspace = true }
 tokio = { workspace = true }
 # The discovered-skill fixtures build their paths from a tempdir, so no
 # absolute path literal ships in test code.
-tempfile = { workspace = true }
 
 [lints]
 workspace = true

@@ -49,7 +49,7 @@ mod tests {
     #[rstest::rstest]
     fn detects_git_marker() {
         // Given a directory containing a .git marker.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         std::fs::create_dir(dir.path().join(".git")).expect("create .git");
 
         // When checking the directory for VCS markers.
@@ -62,7 +62,7 @@ mod tests {
     #[rstest::rstest]
     fn detects_mercurial_marker() {
         // Given a directory containing a .hg marker.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         std::fs::create_dir(dir.path().join(".hg")).expect("create .hg");
 
         // When checking the directory for VCS markers.
@@ -75,7 +75,7 @@ mod tests {
     #[rstest::rstest]
     fn detects_fossil_checkout_marker() {
         // Given a directory containing a .fslckout marker (Fossil checkout).
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         std::fs::write(dir.path().join(".fslckout"), b"fossil checkout db")
             .expect("create .fslckout");
 
@@ -89,7 +89,7 @@ mod tests {
     #[rstest::rstest]
     fn detects_fossil_repo_marker() {
         // Given a directory containing a .fossil marker (Fossil repo db).
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         std::fs::write(dir.path().join(".fossil"), b"fossil repo db").expect("create .fossil");
 
         // When checking the directory for VCS markers.
@@ -102,7 +102,7 @@ mod tests {
     #[rstest::rstest]
     fn detects_jujutsu_marker() {
         // Given a directory containing a .jj marker.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         std::fs::create_dir(dir.path().join(".jj")).expect("create .jj");
 
         // When checking the directory for VCS markers.
@@ -115,7 +115,7 @@ mod tests {
     #[rstest::rstest]
     fn plain_directory_is_not_vcs_root() {
         // Given a directory with no VCS markers.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         std::fs::write(dir.path().join("README.md"), "hi").expect("write file");
 
         // When checking the directory for VCS markers.
@@ -128,7 +128,7 @@ mod tests {
     #[rstest::rstest]
     fn nonexistent_directory_is_not_vcs_root() {
         // Given a path that does not exist.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let missing = dir.path().join("does-not-exist");
 
         // When checking the missing path for VCS markers.
@@ -141,7 +141,7 @@ mod tests {
     #[rstest::rstest]
     fn detects_any_one_of_multiple_markers() {
         // Given a directory containing both .git and .hg.
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         std::fs::create_dir(dir.path().join(".git")).expect("create .git");
         std::fs::create_dir(dir.path().join(".hg")).expect("create .hg");
 

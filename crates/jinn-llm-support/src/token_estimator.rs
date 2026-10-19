@@ -251,7 +251,7 @@ mod tests {
     fn estimate_entry_tokens_sums_name_and_content_for_tool_call() {
         // Given a ToolCall entry.
         let estimator = ByteLenEstimator;
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let arguments = serde_json::json!({ "path": dir.path().join("tmp") }).to_string();
         let entry = ChatEntry::tool_call("id-1", "read_file", arguments.clone());
 

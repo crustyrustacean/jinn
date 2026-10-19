@@ -188,8 +188,8 @@ mod tests {
     #[rstest::rstest]
     fn scan_merges_both_dirs_with_default_first() {
         // Given a user dir with two themes and a system dir with one.
-        let user = tempfile::tempdir().expect("tmpdir");
-        let system = tempfile::tempdir().expect("tmpdir");
+        let user = jinn_testutil::tempdir().expect("tmpdir");
+        let system = jinn_testutil::tempdir().expect("tmpdir");
         write_theme(user.path(), "beta", "#ff0000");
         write_theme(user.path(), "alpha", "#00ff00");
         write_theme(system.path(), "gamma", "#0000ff");
@@ -206,8 +206,8 @@ mod tests {
     #[rstest::rstest]
     fn user_dir_shadows_system_dir_for_same_name() {
         // Given the same theme name in both dirs with different accents.
-        let user = tempfile::tempdir().expect("tmpdir");
-        let system = tempfile::tempdir().expect("tmpdir");
+        let user = jinn_testutil::tempdir().expect("tmpdir");
+        let system = jinn_testutil::tempdir().expect("tmpdir");
         write_theme(user.path(), "dup", "#ff0000");
         write_theme(system.path(), "dup", "#0000ff");
 
@@ -222,7 +222,7 @@ mod tests {
     #[rstest::rstest]
     fn a_theme_named_default_replaces_the_builtin() {
         // Given a scanned theme named "default".
-        let user = tempfile::tempdir().expect("tmpdir");
+        let user = jinn_testutil::tempdir().expect("tmpdir");
         write_theme(user.path(), "default", "#123456");
 
         // When scanning.
@@ -240,7 +240,7 @@ mod tests {
     #[rstest::rstest]
     fn one_bad_file_never_drops_the_batch() {
         // Given one broken toml and one good toml.
-        let user = tempfile::tempdir().expect("tmpdir");
+        let user = jinn_testutil::tempdir().expect("tmpdir");
         std::fs::create_dir_all(user.path()).expect("mkdir");
         std::fs::write(user.path().join("broken.toml"), "not [valid toml").expect("write");
         write_theme(user.path(), "good", "#00ff00");
