@@ -15,10 +15,6 @@ export RSTEST_TIMEOUT := "10"
 COPYRIGHT_NAME := "Jayson Lennon"
 COPYRIGHT_YEAR := "2026"
 
-# Open a new Fossil branch with an empty marker commit.
-fossil-branch NAME:
-    fossil commit -m "Open {{NAME}}" --branch {{NAME}} --allow-empty
-
 # Stage everything (dotfiles included) and commit (one-line message)
 commit MSG:
     git add -A && git commit -q -m "{{MSG}}"
@@ -341,187 +337,6 @@ install-defaults:
     @echo "Workflows installed to ~/.config/jinn/workflows/"
     @echo "Skills installed to ~/.agents/skills/"
 
-# Report stale Fossil locks (hung processes + stale journal files)
-fossil-unlock:
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    REPO="$(fossil status 2>/dev/null | sed -n 's/^repository: *//p')"
-    if [ -z "$REPO" ]; then
-        echo "Error: not inside a Fossil checkout" >&2; exit 1
-    fi
-
-    REPO="$(readlink -f "$REPO")"
-    REPO_DIR="$(dirname "$REPO")"
-    CHECKOUT_ROOT="$(pwd)"
-
-    # Build the list of DB files worth checking: the repo, the current checkout,
-    # and any sibling checkouts that live next to the .fossil file (e.g. ./pins).
-    # Locks can live in ANY of these — not just where you're standing.
-    TARGETS=("$REPO")
-    while IFS= read -r -d '' f; do
-        TARGETS+=("$f")
-    done < <(find "$CHECKOUT_ROOT" "$REPO_DIR" -maxdepth 2 -name '.fslckout' -print0 2>/dev/null || true)
-    # Dedupe (preserve order)
-    SEEN=""; FILES=()
-    for t in "${TARGETS[@]}"; do
-        case "$SEEN" in
-            *"|$t|"*) ;;
-            *) SEEN="$SEEN|$t|"; FILES+=("$t") ;;
-        esac
-    done
-
-    FOUND=0
-
-    # 1. Hung Fossil processes holding any target DB
-    echo '==> Checking for hung Fossil processes...'
-    for db in "${FILES[@]}"; do
-        PIDS=$(lsof "$db" 2>/dev/null | awk 'NR>1 && $1=="fossil" {print $2}' | sort -u) || true
-        if [ -n "$PIDS" ]; then
-            for pid in $PIDS; do
-                CMD=$(ps -p "$pid" -o args= 2>/dev/null || echo "<exited>")
-                echo "  stale PID $pid on $db: $CMD"
-                FOUND=$((FOUND + 1))
-            done
-        fi
-    done
-    if [ "$FOUND" -eq 0 ]; then
-        echo '  none found'
-    fi
-
-    # 2. Stale journal / WAL / SHM files next to each target
-    echo '==> Checking for stale journal files...'
-    JFOUND=0
-    for db in "${FILES[@]}"; do
-        d="$(dirname "$db")"
-        while IFS= read -r -d '' f; do
-            echo "  stale: $f"
-            JFOUND=$((JFOUND + 1))
-        done < <(find "$d" -maxdepth 1 \
-            \( -name '.fslckout-journal' -o -name '.fslckout-wal' -o -name '.fslckout-shm' \
-            -o -name '*.fossil-journal' -o -name '*.fossil-wal' -o -name '*.fossil-shm' \) -print0 2>/dev/null || true)
-    done
-    FOUND=$((FOUND + JFOUND))
-    if [ "$JFOUND" -eq 0 ]; then
-        echo '  none found'
-    fi
-
-    echo ""
-    if [ "$FOUND" -gt 0 ]; then
-        echo "Found $FOUND issue(s). Run 'just fossil-unlock-fix' to resolve."
-    else
-        echo "No lock issues found."
-    fi
-
-# Fix stale Fossil locks (kill hung processes + remove stale journal files)
-fossil-unlock-fix:
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    REPO="$(fossil status 2>/dev/null | sed -n 's/^repository: *//p')"
-    if [ -z "$REPO" ]; then
-        echo "Error: not inside a Fossil checkout" >&2; exit 1
-    fi
-
-    REPO="$(readlink -f "$REPO")"
-    REPO_DIR="$(dirname "$REPO")"
-    CHECKOUT_ROOT="$(pwd)"
-
-    TARGETS=("$REPO")
-    while IFS= read -r -d '' f; do
-        TARGETS+=("$f")
-    done < <(find "$CHECKOUT_ROOT" "$REPO_DIR" -maxdepth 2 -name '.fslckout' -print0 2>/dev/null || true)
-    SEEN=""; FILES=()
-    for t in "${TARGETS[@]}"; do
-        case "$SEEN" in
-            *"|$t|"*) ;;
-            *) SEEN="$SEEN|$t|"; FILES+=("$t") ;;
-        esac
-    done
-
-    FIXED=0
-    ME="$(whoami)"
-
-    # 1. Kill hung Fossil processes (SIGTERM, escalate to SIGKILL; force stopped procs)
-    echo '==> Killing hung Fossil processes...'
-    KILLED=0
-    for db in "${FILES[@]}"; do
-        PIDS=$(lsof "$db" 2>/dev/null | awk 'NR>1 && $1=="fossil" {print $2}' | sort -u) || true
-        for pid in $PIDS; do
-            OWNER=$(stat -c '%U' "/proc/$pid" 2>/dev/null || echo "")
-            if [ "$OWNER" != "$ME" ]; then
-                echo "  skipping PID $pid on $db (owned by $OWNER, not $ME)"
-                continue
-            fi
-            if ! kill -0 "$pid" 2>/dev/null; then
-                echo "  PID $pid on $db already gone"
-                continue
-            fi
-            CMD=$(ps -p "$pid" -o args= 2>/dev/null || echo "<exited>")
-            STATE=$(ps -p "$pid" -o stat= 2>/dev/null | cut -c1 || echo "?")
-            if [ "$STATE" = "T" ]; then
-                # Stopped/traced: SIGTERM can't be delivered. Force.
-                kill -9 "$pid" 2>/dev/null || true
-                echo "  force-killed (SIGKILL, was stopped) PID $pid on $db: $CMD"
-            else
-                kill "$pid" 2>/dev/null || true
-                sleep 2
-                if kill -0 "$pid" 2>/dev/null; then
-                    kill -9 "$pid" 2>/dev/null || true
-                    echo "  force-killed (SIGKILL) PID $pid on $db: $CMD"
-                else
-                    echo "  killed (SIGTERM) PID $pid on $db: $CMD"
-                fi
-            fi
-            KILLED=$((KILLED + 1))
-        done
-    done
-    FIXED=$((FIXED + KILLED))
-    if [ "$KILLED" -eq 0 ]; then
-        echo '  no hung processes found'
-    fi
-
-    # 2. Remove stale journal / WAL / SHM files next to each target
-    echo '==> Removing stale journal files...'
-    JFIXED=0
-    for db in "${FILES[@]}"; do
-        d="$(dirname "$db")"
-        while IFS= read -r -d '' f; do
-            rm -f "$f" && echo "  removed $f" || echo "  failed to remove $f"
-            JFIXED=$((JFIXED + 1))
-        done < <(find "$d" -maxdepth 1 \
-            \( -name '.fslckout-journal' -o -name '.fslckout-wal' -o -name '.fslckout-shm' \
-            -o -name '*.fossil-journal' -o -name '*.fossil-wal' -o -name '*.fossil-shm' \) -print0 2>/dev/null || true)
-    done
-    FIXED=$((FIXED + JFIXED))
-    if [ "$JFIXED" -eq 0 ]; then
-        echo '  no stale journal files found'
-    fi
-
-    # 3. Verify every known checkout is now writable
-    echo ''
-    ALL_OK=1
-    for db in "${FILES[@]}"; do
-        # Only .fslckout dirs are checkout roots; the $REPO file is not.
-        case "$db" in
-            */.fslckout)
-                d="$(dirname "$db")"
-                if (cd "$d" && fossil status >/dev/null 2>&1); then
-                    :
-                else
-                    echo "Warning: $d may still be locked." >&2
-                    ALL_OK=0
-                fi
-                ;;
-        esac
-    done
-    if [ "$ALL_OK" -eq 1 ]; then
-        echo "Lock cleared successfully ($FIXED fix(es) applied)."
-    else
-        echo 'Warning: one or more checkouts may still be locked. Check processes manually.' >&2
-        exit 1
-    fi
-
 # Push main (and its annotated tags) to GitHub. git-primary: origin IS the
 # GitHub repo the old fossil→git mirror used to populate, so syncing is a push.
 sync-github:
@@ -545,27 +360,23 @@ sync-github:
    git push origin main --follow-tags
 
 # ---------------------------------------------------------------------------
-# GitHub PR intake (fossil-primary, patch-based — no git↔fossil import).
+# ---------------------------------------------------------------------------
+# GitHub PR intake (patch-based; the landed commit is attributed to the
+# contributor via its git author).
 #
-#   just gh-setup              one-time: teach `gh` which repo to talk to
 #   just gh-pr-list [STATE]    browse PRs (default open)
 #   just gh-pr-view N          PR metadata in the terminal
 #   just gh-pr-fetch N         download patch + metadata, extract the author
 #   just gh-pr-apply N         apply the patch; conflicts become conflict markers
 #   ...review, `just check`, `just test`...
 #   just gh-pr-land N          commit, attributed to the contributor
-#   just sync-github           mirror the landed commit to GitHub
+#   just sync-github           push the landed commit to GitHub
 #   just gh-pr-close N [MSG]   close the PR on GitHub with a note
 #
 # Per-PR artifacts live in target/gh-pr/N/ (ignored via the `target` glob).
 # ---------------------------------------------------------------------------
 export GH_REPO := "jayson-lennon/jinn"
 GH_PR_STATE_DIR := "target/gh-pr"
-
-# One-time gh setup: export GH_REPO for fossil-only workspaces
-gh-setup:
-    @echo "GH_REPO={{GH_REPO}} (exported by the justfile; no setup needed)"
-    @GH_REPO={{GH_REPO}} gh auth status && echo "gh is ready"
 
 # List GitHub PRs for the mirror (default: open).
 gh-pr-list STATE="open":
@@ -628,13 +439,13 @@ gh-pr-apply N:
         echo "ERROR: no fetched patch for PR {{N}}; run: just gh-pr-fetch {{N}}" >&2
         exit 1
     }
-    if [ -n "$(fossil changes --differ)" ]; then
+    if [ -n "$(git status --porcelain)" ]; then
         echo 'ERROR: working tree has uncommitted changes; commit or revert first.' >&2
         exit 1
     fi
-    branch=$(fossil branch current)
-    if [ "$branch" != "trunk" ]; then
-        echo "Note: applying on branch '$branch', not trunk" >&2
+    branch=$(git branch --show-current)
+    if [ "$branch" != "main" ]; then
+        echo "Note: applying on branch '$branch', not main" >&2
     fi
 
     echo '==> Probing with dry run'
@@ -646,19 +457,19 @@ gh-pr-apply N:
         patch -p1 --merge < "$dir/pr.patch" || true
         # drop patch's .orig backups; the conflicted files themselves carry
         # the pre-image in the `<<<<<<<` block, so .orig is redundant noise
-        find . -name '*.orig' -not -path './.fossil/*' -not -path './target/*' -delete
+        find . -name '*.orig' -not -path './.git/*' -not -path './target/*' -delete
         echo
         echo '    Conflicted spots (resolve every one, then delete its markers):'
-        grep -rn '^<<<<<<<' --exclude-dir=.fossil --exclude-dir=target . || true
+        grep -rn '^<<<<<<<' --exclude-dir=.git --exclude-dir=target . || true
         echo
         echo '    After resolving:'
         echo '      just check && just test'
         echo "      just gh-pr-land {{N}}"
     fi
-    fossil addremove --dotfiles
     echo "==> Applied. Then: just gh-pr-land {{N}}"
 
-# Commit the applied patch attributed to the contributor (auto-provisions a fossil user).
+# Commit the applied patch attributed to the contributor (git author identity
+# extracted from the patch by gh-pr-fetch).
 # Refuses to run while unresolved conflict markers remain in the tree.
 [doc("Commit an applied PR patch attributed to its contributor, refusing on unresolved conflict markers.")]
 gh-pr-land N:
@@ -669,46 +480,35 @@ gh-pr-land N:
         echo "ERROR: no fetched patch for PR {{N}}; run: just gh-pr-fetch {{N}}" >&2
         exit 1
     }
-    if [ -z "$(fossil changes --differ)" ]; then
+    if [ -z "$(git status --porcelain)" ]; then
         echo 'ERROR: nothing to commit; apply the patch first: just gh-pr-apply {{N}}' >&2
         exit 1
     fi
 
-    if grep -rn '^<<<<<<<' --exclude-dir=.fossil --exclude-dir=target . >/dev/null 2>&1; then
+    if grep -rn '^<<<<<<<' --exclude-dir=.git --exclude-dir=target . >/dev/null 2>&1; then
         echo 'ERROR: unresolved conflict markers remain:' >&2
-        grep -rn '^<<<<<<<' --exclude-dir=.fossil --exclude-dir=target . | head -10 >&2
+        grep -rn '^<<<<<<<' --exclude-dir=.git --exclude-dir=target . | head -10 >&2
         echo 'Resolve them (or hand them to an agent), then re-run.' >&2
         exit 1
     fi
 
     ident=$(<"$dir/identity")
-    login=$(jq -r '.author.login' "$dir/meta.json")
     url=$(jq -r '.url' "$dir/meta.json")
-    email=${ident#*<}; email=${email%>*}
 
-    if fossil user list | awk '{print $1}' | grep -qx "$login"; then
-        echo "==> fossil user '$login' already exists (contact not modified)"
-    else
-        # --pw '': contributors never log into the fossil repo; their account
-        # exists purely to carry attribution (contact info + --user-override).
-        fossil user new "$login" "$ident" --pw "" >/dev/null
-        echo "==> created fossil user '$login' ($ident)"
-    fi
-
-    # --user-override already records the contributor as the check-in user
-    # (rendered as "user: <login>" in the timeline and as git author in the
-    # mirror), so the comment doesn't repeat the "by <name>" attribution.
-    msg=$(printf 'Apply PR #{{N}} from %s\n\nPicked from %s\n' \
+    # The contributor is recorded as the commit's git author; the committer
+    # stays the local user, so the landing is attributable without any
+    # account provisioning.
+    msg=$(printf "Apply PR #{{N}} from %s\n\nPicked from %s\n" \
         "$ident" "$url")
-    fossil addremove --dotfiles
-    fossil commit -m "$msg" --user-override "$login" --no-verify-comment
+    git add -A
+    git commit -q --author="$ident" -m "$msg"
 
-    hash=$(fossil info | awk '/^checkout:/{ print substr($2, 1, 12); exit }')
+    hash=$(git rev-parse --short HEAD)
     echo
-    echo "==> Landed as $hash (user: $login <$email>)"
+    echo "==> Landed as $hash (author: $ident)"
     echo '    next: just check && just test   (if not already done)'
     echo '    then: just sync-github'
-    echo "    then: just gh-pr-close {{N}} 'Landed in Fossil as $hash; mirrored shortly.'"
+    echo "    then: just gh-pr-close {{N}} 'Landed in $hash; pushed shortly.'"
 
 # Opt-in: close the PR on GitHub after landing
 gh-pr-close N COMMENT="":
@@ -719,60 +519,6 @@ gh-pr-close N COMMENT="":
         args+=(--comment "{{COMMENT}}")
     fi
     gh pr close {{N}} "${args[@]}"
-
-# Prune merged branches from the git mirror (preview default)
-mirror-prune MODE="preview" PRUNE_ALL="":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    MIRROR_DIR="/mnt/zed/repos/jinn/.github-mirror"
-    main_branch="trunk"   # sync-github exports with --mainbranch trunk
-    cd "$MIRROR_DIR"
-
-    merged=()
-    unmerged=()
-    while IFS= read -r b; do
-        [ "$b" = "$main_branch" ] && continue
-        if git merge-base --is-ancestor "$b" "$main_branch" 2>/dev/null; then
-            merged+=("$b")
-        else
-            unmerged+=("$b")
-        fi
-    done < <(git for-each-ref --format='%(refname:short)' refs/heads)
-    n_merged=${#merged[@]}
-    n_unmerged=${#unmerged[@]}
-    n_total=$(( n_merged + n_unmerged ))
-
-    echo "mirror branches: total $n_total = $n_merged merged + $n_unmerged unmerged (into '$main_branch')"
-
-    if [ "$n_unmerged" -gt 0 ]; then
-        echo '-- unmerged branches (NOT touched unless PRUNE_ALL=1):'
-        printf '   %s\n' "${unmerged[@]}" | head -40
-        [ "${#unmerged[@]}" -gt 40 ] && echo "   ... and $(( ${#unmerged[@]} - 40 )) more"
-    fi
-
-    case "{{MODE}}" in
-        preview)
-            echo "==> preview only; run: just mirror-prune apply"
-            ;;
-        apply)
-            n=0
-            for b in "${merged[@]}"; do
-                git branch -d "$b" && n=$((n+1))
-            done
-            if [ "{{PRUNE_ALL}}" = "1" ]; then
-                echo "==> PRUNE_ALL=1: deleting unmerged branches too"
-                for b in "${unmerged[@]}"; do
-                    git branch -D "$b" && n=$((n+1))
-                done
-            fi
-            echo "==> deleted $n branch(es) from the mirror"
-            echo "    next: just sync-github   (pushes deletions to GitHub)"
-            ;;
-        *)
-            echo "ERROR: MODE must be 'preview' or 'apply'" >&2
-            exit 1
-            ;;
-    esac
 
 # Bump version (major/minor/patch), commit, and tag in git
 bump LEVEL:
@@ -1039,8 +785,7 @@ release TAG:
         exit 1
     fi
 
-    # --- 1. Mirror trunk (and tags) to GitHub ---
-    echo '==> Mirroring trunk to GitHub...'
+    # --- 1. Push main (and tags) to GitHub ---
     just sync-github
 
     # --- 2. Build the cargo-binstall tarballs (linux + windows) ---
