@@ -130,7 +130,7 @@ Spawn procedure, per issue (steps/02-dispatch.md carries the full
 payload lists):
 
 1. `load_attendant` on `attendants/implementor.toml` (absolute path), with `set_name` = `implementor-<issue-number>` — the seed file's own name stays generic; the label distinguishes instances in the sidebar. Keep it short: `implementor-002`, never the issue slug. Never `spawn_subagent`.
-2. `run_lifecycle` setup: `path` = this workflow's `lifecycle.toml` (absolute), `session_id` = the new session's id, `dir` = `<your-root>-issue-<id>` (sibling of your checkout), `branch` = `<your-branch>-issue-<id>`, `parent` = your branch.
+2. `run_lifecycle` setup: `path` = this workflow's `lifecycle.toml` (absolute), `session_id` = the new session's id, `branch` = `<your-branch>-issue-<id>`, `parent` = your branch. Fossil also takes `repo` (the repository file's base name) and `dir` (the checkout directory); git takes neither — it branches from your own checkout and names the worktree itself.
 3. `tell_session` the dispatch (issue path, execution plan path, ids, checkout dir, parent branch, scm.md path, report format).
 
 Teardown: `run_lifecycle` teardown, session id only — recorded

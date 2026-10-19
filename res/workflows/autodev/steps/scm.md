@@ -50,6 +50,11 @@ startup.
 Every implementor branches from the orchestrator's branch and merges
 back onto it at teardown. The dispatch names the parent; an implementor
 never guesses it. The parent is recorded in the run ledger at startup
+— it is the branch the seat has checked out, which is the feature
+branch the human started the run on. The git teardown finds the seat
+by that branch: git allows a branch to be checked out in only one
+worktree, so the worktree holding `<parent>` is the one the merge
+lands in
 and passed to the lifecycle setup as the `<parent>` argument.
 
 ## Committing (implementor, in its own checkout)

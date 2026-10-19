@@ -34,9 +34,10 @@ One session per issue. The procedure, in order:
 2. `run_lifecycle` setup `autodev implementor (fossil)` — or the git variant if the target repo is git — with:
    - `path` = this workflow's `lifecycle.toml` (absolute),
    - `session_id` = the new session's id,
-   - `dir` = a fresh checkout directory beside your own, named for the issue: `<your-root>-issue-<id>`,
    - `branch` = the issue's branch: `<your-branch>-issue-<id>` (derived from your branch — never a fixed prefix. Branches named after the workflow collide across runs and with a run's own leftovers; a branch named after its parent cannot collide),
    - `parent` = your branch (the one recorded in the ledger at startup). The runner moves the session into its checkout.
+   - fossil only: `repo` = the repository file's base name (`jinn` for `jinn.fossil`), `dir` = a fresh checkout directory beside your own, named for the issue: `<your-root>-issue-<id>`.
+   - git: no `repo` and no `dir` — the script works from your own checkout and names the worktree itself. The only args are `branch` and `parent`.
 3. Send the dispatch via `tell_session`.
 
 Paste every path; never retype one — long paths type badly under
