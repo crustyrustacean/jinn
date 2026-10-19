@@ -522,62 +522,27 @@ fossil-unlock-fix:
         exit 1
     fi
 
-# Mirror trunk history to GitHub (one-way, force push)
+# Push main (and its annotated tags) to GitHub. git-primary: origin IS the
+# GitHub repo the old fossil→git mirror used to populate, so syncing is a push.
 sync-github:
    #!/bin/bash
    set -euo pipefail
 
-   FOSSIL_REPO="/mnt/zed/repos/jinn/jinn.fossil"
-   MIRROR_DIR="/mnt/zed/repos/jinn/.github-mirror"
    GITHUB_REMOTE="git@github.com:jayson-lennon/jinn.git"
 
-   fossil git export "$MIRROR_DIR" \
-       --repository "$FOSSIL_REPO" \
-       --mainbranch trunk \
-       --autopush "$GITHUB_REMOTE"
+   # Invariant check: this recipe's contract is "publish to the jinn GitHub
+   # repo". If origin has been repointed, fail loudly instead of pushing
+   # somewhere unexpected under muscle memory.
+   ACTUAL=$(git remote get-url --push origin)
+   if [ "$ACTUAL" != "$GITHUB_REMOTE" ]; then
+       echo "Error: origin points at '$ACTUAL', expected '$GITHUB_REMOTE'" >&2
+       exit 1
+   fi
 
-   # Prune mirror branches whose fossil branch is closed. fossil's git export
-   # never deletes refs (verified), so closed branches accumulate on GitHub
-   # forever. Deletion here is mirror-only and does NOT delete commits — all
-   # history stays reachable via trunk on GitHub. A branch still open in
-   # fossil would be re-created by the next export, so only closed branches
-   # qualify. "Closed" = fossil's own rule (src/branch.c): the branch's
-   # current leaf carries the 'closed' tag — matches `fossil branch ls`.
-   echo '==> Pruning mirror branches closed in fossil'
-   git -C "$MIRROR_DIR" for-each-ref --format='%(refname:short)' refs/heads |
-   while IFS= read -r branch; do
-       # the mirror's main branch IS fossil's trunk (sync-github exports with
-       # --mainbranch trunk, which becomes 'main' in git); never prune it.
-       # (fossil-side the sql would return empty for 'main' anyway, but make
-       # the intent explicit.)
-       [ "$branch" = "main" ] && continue
-       # "Closed" uses fossil's own createBrlistQuery semantics (src/branch.c):
-       # the branch's newest commit (max mtime) carries the 'closed' tag. The
-       # bare bx.rid inside the aggregate is NOT a bug — SQLite binds bare
-       # columns to the single max(mtime) row, which is exactly what fossil's
-       # `branch ls` relies on. Results verified 1:1 against `fossil branch ls`.
-       closed=$(fossil sql -R "$FOSSIL_REPO" "
-           SELECT count(*) FROM (
-             SELECT bx.value AS name,
-                    max(event.mtime) AS mtime,
-                    EXISTS(SELECT 1 FROM tagxref tx
-                           WHERE tx.rid=bx.rid
-                             AND tx.tagid=(SELECT tagid FROM tag WHERE tagname='closed')
-                             AND tx.tagtype>0) AS isclosed
-             FROM tagxref bx, tag, event
-             WHERE bx.tagid=tag.tagid AND tag.tagname='branch' AND bx.tagtype>0
-               AND event.objid=bx.rid AND bx.value='$branch'
-             GROUP BY bx.value) WHERE isclosed=1;" 2>/dev/null || true)
-       if [ "$closed" = "1" ]; then
-           echo "    deleting closed branch: $branch"
-           git -C "$MIRROR_DIR" branch -D "$branch" >/dev/null
-       fi
-   done
-
-   # Publish the pruned mirror. `--mirror` is what makes deletions propagate;
-   # fossil's own autopush would leave the deleted refs alive on GitHub.
-   echo '==> Pushing mirror (with deletions)'
-   git -C "$MIRROR_DIR" push --mirror "$GITHUB_REMOTE"
+   echo '==> Pushing main and tags to GitHub'
+   # --follow-tags pushes annotated tags reachable from main (what `just bump`
+   # creates) without sweeping in every historical tag the way --tags would.
+   git push origin main --follow-tags
 
 # ---------------------------------------------------------------------------
 # GitHub PR intake (fossil-primary, patch-based — no git↔fossil import).
