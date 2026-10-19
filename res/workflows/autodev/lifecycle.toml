@@ -6,10 +6,12 @@
 #   setup    — give the implementor its own checkout on its own branch,
 #              branched from the FEATURE BRANCH (the one the human started
 #              the run on, which is the branch the orchestrator's own
-#              checkout has checked out). The session moves into it.
+#              checkout has checked out). YOUR CURRENT WORKING DIRECTORY
+#              IS THE FEATURE BRANCH. The session moves into it.
 #   teardown — merge the implementor's work back onto that feature
-#              branch, then remove the checkout and the branch. The merge
-#              IS the landing; there is no separate integration branch.
+#              branch (AKA YOUR CWD), then remove the checkout and the
+#              branch. The merge IS the landing; there is no separate
+#              integration branch.
 #
 # Arguments (the runner substitutes and shell-quotes them; every
 # placeholder in a command MUST have a matching argument or setup fails):
@@ -82,7 +84,7 @@ fossil branch close <branch> && cd .. && rm -rfv <dir>
 # <branch> the implementor's branch name, derived from the parent:
 #          `<parent>-issue-007`.
 # <parent> the feature branch — the branch the orchestrator's checkout
-#          has checked out.
+#          has checked out. You can get this info using `git status`.
 #
 # No <repo>, no <dir>: the worktree is created beside the orchestrator's
 # own checkout and named after <branch>, and the setup runs in that
