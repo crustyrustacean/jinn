@@ -1,6 +1,6 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
-## (development)
+## 2026-10-19 v1.9.2
 
 - Fix: OpenRouter Model Market `refresh` functionality now re-fetches OpenRouter models in addition to ECI data.
 
