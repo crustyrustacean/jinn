@@ -19,9 +19,9 @@ COPYRIGHT_YEAR := "2026"
 fossil-branch NAME:
     fossil commit -m "Open {{NAME}}" --branch {{NAME}} --allow-empty
 
-# Stage all adds/removes and commit (one-line message)
+# Stage everything (dotfiles included) and commit (one-line message)
 commit MSG:
-    fossil addremove --dotfiles && fossil commit -m "{{MSG}}"
+    git add -A && git commit -q -m "{{MSG}}"
 
 # One suite run: fail-fast disabled, full output captured to target/test-output.log
 # with a summary and failing test names — details via `just test-failures`, never re-runs.
@@ -809,7 +809,7 @@ mirror-prune MODE="preview" PRUNE_ALL="":
             ;;
     esac
 
-# Bump version (major/minor/patch), commit, and tag in Fossil
+# Bump version (major/minor/patch), commit, and tag in git
 bump LEVEL:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -820,15 +820,15 @@ bump LEVEL:
         *) echo "Usage: just bump <major|minor|patch>" >&2; exit 1 ;;
     esac
 
-    # --- Pre-flight: must be on trunk ---
-    BRANCH=$(fossil branch current)
-    if [ "$BRANCH" != "trunk" ]; then
-        echo "Error: must be on trunk (currently on '$BRANCH')" >&2
+    # --- Pre-flight: must be on main ---
+    BRANCH=$(git branch --show-current)
+    if [ "$BRANCH" != "main" ]; then
+        echo "Error: must be on main (currently on '$BRANCH')" >&2
         exit 1
     fi
 
     # --- Pre-flight: working tree must be clean ---
-    if [ -n "$(fossil changes --differ)" ]; then
+    if [ -n "$(git status --porcelain)" ]; then
         echo "Error: working tree has uncommitted changes" >&2
         exit 1
     fi
@@ -840,7 +840,7 @@ bump LEVEL:
     # --- Resolve tag conflicts ---
     CANDIDATE="$NEW"
     ATTEMPTS=0
-    while fossil tag list | grep -qx "v${CANDIDATE}"; do
+    while git rev-parse -q --verify "refs/tags/v${CANDIDATE}" >/dev/null; do
         echo "Tag v${CANDIDATE} already exists, skipping..."
         ATTEMPTS=$((ATTEMPTS + 1))
         if [ "$ATTEMPTS" -ge 100 ]; then
@@ -857,10 +857,10 @@ bump LEVEL:
     cargo update --workspace
 
     # --- Commit ---
-    fossil commit -m "Bump version to ${CANDIDATE}"
+    git add -A && git commit -q -m "Bump version to ${CANDIDATE}"
 
-    # --- Tag the current checkout ---
-    fossil tag add "v${CANDIDATE}" current
+    # --- Tag the current commit (annotated) ---
+    git tag -a -m "v${CANDIDATE}" "v${CANDIDATE}"
 
     echo "Bumped to ${CANDIDATE}, committed and tagged as v${CANDIDATE}"
 
