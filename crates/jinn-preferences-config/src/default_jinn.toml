@@ -270,7 +270,7 @@ teardown_command = """[ -z "$(git status --porcelain)" ] || { echo "TEARDOWN-DIR
 # > text on the node, and call graph_vector_search with a `query` to find
 # > nodes by meaning (hits come back with label, key, props, and a
 # > similarity score). The embedding model runs on your CPU; it downloads
-# > once from HuggingFace on first use (~130MB into the jinn cache) and
+# > once from HuggingFace on first use (~35MB into the jinn cache) and
 # > works offline after that — pre-fetch it headlessly with
 # > `jinn mcp overgraph --fetch-model`, which also shows progress on
 # > stderr. `--embed-model <name>` picks a different model; the model's

@@ -229,7 +229,7 @@ idempotent, so re-upserting the already-written records is harmless.
 - **Pass absolute paths.** For `--db` in a custom entry and for
   `graph_ingest_file`'s `path`: both resolve against the server process's
   working directory, not yours.
-- **Embedding model lifecycle.** The first embed downloads ~130MB
+- **Embedding model lifecycle.** The first embed downloads ~35MB
   (bge-small-en-v1.5, 384-dim cosine); pre-fetch it headlessly with
   `jinn mcp overgraph --fetch-model` if desired. The dimension locks
   into the database at first open, so switching embed models means

@@ -448,10 +448,21 @@ daow = "0.2.0"
 # verbatim, and it must stay at the pinned engine's syntax.
 overgraph = "=0.17.1"
 # Local embedding models behind the overgraph server's vector tools
-# (`graph_upsert_node` + `embed_text`, `graph_vector_search`): ONNX models
-# run on CPU via ort, weights fetched from HuggingFace on first use. Exact
-# pin: the fastembed/ort surface is young and breaking; upgrade deliberately.
-fastembed = "=7.1.1"
+# (`graph_upsert_node` + `embed_text`, `graph_vector_search`): bge-small-en
+# transformer run on CPU via candle, weights + tokenizer fetched from
+# HuggingFace on first use. Pure Rust end to end — no ONNX runtime, no C++
+# toolchain, so Windows /MT release builds keep linking. Exact pin: the
+# candle surface is young and breaking; upgrade deliberately (the three
+# candle crates must always share one version).
+candle-core = "=0.11.0"
+candle-nn = "=0.11.0"
+candle-transformers = "=0.11.0"
+# pin: tokenizers must stay within candle-transformers' `^0.22` requirement
+# so the workspace resolves a single copy; onig/esaxx build from source.
+tokenizers = "=0.22.2"
+# pin: 0.x sync (ureq) client; 1.x is a ground-up async rewrite with a much
+# heavier dep surface than the overgraph server needs.
+hf-hub = "=0.5.0"
 # `bundled` is deliberately NOT in this spec for the host-side graph: host
 # consumers (build scripts, daow's proc-macro validation) link the system
 # libsqlite3 on Linux/macOS — a bundled build there would recompile the whole

@@ -426,9 +426,9 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn debug_guard_passes_with_db_path_provided() {
-        // Given --db-path and a session-store command.
-        // When parsing and running the debug guard.
-        let cli = Cli::parse_from(["jinn", "--db-path", "/tmp/test.db", "tui"]);
+        // Given --db-path and a session-store command. The value is never
+        // read, only presence — a relative name keeps the test portable.
+        let cli = Cli::parse_from(["jinn", "--db-path", "test-session-store.db", "tui"]);
         let result = cli.debug_db_path_required();
 
         // Then the guard passes.

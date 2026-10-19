@@ -87,7 +87,7 @@ pub fn resolve_embed_model(model: Option<embedder::EmbedderModel>) -> embedder::
 /// download, most commonly); the failure message names the download.
 pub fn fetch_model(args: &OvergraphServeArgs) -> Result<(), Report<ServeError>> {
     let model = resolve_embed_model(args.embed_model);
-    let embedder = embedder::FastembedEmbedder::with_default_cache(model);
+    let embedder = embedder::CandleEmbedder::with_default_cache(model);
     embedder
         .init()
         .change_context(ServeError)
@@ -145,7 +145,7 @@ pub async fn serve(args: OvergraphServeArgs) -> Result<(), Report<ServeError>> {
         match DatabaseEngine::open(&db_dir, &db_options(model)) {
             Ok(engine) => {
                 let embedder: Arc<dyn embedder::Embedder> =
-                    Arc::new(embedder::FastembedEmbedder::with_default_cache(model));
+                    Arc::new(embedder::CandleEmbedder::with_default_cache(model));
                 server::OvergraphMcpServer::new(Arc::new(engine), embedder)
             }
             Err(err) => {

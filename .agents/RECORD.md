@@ -552,3 +552,5 @@ Entries are added or amended **only with human approval**.
 - (arch) Core id newtypes reject unparseable strings through try_from and never fabricate an id from a parse failure.
 - (testing) Test scratch files and directories are created only through the tempfile crate; no test builds paths from "/tmp" or "/home" literals or from std::env::temp_dir.
 - (testing) The lint-portable-path recipe fails the build on hardcoded absolute path literals in non-vendor Rust sources, with an allowlist for stated exceptions.
+- (graph) The overgraph server embeds text locally via candle, pure Rust; no ONNX runtime or other native ML library is linked.
+- (graph) The overgraph server's bge-small-en-v1.5 embeddings are CLS-token pooled and L2 normalized, verified against fastembed reference vectors by the feature-gated embedding-parity test.

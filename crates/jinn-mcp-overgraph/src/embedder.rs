@@ -1,6 +1,6 @@
 //! Local embedding models behind the server's vector tools.
 //!
-//! The overgraph server embeds text on the local CPU via [`fastembed`]:
+//! The overgraph server embeds text on the local CPU via candle:
 //! [`graph_upsert_node`](crate::server) accepts an `embed_text` argument and
 //! [`graph_vector_search`](crate::server) embeds its query server-side, so an
 //! agent never touches a vector.
@@ -9,35 +9,54 @@
 //!
 //! - [`EmbedderModel`] — the catalog of known models (dimension, metric, name),
 //!   parsed from the `--embed-model` CLI arg.
-//! - [`Embedder`] — the backend trait; production runs
-//!   [`FastembedEmbedder`], tests inject a deterministic fake. [`embed_async`]
-//!   hops any backend onto a blocking thread.
+//! - [`Embedder`] — the backend trait; production runs [`CandleEmbedder`],
+//!   tests inject a deterministic fake. [`embed_async`] hops any backend onto
+//!   a blocking thread.
 //! - [`EmbedError`] — why an embed (or the model download behind it) failed.
 //!
 //! # Model lifecycle
 //!
 //! The model loads lazily at the first embed and stays resident until the
-//! process exits — there is no unload path. Weights download from HuggingFace
-//! on first use into [`AppPaths::embed_models_dir`] (pre-fetchable headlessly
-//! via `jinn mcp overgraph --fetch-model`). Every init is bracketed by
-//! explicit stderr lines (see [`announce`]); the model's own hf-hub progress
-//! bar is disabled so the inspector log stream stays legible. This crate
-//! installs no tracing subscriber, so stderr is its only user-visible
-//! channel.
+//! process exits — there is no unload path. Weights, config, and tokenizer
+//! download from HuggingFace on first use into [`AppPaths::embed_models_dir`]
+//! (pre-fetchable headlessly via `jinn mcp overgraph --fetch-model`). Every
+//! init is bracketed by explicit stderr lines (see [`announce`]); hf-hub's
+//! own download progress is disabled so the inspector log stream stays
+//! legible. This crate installs no tracing subscriber, so stderr is its only
+//! user-visible channel.
 //!
 //! A failed init is not cached: the next embed retries the download, so a
 //! transient network failure heals without a restart.
+//!
+//! # Embedding convention
+//!
+//! bge-small-en-v1.5 produces one vector per sequence position; the single
+//! document vector is the `[CLS]` position (sequence index 0), L2-normalized.
+//! That convention lives in [`pool_cls_normalized`] and is pinned by the
+//! feature-gated parity test (`--features embed-parity`) against reference
+//! vectors captured from the model itself.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::PoisonError;
 use std::time::Instant;
 
+use candle_core::{Device, Tensor};
+use candle_nn::VarBuilder;
+use candle_transformers::models::bert::{BertModel, Config as BertConfig};
 use error_stack::{Report, ResultExt};
+use hf_hub::api::sync::ApiBuilder;
+use tokenizers::Tokenizer;
+use tokenizers::TruncationParams;
 use wherror::Error;
 
 use jinn_common::app_paths::AppPaths;
+
+/// The longest token sequence the model sees; longer inputs are truncated,
+/// never split. bge-small-en-v1.5's `max_position_embeddings` is 512, and the
+/// database contract freezes embeddings at this context window.
+const MAX_SEQUENCE_TOKENS: usize = 512;
 
 /// Why an embed failed: the model is unavailable (cold cache + failed
 /// download) or the backend rejected the text.
@@ -74,7 +93,7 @@ impl EmbedError {
 /// nowhere else.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmbedderModel {
-    /// BAAI/bge-small-en-v1.5 — 384-dim, cosine, ~130MB, 512-token context.
+    /// BAAI/bge-small-en-v1.5 — 384-dim, cosine, ~35MB, 512-token context.
     BgeSmallEnV15,
 }
 
@@ -119,29 +138,30 @@ impl EmbedderModel {
         }
     }
 
-    /// The fastembed catalog entry this model maps to.
+    /// The HuggingFace repo id holding this model's safetensors, config, and
+    /// tokenizer files.
     #[must_use]
-    const fn fastembed_model(self) -> fastembed::EmbeddingModel {
+    pub const fn hf_repo(self) -> &'static str {
         match self {
-            Self::BgeSmallEnV15 => fastembed::EmbeddingModel::BGESmallENV15,
+            Self::BgeSmallEnV15 => "BAAI/bge-small-en-v1.5",
         }
     }
 
     /// Approximate download size, for the stderr announcement.
     #[must_use]
-    const fn approximate_download(self) -> &'static str {
+    pub const fn approximate_download(self) -> &'static str {
         match self {
-            Self::BgeSmallEnV15 => "~130MB",
+            Self::BgeSmallEnV15 => "~35MB",
         }
     }
 }
 
 /// The embedding backend: text in, dense vector out.
 ///
-/// Production runs [`FastembedEmbedder`]; tests inject a deterministic fake
-/// so the suite never downloads a model. Not async — fastembed is synchronous
-/// and potentially slow (cold init downloads ~130MB), so async callers go
-/// through [`embed_async`], which hops onto a blocking thread.
+/// Production runs [`CandleEmbedder`]; tests inject a deterministic fake
+/// so the suite never downloads a model. Not async — the model is
+/// synchronous and potentially slow (cold init downloads ~35MB), so async
+/// callers go through [`embed_async`], which hops onto a blocking thread.
 pub trait Embedder: Send + Sync {
     /// The dimension of every vector this backend produces; always the
     /// configured model's [`EmbedderModel::dimension`].
@@ -173,23 +193,97 @@ pub async fn embed_async(
         .change_context(EmbedError::new("embedding task failed unexpectedly"))?
 }
 
-/// The production embedder: fastembed running one local ONNX model on CPU.
+/// One resident model: bert weights, tokenizer, and the device they live on.
+struct LoadedModel {
+    model: BertModel,
+    tokenizer: Tokenizer,
+    device: Device,
+    /// The model's hidden width (`config.hidden_size`); candle's `BertModel`
+    /// does not retain its config, and the pooling step needs the row width.
+    hidden_size: usize,
+}
+
+impl LoadedModel {
+    /// Runs tokenizer + bert forward over one text, returning the flattened
+    /// `[1, seq, hidden]` hidden states row-major (the `[CLS]` position is
+    /// the first `hidden` floats).
+    fn last_hidden_state(&self, text: &str) -> candle_core::Result<Vec<f32>> {
+        let encoding = self
+            .tokenizer
+            .encode(text, true)
+            .map_err(|err| candle_core::Error::Msg(format!("tokenization failed: {err}")))?;
+        let input_ids = Tensor::new(encoding.get_ids().to_vec(), &self.device)?.unsqueeze(0)?;
+        let token_type_ids =
+            Tensor::new(encoding.get_type_ids().to_vec(), &self.device)?.unsqueeze(0)?;
+        let hidden = self.model.forward(&input_ids, &token_type_ids, None)?;
+        hidden.flatten_all()?.to_vec1::<f32>()
+    }
+}
+
+/// Why pooling a hidden-state batch into one document vector failed.
+#[derive(Debug, Error)]
+#[error(debug)]
+enum PoolError {
+    /// The hidden width was zero — a model config that cannot hold a row.
+    ZeroHiddenSize,
+    /// The flat buffer was too short to hold even the `[CLS]` row.
+    TooShort {
+        /// Hidden width the model was configured with.
+        hidden_size: usize,
+        /// Floats actually present in the flat buffer.
+        len: usize,
+    },
+    /// The `[CLS]` row's L2 norm was zero or non-finite; normalizing it
+    /// would poison the vector index with NaNs.
+    DegenerateNorm(f32),
+}
+
+/// Squashes per-position hidden states into the one document vector bge
+/// semantics require: the `[CLS]` position (sequence index 0) of the
+/// flattened `[1, seq, hidden]` batch, L2-normalized.
+///
+/// The database's cosine metric assumes unit-length vectors; this is where
+/// that invariant is produced. Pinned by the feature-gated parity test.
+fn pool_cls_normalized(hidden: &[f32], hidden_size: usize) -> Result<Vec<f32>, PoolError> {
+    if hidden_size == 0 {
+        return Err(PoolError::ZeroHiddenSize);
+    }
+    let Some(cls) = hidden.get(..hidden_size) else {
+        return Err(PoolError::TooShort {
+            hidden_size,
+            len: hidden.len(),
+        });
+    };
+    let norm = l2_norm(cls);
+    if !norm.is_finite() || norm <= f32::EPSILON {
+        return Err(PoolError::DegenerateNorm(norm));
+    }
+    Ok(cls.iter().map(|value| value / norm).collect())
+}
+
+/// The Euclidean length of one vector.
+fn l2_norm(values: &[f32]) -> f32 {
+    values.iter().map(|value| value * value).sum::<f32>().sqrt()
+}
+
+/// The production embedder: candle running one local bge transformer on CPU.
 ///
 /// The model initializes lazily inside the first [`Embedder::embed`] call —
 /// jinn owns the lifecycle decision that there is no idle-timeout or explicit
 /// unload; the weights stay resident until the process exits. Init is
 /// serialized under a mutex so concurrent first calls download exactly once,
 /// and the stderr download announcement happens inside that critical section.
-pub struct FastembedEmbedder {
+pub struct CandleEmbedder {
     model: EmbedderModel,
     cache_dir: PathBuf,
     /// `None` until the first successful init; a failed init stays `None` so
-    /// the next embed retries the download. The model sits behind its own
-    /// mutex because fastembed's `embed` takes `&mut self`.
-    model_cell: Mutex<Option<Arc<Mutex<fastembed::TextEmbedding>>>>,
+    /// the next embed retries the download. The loaded model is shared behind
+    /// an `Arc` because bert forward and tokenization both take `&self` and
+    /// are thread-safe — no per-embed lock is needed.
+    model_cell: Mutex<Option<Arc<LoadedModel>>>,
 }
 
-impl FastembedEmbedder {
+impl CandleEmbedder {
     /// Builds an embedder for `model`, caching weights under `cache_dir`.
     ///
     /// No I/O happens here; the model loads (and downloads, if the cache is
@@ -228,35 +322,29 @@ impl FastembedEmbedder {
     }
 
     /// Loads the model if not yet loaded, announcing the download on stderr.
-    fn ensure_initialized(
-        &self,
-    ) -> Result<Arc<Mutex<fastembed::TextEmbedding>>, Report<EmbedError>> {
+    fn ensure_initialized(&self) -> Result<Arc<LoadedModel>, Report<EmbedError>> {
         // The lock is held across the (potentially long) init: every embed
         // needs the same model, so waiting callers are the correct behavior.
         let mut slot = self
             .model_cell
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        if let Some(embedding) = slot.as_ref() {
-            return Ok(Arc::clone(embedding));
+        if let Some(loaded) = slot.as_ref() {
+            return Ok(Arc::clone(loaded));
         }
-        let initialized = Arc::new(Mutex::new(self.initialize()?));
+        let initialized = Arc::new(self.initialize()?);
         *slot = Some(Arc::clone(&initialized));
         Ok(initialized)
     }
 
-    /// Runs the actual fastembed init, announcing the download on stderr.
-    fn initialize(&self) -> Result<fastembed::TextEmbedding, Report<EmbedError>> {
-        let options = fastembed::TextInitOptions::new(self.model.fastembed_model())
-            .with_cache_dir(self.cache_dir.clone())
-            .with_show_download_progress(false);
-
+    /// Runs the actual init, announcing the download on stderr.
+    fn initialize(&self) -> Result<LoadedModel, Report<EmbedError>> {
         announce_download_start(self.model, &self.cache_dir);
         let started = Instant::now();
-        match fastembed::TextEmbedding::try_new(options) {
-            Ok(embedding) => {
+        match load_candle_model(self.model, &self.cache_dir) {
+            Ok(loaded) => {
                 announce_download_finished(self.model, started.elapsed());
-                Ok(embedding)
+                Ok(loaded)
             }
             Err(err) => {
                 announce_download_failed(self.model, &err);
@@ -270,27 +358,72 @@ impl FastembedEmbedder {
     }
 }
 
-impl Embedder for FastembedEmbedder {
+impl Embedder for CandleEmbedder {
     fn dimension(&self) -> u32 {
         self.model.dimension()
     }
 
     fn embed(&self, text: &str) -> Result<Vec<f32>, Report<EmbedError>> {
-        let embedding = self.ensure_initialized()?;
-        let mut model = embedding.lock().unwrap_or_else(PoisonError::into_inner);
-        let vectors = model.embed(vec![text.to_owned()], None).map_err(|err| {
+        let loaded = self.ensure_initialized()?;
+        let hidden = loaded.last_hidden_state(text).map_err(|err| {
             Report::new(EmbedError::new(format!(
                 "embedding model {} rejected the text: {err}",
                 self.model.arg_name()
             )))
         })?;
-        vectors.into_iter().next().ok_or_else(|| {
+        pool_cls_normalized(&hidden, loaded.hidden_size).map_err(|err| {
             Report::new(EmbedError::new(format!(
-                "embedding model {} returned no vector",
+                "embedding model {} produced an unusable vector: {err}",
                 self.model.arg_name()
             )))
         })
     }
+}
+
+/// Fetches (or reuses from cache) the model's files and loads a resident
+/// [`LoadedModel`] on CPU.
+fn load_candle_model(
+    model: EmbedderModel,
+    cache_dir: &Path,
+) -> Result<LoadedModel, Box<dyn std::error::Error + Send + Sync>> {
+    let device = Device::Cpu;
+    let api = {
+        // The progress bar stays off: the download announcement on stderr is
+        // jinn's user-visible record, and the inspector log must stay legible.
+        let builder = ApiBuilder::new()
+            .with_cache_dir(cache_dir.to_path_buf())
+            .with_progress(false);
+        builder.build()?
+    };
+    let repo = api.model(model.hf_repo().to_owned());
+    let weights_path = repo.get("model.safetensors")?;
+    let config_path = repo.get("config.json")?;
+    let tokenizer_path = repo.get("tokenizer.json")?;
+
+    let config = {
+        let raw = std::fs::read_to_string(&config_path)?;
+        serde_json::from_str::<BertConfig>(&raw)?
+    };
+    let mut tokenizer = Tokenizer::from_file(&tokenizer_path)?;
+    tokenizer
+        .with_truncation(Some(TruncationParams {
+            max_length: MAX_SEQUENCE_TOKENS,
+            ..TruncationParams::default()
+        }))
+        .map_err(|err| format!("invalid truncation settings: {err}"))?;
+
+    // Buffered, not mmap'd: the weights are ~33MB, and reading them once
+    // keeps this crate free of `unsafe` on every platform.
+    let weights = std::fs::read(&weights_path)?;
+    let vb = VarBuilder::from_buffered_safetensors(weights, candle_core::DType::F32, &device)?;
+    let bert = BertModel::load(vb, &config)?;
+
+    Ok(LoadedModel {
+        model: bert,
+        tokenizer,
+        device,
+        hidden_size: config.hidden_size,
+    })
 }
 
 /// A deterministic test embedder: hash-derived vectors, no model.
@@ -449,6 +582,55 @@ mod tests {
         // Then its dimension and metric match the documented catalog entry.
         assert_eq!(model.dimension(), 384);
         assert_eq!(model.metric(), overgraph::types::DenseMetric::Cosine);
+    }
+
+    #[rstest::rstest]
+    fn hf_repo_names_the_baai_mirror() {
+        // Given the default model.
+        let model = EmbedderModel::default_model();
+
+        // Then its HuggingFace repo is the BAAI bge-small mirror.
+        assert_eq!(model.hf_repo(), "BAAI/bge-small-en-v1.5");
+    }
+
+    #[rstest::rstest]
+    fn cls_pool_extracts_first_row_and_normalizes() {
+        // Given a flattened [1, 2, 3] hidden batch whose first row is the
+        // CLS position.
+        let hidden = [3.0, 0.0, 0.0, 9.0, 9.0, 9.0];
+
+        // When pooling at hidden width 3.
+        let pooled = pool_cls_normalized(&hidden, 3).expect("pools");
+
+        // Then the CLS row comes back L2-normalized, and nothing after it.
+        assert_eq!(pooled, vec![1.0, 0.0, 0.0]);
+    }
+
+    #[rstest::rstest]
+    fn cls_pool_rejects_a_degenerate_zero_norm() {
+        // Given a hidden batch whose CLS row is all zeros.
+        let hidden = [0.0_f32; 6];
+
+        // When pooling.
+        let result = pool_cls_normalized(&hidden, 3);
+
+        // Then the zero norm is rejected instead of emitting NaNs.
+        assert!(
+            matches!(result, Err(PoolError::DegenerateNorm(_))),
+            "zero norm must be rejected: {result:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn cls_pool_rejects_a_buffer_shorter_than_one_row() {
+        // Given a flat buffer too short to hold one row at width 3.
+        let hidden = [1.0_f32, 2.0];
+
+        // When pooling.
+        let result = pool_cls_normalized(&hidden, 3);
+
+        // Then the shape mismatch is rejected.
+        assert!(matches!(result, Err(PoolError::TooShort { .. })));
     }
 
     #[rstest::rstest]
