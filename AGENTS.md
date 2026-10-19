@@ -675,7 +675,7 @@ Skills refer to commands by **role**; the table below resolves each role to this
 | `test-attr`     | `just lint-testattr`      | Fail on a bare test attribute missing its `rstest` companion.                                                             |
 | `format`        | `just fmt-fix`            | Apply formatting fixes.                                                                                                   |
 | `commit`        | `just commit '<message>'` | Commit changes (uses `--dotfiles` so `.agents/` is included).                                                             |
-| `sync-trunk`    | `git merge main`          | Sync latest changes with your branch (resolve conflicts, re-test, commit).                                                |
+| `sync-trunk`    | `git rebase main`         | Sync latest changes onto your branch — resolve conflicts, re-test, commit. Rebase, **not merge**: branches are local-only worktree branches (history rewrite is safe), and a merge-free branch keeps session teardown's flat-history rebase trivial. |
 
 ## 8. Misc
 
