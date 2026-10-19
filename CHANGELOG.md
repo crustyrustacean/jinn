@@ -5,7 +5,15 @@
 - Update git worktree lifecycle script so it handles symlinks better.
 - `autodev` workflow implementors should get started faster with less exploration.
 - `micro-task-loop` skill should respect the code check/test cadence specified in the plan.
-- Add `overgraph` graph+vector database MCP.
+- Add `overgraph` graph+vector database MCP. Use the below snippet to make it available in your MCP list.
+
+```toml
+[mcp.overgraph]
+command = "<jinn>"
+args = ["mcp", "overgraph"]
+singleton = true
+auto_enable = false
+```
 
 ## 2026-10-16 v1.8.2
 
