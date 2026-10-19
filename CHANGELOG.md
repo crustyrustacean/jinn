@@ -1,6 +1,6 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
-## 2026-10-18 v1.9.0
+## 2026-10-18 v1.9.1
 
 - Update git worktree lifecycle script so it handles symlinks better.
 - `autodev` workflow implementors should get started faster with less exploration.
