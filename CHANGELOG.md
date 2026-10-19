@@ -1,5 +1,9 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
+## (development)
+
+- Fix: OpenRouter Model Market `refresh` functionality now re-fetches OpenRouter models in addition to ECI data.
+
 ## 2026-10-18 v1.9.1
 
 - Update git worktree lifecycle script so it handles symlinks better.
