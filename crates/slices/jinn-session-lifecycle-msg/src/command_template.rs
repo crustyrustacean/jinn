@@ -1107,14 +1107,11 @@ mod tests {
     #[rstest::rstest]
     fn render_multiple_named_params() {
         // Given a template with two named placeholders and two arguments.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        // Forward-slash form: the value must stay shell-quote-free on every
-        // platform so the assertion isolates positional substitution.
-        let workdir = dir
-            .path()
-            .join("workdir")
-            .to_string_lossy()
-            .replace('\\', "/");
+        // The path carries no drive letter and no shell-special character:
+        // a Windows drive prefix (`C:`) contains a colon, which is
+        // shell-special and would be quoted — the assertion below isolates
+        // positional substitution, not quoting.
+        let workdir = "work/dir".to_owned();
         let expected = format!("script.sh my-feature {workdir}");
         let tmpl = CommandTemplate::parse("script.sh <branch> <target>");
         let args = ["my-feature".to_owned(), workdir];
@@ -1908,13 +1905,10 @@ mod tests {
     #[rstest::rstest]
     fn shell_quote_path_with_slash_is_safe() {
         // Given a filesystem path in forward-slash form (the separator the
-        // test names, on every platform).
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let value = dir
-            .path()
-            .join("workdir")
-            .to_string_lossy()
-            .replace('\\', "/");
+        // test names, on every platform), carrying no drive letter: a colon
+        // is shell-special, so a Windows drive prefix would be quoted and
+        // the assertion below would measure quoting rather than the slash.
+        let value = "work/dir".to_owned();
         let expected = value.clone();
 
         // When shell-quoting it.

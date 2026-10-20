@@ -127,16 +127,25 @@ mod tests {
         // When formatting.
         let result = format_skills_for_prompt(&skills, &std::collections::HashSet::new());
 
-        // Then the output contains the XML block.
+        // Then the output contains the XML block. The expected paths are
+        // built component-wise, exactly as the fixture builds them, so both
+        // carry the platform's native separators.
         let expected_location = format!(
             "<location>{}</location>",
             dir.path()
-                .join(".agents/skills/my-skill/SKILL.md")
+                .join(".agents")
+                .join("skills")
+                .join("my-skill")
+                .join("SKILL.md")
                 .display()
         );
         let expected_base_dir = format!(
             "<base_dir>{}</base_dir>",
-            dir.path().join(".agents/skills/my-skill").display()
+            dir.path()
+                .join(".agents")
+                .join("skills")
+                .join("my-skill")
+                .display()
         );
         assert!(result.contains("<available_skills>"));
         assert!(result.contains("</available_skills>"));
