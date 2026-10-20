@@ -974,18 +974,28 @@ mod tests {
         let harness = TestHarness::new().await;
         let (actor, _system) = spawn_coordinator(&harness, TermControls::default()).await;
         let dir = jinn_testutil::tempdir_with_prefix("jinn-test-term-cwd").expect("temp dir");
-        let expected = dir.path().to_str().expect("utf8 path");
+        // The expectation is the canonicalized directory: `pwd` prints the
+        // path the kernel resolves, and macOS resolves the temp dir's
+        // `/var/folders/...` to `/private/var/folders/...` through a symlink.
+        let expected =
+            jinn_common::canonicalize_display(dir.path()).expect("canonicalize temp dir");
 
         // When spawning `pwd` with that directory as cwd.
         let mut msg = spawn_msg(jinn_core_types::SessionId::new(), "pwd");
         msg.cwd = PathBuf::from(dir.path());
         let reply = actor.ask(msg).await;
 
-        // Then the screen shows the requested directory.
+        // Then the screen shows the requested directory. The comparison is
+        // made against the screen with its line breaks removed: the PTY is
+        // 80 columns wide, and a long path (macOS's temp dir resolves to
+        // /private/var/folders/.../jinn-test-term-cwdXXXXXX) wraps onto a
+        // second row, so a line-oriented containment check would fail even
+        // though the path is on screen.
         match reply {
             SpawnTermOutcome::Started { screen, .. } => {
+                let shown: String = plain_screen(&screen.screen).replace('\n', "");
                 assert!(
-                    plain_screen(&screen.screen).contains(expected),
+                    shown.contains(expected.to_string_lossy().as_ref()),
                     "pwd should print the requested cwd, got: {}",
                     plain_screen(&screen.screen)
                 );
