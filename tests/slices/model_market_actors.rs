@@ -342,13 +342,15 @@ async fn opening_the_popup_lands_rows_without_fetching_any_detail() {
     // past the endpoint debounce.
     services.bus.publish(FetchModels).await;
     let loaded = await_recorded::<ModelsLoaded>(&loaded_recorder, 1, SETTLE).await;
-    tokio::time::sleep(SETTLE).await;
 
     // Then the table has rows AND the data cell carries no detail:
     // opening fetches nothing but the listing — detail rides the
     // drill-in ENTER alone.
     assert_eq!(loaded.len(), 1, "one models load");
     let data = data_of(&services);
+    // The rows landing is the positive signal that the fetch completed; the
+    // absence of a detail fetch is only meaningful once they have.
+    jinn_testutil::wait::await_cell(&data, SETTLE, |read| !read.rows.is_empty()).await;
     let read = data.read();
     assert_eq!(
         read.rows.first().map(|r| r.id.as_str()),
@@ -516,12 +518,15 @@ async fn warm_models_cache_serves_the_popup_without_network() {
         .bus
         .publish(jinn_model_market_msg::FetchModels)
         .await;
-    tokio::time::sleep(SETTLE).await;
 
     // Then the actor served the cache into the cell — the row on the
     // table. (The boot kick's epoch fallback may own `last_error` on an
     // offline box; that line names epoch, never models.)
     let data = data_of(&services);
+    // The wait is on the cell's own content — a fixed sleep would only
+    // guess at when the actor served the cache, and the read could land
+    // before it, leaving the assertion to fail on an empty cell.
+    jinn_testutil::wait::await_cell(&data, SETTLE, |read| !read.rows.is_empty()).await;
     let read = data.read();
     assert_eq!(
         read.rows.first().map(|r| r.id.as_str()),

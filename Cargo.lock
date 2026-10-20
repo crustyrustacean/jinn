@@ -2925,6 +2925,7 @@ dependencies = [
  "jinn-testutil",
  "kill_tree",
  "libc",
+ "marked-path",
  "rstest",
  "serde",
  "serde_json",
@@ -2989,6 +2990,7 @@ dependencies = [
  "jinn-skills",
  "jinn-skills-msg",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-tools-msg",
  "rstest",
  "serde",
@@ -3281,6 +3283,7 @@ dependencies = [
  "jinn-common",
  "jinn-preferences-config",
  "jinn-slices",
+ "jinn-testutil",
  "rstest",
  "tempfile",
  "wherror",
@@ -3392,6 +3395,7 @@ dependencies = [
  "error-stack",
  "jinn-common",
  "jinn-provider",
+ "jinn-testutil",
  "reqwest 0.13.3",
  "rmcp",
  "rstest",
@@ -4356,6 +4360,7 @@ dependencies = [
  "jinn-preferences-config",
  "jinn-selection-widget",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-theme",
  "ratatui",
  "rstest",
@@ -4455,7 +4460,10 @@ version = "1.9.2"
 dependencies = [
  "ctor 0.4.3",
  "error-stack",
+ "jinn-common",
  "jinn-slices",
+ "libc",
+ "marked-path",
  "parking_lot",
  "ratatui",
  "rstest",
@@ -4474,6 +4482,7 @@ dependencies = [
  "anstyle-lossy",
  "error-stack",
  "jinn-selection-widget",
+ "jinn-testutil",
  "ratatui",
  "rstest",
  "serde",
@@ -4803,6 +4812,7 @@ dependencies = [
  "jinn-picker",
  "jinn-selection-widget",
  "jinn-slices",
+ "jinn-testutil",
  "jinn-theme",
  "ratatui",
  "rstest",
@@ -5036,6 +5046,15 @@ name = "macro_rules_attribute-proc_macro"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc04a4c58212d57930a24bf47d3fa87485264a3a054e9c10e042eb373573ad3c"
+
+[[package]]
+name = "marked-path"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd84f50c06903e68f16475155b63b2093518b0ddf1db15031bede3a78de65257"
+dependencies = [
+ "wherror",
+]
 
 [[package]]
 name = "matchers"

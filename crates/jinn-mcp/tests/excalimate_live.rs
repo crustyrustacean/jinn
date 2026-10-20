@@ -2,8 +2,9 @@
 //!
 //! These tests are `#[ignore]` by default because they require:
 //!   1. Node.js installed and on `PATH`.
-//!   2. The excalimate monorepo cloned and built at `/tmp/excalimate`, so that
-//!      `/tmp/excalimate/mcp-server/dist/index.js` exists.
+//!   2. The excalimate monorepo cloned and built, with
+//!      `JINN_EXCALIMATE_SERVER` pointing at
+//!      `mcp-server/dist/index.js` inside it.
 //!
 //! Run with:
 //!   `cargo test -p jinn-mcp --features testkit --test excalimate_live -- --ignored --nocapture`
@@ -45,8 +46,13 @@ use serde_json::json;
 /// cloned monorepo. Adjust via the `JINN_EXCALIMATE_SERVER` env var if cloned
 /// elsewhere.
 fn excalimate_command() -> Option<ServerCommand> {
-    let path = std::env::var("JINN_EXCALIMATE_SERVER")
-        .unwrap_or_else(|_| String::from("/tmp/excalimate/mcp-server/dist/index.js"));
+    // The server's location comes from the environment, never from a
+    // hardcoded path: a `/tmp` literal names one file on Linux and
+    // nothing at all on Windows, where the scratch directory lives
+    // somewhere else entirely.
+    let Ok(path) = std::env::var("JINN_EXCALIMATE_SERVER") else {
+        return None;
+    };
     if !std::path::Path::new(&path).exists() {
         return None;
     }
@@ -69,13 +75,14 @@ async fn connect_with_timeout(cmd: &ServerCommand) -> McpClient {
 #[rstest::rstest]
 #[timeout(Duration::from_mins(2))]
 #[tokio::test]
-#[ignore = "requires Node + a built excalimate server at /tmp/excalimate"]
+#[ignore = "requires Node + a built excalimate server named by JINN_EXCALIMATE_SERVER"]
 async fn excalimate_lists_create_scene_and_calls_it() {
     let Some(cmd) = excalimate_command() else {
         eprintln!(
-            "skipped: excalimate server not built at the expected path; \
-             clone https://github.com/excalimate/excalimate and run \
-             `npm install && npm run build --workspace @excalimate/mcp-server`"
+            "skipped: JINN_EXCALIMATE_SERVER is unset or names a path that does \
+             not exist; clone https://github.com/excalimate/excalimate, run \
+             `npm install && npm run build --workspace @excalimate/mcp-server`, \
+             and point JINN_EXCALIMATE_SERVER at mcp-server/dist/index.js"
         );
         return;
     };
@@ -140,7 +147,7 @@ async fn excalimate_lists_create_scene_and_calls_it() {
 #[rstest::rstest]
 #[timeout(Duration::from_mins(2))]
 #[tokio::test]
-#[ignore = "requires Node + a built excalimate server at /tmp/excalimate"]
+#[ignore = "requires Node + a built excalimate server named by JINN_EXCALIMATE_SERVER"]
 async fn two_connections_are_independent_processes() {
     let Some(cmd) = excalimate_command() else {
         eprintln!("skipped: excalimate server not built at the expected path");

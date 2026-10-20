@@ -29,6 +29,7 @@ server-testkit = ["testkit", "rmcp/server"]
 rstest = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 serde_json = { workspace = true }
+jinn-testutil = { workspace = true }
 # The integration test spins up an in-process stub MCP server. rmcp's `server`
 # feature is a dev-dependency so it can never leak into the production client.
 rmcp = { workspace = true, features = ["client", "server", "transport-streamable-http-server"] }

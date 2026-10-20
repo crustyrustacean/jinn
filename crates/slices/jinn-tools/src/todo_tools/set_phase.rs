@@ -199,6 +199,7 @@ mod tests {
             trouper_system: None,
             model_name_resolver: None,
             config: jinn_config::testutil::config_layer(""),
+            shells: Default::default(),
         }
     }
 

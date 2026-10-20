@@ -380,13 +380,26 @@ mod tests {
     use super::*;
     use jinn_kernel::common::bridge::Bridge;
     use jinn_session_lifecycle_msg::SetSessionCwd;
+    use jinn_testutil::barrier::Barrier;
     use std::sync::{Arc, Mutex};
 
     /// A trouper service actor that records decoded `SetSessionCwd`
     /// deliveries into a shared buffer, so bridge-driven publishes are
     /// observable in a unit test.
+    ///
+    /// It also acknowledges a [`Barrier`], which is what lets a test prove
+    /// that a `SetSessionCwd` was *not* published. The recorder is the
+    /// only actor on this bus, so it is also the actor that would have
+    /// received the message — and because the barrier is published after
+    /// the message under test, its acknowledgement proves the recorder
+    /// has already drained everything published before it. A test that
+    /// slept for a fixed interval and then asserted the buffer was empty
+    /// would instead be betting that the sleep outlasted the dispatch,
+    /// which fails in the direction that makes the assertion pass for
+    /// the wrong reason.
     struct CwdRecorder {
         buffer: Arc<Mutex<Vec<SetSessionCwd>>>,
+        acks: Arc<Mutex<Vec<String>>>,
     }
 
     impl trouper::actor::ServiceActor for CwdRecorder {
@@ -407,6 +420,12 @@ mod tests {
         }
     }
 
+    impl trouper::actor::MsgHandler<Barrier> for CwdRecorder {
+        async fn handle(&mut self, msg: &Barrier, _ctx: &mut trouper::context::MsgCtx<'_>) {
+            self.acks.lock().unwrap().push(msg.label.clone());
+        }
+    }
+
     /// A single-threaded tokio runtime for driving async bridge delivery.
     fn test_runtime() -> tokio::runtime::Runtime {
         tokio::runtime::Builder::new_current_thread()
@@ -415,22 +434,31 @@ mod tests {
             .unwrap()
     }
 
-    /// Spawns a trouper-backed bus with a subscribed `CwdRecorder` at a
-    /// unique path, plus a `Bridge` draining to that bus. Returns everything
-    /// the cwd tests need.
-    fn spawn_system_with_recorder(
-        handle: &tokio::runtime::Handle,
-    ) -> (
+    /// The handles a spawned cwd recorder exposes: the bus, the bridge that
+    /// drains to it, the recorded `SetSessionCwd` deliveries, and the
+    /// barrier acknowledgements.
+    type CwdRecorderHandles = (
         jinn_kernel::common::services::bus_service::BusService,
         Bridge,
         Arc<Mutex<Vec<SetSessionCwd>>>,
-    ) {
+        Arc<Mutex<Vec<String>>>,
+    );
+
+    /// Spawns a trouper-backed bus with a subscribed `CwdRecorder` at a
+    /// unique path, plus a `Bridge` draining to that bus. Returns everything
+    /// the cwd tests need.
+    ///
+    /// The returned `acks` buffer receives the recorder's barrier
+    /// acknowledgements, so a test can wait for the recorder to have
+    /// drained everything published before the barrier.
+    fn spawn_system_with_recorder(handle: &tokio::runtime::Handle) -> CwdRecorderHandles {
         use std::sync::atomic::{AtomicU64, Ordering};
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
         let bus =
             jinn_kernel::common::services::bus_service::BusService::new_trouper(system.clone());
         let buffer = Arc::new(Mutex::new(Vec::new()));
+        let acks = Arc::new(Mutex::new(Vec::new()));
         let path = trouper::actor::ActorPath::new(format!(
             "test.cwd-recorder.{}",
             SEQ.fetch_add(1, Ordering::SeqCst)
@@ -439,16 +467,19 @@ mod tests {
             .at(path.clone())
             .start_with({
                 let buffer = buffer.clone();
+                let acks = acks.clone();
                 move || {
                     let buffer = buffer.clone();
-                    Box::pin(async move { Ok(CwdRecorder { buffer }) })
+                    let acks = acks.clone();
+                    Box::pin(async move { Ok(CwdRecorder { buffer, acks }) })
                 }
             })
             .handles::<SetSessionCwd>()
+            .handles::<Barrier>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
             .start();
         let bridge = Bridge::with_handle(bus.clone(), handle);
-        (bus, bridge, buffer)
+        (bus, bridge, buffer, acks)
     }
 
     #[rstest::rstest]
@@ -505,6 +536,29 @@ mod tests {
         assert_eq!(escaped, "''");
     }
 
+    /// Publishes a barrier through `bridge` and waits for the recorder to
+    /// acknowledge it.
+    ///
+    /// The acknowledgement is the proof that everything published before
+    /// the barrier has already been dispatched. Only after it arrives is
+    /// "no message was published" a real observation rather than a race
+    /// with a dispatch still in flight.
+    async fn await_recorder_drained(bridge: &Bridge, acks: &Arc<Mutex<Vec<String>>>) {
+        bridge
+            .send(Bridge::publish_closure(Barrier::new("after-cwd")))
+            .expect("bridge send should succeed");
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+        while acks.lock().unwrap().is_empty() {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "the cwd recorder never acknowledged the barrier, so the \
+                 recorder did not drain the bus; any absence assertion made \
+                 now would prove nothing"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    }
+
     #[rstest::rstest]
     #[test]
     fn apply_selected_cwd_publishes_set_session_cwd_for_valid_dir() {
@@ -512,7 +566,7 @@ mod tests {
         rt.block_on(async {
             // Given a trouper system with a subscribed SetSessionCwd
             // recorder, and a bridge draining to that system.
-            let (_system, bridge, buffer) =
+            let (_system, bridge, buffer, acks) =
                 spawn_system_with_recorder(&tokio::runtime::Handle::current());
 
             let dir = jinn_testutil::tempdir().expect("temp dir");
@@ -524,7 +578,7 @@ mod tests {
 
             // Then exactly one SetSessionCwd is published with the canonical cwd.
             assert!(published, "valid dir should publish");
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            await_recorder_drained(&bridge, &acks).await;
             let received = buffer.lock().unwrap();
             assert_eq!(received.len(), 1, "exactly one SetSessionCwd expected");
             assert_eq!(received[0].session_id, session_id);
@@ -539,7 +593,7 @@ mod tests {
         rt.block_on(async {
             // Given a trouper system with a subscribed SetSessionCwd
             // recorder and a bridge draining to it.
-            let (_system, bridge, buffer) =
+            let (_system, bridge, buffer, acks) =
                 spawn_system_with_recorder(&tokio::runtime::Handle::current());
 
             // And a real file (not a directory) inside a temp dir.
@@ -553,7 +607,7 @@ mod tests {
 
             // Then nothing is published and the helper returns false.
             assert!(!published, "file path should not publish");
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            await_recorder_drained(&bridge, &acks).await;
             assert!(buffer.lock().unwrap().is_empty(), "no message expected");
         });
     }
@@ -565,7 +619,7 @@ mod tests {
         rt.block_on(async {
             // Given a trouper system with a subscribed SetSessionCwd
             // recorder and a bridge draining to it.
-            let (_system, bridge, buffer) =
+            let (_system, bridge, buffer, acks) =
                 spawn_system_with_recorder(&tokio::runtime::Handle::current());
 
             // And a path derived from a test-owned temp dir that does not
@@ -579,7 +633,7 @@ mod tests {
 
             // Then nothing is published and the helper returns false.
             assert!(!published, "nonexistent path should not publish");
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            await_recorder_drained(&bridge, &acks).await;
             assert!(buffer.lock().unwrap().is_empty(), "no message expected");
         });
     }

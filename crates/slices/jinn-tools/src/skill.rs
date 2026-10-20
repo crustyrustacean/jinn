@@ -227,6 +227,7 @@ mod tests {
         ToolContext {
             cwd: cwd.to_owned(),
             config: jinn_config::testutil::config_layer(""),
+            shells: Default::default(),
             timeout: None,
             state: None,
             session_id: None,

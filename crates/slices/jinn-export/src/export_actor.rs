@@ -495,10 +495,16 @@ mod bus_tests {
             path: dir.path().join("out.html"),
         };
         harness.publish(msg).await;
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
-        // Then the chat carries a notice naming the written file.
-        let pushed: Vec<String> = rec.drain().into_iter().map(|e| e.entry.text()).collect();
+        // Then the chat carries a notice naming the written file. The wait
+        // is on the notice itself — the recorder proves the export was
+        // processed, and a fixed sleep would only guess at it.
+        let pushed =
+            jinn_testutil::wait::wait_for_messages(&rec, 1, std::time::Duration::from_secs(5))
+                .await
+                .into_iter()
+                .map(|e| e.entry.text())
+                .collect::<Vec<String>>();
         assert_eq!(pushed, vec!["Exported to out.html".to_owned()]);
 
         // Then the file appears (eventually) on disk.
@@ -527,10 +533,17 @@ mod bus_tests {
                 path: dir.path().join("chat.txt"),
             })
             .await;
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
-        // Then the chat carries an error naming the missing exporter.
-        let pushed: Vec<String> = rec.drain().into_iter().map(|e| e.entry.text()).collect();
+        // Then the chat carries an error naming the missing exporter. The
+        // wait is on the recorder — a fixed sleep would only guess at when
+        // the actor's reply was dispatched, and the read could land
+        // before it, leaving the assertion to pass on an empty recorder.
+        let pushed =
+            jinn_testutil::wait::wait_for_messages(&rec, 1, std::time::Duration::from_secs(5))
+                .await
+                .into_iter()
+                .map(|e| e.entry.text())
+                .collect::<Vec<String>>();
         assert_eq!(pushed.len(), 1, "expected one error, got {pushed:?}");
         assert!(
             pushed
@@ -557,10 +570,17 @@ mod bus_tests {
                 path: dir.path().join("out.html"),
             })
             .await;
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
-        // Then the chat says so rather than staying silent.
-        let pushed: Vec<String> = rec.drain().into_iter().map(|e| e.entry.text()).collect();
+        // Then the chat says so rather than staying silent. The wait is on
+        // the recorder — a fixed sleep would only guess at when the actor's
+        // reply was dispatched, and the read could land before it, leaving
+        // the assertion to pass on an empty recorder.
+        let pushed =
+            jinn_testutil::wait::wait_for_messages(&rec, 1, std::time::Duration::from_secs(5))
+                .await
+                .into_iter()
+                .map(|e| e.entry.text())
+                .collect::<Vec<String>>();
         assert_eq!(pushed.len(), 1, "expected one error, got {pushed:?}");
         assert!(
             pushed

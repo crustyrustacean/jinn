@@ -123,12 +123,19 @@ async fn trigger_does_not_cancel_the_attendants_descendants() {
             outcome: TurnOutcome::Succeeded,
         })
         .await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
 
     // Then nothing is cancelled. A trigger does not know which descendant
     // the user would want stopped, so stopping the subtree is reserved for
     // the manual `R`, where the user has said "start over".
-    let cancels = canceled.drain();
+    // The cancel recorder must have stopped changing before "no cancel
+    // was published" is an observation rather than a race with a publish
+    // that is still in flight.
+    let cancels = jinn_testutil::wait::await_settled_messages(
+        &canceled,
+        Duration::from_millis(200),
+        Duration::from_secs(5),
+    )
+    .await;
     assert!(
         cancels.is_empty(),
         "the trigger must not cascade a cancel, got {cancels:?}"

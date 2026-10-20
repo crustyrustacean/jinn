@@ -260,8 +260,11 @@ mod tests {
     #[rstest::rstest]
     fn missing_directory_yields_empty_set() {
         // Given a directory that does not exist.
+        let root = jinn_testutil::tempdir().expect("tmpdir");
+        let missing = root.path().join("nonexistent-personas");
+
         // When scanning it for personas.
-        let personas = scan(Path::new("/nonexistent-personas"));
+        let personas = scan(&missing);
 
         // Then the set is empty.
         assert!(personas.is_empty());

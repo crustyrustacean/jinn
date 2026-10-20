@@ -207,16 +207,20 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn expand_jinn_token_replaces_program_and_args() {
-        // Given a program name and an arg both carrying the <jinn> token.
-        let exe = std::path::Path::new("/opt/jinn/bin/jinn");
+        // Given an absolute executable path and a program name and an arg
+        // both carrying the <jinn> token.
+        let root = jinn_testutil::paths::TestRoot::new().expect("test root");
+        let exe = root.join_str("bin/jinn").expect("executable path");
+        let exe_path: &std::path::Path = exe.as_ref();
+        let exe_str = exe_path.to_string_lossy().into_owned();
 
         // When expanding.
-        let program = expand_jinn_token("<jinn>", exe);
-        let arg = expand_jinn_token("mcp overgraph --parent <jinn>", exe);
+        let program = expand_jinn_token("<jinn>", exe_path);
+        let arg = expand_jinn_token("mcp overgraph --parent <jinn>", exe_path);
 
         // Then every occurrence becomes the executable path.
-        assert_eq!(program, "/opt/jinn/bin/jinn");
-        assert_eq!(arg, "mcp overgraph --parent /opt/jinn/bin/jinn");
+        assert_eq!(program, exe_str);
+        assert_eq!(arg, format!("mcp overgraph --parent {exe_str}"));
     }
 
     #[rstest::rstest]
@@ -224,7 +228,7 @@ mod tests {
     fn expand_jinn_token_passes_through_without_token() {
         // Given a value with no token.
         // When expanding.
-        let out = expand_jinn_token("npx", std::path::Path::new("/usr/bin/jinn"));
+        let out = expand_jinn_token("npx", std::path::Path::new("jinn"));
 
         // Then the value passes through unchanged.
         assert_eq!(out, "npx");
@@ -234,10 +238,15 @@ mod tests {
     #[test]
     fn expand_jinn_token_handles_multiple_occurrences_in_one_value() {
         // Given one value naming jinn twice.
+        let root = jinn_testutil::paths::TestRoot::new().expect("test root");
+        let exe = root.join_str("jinn").expect("executable path");
+        let exe_path: &std::path::Path = exe.as_ref();
+        let exe_str = exe_path.to_string_lossy().into_owned();
+
         // When expanding.
-        let out = expand_jinn_token("<jinn> --jinn <jinn>", std::path::Path::new("/j/jinn"));
+        let out = expand_jinn_token("<jinn> --jinn <jinn>", exe_path);
 
         // Then both occurrences are replaced.
-        assert_eq!(out, "/j/jinn --jinn /j/jinn");
+        assert_eq!(out, format!("{exe_str} --jinn {exe_str}"));
     }
 }

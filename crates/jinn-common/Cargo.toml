@@ -11,6 +11,9 @@ error-stack = { workspace = true }
 dirs = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# The shell resolver normalizes a configured path's separators through
+# marked-path, so the workspace has one implementation of that rewrite.
+marked-path = { workspace = true }
 # Not unix-only: `process_kill::kill_process_tree` takes a
 # `&mut tokio::process::Child` on every platform, and the Windows branch of
 # `kill_process_group_by_pid` logs through `tracing`.

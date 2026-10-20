@@ -134,7 +134,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
     /// A context whose cwd is a real, existing scratch directory owned by the
     /// calling test.
@@ -142,6 +142,7 @@ mod tests {
         ToolContext {
             cwd: cwd.to_owned(),
             config: jinn_config::testutil::config_layer(""),
+            shells: Default::default(),
             timeout: None,
             state: None,
             session_id: None,
@@ -295,6 +296,7 @@ mod tests {
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
             config: jinn_config::testutil::config_layer(""),
+            shells: Default::default(),
             timeout: None,
             state: None,
             session_id: None,
@@ -845,6 +847,7 @@ mod tests {
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
             config: jinn_config::testutil::config_layer(""),
+            shells: Default::default(),
             timeout: None,
             state: None,
             session_id: None,
@@ -885,13 +888,16 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_writes_absolute_path() {
-        // Given a temp directory with an absolute path.
+        // Given a temp directory with an absolute path, and a different
+        // directory as the CWD.
         let dir = jinn_testutil::tempdir().expect("create temp dir");
         let file_path = dir.path().join("absolute.txt");
+        let other = jinn_testutil::tempdir().expect("create temp dir");
 
         let ctx = ToolContext {
-            cwd: PathBuf::from("/completely/different/cwd"),
+            cwd: other.path().to_path_buf(),
             config: jinn_config::testutil::config_layer(""),
+            shells: Default::default(),
             timeout: None,
             state: None,
             session_id: None,

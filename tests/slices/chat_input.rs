@@ -4913,7 +4913,7 @@ async fn actor_drops_stale_reply_when_request_id_mismatches() {
     // Given a temp dir with one file.
     let dir = make_temp_dir(&[("stale.txt", false)]);
     let (harness, state, deps) = create_harness().await;
-    let _actor = spawn_actor(&deps, &state).await;
+    let actor_path = spawn_actor(&deps, &state).await;
 
     // The expected id is 5, but we send a request with id 1 (stale).
     state.with_file_picker(|picker| {
@@ -4930,8 +4930,17 @@ async fn actor_drops_stale_reply_when_request_id_mismatches() {
         })
         .await;
 
-    // The actor processes the stale request but does NOT clear loading.
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    // And the actor has drained that request from its inbox. A fixed sleep
+    // would only guess at when the handler ran: on a loaded host the
+    // assertion below could execute before the actor was scheduled at all,
+    // so the "the stale reply was dropped" claim would hold for the wrong
+    // reason. An empty inbox proves the handler has finished.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor_path,
+        std::time::Duration::from_secs(5),
+    )
+    .await;
 
     // Then the stale reply is dropped: entries stay empty, loading unchanged.
     let entries = file_picker_entries(&state.read());
@@ -5272,11 +5281,24 @@ async fn seed_mode_submission_leaves_the_entry_pinned_in_the_session() {
     for closure in result.messages {
         closure(&harness.bus());
     }
-    // Given the session actor a moment to drain the two messages.
-    tokio::time::sleep(std::time::Duration::from_millis(600)).await;
 
     // Then the entry is in the attendant's history, pinned. Unpinned, it
     // would be dropped from the very context the mode exists to preserve.
+    //
+    // The wait is on the history itself — a fixed sleep would only guess
+    // at when the session actor drained the two messages, and the read
+    // could land before it, leaving the assertion to fail on a history
+    // that has not received the entry yet.
+    jinn_testutil::wait::wait_for(std::time::Duration::from_secs(5), || {
+        let guard = state.read();
+        guard.session.get(&session_id).is_some_and(|session| {
+            session
+                .history()
+                .iter()
+                .any(|e| e.text() == "judge this repo")
+        })
+    })
+    .await;
     let guard = state.read();
     let session = guard.session.get(&session_id).expect("attendant");
     let entry = session

@@ -266,11 +266,11 @@ mod tests {
     /// Builds a [`Destinations`] rooted at five distinct temp dirs. The
     /// returned temps must outlive the destinations.
     fn fresh_destinations() -> (Destinations, Vec<TempDir>) {
-        let themes = TempDir::new().unwrap();
-        let personas = TempDir::new().unwrap();
-        let prompts = TempDir::new().unwrap();
-        let workflows = TempDir::new().unwrap();
-        let skills = TempDir::new().unwrap();
+        let themes = jinn_testutil::tempdir().unwrap();
+        let personas = jinn_testutil::tempdir().unwrap();
+        let prompts = jinn_testutil::tempdir().unwrap();
+        let workflows = jinn_testutil::tempdir().unwrap();
+        let skills = jinn_testutil::tempdir().unwrap();
         let destinations = Destinations::new(
             themes.path().to_path_buf(),
             personas.path().to_path_buf(),
@@ -295,7 +295,7 @@ mod tests {
     impl TestEnv {
         fn fresh() -> Self {
             let (destinations, mut temps) = fresh_destinations();
-            let prefs_dir = TempDir::new().unwrap();
+            let prefs_dir = jinn_testutil::tempdir().unwrap();
             let prefs_path = prefs_dir.path().join("jinn.toml");
             temps.push(prefs_dir);
             Self {
@@ -365,12 +365,12 @@ mod tests {
     #[test]
     fn install_creates_parent_dirs_when_missing() {
         // Given destinations whose root dirs do not exist at all.
-        let themes = TempDir::new().unwrap();
-        let personas = TempDir::new().unwrap();
-        let prompts = TempDir::new().unwrap();
-        let workflows = TempDir::new().unwrap();
-        let skills = TempDir::new().unwrap();
-        let prefs_dir = TempDir::new().unwrap();
+        let themes = jinn_testutil::tempdir().unwrap();
+        let personas = jinn_testutil::tempdir().unwrap();
+        let prompts = jinn_testutil::tempdir().unwrap();
+        let workflows = jinn_testutil::tempdir().unwrap();
+        let skills = jinn_testutil::tempdir().unwrap();
+        let prefs_dir = jinn_testutil::tempdir().unwrap();
         // Non-existent subdirs under each temp root.
         let destinations = Destinations::new(
             themes.path().join("themes"),

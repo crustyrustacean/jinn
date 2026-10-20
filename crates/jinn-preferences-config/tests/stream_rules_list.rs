@@ -33,7 +33,7 @@ fn layer_for(path: &std::path::Path) -> ConfigLayer {
 
 /// A layer over a document the test just wrote, plus the path to re-read.
 fn layer_over(body: &str) -> (ConfigLayer, std::path::PathBuf, TempDir) {
-    let dir = TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let path = dir.path().join(PREFS_FILE_NAME);
     std::fs::write(&path, body).expect("write");
     (layer_for(&path), path, dir)

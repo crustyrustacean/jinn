@@ -1,12 +1,41 @@
 //! Shared test utilities for jinn TUI rendering tests, actor-fabric
 //! harnesses, and temp-directory creation.
+//!
+//! The modules here are the *sanctioned* surface for the questions a test
+//! asks about the platform:
+//!
+//! - [`temp`] — every scratch directory is created through these wrappers, so
+//!   it carries the `jinn-test-` prefix and a crashed run leaves greppable
+//!   residue.
+//! - [`paths`] — typed path construction, so a test cannot build a
+//!   drive-relative or mixed-separator path.
+//! - [`platform`] — shell resolution, process liveness, and orphan scanning,
+//!   with the platform differences handled in one place.
+//! - [`wait`] — deterministic waits, so a test does not sleep for a fixed
+//!   interval and hope.
 
+pub mod barrier;
 pub mod bus_harness;
+pub mod paths;
+pub mod platform;
 pub mod temp;
+pub mod wait;
 
+pub use barrier::{Barrier, BarrierAck, DEFAULT_BARRIER_TIMEOUT};
+pub use paths::{TestRoot, canonicalize_display, strip_verbatim_prefix};
+pub use platform::{find_orphans, is_alive, shell_or_skip};
 pub use temp::{
     TEST_PREFIX, TestTempBuilder, builder, retained_tempdir, tempdir, tempdir_in,
     tempdir_with_prefix,
+};
+pub use wait::{await_completion_then_assert_absent, poll_until, read_normalized};
+
+// The typed path surface is re-exported so a test crate depends on
+// `jinn-testutil` — which it already does — rather than on `marked-path`
+// directly. One dependency means one version, so the types compose across
+// crate boundaries instead of failing to unify.
+pub use marked_path::{
+    Absolute, CanonicalPath, MarkedPath, MarkedPathAccess, MarkedPathBuf, PathError, Relative,
 };
 
 use ratatui::Terminal;

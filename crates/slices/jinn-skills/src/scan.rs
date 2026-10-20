@@ -131,6 +131,15 @@ mod tests {
     use super::*;
     use std::fs;
 
+    /// Returns the path of a directory that does not exist.
+    ///
+    /// The path is built under a fresh temp root and the name is never
+    /// created, so it names nothing on disk on any platform.
+    fn missing_dir(name: &str) -> std::path::PathBuf {
+        let root = jinn_testutil::paths::TestRoot::new().expect("test root");
+        root.join_str(name).expect("relative path").into_inner()
+    }
+
     #[rstest::rstest]
     fn scan_skills_finds_valid_skill() {
         // Given a temp directory with a valid skill.
@@ -230,10 +239,10 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_returns_empty_for_nonexistent_dir() {
         // Given a nonexistent directory.
-        let dir = Path::new("/nonexistent/path");
+        let dir = missing_dir("path");
 
         // When scanning for skills.
-        let skills = scan_skills(dir);
+        let skills = scan_skills(&dir);
 
         // Then no skills are found.
         assert_eq!(skills, [] as [jinn_skills_msg::Skill; 0]);
@@ -317,7 +326,7 @@ mod tests {
         .expect("write SKILL.md");
 
         // When merging with no project dirs.
-        let skills = scan_skills_merged(Path::new("/nonexistent/system"), global.path(), &[]);
+        let skills = scan_skills_merged(&missing_dir("system"), global.path(), &[]);
 
         // Then the global skill is present with Global source.
         assert_eq!(skills.len(), 1);
@@ -349,7 +358,7 @@ mod tests {
 
         // When merging with the project dir.
         let skills = scan_skills_merged(
-            Path::new("/nonexistent/system"),
+            &missing_dir("system"),
             global.path(),
             &[project.path().join(".agents").join("skills")],
         );
@@ -388,8 +397,8 @@ mod tests {
 
         // When merging with ancestor first (least-local), local last (most-local).
         let skills = scan_skills_merged(
-            Path::new("/nonexistent/system"),
-            Path::new("/nonexistent/global"),
+            &missing_dir("system"),
+            &missing_dir("global"),
             &[
                 ancestor.path().join(".agents").join("skills"),
                 local.path().join(".agents").join("skills"),
@@ -421,7 +430,7 @@ mod tests {
         .expect("write SKILL.md");
 
         // When merging with nonexistent global and no project dirs.
-        let skills = scan_skills_merged(system.path(), Path::new("/nonexistent/global"), &[]);
+        let skills = scan_skills_merged(system.path(), &missing_dir("global"), &[]);
 
         // Then the system skill is found with Global source.
         assert_eq!(skills.len(), 1);

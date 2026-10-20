@@ -254,7 +254,16 @@ async fn cancel_then_racing_dispatch_leaves_phase_idle() {
     // ...and the racing dispatch arrives after the settle — the
     // "resume queued before the cancel" shape arriving late.
     publish_racing_dispatch(&app, &session_id).await;
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // The phase is the observable here, so wait for it to stop changing.
+    // A fixed sleep would pass on a slow host simply because the racing
+    // dispatch had not been processed yet — the opposite of what this test
+    // claims.
+    jinn_testutil::wait::await_value_settled(
+        Duration::from_millis(200),
+        Duration::from_secs(10),
+        || phase_of(&app, &session_id),
+    )
+    .await;
     assert!(
         !is_streaming(&app, &session_id),
         "a dispatch racing a cancel must not re-enter Streaming"
@@ -287,8 +296,15 @@ async fn cancel_then_racing_dispatch_publishes_no_provider_request() {
     publish_racing_dispatch(&app, &session_id).await;
 
     // Then no provider request is published for the racing dispatch.
-    // The grace window gives the queue actor every chance to publish.
-    tokio::time::sleep(Duration::from_millis(1_000)).await;
+    // The wait gives the queue actor every chance to publish — and the
+    // recorder must have stopped changing first, so "no request" means
+    // "no request will come" rather than "no request has arrived yet".
+    jinn_testutil::wait::await_settled(
+        &recorder,
+        Duration::from_millis(300),
+        Duration::from_secs(10),
+    )
+    .await;
     let racing_requests: Vec<SendToLlmProvider> = recorder.drain();
     assert!(
         racing_requests.is_empty(),
@@ -322,7 +338,23 @@ async fn cancel_then_racing_dispatch_arms_no_stall_timer() {
     publish_racing_dispatch(&app, &session_id).await;
 
     // Then no stall-retry marker ever lands in the history.
-    tokio::time::sleep(Duration::from_secs(4)).await;
+    // The stall window is one second, so the wait must outlast it: the
+    // history must have stopped changing for longer than the watchdog
+    // would take to fire.
+    jinn_testutil::wait::await_value_settled(
+        Duration::from_millis(500),
+        Duration::from_secs(10),
+        || {
+            app.core
+                .state
+                .read()
+                .session
+                .get(&session_id)
+                .map(|s| s.history().len())
+                .unwrap_or_default()
+        },
+    )
+    .await;
     let stalled = app
         .core
         .state
@@ -364,7 +396,15 @@ async fn user_message_after_cancel_dispatches_exactly_one_turn() {
     let settled = wait_until_phase(&app, &session_id, PhaseKind::Idle).await;
     assert!(settled, "cancel must settle the session to Idle");
     publish_racing_dispatch(&app, &session_id).await;
-    tokio::time::sleep(Duration::from_millis(1_000)).await;
+    // The recorder must have stopped changing before it is drained, so
+    // the drain captures every request the race produced rather than
+    // whatever had arrived at the moment of the drain.
+    jinn_testutil::wait::await_settled(
+        &recorder,
+        Duration::from_millis(300),
+        Duration::from_secs(10),
+    )
+    .await;
     recorder.drain();
 
     // When the user sends a message.
@@ -386,7 +426,15 @@ async fn user_message_after_cancel_dispatches_exactly_one_turn() {
         "the user's next message must dispatch exactly one turn; got {}",
         arrived.len()
     );
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // No second turn may start behind the user's message: the recorder
+    // must have stopped changing first, so "no second turn" means "no
+    // second turn will come" rather than "none has arrived yet".
+    jinn_testutil::wait::await_settled(
+        &recorder,
+        Duration::from_millis(300),
+        Duration::from_secs(10),
+    )
+    .await;
     let total = arrived.len() + recorder.drain().len();
     assert_eq!(
         total, 1,
@@ -437,7 +485,14 @@ async fn stream_token_after_cancel_does_not_reach_streaming() {
 
     // Then the phase must not be `Streaming`: a token with no live
     // generation behind it may not arm the phase.
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // The phase must have stopped changing first, so "not Streaming" is
+    // an observation rather than a race with the actor.
+    jinn_testutil::wait::await_value_settled(
+        Duration::from_millis(200),
+        Duration::from_secs(10),
+        || phase_of(&app, &session_id),
+    )
+    .await;
     assert!(
         !is_streaming(&app, &session_id),
         "a token with no live generation must not arm the phase to Streaming"

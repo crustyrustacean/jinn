@@ -352,12 +352,20 @@ async fn liveness_probe_flips_when_killer_drops_across_task_boundary() {
     let closed_flag = Arc::new(AtomicBool::new(false));
     let flag_clone = closed_flag.clone();
     let watch = tokio::spawn(async move {
+        // The poll runs until the close is seen; the outer timeout bounds the
+        // test, but the loop itself carries its own deadline so a probe that
+        // never flips cannot spin forever if the timeout is removed.
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
         loop {
             tokio::time::sleep(Duration::from_millis(50)).await;
             if probe_for_task.is_transport_closed() {
                 flag_clone.store(true, Ordering::SeqCst);
                 break;
             }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "the probe never reported the transport closed"
+            );
         }
     });
 
@@ -380,12 +388,21 @@ async fn killer_variant_stays_alive_until_dropped() {
 
     // When holding the killer and polling the client over a short window.
     // Then it stays alive (transport open) for a while without dropping the killer.
-    for i in 0..20 {
-        tokio::time::sleep(Duration::from_millis(50)).await;
+    //
+    // The window is a real duration, so the clock has to move for the check
+    // to mean anything — a signal cannot substitute here. The loop asserts
+    // the transport is still open on every tick, so a close at any point in
+    // the window fails the test rather than being missed.
+    let window = Duration::from_secs(1);
+    let deadline = tokio::time::Instant::now() + window;
+    let mut ticks = 0;
+    while tokio::time::Instant::now() < deadline {
+        ticks += 1;
         assert!(
             !client.is_transport_closed(),
-            "client closed unexpectedly at tick {i} before killer dropped"
+            "client closed unexpectedly at tick {ticks} before killer dropped"
         );
+        tokio::time::sleep(Duration::from_millis(50)).await;
     }
 
     // And can still call a tool.

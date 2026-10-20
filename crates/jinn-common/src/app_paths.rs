@@ -82,6 +82,14 @@ pub struct AppPaths {
 /// there too, keeping one behavior across platforms.
 pub const PATHS_ROOT_ENV: &str = "JINN_PATHS_ROOT";
 
+/// The system-wide data directory of the platform layout.
+///
+/// The platform layout installs jinn's shipped defaults (themes, personas,
+/// prompts, skills) here; the [`PATHS_ROOT_ENV`] override layout puts them
+/// under the override root instead. Named once so the production default
+/// and the tests that assert it name the same location.
+const SYSTEM_DATA_DIR: &str = "/usr/share/jinn";
+
 impl Default for AppPaths {
     fn default() -> Self {
         match std::env::var_os(PATHS_ROOT_ENV) {
@@ -102,7 +110,7 @@ impl AppPaths {
                 .or_else(dirs::data_dir)
                 .unwrap_or_else(|| PathBuf::from(".")),
             home_dir: dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")),
-            system_data_dir: PathBuf::from("/usr/share/jinn"),
+            system_data_dir: PathBuf::from(SYSTEM_DATA_DIR),
         }
     }
 
@@ -523,7 +531,7 @@ mod tests {
 
         // Then the system data dir keeps its platform default (the marker
         // that distinguishes the platform layout from the override layout).
-        assert_eq!(paths.system_data_dir(), Path::new("/usr/share/jinn"));
+        assert_eq!(paths.system_data_dir(), Path::new(SYSTEM_DATA_DIR));
     }
 
     /// Guard that clears [`PATHS_ROOT_ENV`] for its lifetime, restoring on
@@ -707,7 +715,7 @@ mod tests {
         let system_data_dir = paths.system_data_dir();
 
         // Then it is /usr/share/jinn.
-        assert_eq!(system_data_dir, Path::new("/usr/share/jinn"));
+        assert_eq!(system_data_dir, Path::new(SYSTEM_DATA_DIR));
     }
 
     #[rstest::rstest]
@@ -769,7 +777,7 @@ mod tests {
         let system_skills_dir = paths.system_skills_dir();
 
         // Then it is /usr/share/jinn/skills.
-        assert_eq!(system_skills_dir, Path::new("/usr/share/jinn/skills"));
+        assert_eq!(system_skills_dir, Path::new(SYSTEM_DATA_DIR).join("skills"));
     }
 
     #[rstest::rstest]

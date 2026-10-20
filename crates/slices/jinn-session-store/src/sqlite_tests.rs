@@ -23,7 +23,7 @@ fn make_session(id: &SessionId, title: &str) -> ChatSessionState {
 }
 
 async fn make_store() -> (TempDir, SqliteSessionStore) {
-    let dir = TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
     (dir, store)
 }
@@ -480,7 +480,7 @@ async fn load_summaries_returns_empty_when_no_sessions() {
 #[tokio::test]
 async fn save_creates_directory() {
     // Given a SqliteSessionStore pointed at a non-existent directory.
-    let dir = TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let nested = dir.path().join("does").join("not").join("exist");
     let store = SqliteSessionStore::new_in(&nested).await.expect("store");
     let session = make_session(&SessionId::new(), "Mkdir Test");
@@ -1676,7 +1676,7 @@ fn legacy_automated_blob() -> String {
 #[tokio::test]
 async fn legacy_automated_row_loads_as_normal_session() {
     // Given a database holding a session row flagged is_automated = 1.
-    let dir = TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let db_path = dir.path().join("sessions.db");
     seed_at_version(db_path.to_string_lossy().as_ref(), 18, |conn| {
         conn.execute(
@@ -1714,7 +1714,7 @@ async fn legacy_automated_row_loads_as_normal_session() {
 async fn legacy_065_blob_loads_after_v19() {
     // Given a 0.65 database (recorded at v18) with a legacy-shape metadata blob.
     // v19 has not yet run, so profile.model is still a bare string.
-    let dir = TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let db_path = dir.path().join("sessions.db");
     seed_at_version(db_path.to_string_lossy().as_ref(), 18, |conn| {
         conn.execute(
@@ -1754,7 +1754,7 @@ const CURRENT_066_BLOB: &str = "{\"session_id\":\"10000000-0000-0000-0000-000000
 #[tokio::test]
 async fn current_066_blob_loads_unchanged() {
     // Given a fresh database with a 0.66-shape blob inserted directly.
-    let dir = TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let db_path = dir.path().join("sessions.db");
     seed_at_version(db_path.to_string_lossy().as_ref(), 18, |conn| {
         conn.execute(
@@ -1843,7 +1843,7 @@ fn metadata_blob_is_unchanged_by_group_composition() {
 async fn legacy_pre_v8_row_loads_after_v20_backfill() {
     // Given a fresh database at v18 with a session row whose metadata is NULL
     // (pre-v8 shape). The profile column carries the post-v17 form.
-    let dir = TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let db_path = dir.path().join("sessions.db");
     seed_at_version(db_path.to_string_lossy().as_ref(), 18, |conn| {
         conn.execute(

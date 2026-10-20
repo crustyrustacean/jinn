@@ -421,8 +421,10 @@ mod tests {
             handles.push(tokio::spawn(async move {
                 cache.get_or_insert_with(&s, &e, move || {
                     calls.fetch_add(1, Ordering::SeqCst);
-                    // Widen the race window so concurrent callers actually
-                    // contend on the shard guard.
+                    // wall-clock-under-test: the closure's duration IS the
+                    // contention window this test is about — widening it is
+                    // what makes the concurrent callers actually contend on
+                    // the shard guard. A signal cannot substitute here.
                     std::thread::sleep(Duration::from_millis(5));
                     777
                 })

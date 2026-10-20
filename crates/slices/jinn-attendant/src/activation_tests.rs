@@ -324,7 +324,7 @@ async fn prep_mode_makes_the_trigger_inert_end_to_end() {
         s.session.insert(attendant);
         id
     };
-    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+    let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
         harness.system(),
         crate::trigger_actor::AttendantTriggerActorDeps {
             services: harness.services().await,
@@ -339,7 +339,17 @@ async fn prep_mode_makes_the_trigger_inert_end_to_end() {
             outcome: jinn_session_msg::TurnOutcome::Succeeded,
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // And the trigger actor has drained its inbox — so the completion has
+    // been *processed*, not merely published. Without this barrier the
+    // assertions below would run before the actor was even scheduled, and
+    // would pass whether or not the code was correct.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // Then nothing dispatches and nothing cancels — prep mode is inert, and
     // the trigger that is configured on it is not enough to override it.
@@ -448,7 +458,7 @@ async fn errored_and_canceled_turns_fire_nothing() {
         s.session.insert(attendant);
         id
     };
-    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+    let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
         harness.system(),
         crate::trigger_actor::AttendantTriggerActorDeps {
             services: harness.services().await,
@@ -469,7 +479,16 @@ async fn errored_and_canceled_turns_fire_nothing() {
             outcome: jinn_session_msg::TurnOutcome::Canceled,
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    // The trigger actor has drained its inbox, so the completion above has
+    // been *processed* — not merely published. Without this barrier the
+    // assertion below could run before the actor was even scheduled, and
+    // would pass whether or not the code was correct.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // Then nothing dispatches — only success is worth verifying against.
     assert!(
@@ -496,7 +515,7 @@ async fn an_attendant_created_after_the_parent_completed_never_fires_retroactive
         s.session.insert(parent);
         id
     };
-    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+    let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
         harness.system(),
         crate::trigger_actor::AttendantTriggerActorDeps {
             services: harness.services().await,
@@ -507,7 +526,16 @@ async fn an_attendant_created_after_the_parent_completed_never_fires_retroactive
     // When the parent's completion is published (nothing was listening for
     // this attendant — it does not exist yet), and only *then* is the
     // attendant created with a fired trigger.
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    //
+    // The barrier is the point of the test: the completion must be
+    // *processed* before the attendant exists, or the "never fires
+    // retroactively" claim is untested.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
     {
         let mut s = state.write();
         let parent_read = s
@@ -524,7 +552,16 @@ async fn an_attendant_created_after_the_parent_completed_never_fires_retroactive
 
     // Then no dispatch ever happens: the trigger query only runs on a live
     // `TurnCompleted`, never against the session map's current shape.
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    // The trigger actor has drained its inbox, so the completion above has
+    // been *processed* — not merely published. Without this barrier the
+    // assertion below could run before the actor was even scheduled, and
+    // would pass whether or not the code was correct.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
     let dispatches = dispatched.drain();
     assert!(
         dispatches.is_empty(),
@@ -611,7 +648,7 @@ async fn manual_trigger_attendant_does_not_fire_on_parent_completion() {
         s.session.insert(attendant);
         id
     };
-    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+    let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
         harness.system(),
         crate::trigger_actor::AttendantTriggerActorDeps {
             services: harness.services().await,
@@ -626,7 +663,16 @@ async fn manual_trigger_attendant_does_not_fire_on_parent_completion() {
             outcome: jinn_session_msg::TurnOutcome::Succeeded,
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    // The trigger actor has drained its inbox, so the completion above has
+    // been *processed* — not merely published. Without this barrier the
+    // assertion below could run before the actor was even scheduled, and
+    // would pass whether or not the code was correct.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // Then nothing dispatches — the attendant only runs when asked.
     assert!(dispatched.is_empty());
@@ -731,7 +777,7 @@ async fn an_attendant_nested_under_another_attendant_does_not_fire_from_the_pare
         s.session.insert(nested);
         (root_id, nested_id)
     };
-    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+    let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
         harness.system(),
         crate::trigger_actor::AttendantTriggerActorDeps {
             services: harness.services().await,
@@ -746,7 +792,16 @@ async fn an_attendant_nested_under_another_attendant_does_not_fire_from_the_pare
             outcome: jinn_session_msg::TurnOutcome::Succeeded,
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    // The trigger actor has drained its inbox, so the completion above has
+    // been *processed* — not merely published. Without this barrier the
+    // assertions below could run before the actor was even scheduled, and
+    // would pass whether or not the code was correct.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // Then the nested attendant fires too. "Everything under this session"
     // is the contract; it is not one hop.
@@ -797,7 +852,7 @@ async fn a_cyclic_parent_link_does_not_hang_the_trigger_walk() {
         }
         (root_id, first_id)
     };
-    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+    let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
         harness.system(),
         crate::trigger_actor::AttendantTriggerActorDeps {
             services: harness.services().await,
@@ -812,7 +867,16 @@ async fn a_cyclic_parent_link_does_not_hang_the_trigger_walk() {
             outcome: jinn_session_msg::TurnOutcome::Succeeded,
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    // The trigger actor has drained its inbox, so the completion above has
+    // been *processed* — not merely published. Without this barrier the
+    // assertions below could run before the actor was even scheduled, and
+    // would pass whether or not the code was correct.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // Then the walk terminated and each attendant fired exactly once. A
     // cycle is a corrupt tree, not a reason to stop serving the rest.
@@ -961,7 +1025,7 @@ async fn a_second_attendant_built_the_way_the_ui_builds_one_still_fires() {
         s.session.insert(second);
         (parent_id, first_id, second_id)
     };
-    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+    let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
         harness.system(),
         crate::trigger_actor::AttendantTriggerActorDeps {
             services: harness.services().await,
@@ -980,7 +1044,16 @@ async fn a_second_attendant_built_the_way_the_ui_builds_one_still_fires() {
         jinn_chat_input_msg::ChatEntrySubmitted,
     >(&landed, 1, std::time::Duration::from_secs(10))
     .await;
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // The trigger actor has drained its inbox, so the completion above has
+    // been *processed* — not merely published. Without this barrier the
+    // assertions below could run before the actor was even scheduled, and
+    // would pass whether or not the code was correct.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // Then the configured attendant fired, and the still-seeded one is
     // reported as *skipped by mode* rather than silently swallowed.
@@ -1035,7 +1108,7 @@ async fn a_trigger_does_not_cancel_an_attendant_that_is_already_running() {
         }
         (id, parent_id)
     };
-    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+    let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
         harness.system(),
         crate::trigger_actor::AttendantTriggerActorDeps {
             services: harness.services().await,
@@ -1051,7 +1124,16 @@ async fn a_trigger_does_not_cancel_an_attendant_that_is_already_running() {
             outcome: jinn_session_msg::TurnOutcome::Succeeded,
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    // The trigger actor has drained its inbox, so the completion above has
+    // been *processed* — not merely published. Without this barrier the
+    // assertions below could run before the actor was even scheduled, and
+    // would pass whether or not the code was correct.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // Then the running turn is untouched. A trigger answers a parent's
     // completion; it is not a user asking for this work to be abandoned, so
@@ -1096,7 +1178,7 @@ async fn a_trigger_on_a_busy_attendant_queues_its_seeded_turn_for_after_the_curr
         }
         (id, parent_id)
     };
-    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+    let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
         harness.system(),
         crate::trigger_actor::AttendantTriggerActorDeps {
             services: harness.services().await,
@@ -1111,7 +1193,16 @@ async fn a_trigger_on_a_busy_attendant_queues_its_seeded_turn_for_after_the_curr
             outcome: jinn_session_msg::TurnOutcome::Succeeded,
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // The trigger actor has drained its inbox, so the completion above has
+    // been *processed* — not merely published. Without this barrier the
+    // assertions below could run before the actor was even scheduled, and
+    // would pass whether or not the code was correct.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // Then the seeded turn is held in the session's queue, not in the input
     // box and not lost. The enqueue handler queues anything arriving while

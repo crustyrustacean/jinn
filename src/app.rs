@@ -156,6 +156,7 @@ impl App {
                     session_pool,
                     config,
                     app_state_storage,
+                    shells,
                 } = services;
                 #[cfg(debug_assertions)]
                 let _db_path = cli.db_path_opt().cloned();
@@ -189,6 +190,7 @@ impl App {
                                         session_store: session_store.clone(),
                                         config: config.clone(),
                                         app_state_storage: app_state_storage.clone(),
+                                        shells: shells.clone(),
                                         paths: jinn_kernel::AppPaths::default(),
                                         dump_requests: cli.dump_requests.clone(),
                                         compaction_prompt,
@@ -237,6 +239,7 @@ impl App {
                                         session_store,
                                         config: config.clone(),
                                         app_state_storage,
+                                        shells,
                                         paths: jinn_kernel::AppPaths::default(),
                                         dump_requests: cli.dump_requests.clone(),
                                         compaction_prompt,
@@ -405,7 +408,6 @@ async fn fetch_models_from_url(
 mod tests {
     use jinn_kernel::{AppState, State};
     use jinn_tui::{load_compaction_prompt, load_theme};
-    use std::path::{Path, PathBuf};
     use std::sync::Arc;
 
     use crate::config_path::{config_init_target, resolve_config_path};
@@ -427,15 +429,16 @@ mod tests {
 
     #[rstest::rstest]
     fn load_compaction_prompt_populates_state() {
-        // Given a user dir with a compaction prompt file.
+        // Given a user dir with a compaction prompt file, and an empty
+        // system dir.
         let dir = jinn_testutil::tempdir().expect("temp dir");
         std::fs::write(dir.path().join("_compaction.md"), "test compaction prompt")
             .expect("write compaction prompt");
 
-        let empty = PathBuf::from("/nonexistent");
+        let empty = jinn_testutil::tempdir().expect("temp dir");
 
         // When loading the compaction prompt.
-        let prompt = load_compaction_prompt(dir.path(), &empty).expect("load");
+        let prompt = load_compaction_prompt(dir.path(), empty.path()).expect("load");
 
         // Then the loader returns the prompt text.
         assert_eq!(prompt, "test compaction prompt");
@@ -476,8 +479,8 @@ mod tests {
         let initial_focus = state.read().frontend.theme.focus_accent;
 
         // When loading the theme.
-        let empty = PathBuf::from("/nonexistent");
-        load_theme(&state, dir.path(), &empty);
+        let empty = jinn_testutil::tempdir().expect("temp dir");
+        load_theme(&state, dir.path(), empty.path());
 
         // Then the theme in state was updated (focus_accent changed to magenta).
         // This kills: replace load_theme with ().
@@ -490,15 +493,17 @@ mod tests {
 
     #[rstest::rstest]
     fn load_theme_falls_back_gracefully_on_missing() {
-        // Given a state with a theme name that doesn't exist.
+        // Given a state with a theme name that doesn't exist, and empty
+        // user and system dirs.
         let state = State::new(AppState::default());
         state.write().frontend.app_state.theme_name = Some("nonexistent".to_owned());
 
-        let empty = PathBuf::from("/nonexistent");
+        let user = jinn_testutil::tempdir().expect("temp dir");
+        let system = jinn_testutil::tempdir().expect("temp dir");
 
         // When loading the theme (no matching file).
         // Then it should not panic - the function logs a warning and returns.
-        load_theme(&state, &empty, &empty);
+        load_theme(&state, user.path(), system.path());
     }
 
     #[rstest::rstest]
@@ -633,12 +638,14 @@ mod tests {
 
     #[rstest::rstest]
     fn config_init_honors_the_config_override() {
-        // Given a --config path that does not exist yet.
+        // Given a --config path that does not exist yet, and a default
+        // location built from a temp root.
         let dir = jinn_testutil::tempdir().expect("temp dir");
         let override_path = dir.path().join("nested").join("alt.toml");
+        let default = dir.path().join("default").join("jinn.toml");
 
         // When `jinn config init` picks its target.
-        let target = config_init_target(Some(&override_path), Path::new("/default/jinn.toml"));
+        let target = config_init_target(Some(&override_path), &default);
 
         // Then it targets the override, not the default location.
         assert_eq!(target, override_path);
@@ -646,8 +653,9 @@ mod tests {
 
     #[rstest::rstest]
     fn config_init_without_override_targets_the_default_location() {
-        // Given no --config.
-        let default = PathBuf::from("/default/jinn.toml");
+        // Given no --config, and a default location built from a temp root.
+        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let default = dir.path().join("default").join("jinn.toml");
 
         // When `jinn config init` picks its target.
         let target = config_init_target(None, &default);
@@ -658,13 +666,15 @@ mod tests {
 
     #[rstest::rstest]
     fn config_init_override_is_accepted_though_runtime_resolver_rejects_it() {
-        // Given a --config path that does not exist.
+        // Given a --config path that does not exist, and a default location
+        // built from a temp root.
         let dir = jinn_testutil::tempdir().expect("temp dir");
         let override_path = dir.path().join("alt.toml");
+        let default = dir.path().join("default").join("jinn.toml");
 
         // When the two choosers are consulted.
-        let init_target = config_init_target(Some(&override_path), Path::new("/default/jinn.toml"));
-        let runtime = resolve_config_path(Some(&override_path), Path::new("/default/jinn.toml"));
+        let init_target = config_init_target(Some(&override_path), &default);
+        let runtime = resolve_config_path(Some(&override_path), &default);
 
         // Then `config init` still targets the override, since creating the
         // file is its whole job.

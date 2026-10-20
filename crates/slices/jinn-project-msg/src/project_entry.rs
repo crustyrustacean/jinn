@@ -186,13 +186,17 @@ mod tests {
 
     #[rstest::rstest]
     fn project_entries_sorted_by_display() {
-        // Given projects in a non-alphabetical order.
+        // Given projects in a non-alphabetical order. Their paths are
+        // rooted at the platform's own filesystem root, so the display
+        // strings keep the order the paths name without spelling a POSIX
+        // literal.
+        let root = std::path::Path::new(std::path::MAIN_SEPARATOR_STR);
         let projects = vec![
             ProjectConfig {
-                path: std::path::PathBuf::from("/zzz"),
+                path: root.join("zzz").clone(),
             },
             ProjectConfig {
-                path: std::path::PathBuf::from("/aaa"),
+                path: root.join("aaa").clone(),
             },
         ];
 
@@ -200,8 +204,10 @@ mod tests {
         let entries = project_entries(&projects, &default_theme());
 
         // Then they are sorted by display string.
-        assert_eq!(entries[0].display, "/aaa");
-        assert_eq!(entries[1].display, "/zzz");
+        let aaa = root.join("aaa").to_string_lossy().to_string();
+        let zzz = root.join("zzz").to_string_lossy().to_string();
+        assert_eq!(entries[0].display, aaa);
+        assert_eq!(entries[1].display, zzz);
     }
 
     #[rstest::rstest]

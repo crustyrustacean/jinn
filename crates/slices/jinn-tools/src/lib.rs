@@ -45,6 +45,13 @@ pub mod interactive_term_kill;
 pub mod interactive_term_send;
 pub mod lifecycle_completion_listener_actor;
 pub mod load_attendant;
+/// The Windows-native PowerShell tool.
+///
+/// The schema is compiled on every platform so it can be tested
+/// everywhere; the tool itself — its registration and its execution — is
+/// Windows-only, so on Linux and macOS the model never sees a tool it
+/// cannot run.
+pub mod powershell;
 pub mod read;
 pub mod registry;
 pub mod restart_mcp;

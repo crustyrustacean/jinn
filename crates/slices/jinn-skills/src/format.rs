@@ -89,7 +89,12 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use std::path::PathBuf;
+
+    /// The skill file name, as a typed relative path.
+    fn skill_file_name() -> jinn_testutil::MarkedPathBuf<jinn_testutil::Relative> {
+        jinn_testutil::MarkedPathBuf::<jinn_testutil::Relative>::new("SKILL.md")
+            .expect("skill file name")
+    }
 
     fn test_skill(root: &std::path::Path, name: &str, description: &str) -> Skill {
         Skill {
@@ -182,12 +187,17 @@ mod tests {
     #[rstest::rstest]
     fn format_escapes_xml_characters() {
         // Given a skill with special characters.
+        let root = jinn_testutil::paths::TestRoot::new().expect("test root");
+        let base_dir = root.join_str("path/to").expect("base dir");
         let skills = vec![Skill {
             name: "xml-test".to_owned(),
             description: "Has <special> & \"chars\"".to_owned(),
             body: String::new(),
-            file_path: PathBuf::from("/path/to/SKILL.md"),
-            base_dir: PathBuf::from("/path/to"),
+            file_path: base_dir
+                .join_relative(&skill_file_name().as_marked_path())
+                .as_ref()
+                .to_path_buf(),
+            base_dir: base_dir.as_ref().to_path_buf(),
             source: jinn_skills_msg::SkillSource::Global,
         }];
 
@@ -203,22 +213,40 @@ mod tests {
     #[rstest::rstest]
     fn format_escapes_base_dir_special_chars() {
         // Given a skill whose base_dir path contains XML-special characters.
+        let root = jinn_testutil::paths::TestRoot::new().expect("test root");
+        let base_dir = root.join_str("a&b<c>").expect("base dir");
+        let base_dir_str = base_dir.as_ref().to_string_lossy().into_owned();
         let skills = vec![Skill {
             name: "weird-path".to_owned(),
             description: "d".to_owned(),
             body: String::new(),
-            file_path: PathBuf::from("/a&b<c>/SKILL.md"),
-            base_dir: PathBuf::from("/a&b<c>"),
+            file_path: base_dir
+                .join_relative(&skill_file_name().as_marked_path())
+                .as_ref()
+                .to_path_buf(),
+            base_dir: base_dir.as_ref().to_path_buf(),
             source: jinn_skills_msg::SkillSource::Global,
         }];
 
         // When formatting.
         let result = format_skills_for_prompt(&skills, &std::collections::HashSet::new());
 
-        // Then the <base_dir> value is XML-escaped.
+        // Then the <base_dir> value carries the path in its XML-escaped
+        // form: every special character is replaced by its entity.
+        let escaped = base_dir_str
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&apos;");
         assert!(
-            result.contains("<base_dir>/a&amp;b&lt;c&gt;</base_dir>"),
+            result.contains(&format!("<base_dir>{escaped}</base_dir>")),
             "base_dir special chars should be escaped, got: {result}"
+        );
+        // And the raw form never appears.
+        assert!(
+            !result.contains(&base_dir_str),
+            "base_dir must not carry the raw special characters, got: {result}"
         );
     }
 

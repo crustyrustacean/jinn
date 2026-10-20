@@ -124,7 +124,6 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use tempfile::TempDir;
 
     use super::*;
 
@@ -154,7 +153,7 @@ mod tests {
         };
 
         // When serializing and deserializing.
-        let dir = TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("state.toml");
         save_app_state_to(&state, &path).expect("save");
         let reloaded = load_app_state_from(&path).expect("load");
@@ -169,7 +168,7 @@ mod tests {
         let state = AppStateFile::default();
 
         // When serializing and deserializing.
-        let dir = TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("state.toml");
         save_app_state_to(&state, &path).expect("save");
         let reloaded = load_app_state_from(&path).expect("load");
@@ -181,7 +180,7 @@ mod tests {
     #[rstest::rstest]
     fn load_returns_defaults_when_file_missing() {
         // Given a path that does not exist.
-        let dir = TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("nonexistent.toml");
 
         // When loading.
@@ -196,7 +195,7 @@ mod tests {
     #[rstest::rstest]
     fn save_creates_parent_directories() {
         // Given a nested path that doesn't exist.
-        let dir = TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("nested").join("dir").join("state.toml");
 
         // When saving.
@@ -210,7 +209,7 @@ mod tests {
     #[rstest::rstest]
     fn load_legacy_bare_string_last_model() {
         // Given a state file with the old bare-string last_model format.
-        let dir = TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("state.toml");
         std::fs::write(
             &path,
@@ -237,7 +236,7 @@ theme_name = "gruvbox-dark"
     #[rstest::rstest]
     fn legacy_json_without_reasoning_effort_deserializes_to_none() {
         // Given a state file from an older version that lacks reasoning_effort.
-        let dir = TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("state.toml");
         std::fs::write(
             &path,

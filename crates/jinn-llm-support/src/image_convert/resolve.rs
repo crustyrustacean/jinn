@@ -332,8 +332,9 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn missing_file_degrades() {
-        // Given a path to a nonexistent file.
-        let path = PathBuf::from("/nonexistent/x.png");
+        // Given a path to a nonexistent file under a temp root.
+        let tmp = jinn_testutil::tempdir().expect("tmp");
+        let path = tmp.path().join("nonexistent").join("x.png");
         let converter = service(true, false);
 
         // When resolving.
@@ -378,7 +379,7 @@ mod tests {
         let tmp = jinn_testutil::tempdir().expect("tmp");
         let png_path = tmp.path().join("a.png");
         std::fs::write(&png_path, png_bytes()).expect("write");
-        let missing_path = PathBuf::from("/nonexistent/b.png");
+        let missing_path = tmp.path().join("nonexistent").join("b.png");
         let converter = service(true, false);
 
         // When resolving both.

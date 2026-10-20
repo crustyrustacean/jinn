@@ -104,6 +104,7 @@ fn ctx_with_coordinator(
     ToolContext {
         cwd: dir.to_path_buf(),
         config: jinn_config::testutil::config_layer(""),
+        shells: Default::default(),
         timeout: None,
         state: Some(state),
         session_id: Some(session_id),
@@ -181,6 +182,7 @@ async fn execute_fails_when_coordinator_ref_is_none() {
     let ctx = ToolContext {
         cwd: dir.path().to_path_buf(),
         config: jinn_config::testutil::config_layer(""),
+        shells: Default::default(),
         timeout: None,
         state: Some(State::new(AppState::default())),
         session_id: Some(session_id),

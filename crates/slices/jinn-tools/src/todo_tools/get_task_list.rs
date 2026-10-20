@@ -96,6 +96,7 @@ mod tests {
         ToolContext {
             cwd: std::path::PathBuf::from("."),
             config: jinn_config::testutil::config_layer(""),
+            shells: Default::default(),
             timeout: None,
             state,
             session_id,

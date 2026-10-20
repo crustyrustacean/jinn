@@ -297,6 +297,7 @@ mod tests {
     fn test_ctx(cwd: &Path) -> crate::tool_types::ToolContext {
         crate::tool_types::ToolContext {
             config: jinn_config::testutil::config_layer(""),
+            shells: Default::default(),
             cwd: cwd.to_owned(),
             timeout: None,
             state: None,
@@ -400,6 +401,7 @@ mod tests {
         let ctx = crate::tool_types::ToolContext {
             cwd: dir.path().to_owned(),
             config: jinn_config::testutil::config_layer(""),
+            shells: Default::default(),
             timeout: None,
             state: None,
             session_id: None,
@@ -486,6 +488,7 @@ mod tests {
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
             config: jinn_config::testutil::config_layer(""),
+            shells: Default::default(),
             timeout: None,
             state: None,
             session_id: None,
@@ -535,6 +538,7 @@ mod tests {
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
             config: jinn_config::testutil::config_layer(""),
+            shells: Default::default(),
             timeout: None,
             state: None,
             session_id: None,

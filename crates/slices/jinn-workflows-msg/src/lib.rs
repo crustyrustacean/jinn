@@ -74,13 +74,16 @@ mod tests {
 
     #[rstest::rstest]
     fn workflows_loaded_roundtrips_all_fields() {
-        // Given a loaded event carrying one workflow and no error.
+        // Given a loaded event carrying one workflow and no error. The
+        // workflow's directory is built from a temp root, so it is an
+        // absolute path on every platform.
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let event = WorkflowsLoaded {
             session_id: SessionId::new(),
             workflows: vec![Workflow {
                 name: "research-report".to_owned(),
                 description: "Research a topic and deliver a cited brief.".to_owned(),
-                dir: std::path::PathBuf::from("/cfg/workflows/research-report"),
+                dir: root.path().join("workflows").join("research-report"),
             }],
             error: None,
         };

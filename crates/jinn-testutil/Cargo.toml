@@ -7,6 +7,8 @@ edition.workspace = true
 ratatui = { workspace = true }
 trouper = { workspace = true }
 jinn-slices = { workspace = true }
+jinn-common = { workspace = true }
+marked-path = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
@@ -14,6 +16,10 @@ parking_lot = { workspace = true }
 error-stack = { workspace = true }
 tempfile = { workspace = true }
 ctor = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+# The signal-0 existence probe behind `platform::is_alive`.
+libc = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }

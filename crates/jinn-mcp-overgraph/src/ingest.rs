@@ -983,15 +983,17 @@ mod tests {
     #[test]
     fn load_batch_file_names_the_path_when_it_cannot_read() {
         // Given a path no file exists at.
-        let path = std::path::Path::new("/nonexistent/batch.jsonl");
+        let root = jinn_testutil::tempdir().expect("temp dir");
+        let path = root.path().join("nonexistent").join("batch.jsonl");
+        let path_text = path.to_string_lossy().to_string();
 
         // When loading the file.
-        let result = load_batch_file(path);
+        let result = load_batch_file(&path);
 
         // Then the error names the path.
         let err = result.expect_err("missing file must fail");
         assert!(
-            err.message().contains("/nonexistent/batch.jsonl"),
+            err.message().contains(&path_text),
             "error names the path: {}",
             err.message()
         );

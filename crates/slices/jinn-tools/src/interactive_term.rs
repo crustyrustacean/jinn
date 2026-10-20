@@ -377,6 +377,9 @@ mod tests {
             Some(bus),
             ctx,
             Duration::from_secs(10),
+            // wall-clock-under-test: the heartbeat interval is the subject —
+            // the test asserts that heartbeats were published over a span
+            // of real time.
             tokio::time::sleep(Duration::from_millis(2500)),
         )
         .await;
@@ -403,6 +406,8 @@ mod tests {
             Some(bus),
             None,
             Duration::from_secs(10),
+            // wall-clock-under-test: as above — the span over which no
+            // heartbeat should appear is the subject.
             tokio::time::sleep(Duration::from_millis(1500)),
         )
         .await;

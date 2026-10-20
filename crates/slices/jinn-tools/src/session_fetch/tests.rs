@@ -175,6 +175,7 @@ fn ctx_with(
     let ctx = ToolContext {
         cwd: paths_root.to_path_buf(),
         config: jinn_config::testutil::config_layer(""),
+        shells: Default::default(),
         timeout: None,
         state: None,
         session_id: Some(
@@ -391,6 +392,7 @@ async fn no_session_and_no_current_is_an_error() {
     let ctx = ToolContext {
         cwd: dir.path().to_path_buf(),
         config: jinn_config::testutil::config_layer(""),
+        shells: Default::default(),
         timeout: None,
         state: None,
         session_id: None,
@@ -446,6 +448,7 @@ async fn outer_truncated_result_carries_full_content() {
         let ctx = ToolContext {
             cwd: dir.path().to_path_buf(),
             config: jinn_config::testutil::config_layer(""),
+            shells: Default::default(),
             timeout: None,
             state: None,
             session_id: Some(

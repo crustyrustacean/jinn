@@ -47,6 +47,8 @@ pub struct ActorSystemBuilderArgs {
     pub config: jinn_config::ConfigLayer,
     /// App state storage service.
     pub app_state_storage: jinn_preferences_config::AppStateStorageService,
+    /// The shells jinn runs commands through, resolved at launch.
+    pub shells: jinn_common::shell::Shells,
     /// Application paths.
     pub paths: jinn_kernel::AppPaths,
     /// Dump directory for provider request debugging. `None` disables.
@@ -98,6 +100,7 @@ impl ActorSystemBuilder {
             session_store,
             config,
             app_state_storage,
+            shells,
             paths,
             dump_requests,
             compaction_prompt,
@@ -152,6 +155,7 @@ impl ActorSystemBuilder {
             session_store: session_store.clone(),
             config,
             app_state_storage: app_state_storage.clone(),
+            shells: shells.clone(),
             tempdir: None,
             bus,
             bridge: bridge.clone(),
@@ -167,14 +171,12 @@ impl ActorSystemBuilder {
             project_picker: None,
         };
 
-        // The shell is resolved once here, at startup, and carried on the
-        // Ctx rather than resolved again: the environment is a global
-        // namespace and is not consulted outside of program startup.
-        // Lifecycle scripts promise bash semantics, not the user's login
-        // shell — see `jinn_common::shell`.
-        let shell = jinn_common::shell::resolve_shell();
-
-        let mut ctx = crate::bootstrap::Ctx::new(&state, &mut services, compaction_prompt, shell);
+        // The shell was resolved at launch, in `bootstrap::config`, and
+        // rides on the services container from here: the environment is a
+        // global namespace and is not consulted outside of program
+        // startup. Lifecycle scripts promise bash semantics, not the
+        // user's login shell — see `jinn_common::shell`.
+        let mut ctx = crate::bootstrap::Ctx::new(&state, &mut services, compaction_prompt);
         let Activated { boot, discord } = crate::bootstrap::slices::activate_all(&mut ctx).await?;
 
         // The frontend facade resolves the scope-focus and session-map

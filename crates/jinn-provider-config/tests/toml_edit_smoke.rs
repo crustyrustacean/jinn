@@ -71,3 +71,42 @@ fn map_keyed_provider_table_can_be_removed_by_key() {
     // And the deleted provider's table is gone.
     assert!(!output.contains("[providers.deepseek]"));
 }
+
+/// The smoke test survives a CRLF checkout.
+///
+/// There is no `.gitattributes` in this repository, so a contributor on
+/// Windows with `core.autocrlf=true` checks the fixture out with CRLF line
+/// endings, and `include_str!` embeds *those* bytes. The round-trip must
+/// still work: `toml_edit` normalizes the line endings while parsing, and
+/// `str::lines` strips the carriage return, so the comment lines the test
+/// looks for are the same either way.
+///
+/// This test pins that safety so a future change to the fixture handling
+/// cannot reintroduce a Windows-only failure.
+#[rstest::rstest]
+#[test]
+fn round_trip_preserves_comments_with_crlf_line_endings() {
+    // Given the shipped default providers.toml rewritten with CRLF endings.
+    let crlf = FIXTURE.replace('\n', "\r\n");
+
+    // When it is parsed and one field is patched.
+    let mut doc: DocumentMut = crlf.parse().expect("parse crlf fixture");
+    let providers = doc["providers"].as_table_mut().expect("providers table");
+    let openai = providers
+        .get_mut("openai")
+        .and_then(|item| item.as_table_mut())
+        .expect("find openai");
+    openai["api_key_env"] = toml_edit::value("MY_CUSTOM_KEY");
+    let output = doc.to_string();
+
+    // Then every original comment is still present.
+    for original_line in crlf.lines().filter(|l| l.starts_with('#')) {
+        assert!(
+            output.contains(original_line),
+            "expected comment line preserved under CRLF: {original_line:?}"
+        );
+    }
+
+    // And the patch took effect.
+    assert!(output.contains("api_key_env = \"MY_CUSTOM_KEY\""));
+}

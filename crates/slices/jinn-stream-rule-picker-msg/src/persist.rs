@@ -104,10 +104,12 @@ mod tests {
     #[rstest::rstest]
     fn persist_stream_rule_disabled_roundtrips_the_wire_with_its_changes() {
         // Given a persist command naming one session, one path, and two
-        // changes in opposite directions.
+        // changes in opposite directions. The preferences path is built from a
+        // temp root, so it is an absolute path on every platform.
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let command = PersistStreamRuleDisabled {
             session_id: SessionId::new(),
-            preferences_path: PathBuf::from("/prefs/jinn.toml"),
+            preferences_path: root.path().join("jinn.toml"),
             changes: vec![
                 StreamRuleDisabledChange {
                     name: "no-todos".to_owned(),

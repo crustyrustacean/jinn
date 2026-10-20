@@ -845,7 +845,12 @@ mod tests {
         }
 
         fn active_session_cwd(&self) -> std::path::PathBuf {
-            std::path::PathBuf::from("/test/cwd")
+            // Rooted at the platform's own filesystem root, so the double
+            // hands out an absolute path on every platform without naming a
+            // POSIX literal.
+            std::path::PathBuf::from(std::path::MAIN_SEPARATOR_STR)
+                .join("test")
+                .join("cwd")
         }
 
         fn publish_session_cwd(

@@ -338,6 +338,13 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
                 controls: term_controls.clone(),
                 state: ctx.state().clone(),
                 config: ctx.services().config.clone(),
+                // The shell the pty children run through, resolved at
+                // launch and carried on the services container.
+                shell: ctx
+                    .services()
+                    .shells
+                    .bash()
+                    .map_or_else(|_| "bash".to_owned(), |shell| shell.program().to_owned()),
             },
         )
         .await;
@@ -368,7 +375,12 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
     // `jinn_session_store::activate` in Block 1.
     let services_snapshot = ctx.services().clone();
     let state_snapshot = ctx.state().clone();
-    let shell = ctx.shell();
+    // The shell scripted commands run under (bash semantics; see
+    // `jinn_common::shell`), resolved once at launch.
+    let shell = services_snapshot
+        .shells
+        .bash()
+        .map_or_else(|_| "bash".to_owned(), |shell| shell.program().to_owned());
     jinn_session_lifecycle::activate(
         &mut ctx.host(),
         &services_snapshot,

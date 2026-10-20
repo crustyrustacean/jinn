@@ -376,6 +376,65 @@ pub(crate) async fn await_discovery_settlement(
         settled: settled_tx,
     })
     .await;
+    settle_on_quorum(listener, settled_rx, budget, system.clone()).await;
+}
+
+/// Spawns the settle listener and returns the handle that awaits its
+/// quorum, plus the point at which the listener's subscriptions are live.
+///
+/// The returned `subscribed` future resolves once the listener has
+/// registered its four subscriptions, which is the moment a caller may
+/// publish discovery events without racing the subscription. The returned
+/// `settled` future resolves when the quorum is met or the budget expires.
+///
+/// This is the test-facing seam: a test awaits `subscribed`, publishes its
+/// events, and then awaits `settled`. The production path
+/// ([`await_discovery_settlement`]) does both in one call.
+#[cfg(test)]
+pub(crate) async fn spawn_discovery_settle_listener(
+    system: &trouper::system::ActorSystem,
+    bus: &jinn_kernel::common::services::bus_service::BusService,
+    child_id: &SessionId,
+    expected_servers: &std::collections::BTreeSet<String>,
+    budget: Duration,
+) -> (
+    std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>,
+    std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>,
+) {
+    let (settled_tx, settled_rx) = tokio::sync::oneshot::channel();
+    let listener = SubagentSettleListenerActor::spawn(SubagentSettleListenerDeps {
+        system: system.clone(),
+        bus: bus.clone(),
+        child_id: child_id.clone(),
+        expected_servers: expected_servers.clone(),
+        settled: settled_tx,
+    })
+    .await;
+    // `spawn` returns only after the four subscriptions are registered, so
+    // the subscription point is right here.
+    let subscribed =
+        Box::pin(async {}) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>;
+    let settled = Box::pin(settle_on_quorum(
+        listener,
+        settled_rx,
+        budget,
+        system.clone(),
+    )) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>;
+    (subscribed, settled)
+}
+
+/// Waits for the discovery quorum, then stops the listener.
+///
+/// Split out from [`await_discovery_settlement`] so a test can await the
+/// *subscription* and the *settlement* as two separate steps: the
+/// subscription is live before the settlement wait begins, and a test that
+/// publishes discovery events needs to know which step it is on.
+async fn settle_on_quorum(
+    listener: trouper::actor::ActorPath,
+    settled_rx: tokio::sync::oneshot::Receiver<()>,
+    budget: Duration,
+    system: trouper::system::ActorSystem,
+) {
     // Ok(quorum met) or Err(budget elapsed): both proceed. On expiry the
     // receiver drops with this future and the listener notices the closed
     // channel on its next event.

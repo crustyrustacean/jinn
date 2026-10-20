@@ -92,7 +92,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn make_pool() -> (Pool, TempDir) {
-        let dir = TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("test.db");
         // Return the TempDir alongside the Pool so the caller holds it
         // for the test's lifetime. Dropping it would delete `test.db`, but

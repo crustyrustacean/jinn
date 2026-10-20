@@ -674,9 +674,10 @@ mod lifecycle_tests {
     /// `initialize` handshake hangs forever, so `on_start` never completes.
     /// Used to exercise the `Err(Timeout)` path deterministically.
     fn hanging_server() -> McpServerConfig {
+        let (program, args) = jinn_testutil::platform::idle_command(60);
         McpServerConfig {
-            command: Some("sleep".to_owned()),
-            args: vec!["60".to_owned()],
+            command: Some(program.to_owned()),
+            args,
             ..Default::default()
         }
     }
@@ -784,7 +785,7 @@ mod lifecycle_tests {
         // Given a lifecycle actor with an enabled server for a session.
         let harness = TestHarness::new().await;
         let _recorder = harness.spawn_recorder::<McpServerStatus>().await;
-        let (_actor, _services, _state) =
+        let (actor, services, _state) =
             spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
         let session_id = SessionId::new();
         harness
@@ -793,13 +794,28 @@ mod lifecycle_tests {
                 enabled: single_enabled("unrunnable"),
             })
             .await;
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        // The coordinator has drained its inbox, so the enablement above has
+        // been processed before the close arrives.
+        jinn_testutil::wait::await_inbox_drained(
+            &services.trouper_system,
+            &actor,
+            std::time::Duration::from_secs(10),
+        )
+        .await;
 
         // When closing the session.
         harness.publish(SessionClosed { session_id }).await;
 
         // Then the lifecycle actor does not panic and the test completes.
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        // The barrier is what makes "does not panic" observable: without it
+        // the close may not have been processed at all, and a panic inside
+        // the handler would not have happened yet.
+        jinn_testutil::wait::await_inbox_drained(
+            &services.trouper_system,
+            &actor,
+            std::time::Duration::from_secs(10),
+        )
+        .await;
         // (The observable behavior is clean teardown; a panic would surface here.)
     }
 
@@ -829,7 +845,17 @@ mod lifecycle_tests {
                 enabled: single_enabled("unrunnable"),
             })
             .await;
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        // The spawn counter is the assertion here, so wait for the status
+        // stream to quiesce: the count must have stopped changing. A fixed
+        // sleep would pass on a slow host simply because the expected spawn
+        // had not happened yet, which is the opposite of what the test
+        // claims.
+        jinn_testutil::wait::await_settled(
+            &recorder,
+            std::time::Duration::from_millis(150),
+            std::time::Duration::from_secs(10),
+        )
+        .await;
 
         // And disabling it (must remove the map entry via kill_one).
         harness
@@ -838,7 +864,17 @@ mod lifecycle_tests {
                 enabled: BTreeSet::new(),
             })
             .await;
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        // The spawn counter is the assertion here, so wait for the status
+        // stream to quiesce: the count must have stopped changing. A fixed
+        // sleep would pass on a slow host simply because the expected spawn
+        // had not happened yet, which is the opposite of what the test
+        // claims.
+        jinn_testutil::wait::await_settled(
+            &recorder,
+            std::time::Duration::from_millis(150),
+            std::time::Duration::from_secs(10),
+        )
+        .await;
 
         // And re-enabling it (spawn #2 — only possible if disable freed the slot).
         harness
@@ -851,7 +887,17 @@ mod lifecycle_tests {
         // are still in flight when we read the recorder. GetRecorded drains, so
         // settling first ensures await_recorded's first poll sees the whole
         // sequence at once and returns it intact (no mid-flight draining).
-        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+        // The spawn counter is the assertion here, so wait for the status
+        // stream to quiesce: the count must have stopped changing. A fixed
+        // sleep would pass on a slow host simply because the expected spawn
+        // had not happened yet, which is the opposite of what the test
+        // claims.
+        jinn_testutil::wait::await_settled(
+            &recorder,
+            std::time::Duration::from_millis(150),
+            std::time::Duration::from_secs(10),
+        )
+        .await;
 
         // Then two distinct `Starting` statuses arrived (one per spawn) — the
         // second only exists because disable freed the spawned-map slot.
@@ -1012,7 +1058,17 @@ mod lifecycle_tests {
                 enabled: single_enabled("unrunnable"),
             })
             .await;
-        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+        // The spawn counter is the assertion here, so wait for the status
+        // stream to quiesce: the count must have stopped changing. A fixed
+        // sleep would pass on a slow host simply because the expected spawn
+        // had not happened yet, which is the opposite of what the test
+        // claims.
+        jinn_testutil::wait::await_settled(
+            &recorder,
+            std::time::Duration::from_millis(150),
+            std::time::Duration::from_secs(10),
+        )
+        .await;
 
         // Then exactly one spawn happened (a single Starting status): the
         // second reconciliation saw its slot already filled and was a no-op.
@@ -1044,7 +1100,16 @@ mod lifecycle_tests {
                     enabled: single_enabled("unrunnable"),
                 })
                 .await;
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            // The spawn counter is the assertion later in this test, so
+            // wait for the status stream to quiesce: the count must have
+            // stopped changing. A fixed sleep would pass on a slow host
+            // simply because the expected spawn had not happened yet.
+            jinn_testutil::wait::await_settled(
+                &recorder,
+                std::time::Duration::from_millis(150),
+                std::time::Duration::from_secs(10),
+            )
+            .await;
             sid
         };
 
@@ -1062,7 +1127,17 @@ mod lifecycle_tests {
                 cwd: dir.path().to_path_buf(),
             })
             .await;
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        // The spawn counter is the assertion here, so wait for the status
+        // stream to quiesce: the count must have stopped changing. A fixed
+        // sleep would pass on a slow host simply because the expected spawn
+        // had not happened yet, which is the opposite of what the test
+        // claims.
+        jinn_testutil::wait::await_settled(
+            &recorder,
+            std::time::Duration::from_millis(150),
+            std::time::Duration::from_secs(10),
+        )
+        .await;
 
         // And the server is enabled again.
         harness
@@ -1071,7 +1146,17 @@ mod lifecycle_tests {
                 enabled: single_enabled("unrunnable"),
             })
             .await;
-        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+        // The spawn counter is the assertion here, so wait for the status
+        // stream to quiesce: the count must have stopped changing. A fixed
+        // sleep would pass on a slow host simply because the expected spawn
+        // had not happened yet, which is the opposite of what the test
+        // claims.
+        jinn_testutil::wait::await_settled(
+            &recorder,
+            std::time::Duration::from_millis(150),
+            std::time::Duration::from_secs(10),
+        )
+        .await;
 
         // Then two distinct spawns happened (two Starting statuses) — the
         // second only exists because the shrink-to-empty reconcile killed the
@@ -1109,12 +1194,23 @@ mod status_tests {
     use crate::coordinator::McpCoordinatorActorDeps;
 
     /// Spawns a coordinator with a dedicated MCP runtime cell.
-    async fn spawn_with_session(harness: &TestHarness) -> (TypedCell<McpRuntimeState>, SessionId) {
+    /// Spawns a coordinator with a seeded session, handing back the runtime
+    /// cell, the session id, the actor path, and the services — the path and
+    /// services so a test can drain the coordinator's inbox before asserting
+    /// an absence.
+    async fn spawn_with_session(
+        harness: &TestHarness,
+    ) -> (
+        TypedCell<McpRuntimeState>,
+        SessionId,
+        trouper::actor::ActorPath,
+        jinn_kernel::Services,
+    ) {
         let services = harness.services().await;
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         let runtime = crate::activate_runtime(&services.slices);
-        let _path = McpCoordinatorActor::spawn(
+        let path = McpCoordinatorActor::spawn(
             &services.trouper_system,
             McpCoordinatorActorDeps {
                 deps: ActorDeps {
@@ -1125,7 +1221,7 @@ mod status_tests {
             },
         )
         .await;
-        (runtime, session_id)
+        (runtime, session_id, path, services)
     }
 
     fn status_of(
@@ -1162,7 +1258,7 @@ mod status_tests {
     async fn session_closed_clears_runtime_data() {
         // Given stale runtime data for a session.
         let harness = TestHarness::new().await;
-        let (runtime, session_id) = spawn_with_session(&harness).await;
+        let (runtime, session_id, actor, services) = spawn_with_session(&harness).await;
         seed_runtime(&runtime, &session_id);
 
         // When the session closes.
@@ -1171,7 +1267,16 @@ mod status_tests {
                 session_id: session_id.clone(),
             })
             .await;
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        // The coordinator has drained its inbox, so the event above has been
+        // *processed*. Without this barrier the absence assertion below
+        // could run before the coordinator was even scheduled, and would
+        // pass whether or not the cleanup worked.
+        jinn_testutil::wait::await_inbox_drained(
+            &services.trouper_system,
+            &actor,
+            std::time::Duration::from_secs(10),
+        )
+        .await;
 
         // Then its runtime status and stderr are absent.
         assert_runtime_is_empty(&runtime, &session_id);
@@ -1182,7 +1287,7 @@ mod status_tests {
     async fn session_archived_clears_runtime_data() {
         // Given stale runtime data for a session.
         let harness = TestHarness::new().await;
-        let (runtime, session_id) = spawn_with_session(&harness).await;
+        let (runtime, session_id, actor, services) = spawn_with_session(&harness).await;
         seed_runtime(&runtime, &session_id);
 
         // When the session is archived.
@@ -1191,7 +1296,16 @@ mod status_tests {
                 session_id: session_id.clone(),
             })
             .await;
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        // The coordinator has drained its inbox, so the event above has been
+        // *processed*. Without this barrier the absence assertion below
+        // could run before the coordinator was even scheduled, and would
+        // pass whether or not the cleanup worked.
+        jinn_testutil::wait::await_inbox_drained(
+            &services.trouper_system,
+            &actor,
+            std::time::Duration::from_secs(10),
+        )
+        .await;
 
         // Then its runtime status and stderr are absent.
         assert_runtime_is_empty(&runtime, &session_id);
@@ -1202,7 +1316,7 @@ mod status_tests {
     async fn session_teardown_finished_clears_runtime_data() {
         // Given stale runtime data for a session.
         let harness = TestHarness::new().await;
-        let (runtime, session_id) = spawn_with_session(&harness).await;
+        let (runtime, session_id, actor, services) = spawn_with_session(&harness).await;
         seed_runtime(&runtime, &session_id);
 
         // When lifecycle teardown finishes.
@@ -1212,7 +1326,16 @@ mod status_tests {
                 error: None,
             })
             .await;
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        // The coordinator has drained its inbox, so the event above has been
+        // *processed*. Without this barrier the absence assertion below
+        // could run before the coordinator was even scheduled, and would
+        // pass whether or not the cleanup worked.
+        jinn_testutil::wait::await_inbox_drained(
+            &services.trouper_system,
+            &actor,
+            std::time::Duration::from_secs(10),
+        )
+        .await;
 
         // Then its runtime status and stderr are absent.
         assert_runtime_is_empty(&runtime, &session_id);
@@ -1223,7 +1346,7 @@ mod status_tests {
     async fn session_load_completed_clears_stale_runtime_data() {
         // Given stale runtime data for a session being initialized.
         let harness = TestHarness::new().await;
-        let (runtime, session_id) = spawn_with_session(&harness).await;
+        let (runtime, session_id, actor, services) = spawn_with_session(&harness).await;
         seed_runtime(&runtime, &session_id);
 
         // When load completion is published.
@@ -1232,7 +1355,16 @@ mod status_tests {
                 session_id: session_id.clone(),
             })
             .await;
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        // The coordinator has drained its inbox, so the event above has been
+        // *processed*. Without this barrier the absence assertion below
+        // could run before the coordinator was even scheduled, and would
+        // pass whether or not the cleanup worked.
+        jinn_testutil::wait::await_inbox_drained(
+            &services.trouper_system,
+            &actor,
+            std::time::Duration::from_secs(10),
+        )
+        .await;
 
         // Then only the newly initialized session has no stale runtime data.
         assert_runtime_is_empty(&runtime, &session_id);
@@ -1243,7 +1375,7 @@ mod status_tests {
     async fn dead_status_is_written_to_runtime_cell() {
         // Given a coordinator with a seeded session.
         let harness = TestHarness::new().await;
-        let (runtime, session_id) = spawn_with_session(&harness).await;
+        let (runtime, session_id, _actor, _services) = spawn_with_session(&harness).await;
 
         // When publishing a Dead status for one server.
         harness
@@ -1253,7 +1385,11 @@ mod status_tests {
                 status: McpConnectionStatus::Dead,
             })
             .await;
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        jinn_testutil::wait::await_cell(&runtime, std::time::Duration::from_secs(10), |state| {
+            state.status(&session_id, "excalimate") == Some(McpConnectionStatus::Dead)
+        })
+        .await;
 
         // Then the runtime cell status shows Dead.
         assert_eq!(
@@ -1267,7 +1403,7 @@ mod status_tests {
     async fn running_status_is_written_to_runtime_cell() {
         // Given a coordinator with a seeded session.
         let harness = TestHarness::new().await;
-        let (runtime, session_id) = spawn_with_session(&harness).await;
+        let (runtime, session_id, _actor, _services) = spawn_with_session(&harness).await;
 
         // When publishing a Running status for one server.
         harness
@@ -1277,7 +1413,11 @@ mod status_tests {
                 status: McpConnectionStatus::Running,
             })
             .await;
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        jinn_testutil::wait::await_cell(&runtime, std::time::Duration::from_secs(10), |state| {
+            state.status(&session_id, "excalimate") == Some(McpConnectionStatus::Running)
+        })
+        .await;
 
         // Then the runtime cell status shows Running.
         assert_eq!(
@@ -1291,7 +1431,7 @@ mod status_tests {
     async fn status_for_one_session_is_not_visible_in_another() {
         // Given a coordinator with two seeded sessions.
         let harness = TestHarness::new().await;
-        let (runtime, session_a) = spawn_with_session(&harness).await;
+        let (runtime, session_a, _actor, _services) = spawn_with_session(&harness).await;
         let session_b = SessionId::new();
 
         // When publishing a Running status for session A only.
@@ -1302,7 +1442,11 @@ mod status_tests {
                 status: McpConnectionStatus::Running,
             })
             .await;
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        jinn_testutil::wait::await_cell(&runtime, std::time::Duration::from_secs(10), |state| {
+            state.status(&session_a, "excalimate") == Some(McpConnectionStatus::Running)
+        })
+        .await;
 
         // Then session A shows Running, but session B has no status for it.
         assert_eq!(
@@ -1317,7 +1461,7 @@ mod status_tests {
     async fn stderr_tail_is_written_to_runtime_cell() {
         // Given a coordinator with a seeded session.
         let harness = TestHarness::new().await;
-        let (runtime, session_id) = spawn_with_session(&harness).await;
+        let (runtime, session_id, _actor, _services) = spawn_with_session(&harness).await;
 
         // When publishing a stderr tail for one server.
         harness
@@ -1327,7 +1471,11 @@ mod status_tests {
                 tail: "npm warn something".to_owned(),
             })
             .await;
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        jinn_testutil::wait::await_cell(&runtime, std::time::Duration::from_secs(10), |state| {
+            state.stderr(&session_id, "excalimate") == Some("npm warn something")
+        })
+        .await;
 
         // Then the runtime cell stderr shows the latest tail.
         assert_eq!(
@@ -1341,7 +1489,7 @@ mod status_tests {
     async fn stderr_tail_for_one_session_is_not_visible_in_another() {
         // Given a coordinator with two seeded sessions.
         let harness = TestHarness::new().await;
-        let (runtime, session_a) = spawn_with_session(&harness).await;
+        let (runtime, session_a, _actor, _services) = spawn_with_session(&harness).await;
         let session_b = SessionId::new();
 
         // When publishing a stderr tail for session A only.
@@ -1352,7 +1500,11 @@ mod status_tests {
                 tail: "only-in-a".to_owned(),
             })
             .await;
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        jinn_testutil::wait::await_cell(&runtime, std::time::Duration::from_secs(10), |state| {
+            state.stderr(&session_a, "excalimate") == Some("only-in-a")
+        })
+        .await;
 
         // Then session A shows the tail, but session B has none.
         assert_eq!(

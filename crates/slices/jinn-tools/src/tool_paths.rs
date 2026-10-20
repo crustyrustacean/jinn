@@ -52,19 +52,20 @@ mod tests {
 
     #[rstest::rstest]
     fn resolve_path_absolute() {
-        // Given an absolute path and a CWD.
+        // Given an absolute path and a CWD. The path is built from a temp
+        // root, so it is absolute on every platform — a leading slash would
+        // not be (it is drive-relative on Windows).
         let dir = jinn_testutil::tempdir().expect("create temp dir");
         let cwd = dir.path();
 
         // When resolving it against that CWD.
-        let resolved = resolve_path("/etc/hosts", cwd);
+        let input = dir.path().join("etc").join("hosts");
+        let resolved = resolve_path(&input.to_string_lossy(), cwd);
 
-        // Then it comes back unchanged. A leading slash is absolute on Unix
-        // but drive-relative on Windows — `Path::new("/etc/hosts")` is not
-        // absolute there — so the platform's own rule decides: the path is
-        // returned as-is where it is absolute, and joined onto the CWD where
-        // it is not.
-        let input = PathBuf::from("/etc/hosts");
+        // Then it comes back unchanged. The rule is the platform's own: a
+        // path that is absolute there is returned as-is, and one that is not
+        // is joined onto the CWD — so the expectation mirrors that rule
+        // rather than assuming one platform's spelling.
         let expected = if input.is_absolute() {
             input
         } else {

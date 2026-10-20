@@ -152,6 +152,7 @@ const OWNED_KEYS: &[&str] = &[
     "watchdog.tool_call",
     "context_curation.auto_prune",
     "term",
+    "shell",
     "mcp",
     "discord",
     // Read on demand (`ConfigList`).

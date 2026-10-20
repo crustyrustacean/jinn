@@ -915,8 +915,13 @@ mod tests {
 
         // When the overrides are applied in sequence.
         entry.apply_context_override(ContextOverride::ForcedInclude, ChangeSource::User);
+        // wall-clock-under-test: the timestamps are the subject of this
+        // test — the sleep keeps the three events distinguishable so
+        // "never go backwards" is a real check rather than a comparison
+        // of one instant with itself.
         std::thread::sleep(std::time::Duration::from_millis(10));
         entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
+        // wall-clock-under-test: as above.
         std::thread::sleep(std::time::Duration::from_millis(10));
         entry.apply_context_override(ContextOverride::Default, ChangeSource::User);
 

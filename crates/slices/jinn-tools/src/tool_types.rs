@@ -103,6 +103,13 @@ pub struct ToolContext {
     /// The live configuration layer, so a tool reads `jinn.toml` at the
     /// point of use rather than through a value baked at registration.
     pub config: jinn_config::ConfigLayer,
+    /// The shells jinn runs commands through, resolved once at launch.
+    ///
+    /// A tool that spawns a shell reads it from here rather than
+    /// resolving one itself: the environment is probed at startup, and a
+    /// tool that re-probed it would consult the environment outside
+    /// program initialization.
+    pub shells: jinn_common::shell::Shells,
     /// Session ID (only available for tools that need it).
     pub session_id: Option<SessionId>,
     /// Application filesystem paths (for tools that need filesystem access).
@@ -188,6 +195,7 @@ mod tests {
             timeout: Some(std::time::Duration::from_secs(30)),
             state: None,
             config: jinn_config::testutil::config_layer(""),
+            shells: Default::default(),
             session_id: Some(jinn_core_types::SessionId::new()),
             app_paths: jinn_common::app_paths::AppPaths::default(),
             bus: None,

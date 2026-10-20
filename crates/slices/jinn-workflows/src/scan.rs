@@ -183,11 +183,13 @@ mod tests {
 
     #[rstest::rstest]
     fn scan_returns_empty_for_a_nonexistent_dir() {
-        // Given a workflows dir that does not exist.
-        let dir = Path::new("/nonexistent/workflows");
+        // Given a workflows dir that does not exist. The name below the temp
+        // root was never created, so the path is absent on every platform.
+        let root = jinn_testutil::tempdir().expect("temp dir");
+        let dir = root.path().join("nonexistent").join("workflows");
 
         // When scanning.
-        let workflows = scan_workflows(dir);
+        let workflows = scan_workflows(&dir);
 
         // Then the result is empty, not an error.
         assert_eq!(workflows, [] as [jinn_workflows_msg::Workflow; 0]);

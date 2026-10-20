@@ -81,7 +81,14 @@ async fn provider_switch_sets_the_session_model() {
         .await
         .expect("provider switch command delivers");
 
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    // The session's model is the switched selection, so wait for the state
+    // to carry it. Reading it after a fixed sleep could happen before the
+    // actor wrote it, and the assertion would prove nothing.
+    jinn_testutil::wait::poll_until_async(Duration::from_secs(10), || {
+        app.core.state.read().active_session().profile().model
+            == ModelSelection::Single("ollama/llama3".to_owned())
+    })
+    .await;
 
     // Then the session's model is the switched selection.
     let model = app
@@ -121,7 +128,13 @@ async fn models_refreshed_merges_results_into_the_cell_cache() {
             errors: std::collections::HashMap::new(),
         })
         .await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    // The cell's cache carries the discovered model, so wait for the
+    // cell to hold it. Reading it after a fixed sleep could happen before
+    // the actor wrote it, and the assertion would prove nothing.
+    jinn_testutil::wait::await_cell(&cell_of(&app), Duration::from_secs(10), |state| {
+        state.model_cache.is_some()
+    })
+    .await;
 
     // Then the cell's cache carries the discovered model.
     let cache = cell_of(&app)
@@ -161,7 +174,16 @@ async fn models_refreshed_keeps_partial_results_when_one_provider_fails() {
             errors,
         })
         .await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    // The partial result is cached, so wait for the cell to hold it.
+    // Reading it after a fixed sleep could happen before the actor wrote
+    // it, and the assertion would prove nothing.
+    jinn_testutil::wait::await_cell(&cell_of(&app), Duration::from_secs(10), |state| {
+        state
+            .model_cache
+            .as_ref()
+            .is_some_and(|cache| cache.entries.contains_key("ollama"))
+    })
+    .await;
 
     // Then the successful provider's models are cached (the failure does
     // not discard the partial result).
@@ -198,7 +220,12 @@ async fn model_cache_loaded_restores_the_disk_cache_into_the_cell() {
         }],
     );
     app.services.bus.publish(ModelCacheLoaded { cache }).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    // The cell holds the restored cache, so wait for it. Reading it
+    // after a fixed sleep could happen before the actor wrote it.
+    jinn_testutil::wait::await_cell(&cell_of(&app), Duration::from_secs(10), |state| {
+        state.model_cache.is_some()
+    })
+    .await;
 
     // Then the cell holds the restored cache.
     let loaded = cell_of(&app)
@@ -245,7 +272,24 @@ async fn load_provider_picker_entries_fills_the_picker_from_the_registry() {
         .tell(ActorPath::new(PROVIDER_PATH), LoadProviderPickerEntries)
         .await
         .expect("load command delivers");
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    // The picker cell carries the configured model, so wait for it.
+    // Reading it after a fixed sleep could happen before the actor wrote
+    // it, and the assertion would prove nothing.
+    {
+        let cell: jinn_slices::cell::TypedCell<jinn_provider_selection_msg::ProviderPickerState> =
+            app.services
+                .slices
+                .reader(&jinn_provider_selection_msg::provider_picker_slot())
+                .expect("the provider slice registers the model picker cell at activation");
+        jinn_testutil::wait::await_cell(&cell, Duration::from_secs(10), |state| {
+            state
+                .selection
+                .items()
+                .iter()
+                .any(|item| item.entry().model == "llama3")
+        })
+        .await;
+    }
 
     // Then the model picker is populated with the configured model — in its
     // own cell, since the menu is slice-owned and has no kernel-side mirror.
@@ -318,7 +362,20 @@ async fn endpoint_load_for_non_openrouter_model_clears_loading_and_shows_one_row
         )
         .await
         .expect("endpoint load delivers");
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    // The endpoint picker clears the loading flag and lands its row, so
+    // wait for both. Reading the cell after a fixed sleep could happen
+    // before the actor wrote it, and the assertion would prove nothing.
+    jinn_testutil::wait::await_cell(&cell, Duration::from_secs(10), |state| {
+        !state.endpoint_loading && state.endpoint_fetched_at.is_none()
+    })
+    .await;
+    {
+        let picker = endpoint_picker_of(&app);
+        jinn_testutil::wait::await_cell(&picker, Duration::from_secs(10), |state| {
+            state.selection.items().len() == 1
+        })
+        .await;
+    }
 
     // Then the loading flag is cleared (no stuck spinner).
     assert!(

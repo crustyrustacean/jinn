@@ -1121,6 +1121,9 @@ fn tree_working_time_bills_an_open_interval_monotonically() {
     // When aggregating from the live child, then again after a measurable
     // moment has passed.
     let first = aggregate_tree_stats(&sessions, &frozen, &live_child_id, &live);
+    // wall-clock-under-test: the open interval bills against `now`, so the
+    // clock has to move for the second aggregate to differ. A signal cannot
+    // substitute here.
     std::thread::sleep(std::time::Duration::from_millis(20));
     let second = aggregate_tree_stats(&sessions, &frozen, &live_child_id, &live);
 

@@ -73,6 +73,7 @@ async fn spawn_subagent_ctx_with(
     ToolContext {
         cwd: paths_root.to_path_buf(),
         config: jinn_config::testutil::config_layer(""),
+        shells: Default::default(),
         timeout: None,
         state: Some(state.clone()),
         session_id: Some(session_id),
@@ -1086,8 +1087,13 @@ async fn parent_cancel_leaves_child_running_and_unregisters_pair() {
     // legitimately keeps running — its result still answers the question the
     // parent's *next* turn will ask.
     pending.abort();
-    // Give the aborted future a moment to drop its registry guard.
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    // The aborted future must have dropped its registry guard. The guard
+    // is released when the future is dropped, which happens on the next
+    // scheduler pass — a fixed window could pass before it was released.
+    jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(5), || async {
+        !registry.has_in_flight(&parent_id)
+    })
+    .await;
 
     // Then the pair is unregistered and the child keeps running untouched.
     assert!(
@@ -1170,9 +1176,13 @@ async fn listener_signals_on_idle_to_idle_transition() {
 // Settle gate: the first dispatch waits for discovery events
 // ---------------------------------------------------------------------------
 
-/// Spawns `await_discovery_settlement` on the harness bus with a `Duration`
-/// budget, sleeping a beat first so the listener's subscriptions register
-/// before the test publishes events. Returns the join handle.
+/// Spawns the settle listener on the harness bus with a `Duration` budget,
+/// and waits until its subscriptions are live before returning.
+///
+/// The listener's `spawn` returns only after its four subscriptions are
+/// registered, so awaiting that point — rather than sleeping a fixed beat
+/// — is what makes the test's later publish guaranteed to reach the
+/// listener. Returns the join handle for the settlement wait.
 async fn spawned_settle_wait(
     harness: &TestHarness,
     child_id: &SessionId,
@@ -1183,14 +1193,13 @@ async fn spawned_settle_wait(
     let bus = harness.bus();
     let child_id = child_id.clone();
     let servers = servers.clone();
-    let wait = tokio::spawn(async move {
-        crate::spawn_subagent::await_discovery_settlement(
-            &system, &bus, &child_id, &servers, budget,
-        )
-        .await;
-    });
-    tokio::time::sleep(Duration::from_millis(50)).await;
-    wait
+    let (subscribed, settled) = crate::spawn_subagent::spawn_discovery_settle_listener(
+        &system, &bus, &child_id, &servers, budget,
+    )
+    .await;
+    // The listener is subscribed by now; the test may publish.
+    subscribed.await;
+    tokio::spawn(settled)
 }
 
 /// An in-flight `spawn_subagent` call whose child session has been created, with

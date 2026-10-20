@@ -116,7 +116,7 @@ async fn singleton_server_spawns_once_across_two_sessions() {
     // Given a coordinator with one singleton-configured server.
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<McpServerStatus>().await;
-    let (_actor, _services, _state) =
+    let (actor, _services, _state) =
         spawn_lifecycle(&harness, &[("bundled-example", unrunnable_singleton())]).await;
 
     // When two different sessions both enable it.
@@ -127,7 +127,22 @@ async fn singleton_server_spawns_once_across_two_sessions() {
             enabled: single_enabled("bundled-example"),
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // The coordinator must have processed the enablement, and no further
+    // status event may still be coming — the assertion below counts the
+    // spawns, so a count read while events are still arriving is not the
+    // count the test claims. A fixed sleep raced both.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
+    jinn_testutil::wait::await_settled(
+        &recorder,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     let second = SessionId::new();
     harness
@@ -136,7 +151,22 @@ async fn singleton_server_spawns_once_across_two_sessions() {
             enabled: single_enabled("bundled-example"),
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    // The coordinator must have processed the enablement, and no further
+    // status event may still be coming — the assertion below counts the
+    // spawns, so a count read while events are still arriving is not the
+    // count the test claims. A fixed sleep raced both.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
+    jinn_testutil::wait::await_settled(
+        &recorder,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // Then exactly one spawn happened (a single Starting status): the second
     // session's reconcile found the singleton already running and was a no-op.
@@ -157,7 +187,7 @@ async fn singleton_server_survives_closing_every_session() {
     // Given a coordinator whose singleton server was spawned by session A.
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<McpServerStatus>().await;
-    let (_actor, _services, _state) =
+    let (actor, _services, _state) =
         spawn_lifecycle(&harness, &[("bundled-example", unrunnable_singleton())]).await;
     let session_a = SessionId::new();
     harness
@@ -166,7 +196,22 @@ async fn singleton_server_survives_closing_every_session() {
             enabled: single_enabled("bundled-example"),
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // The coordinator must have processed the enablement, and no further
+    // status event may still be coming — the assertion below counts the
+    // spawns, so a count read while events are still arriving is not the
+    // count the test claims. A fixed sleep raced both.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
+    jinn_testutil::wait::await_settled(
+        &recorder,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // When closing every session — including the one that triggered the spawn.
     harness
@@ -179,7 +224,22 @@ async fn singleton_server_survives_closing_every_session() {
             session_id: SessionId::new(),
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // The coordinator must have processed the enablement, and no further
+    // status event may still be coming — the assertion below counts the
+    // spawns, so a count read while events are still arriving is not the
+    // count the test claims. A fixed sleep raced both.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
+    jinn_testutil::wait::await_settled(
+        &recorder,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // And re-enabling from a fresh session afterwards.
     harness
@@ -188,7 +248,22 @@ async fn singleton_server_survives_closing_every_session() {
             enabled: single_enabled("bundled-example"),
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    // The coordinator must have processed the enablement, and no further
+    // status event may still be coming — the assertion below counts the
+    // spawns, so a count read while events are still arriving is not the
+    // count the test claims. A fixed sleep raced both.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
+    jinn_testutil::wait::await_settled(
+        &recorder,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // Then still exactly one spawn: the singleton survived the closes, so the
     // re-enable found it running and did not spawn a second actor.
@@ -209,7 +284,7 @@ async fn singleton_server_survives_teardown_finished() {
     // Given a coordinator whose singleton server was spawned by a session.
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<McpServerStatus>().await;
-    let (_actor, _services, _state) =
+    let (actor, _services, _state) =
         spawn_lifecycle(&harness, &[("bundled-example", unrunnable_singleton())]).await;
     let session_a = SessionId::new();
     harness
@@ -218,7 +293,22 @@ async fn singleton_server_survives_teardown_finished() {
             enabled: single_enabled("bundled-example"),
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // The coordinator must have processed the enablement, and no further
+    // status event may still be coming — the assertion below counts the
+    // spawns, so a count read while events are still arriving is not the
+    // count the test claims. A fixed sleep raced both.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
+    jinn_testutil::wait::await_settled(
+        &recorder,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // When lifecycle teardown finishes for that session.
     harness
@@ -227,7 +317,22 @@ async fn singleton_server_survives_teardown_finished() {
             error: None,
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // The coordinator must have processed the enablement, and no further
+    // status event may still be coming — the assertion below counts the
+    // spawns, so a count read while events are still arriving is not the
+    // count the test claims. A fixed sleep raced both.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
+    jinn_testutil::wait::await_settled(
+        &recorder,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // And a second session enables the same server.
     harness
@@ -236,7 +341,22 @@ async fn singleton_server_survives_teardown_finished() {
             enabled: single_enabled("bundled-example"),
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    // The coordinator must have processed the enablement, and no further
+    // status event may still be coming — the assertion below counts the
+    // spawns, so a count read while events are still arriving is not the
+    // count the test claims. A fixed sleep raced both.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
+    jinn_testutil::wait::await_settled(
+        &recorder,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // Then no second spawn: teardown never touches the singleton.
     let events = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
@@ -286,7 +406,7 @@ async fn per_session_server_still_spawns_per_session() {
     // Given a coordinator with a NON-singleton server.
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<McpServerStatus>().await;
-    let (_actor, _services, _state) =
+    let (actor, _services, _state) =
         spawn_lifecycle(&harness, &[("excalimate", unrunnable_per_session())]).await;
 
     // When two sessions enable it.
@@ -297,14 +417,44 @@ async fn per_session_server_still_spawns_per_session() {
             enabled: single_enabled("excalimate"),
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // The coordinator must have processed the enablement, and no further
+    // status event may still be coming — the assertion below counts the
+    // spawns, so a count read while events are still arriving is not the
+    // count the test claims. A fixed sleep raced both.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
+    jinn_testutil::wait::await_settled(
+        &recorder,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
     harness
         .publish(jinn_mcp_msg::McpEnablementChanged {
             session_id: SessionId::new(),
             enabled: single_enabled("excalimate"),
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    // The coordinator must have processed the enablement, and no further
+    // status event may still be coming — the assertion below counts the
+    // spawns, so a count read while events are still arriving is not the
+    // count the test claims. A fixed sleep raced both.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
+    jinn_testutil::wait::await_settled(
+        &recorder,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // Then two spawns happened — the singleton change must not alter
     // per-session semantics.
@@ -337,7 +487,13 @@ async fn singleton_spawn_is_visible_in_runtime_status_for_any_session() {
             enabled: single_enabled("bundled-example"),
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // The singleton's status is written to the runtime cell, so wait for
+    // the cell to carry it. Reading the cell after a fixed sleep could
+    // happen before the write, and the lookup would then prove nothing.
+    jinn_testutil::wait::await_cell(&runtime, std::time::Duration::from_secs(10), |state| {
+        state.singleton_status("bundled-example").is_some()
+    })
+    .await;
 
     // When a different session looks up the singleton's status.
     let session_b = SessionId::new();
@@ -371,13 +527,28 @@ async fn restarting_a_singleton_respawns_it_by_name() {
             enabled: single_enabled("bundled-example"),
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // The coordinator must have processed the enablement, and no further
+    // status event may still be coming — the assertion below counts the
+    // spawns, so a count read while events are still arriving is not the
+    // count the test claims. A fixed sleep raced both.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
+    jinn_testutil::wait::await_settled(
+        &recorder,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // When the server is restarted by name (the restart_mcp_server path).
     let reply = services
         .trouper_system
         .ask(
-            actor,
+            actor.clone(),
             crate::coordinator::McpRestartForTest {
                 session_id: session_a,
                 server: "bundled-example".to_owned(),
@@ -386,7 +557,22 @@ async fn restarting_a_singleton_respawns_it_by_name() {
             std::time::Duration::from_secs(10),
         )
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // The coordinator must have processed the enablement, and no further
+    // status event may still be coming — the assertion below counts the
+    // spawns, so a count read while events are still arriving is not the
+    // count the test claims. A fixed sleep raced both.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
+    jinn_testutil::wait::await_settled(
+        &recorder,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // Then the restart reports a fresh spawn of the shared actor: the
     // unrunnable command cannot ever connect, so `ConnectFailed` is exactly
@@ -413,7 +599,22 @@ async fn restarting_a_singleton_respawns_it_by_name() {
             enabled: single_enabled("bundled-example"),
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    // The coordinator must have processed the enablement, and no further
+    // status event may still be coming — the assertion below counts the
+    // spawns, so a count read while events are still arriving is not the
+    // count the test claims. A fixed sleep raced both.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
+    jinn_testutil::wait::await_settled(
+        &recorder,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
     let events = await_recorded(&recorder, 1, std::time::Duration::from_secs(2)).await;
     let spawns = spawns_in(&events);
     assert_eq!(
@@ -431,7 +632,7 @@ async fn disabling_a_singleton_hides_its_provider_for_that_session() {
     let recorder = harness
         .spawn_recorder::<jinn_tools_msg::ProviderVisibilityChanged>()
         .await;
-    let (_actor, _services, _state) =
+    let (actor, _services, _state) =
         spawn_lifecycle(&harness, &[("bundled-example", unrunnable_singleton())]).await;
     let session_a = SessionId::new();
     harness
@@ -440,7 +641,22 @@ async fn disabling_a_singleton_hides_its_provider_for_that_session() {
             enabled: single_enabled("bundled-example"),
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    // The coordinator must have processed the enablement, and no further
+    // status event may still be coming — the assertion below counts the
+    // spawns, so a count read while events are still arriving is not the
+    // count the test claims. A fixed sleep raced both.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
+    jinn_testutil::wait::await_settled(
+        &recorder,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // When session A reconciles with an empty enabled set (the picker
     // commit after unchecking the server).
@@ -469,7 +685,7 @@ async fn reenabling_a_singleton_restores_its_provider_visibility() {
     let recorder = harness
         .spawn_recorder::<jinn_tools_msg::ProviderVisibilityChanged>()
         .await;
-    let (_actor, _services, _state) =
+    let (actor, _services, _state) =
         spawn_lifecycle(&harness, &[("bundled-example", unrunnable_singleton())]).await;
     let session_a = SessionId::new();
     harness
@@ -478,7 +694,22 @@ async fn reenabling_a_singleton_restores_its_provider_visibility() {
             enabled: BTreeSet::new(),
         })
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    // The coordinator must have processed the enablement, and no further
+    // status event may still be coming — the assertion below counts the
+    // spawns, so a count read while events are still arriving is not the
+    // count the test claims. A fixed sleep raced both.
+    jinn_testutil::wait::await_inbox_drained(
+        harness.system(),
+        &actor,
+        std::time::Duration::from_secs(10),
+    )
+    .await;
+    jinn_testutil::wait::await_settled(
+        &recorder,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // When session A re-enables the singleton.
     harness

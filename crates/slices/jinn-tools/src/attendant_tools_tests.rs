@@ -40,6 +40,7 @@ async fn ctx(
     ToolContext {
         cwd: paths_root.to_path_buf(),
         config: jinn_config::testutil::config_layer(""),
+        shells: Default::default(),
         timeout: None,
         state: Some(state.clone()),
         session_id: Some(session_id),
@@ -113,8 +114,19 @@ async fn report_does_not_wake_the_parent() {
 
     // Then nothing is enqueued anywhere — report is terminal.
     assert!(result.success);
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    assert!(enqueues.is_empty(), "report must not wake any session");
+    // The recorder must have stopped changing before "nothing was
+    // enqueued" is an observation rather than a race with a publish that
+    // is still in flight.
+    let enqueued = jinn_testutil::wait::await_settled_messages(
+        &enqueues,
+        Duration::from_millis(100),
+        Duration::from_secs(5),
+    )
+    .await;
+    assert!(
+        enqueued.is_empty(),
+        "report must not wake any session, got: {enqueued:?}"
+    );
 }
 
 #[rstest::rstest]
@@ -315,8 +327,16 @@ async fn notify_parent_fails_for_a_non_attendant() {
 
     // Then the call fails and nothing is enqueued.
     assert!(!result.success);
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    assert!(enqueues.is_empty());
+    // The recorder must have stopped changing before "nothing was
+    // enqueued" is an observation rather than a race with a publish that
+    // is still in flight.
+    let enqueued = jinn_testutil::wait::await_settled_messages(
+        &enqueues,
+        Duration::from_millis(100),
+        Duration::from_secs(5),
+    )
+    .await;
+    assert!(enqueued.is_empty(), "a failed notify must enqueue nothing");
 }
 
 #[rstest::rstest]

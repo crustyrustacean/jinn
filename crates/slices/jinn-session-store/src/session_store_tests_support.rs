@@ -22,20 +22,6 @@ use jinn_session_store_msg::{
 };
 
 /// Polls `condition` until it holds, or the budget runs out.
-pub async fn poll_until<F, Fut>(mut condition: F) -> bool
-where
-    F: FnMut() -> Fut,
-    Fut: std::future::Future<Output = bool>,
-{
-    for _ in 0..80 {
-        if condition().await {
-            return true;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    condition().await
-}
-
 pub struct ControlledStartupStore {
     pub summaries: Vec<SessionSummary>,
     pub snapshots: HashMap<SessionId, SessionSnapshot>,
@@ -131,7 +117,7 @@ impl ControlledStartupStore {
     }
 
     pub async fn wait_for_session_load(&self, session_id: &SessionId) {
-        let observed = poll_until(|| async {
+        let observed = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
             self.requested_session_ids
                 .lock()
                 .expect("requested session IDs")
@@ -147,8 +133,10 @@ impl ControlledStartupStore {
     }
 
     pub async fn wait_for_tree_summary_load(&self) {
-        let observed =
-            poll_until(|| async { self.all_summary_calls.load(Ordering::SeqCst) > 0 }).await;
+        let observed = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            self.all_summary_calls.load(Ordering::SeqCst) > 0
+        })
+        .await;
         assert!(observed, "tree summary load should be requested");
     }
 }

@@ -233,6 +233,28 @@ mod tests {
     use super::*;
     use jinn_theme::default_theme;
 
+    /// Returns an absolute path under a typed temp root.
+    ///
+    /// The path's leaf name is the subject of the column tests, so it is
+    /// built from a relative tail rather than a platform-specific literal.
+    fn project_path(tail: &str) -> std::path::PathBuf {
+        let root = jinn_testutil::paths::TestRoot::new().expect("test root");
+        root.join_str(tail).expect("relative path").into_inner()
+    }
+
+    /// Returns the filesystem root of the running platform.
+    ///
+    /// Derived from a typed absolute path, so it names the drive root on
+    /// Windows and `/` on Unix without either spelling being hardcoded.
+    fn filesystem_root() -> std::path::PathBuf {
+        let root = jinn_testutil::paths::TestRoot::new().expect("test root");
+        root.to_path_buf()
+            .ancestors()
+            .last()
+            .expect("a filesystem root")
+            .to_path_buf()
+    }
+
     #[rstest::rstest]
     fn archived_entry_renders_with_dimmed_foreground() {
         // Given an archived session tree entry.
@@ -388,6 +410,7 @@ mod tests {
     #[rstest::rstest]
     fn project_display_falls_back_to_path_without_file_name() {
         // Given a project path with no file_name component (a bare root).
+        let root = filesystem_root();
         let entry = SessionTreeEntry::new(
             SessionId::new(),
             "Root Chat".to_owned(),
@@ -395,12 +418,12 @@ mod tests {
             default_theme(),
             SessionState::Loaded,
             None,
-            Some(std::path::PathBuf::from("/")),
+            Some(root.clone()),
         );
 
         // When computing the project display.
         // Then it falls back to the full path display string.
-        assert_eq!(entry.project_display, "/");
+        assert_eq!(entry.project_display, root.display().to_string());
     }
 
     #[rstest::rstest]
@@ -414,7 +437,7 @@ mod tests {
             default_theme(),
             SessionState::Loaded,
             None,
-            Some(std::path::PathBuf::from("/code/a/jinn")),
+            Some(project_path("code/a/jinn")),
         );
         let long = SessionTreeEntry::new(
             SessionId::new(),
@@ -423,7 +446,7 @@ mod tests {
             default_theme(),
             SessionState::Loaded,
             None,
-            Some(std::path::PathBuf::from("/code/b/my-project")),
+            Some(project_path("code/b/my-project")),
         );
         let mut entries = vec![short, long];
         apply_project_column_width(&mut entries);
@@ -488,7 +511,7 @@ mod tests {
             default_theme(),
             SessionState::Loaded,
             None,
-            Some(std::path::PathBuf::from("/code/jinn")),
+            Some(project_path("code/jinn")),
         );
         let mut entries = vec![entry];
         apply_project_column_width(&mut entries);
@@ -561,7 +584,7 @@ mod tests {
             default_theme(),
             SessionState::Loaded,
             None,
-            Some(std::path::PathBuf::from("/code/jinn")),
+            Some(project_path("code/jinn")),
         );
         let mut entries = vec![entry];
         apply_project_column_width(&mut entries);

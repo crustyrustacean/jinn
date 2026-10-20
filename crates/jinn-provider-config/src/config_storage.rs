@@ -210,8 +210,6 @@ mod tests {
     )]
     use std::collections::BTreeMap;
 
-    use tempfile::TempDir;
-
     use super::*;
     use crate::config::{AliasEntry, ProviderEntry};
 
@@ -278,7 +276,7 @@ mod tests {
     #[rstest::rstest]
     fn filesystem_load_creates_default_when_missing() {
         // Given a temp directory with no config file.
-        let dir = TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("providers.toml");
         let storage = FilesystemConfigStorage::new(path.clone());
 
@@ -296,7 +294,7 @@ mod tests {
     fn filesystem_save_then_load_round_trips() {
         // Given a FilesystemConfigStorage in a temp dir and the
         // fully-specified fixture.
-        let dir = TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("providers.toml");
         let storage = FilesystemConfigStorage::new(path);
 

@@ -15,16 +15,6 @@ use jinn_kernel::common::state::State;
 use jinn_session_init::contracts::{DiscoverySnapshot, SessionDiscoverySettled};
 
 /// Polls `check` until it passes or the retry budget runs out.
-async fn wait_for(check: impl Fn() -> bool) {
-    for _ in 0..200 {
-        if check() {
-            return;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    panic!("condition never held within the retry budget");
-}
-
 /// A notifier on a fresh fabric, with one real session in state.
 struct Wired {
     fabric: jinn_testutil::TestFabric,
@@ -88,7 +78,10 @@ async fn settled_event_posts_one_transient_summary_entry() {
         .await;
 
     // Then exactly one transient entry lands, with the counts listed.
-    wait_for(|| wired.transient_texts().len() == 1).await;
+    jinn_testutil::wait::wait_for(Duration::from_secs(2), || {
+        wired.transient_texts().len() == 1
+    })
+    .await;
     let text = &wired.transient_texts()[0];
     assert!(text.contains("**Project resources discovered**"));
     assert!(text.contains("- 2 skill(s)"));
@@ -113,7 +106,10 @@ async fn empty_discovery_says_no_resources() {
         .await;
 
     // Then the message says no project resources found.
-    wait_for(|| wired.transient_texts().len() == 1).await;
+    jinn_testutil::wait::wait_for(Duration::from_secs(2), || {
+        wired.transient_texts().len() == 1
+    })
+    .await;
     assert!(wired.transient_texts()[0].contains("No project resources found"));
 }
 
@@ -137,7 +133,10 @@ async fn delayed_reason_surfaces_in_summary() {
         .await;
 
     // Then the reason surfaces in the message.
-    wait_for(|| wired.transient_texts().len() == 1).await;
+    jinn_testutil::wait::wait_for(Duration::from_secs(2), || {
+        wired.transient_texts().len() == 1
+    })
+    .await;
     assert!(wired.transient_texts()[0].contains("discovery delayed by context"));
 }
 
@@ -162,6 +161,9 @@ async fn failed_scan_notes_error_in_summary() {
         .await;
 
     // Then the failure is noted in the message.
-    wait_for(|| wired.transient_texts().len() == 1).await;
+    jinn_testutil::wait::wait_for(Duration::from_secs(2), || {
+        wired.transient_texts().len() == 1
+    })
+    .await;
     assert!(wired.transient_texts()[0].contains("skills scan error: permission denied"));
 }

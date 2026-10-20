@@ -134,6 +134,7 @@ mod tests {
         ToolContext {
             cwd: cwd.to_owned(),
             config: jinn_config::testutil::config_layer(""),
+            shells: Default::default(),
             timeout: None,
             state: None,
             session_id: None,
@@ -396,6 +397,7 @@ mod tests {
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
             config: jinn_config::testutil::config_layer(""),
+            shells: Default::default(),
             timeout: None,
             state: None,
             session_id: None,

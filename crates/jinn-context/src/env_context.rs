@@ -248,9 +248,10 @@ mod tests {
 
     #[rstest::rstest]
     fn context_files_section_includes_project_context_files() {
-        // Given a context file.
+        // Given a context file under a temp root.
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let files = vec![ContextFile {
-            path: PathBuf::from("/project/AGENTS.md"),
+            path: dir.path().join("AGENTS.md"),
             content: "# Style Guide\nUse Rust.".to_owned(),
         }];
 
@@ -259,7 +260,7 @@ mod tests {
 
         // Then project context section is included.
         assert!(result.contains("# Project Context"));
-        assert!(result.contains("/project/AGENTS.md"));
+        assert!(result.contains("AGENTS.md"));
         assert!(result.contains("Use Rust."));
     }
 
@@ -285,12 +286,18 @@ mod tests {
 
     #[rstest::rstest]
     fn cwd_section_includes_working_directory() {
-        // Given a working directory.
+        // Given a working directory under a temp root.
+        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let cwd = dir.path().join("project");
+
         // When building the cwd section.
-        let result = cwd_section(Path::new("/my/project"));
+        let result = cwd_section(&cwd);
 
         // Then the working directory is included.
-        assert_eq!(result, "Current working directory: /my/project");
+        assert_eq!(
+            result,
+            format!("Current working directory: {}", cwd.to_string_lossy())
+        );
     }
 
     #[rstest::rstest]

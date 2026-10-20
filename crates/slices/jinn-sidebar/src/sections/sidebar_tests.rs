@@ -955,6 +955,9 @@ fn sessions_hydration_spinner_animates_without_session_rows() {
                 .map(|cell| cell.symbol().to_owned())
         })
         .expect("initial spinner");
+    // wall-clock-under-test: the spinner advances on a wall-clock
+    // cadence, so the clock has to move for the second frame to differ. A
+    // signal cannot substitute here.
     std::thread::sleep(Duration::from_millis(100));
     render(&mut terminal);
 

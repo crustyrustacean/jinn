@@ -383,6 +383,9 @@ rstest = "0.26"
 tempfile = "3"
 ctor = "0.4"
 
+# Type-safe path wrappers (absolute/relative guarantees) for test code
+marked-path = "0.3.0"
+
 # CLI
 clap = { version = "4", features = ["derive"] }
 clap-verbosity-flag = "3"

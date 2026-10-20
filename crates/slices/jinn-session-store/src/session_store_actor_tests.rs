@@ -24,7 +24,7 @@ use jinn_session_store_msg::{
 use jinn_testutil::bus_harness::{Recorder, TestHarness, await_recorded};
 
 use crate::session_store_actor::{SessionStoreActor, SessionStoreActorDeps};
-use crate::session_store_tests_support::{ControlledStartupStore, poll_until};
+use crate::session_store_tests_support::ControlledStartupStore;
 use crate::sqlite::SqliteSessionStore;
 
 struct ActorFixture {
@@ -43,6 +43,9 @@ struct ActorFixture {
     /// `status_bar`. The fixture spawns the monitor against it, so a restore
     /// publish lands in this cell exactly as production folds it.
     work_time: jinn_slices::cell::TypedCell<jinn_work_time_msg::WorkingTimeState>,
+    /// The store actor's path — a test that must know the actor has
+    /// processed its inbox drains it through this.
+    actor_path: trouper::actor::ActorPath,
 }
 
 async fn actor_fixture() -> ActorFixture {
@@ -78,7 +81,7 @@ async fn actor_fixture() -> ActorFixture {
         .reader::<jinn_work_time_msg::WorkingTimeState>(&jinn_work_time_msg::work_time_slot())
         .expect("the cell catalog registers the work-time slot");
     let state = State::new(AppState::default());
-    let _actor = SessionStoreActor::spawn(
+    let actor_path = SessionStoreActor::spawn(
         harness.system(),
         SessionStoreActorDeps {
             services,
@@ -96,13 +99,18 @@ async fn actor_fixture() -> ActorFixture {
         store,
         status_bar,
         work_time,
+        actor_path,
     }
 }
 
+/// The controlled fixture: the harness, the state, the picker cell, and
+/// the store actor's path (a test that must know the actor has processed
+/// its inbox drains it through that path).
 type ControlledFixture = (
     TestHarness,
     State,
     jinn_slices::cell::TypedCell<jinn_session_store_msg::SessionPickerState>,
+    trouper::actor::ActorPath,
 );
 
 /// The controlled fixture, over any store implementation.
@@ -123,7 +131,7 @@ async fn controlled_actor_fixture(store: Arc<dyn SessionStore>) -> ControlledFix
         )
         .expect("the cell catalog registers the session picker slot");
     let state = State::new(AppState::default());
-    let _actor = SessionStoreActor::spawn(
+    let actor_path = SessionStoreActor::spawn(
         harness.system(),
         SessionStoreActorDeps {
             services,
@@ -131,7 +139,7 @@ async fn controlled_actor_fixture(store: Arc<dyn SessionStore>) -> ControlledFix
             session_picker_cell: session_picker_cell.clone(),
         },
     );
-    (harness, state, session_picker_cell)
+    (harness, state, session_picker_cell, actor_path)
 }
 
 fn empty_providers_config() -> ProvidersConfig {
@@ -161,7 +169,7 @@ async fn the_picker_is_served_while_startup_session_loads_are_still_outstanding(
     ]));
     store.gate_session_load(first_id.clone());
     store.gate_session_load(second_id.clone());
-    let (harness, state, picker_cell) = controlled_actor_fixture(store.clone()).await;
+    let (harness, state, picker_cell, _actor_path) = controlled_actor_fixture(store.clone()).await;
 
     // When startup hydration is triggered, and the picker's message is
     // published behind it on the same mailbox.
@@ -173,7 +181,11 @@ async fn the_picker_is_served_while_startup_session_loads_are_still_outstanding(
     store.wait_for_session_load(&first_id).await;
     store.wait_for_session_load(&second_id).await;
     harness.publish(LoadSessionPickerEntries).await;
-    let picker_served = poll_until(|| async { !picker_cell.read().tree.items().is_empty() }).await;
+    let picker_served =
+        jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            !picker_cell.read().tree.items().is_empty()
+        })
+        .await;
 
     // Then the picker is served even though not one session read has finished.
     // Under the old inline loop this message sat in the mailbox until every
@@ -204,7 +216,7 @@ async fn the_hydration_flag_clears_only_after_the_last_completion() {
         ),
     ]));
     store.gate_session_load(gated_id.clone());
-    let (harness, state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
+    let (harness, state, _picker_cell, _actor_path) = controlled_actor_fixture(store.clone()).await;
 
     // When the ungated session's read completes while the other is still out.
     harness
@@ -212,7 +224,10 @@ async fn the_hydration_flag_clears_only_after_the_last_completion() {
             config: empty_providers_config(),
         })
         .await;
-    let loaded = poll_until(|| async { state.read().session.contains(&loaded_id) }).await;
+    let loaded = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        state.read().session.contains(&loaded_id)
+    })
+    .await;
 
     // Then hydration is still active: one completion is not all of them.
     assert!(loaded, "the ungated session should have loaded");
@@ -223,7 +238,10 @@ async fn the_hydration_flag_clears_only_after_the_last_completion() {
 
     // And when the last read is released, the flag clears.
     store.release_session_load(&gated_id);
-    let cleared = poll_until(|| async { !state.read().session.is_startup_hydrating() }).await;
+    let cleared = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        !state.read().session.is_startup_hydrating()
+    })
+    .await;
     assert!(cleared, "the last completion must clear the hydration flag");
 }
 
@@ -254,7 +272,7 @@ async fn a_frozen_tree_member_is_stored_without_reopening_the_hydration_flag() {
             .push(member_id.clone());
         store
     });
-    let (harness, state, _picker_cell) = controlled_actor_fixture(store).await;
+    let (harness, state, _picker_cell, _actor_path) = controlled_actor_fixture(store).await;
 
     // When startup hydration runs to completion.
     harness
@@ -263,7 +281,10 @@ async fn a_frozen_tree_member_is_stored_without_reopening_the_hydration_flag() {
         })
         .await;
     let member_frozen =
-        poll_until(|| async { state.read().session.frozen_nodes().contains_key(&member_id) }).await;
+        jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            state.read().session.frozen_nodes().contains_key(&member_id)
+        })
+        .await;
 
     // Then the tree member is stored as a frozen node, not a live session.
     assert!(member_frozen, "the tree member should be frozen");
@@ -289,7 +310,8 @@ async fn every_dispatched_load_produces_exactly_one_completion() {
             jiff::Timestamp::from_second(2).expect("valid timestamp"),
         ),
     ]));
-    let (harness, _state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
+    let (harness, _state, _picker_cell, _actor_path) =
+        controlled_actor_fixture(store.clone()).await;
     let completed = harness.spawn_recorder::<SessionLoadCompleted>().await;
 
     // When startup hydration completes.
@@ -322,7 +344,7 @@ async fn startup_hydration_is_visible_before_first_snapshot_completes() {
         jiff::Timestamp::from_second(1).expect("valid timestamp"),
     )]));
     store.gate_session_load(session_id.clone());
-    let (harness, state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
+    let (harness, state, _picker_cell, _actor_path) = controlled_actor_fixture(store.clone()).await;
 
     // When startup hydration begins.
     harness
@@ -354,7 +376,7 @@ async fn first_startup_session_is_visible_before_second_snapshot_load() {
     ]));
     store.gate_session_load(newer_id.clone());
     store.gate_session_load(older_id.clone());
-    let (harness, state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
+    let (harness, state, _picker_cell, _actor_path) = controlled_actor_fixture(store.clone()).await;
 
     // When the newer snapshot is released but the older snapshot remains gated.
     harness
@@ -364,7 +386,11 @@ async fn first_startup_session_is_visible_before_second_snapshot_load() {
         .await;
     store.wait_for_session_load(&newer_id).await;
     store.release_session_load(&newer_id);
-    let newer_visible = poll_until(|| async { state.read().session.contains(&newer_id) }).await;
+    let newer_visible =
+        jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            state.read().session.contains(&newer_id)
+        })
+        .await;
     assert!(newer_visible);
 
     // Then only the first session is visible while the second read is pending.
@@ -388,7 +414,8 @@ async fn startup_sessions_are_inserted_in_existing_recency_order() {
             jiff::Timestamp::from_second(2).expect("valid timestamp"),
         ),
     ]));
-    let (harness, _state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
+    let (harness, _state, _picker_cell, _actor_path) =
+        controlled_actor_fixture(store.clone()).await;
 
     // When startup hydration completes.
     harness
@@ -396,7 +423,10 @@ async fn startup_sessions_are_inserted_in_existing_recency_order() {
             config: empty_providers_config(),
         })
         .await;
-    poll_until(|| async { store.load_calls.load(Ordering::SeqCst) == 2 }).await;
+    jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        store.load_calls.load(Ordering::SeqCst) == 2
+    })
+    .await;
 
     // Then the store reads the snapshots in newest-first order.
     assert_eq!(
@@ -425,7 +455,8 @@ async fn startup_publishes_one_completion_event_per_loaded_session() {
             jiff::Timestamp::from_second(2).expect("valid timestamp"),
         ),
     ]));
-    let (harness, _state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
+    let (harness, _state, _picker_cell, _actor_path) =
+        controlled_actor_fixture(store.clone()).await;
     let completed = harness.spawn_recorder::<SessionLoadCompleted>().await;
 
     // When startup hydration completes.
@@ -452,7 +483,7 @@ async fn startup_hydration_clears_before_archived_tree_hydration() {
         jiff::Timestamp::from_second(1).expect("valid timestamp"),
     )]));
     store.gate_tree_summary_load();
-    let (harness, state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
+    let (harness, state, _picker_cell, _actor_path) = controlled_actor_fixture(store.clone()).await;
 
     // When the unarchived session is inserted and tree hydration begins.
     harness
@@ -460,7 +491,10 @@ async fn startup_hydration_clears_before_archived_tree_hydration() {
             config: empty_providers_config(),
         })
         .await;
-    poll_until(|| async { state.read().session.contains(&session_id) }).await;
+    jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        state.read().session.contains(&session_id)
+    })
+    .await;
     store.wait_for_tree_summary_load().await;
 
     // Then the shared hydration projection is already inactive.
@@ -472,7 +506,7 @@ async fn startup_hydration_clears_before_archived_tree_hydration() {
 async fn empty_startup_clears_hydration() {
     // Given a store with no unarchived sessions.
     let store = Arc::new(ControlledStartupStore::new(&[]));
-    let (harness, state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
+    let (harness, state, _picker_cell, _actor_path) = controlled_actor_fixture(store.clone()).await;
 
     // When startup hydration completes.
     harness
@@ -480,7 +514,7 @@ async fn empty_startup_clears_hydration() {
             config: empty_providers_config(),
         })
         .await;
-    poll_until(|| async {
+    jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
         store.unarchived_summary_calls.load(Ordering::SeqCst) > 0
             && !state.read().session.is_startup_hydrating()
     })
@@ -496,7 +530,7 @@ async fn summary_query_failure_clears_hydration() {
     // Given a store whose unarchived summary query fails.
     let store = Arc::new(ControlledStartupStore::new(&[]));
     store.fail_summaries();
-    let (harness, state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
+    let (harness, state, _picker_cell, _actor_path) = controlled_actor_fixture(store.clone()).await;
 
     // When startup hydration is attempted.
     harness
@@ -504,7 +538,7 @@ async fn summary_query_failure_clears_hydration() {
             config: empty_providers_config(),
         })
         .await;
-    poll_until(|| async {
+    jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
         store.unarchived_summary_calls.load(Ordering::SeqCst) > 0
             && !state.read().session.is_startup_hydrating()
     })
@@ -531,7 +565,7 @@ async fn individual_load_failure_does_not_abort_remaining_startup_loads() {
         ),
     ]));
     store.fail_session(failed_id);
-    let (harness, state, _picker_cell) = controlled_actor_fixture(store).await;
+    let (harness, state, _picker_cell, _actor_path) = controlled_actor_fixture(store).await;
 
     // When startup hydration continues past the failed snapshot.
     harness
@@ -539,7 +573,10 @@ async fn individual_load_failure_does_not_abort_remaining_startup_loads() {
             config: empty_providers_config(),
         })
         .await;
-    poll_until(|| async { state.read().session.contains(&loaded_id) }).await;
+    jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        state.read().session.contains(&loaded_id)
+    })
+    .await;
 
     // Then the successful session is still loaded and hydration is inactive.
     assert!(state.read().session.contains(&loaded_id));
@@ -555,7 +592,7 @@ async fn startup_preserves_welcome_session_as_active() {
         persisted_id.clone(),
         jiff::Timestamp::from_second(1).expect("valid timestamp"),
     )]));
-    let (harness, state, _picker_cell) = controlled_actor_fixture(store).await;
+    let (harness, state, _picker_cell, _actor_path) = controlled_actor_fixture(store).await;
     let welcome_id = state.read().session.active_session_id().clone();
 
     // When startup hydration completes.
@@ -564,7 +601,10 @@ async fn startup_preserves_welcome_session_as_active() {
             config: empty_providers_config(),
         })
         .await;
-    poll_until(|| async { state.read().session.contains(&persisted_id) }).await;
+    jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        state.read().session.contains(&persisted_id)
+    })
+    .await;
 
     // Then the persisted session is visible without changing the active welcome session.
     assert_eq!(state.read().session.active_session_id(), &welcome_id);
@@ -579,7 +619,8 @@ async fn startup_does_not_persist_hydrated_sessions() {
         persisted_id.clone(),
         jiff::Timestamp::from_second(1).expect("valid timestamp"),
     )]));
-    let (harness, _state, _picker_cell) = controlled_actor_fixture(store.clone()).await;
+    let (harness, _state, _picker_cell, _actor_path) =
+        controlled_actor_fixture(store.clone()).await;
 
     // When startup hydration completes.
     harness
@@ -587,8 +628,14 @@ async fn startup_does_not_persist_hydrated_sessions() {
             config: empty_providers_config(),
         })
         .await;
-    poll_until(|| async { store.unarchived_summary_calls.load(Ordering::SeqCst) == 1 }).await;
-    poll_until(|| async { store.all_summary_calls.load(Ordering::SeqCst) == 1 }).await;
+    jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        store.unarchived_summary_calls.load(Ordering::SeqCst) == 1
+    })
+    .await;
+    jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        store.all_summary_calls.load(Ordering::SeqCst) == 1
+    })
+    .await;
 
     // Then the startup path does not write the session back to storage.
     assert_eq!(store.save_calls.load(Ordering::SeqCst), 0);
@@ -670,7 +717,15 @@ async fn a_loaded_session_holds_the_load_guard_for_the_chat_log_measurement() {
             content_width: Some(60),
         })
         .await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    // The store actor must have processed the command before the state
+    // is read back. A fixed sleep could let the read happen before
+    // the actor wrote it, and the assertion would then prove nothing.
+    jinn_testutil::wait::await_inbox_drained(
+        fixture.harness.system(),
+        &fixture.actor_path,
+        Duration::from_secs(10),
+    )
+    .await;
 
     // Then the guard is still held, because the chat log has not been
     // measured yet — this fixture has no layout workers, which is exactly the
@@ -712,7 +767,7 @@ async fn restored_session_is_marked_loaded() {
             content_width: Some(60),
         })
         .await;
-    let restored = poll_until(|| async {
+    let restored = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
         fixture
             .state
             .read()
@@ -773,7 +828,7 @@ async fn loaded_from_archive_appears_in_the_session_list() {
         .await;
 
     // Then the session carries the state the sidebar lists.
-    let listed = poll_until(|| async {
+    let listed = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
         fixture.state.read().session.iter().any(|(id, session)| {
             id == &session_id && session.session_state() == SessionState::Loaded
         })
@@ -813,8 +868,10 @@ async fn a_session_reloaded_from_storage_can_be_archived_again() {
             session_id: session_id.clone(),
         })
         .await;
-    let archived =
-        poll_until(|| async { !fixture.state.read().session.contains(&session_id) }).await;
+    let archived = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        !fixture.state.read().session.contains(&session_id)
+    })
+    .await;
     assert!(archived, "the first archive should remove the session");
     fixture
         .harness
@@ -823,7 +880,7 @@ async fn a_session_reloaded_from_storage_can_be_archived_again() {
             content_width: Some(60),
         })
         .await;
-    let reloaded = poll_until(|| async {
+    let reloaded = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
         fixture
             .state
             .read()
@@ -843,8 +900,10 @@ async fn a_session_reloaded_from_storage_can_be_archived_again() {
         .await;
 
     // Then the second archive lands, instead of being refused as a stale write.
-    let removed =
-        poll_until(|| async { !fixture.state.read().session.contains(&session_id) }).await;
+    let removed = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        !fixture.state.read().session.contains(&session_id)
+    })
+    .await;
     assert!(removed, "a reloaded session must be archivable again");
 }
 
@@ -885,7 +944,7 @@ async fn loading_a_session_persists_its_reactivation() {
         .await;
 
     // Then the reactivation is written, instead of being dropped as stale.
-    let persisted = poll_until(|| async {
+    let persisted = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
         fixture
             .store
             .load_session(&session_id)
@@ -937,7 +996,7 @@ async fn archiving_a_tree_archives_a_member_that_is_not_live() {
         .await;
 
     // Then the not-live child is archived durably, not skipped as a stale write.
-    let archived = poll_until(|| async {
+    let archived = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
         let summaries = fixture
             .store
             .load_summaries()
@@ -984,7 +1043,10 @@ async fn a_failed_archive_raises_a_hint_naming_the_session() {
             session_id: session_id.clone(),
         })
         .await;
-    let hinted = poll_until(|| async { fixture.status_bar.read().hint.is_some() }).await;
+    let hinted = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        fixture.status_bar.read().hint.is_some()
+    })
+    .await;
 
     // Then the failure is on screen, naming the session that would not archive.
     let hint = fixture.status_bar.read().hint.clone();
@@ -1024,7 +1086,15 @@ async fn persist_session_does_not_write_a_session_that_is_not_worth_saving() {
     // keeping is what makes the save take effect; publishing the request
     // alone is not sufficient, and a test that only ever starts from an
     // already-interacted session cannot see the difference.
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    // The store actor must have processed the command before the state
+    // is read back. A fixed sleep could let the read happen before
+    // the actor wrote it, and the assertion would then prove nothing.
+    jinn_testutil::wait::await_inbox_drained(
+        fixture.harness.system(),
+        &fixture.actor_path,
+        Duration::from_secs(10),
+    )
+    .await;
     let saved = fixture
         .store
         .load_session(&session_id)
@@ -1060,7 +1130,7 @@ async fn persist_session_writes_interacted_session_to_store() {
         .await;
 
     // Then the full session reaches the store service.
-    let saved = poll_until(|| async {
+    let saved = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
         fixture
             .store
             .load_session(&session_id)
@@ -1096,8 +1166,10 @@ async fn archive_session_removes_session_from_state() {
         .await;
 
     // Then the session is removed from shared state.
-    let removed =
-        poll_until(|| async { !fixture.state.read().session.contains(&session_id) }).await;
+    let removed = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        !fixture.state.read().session.contains(&session_id)
+    })
+    .await;
     assert!(removed, "ArchiveSession should remove the archived session");
 }
 
@@ -1130,7 +1202,15 @@ async fn archive_write_failure_leaves_session_live_and_active() {
             session_id: session_id.clone(),
         })
         .await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    // The store actor must have processed the command before the state
+    // is read back. A fixed sleep could let the read happen before
+    // the actor wrote it, and the assertion would then prove nothing.
+    jinn_testutil::wait::await_inbox_drained(
+        fixture.harness.system(),
+        &fixture.actor_path,
+        Duration::from_secs(10),
+    )
+    .await;
 
     // Then the failed transaction leaves the session live, active, and unclosed.
     let state = fixture.state.read();
@@ -1309,7 +1389,15 @@ async fn measuring_an_absent_session_clears_the_load_guard() {
             content_width: Some(72),
         })
         .await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    // The store actor must have processed the command before the state
+    // is read back. A fixed sleep could let the read happen before
+    // the actor wrote it, and the assertion would then prove nothing.
+    jinn_testutil::wait::await_inbox_drained(
+        fixture.harness.system(),
+        &fixture.actor_path,
+        Duration::from_secs(10),
+    )
+    .await;
 
     // Then the guard is cleared, so the user is not stranded on a spinner.
     assert!(
@@ -1382,7 +1470,10 @@ async fn a_measured_request_clears_the_load_guard_end_to_end() {
         .await;
 
     // Then the guard is released by the real worker pool and completion actor.
-    let released = poll_until(|| async { !fixture.state.read().session.is_loading() }).await;
+    let released = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        !fixture.state.read().session.is_loading()
+    })
+    .await;
     assert!(
         released,
         "the real layout pipeline must clear the guard it was asked to satisfy"
@@ -1522,7 +1613,7 @@ mod activation_tests {
                 content_width: Some(60),
             })
             .await;
-        let loaded = poll_until(|| async {
+        let loaded = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
             fixture
                 .state
                 .read()
@@ -1542,7 +1633,7 @@ mod activation_tests {
         // Given a session sitting in the live map, and a store that counts the
         // reads it is asked for.
         let store = Arc::new(ControlledStartupStore::new(&[]));
-        let (harness, state, _picker) = controlled_actor_fixture(store.clone()).await;
+        let (harness, state, _picker, actor_path) = controlled_actor_fixture(store.clone()).await;
         let session_id = jinn_core_types::SessionId::new();
         {
             let mut guard = state.write();
@@ -1561,7 +1652,15 @@ mod activation_tests {
                 content_width: None,
             })
             .await;
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        // The store actor must have processed the command before the state
+        // is read back. A fixed sleep could let the read happen before
+        // the actor wrote it, and the assertion would then prove nothing.
+        jinn_testutil::wait::await_inbox_drained(
+            harness.system(),
+            &actor_path,
+            Duration::from_secs(10),
+        )
+        .await;
 
         // Then the store was never asked for it.
         let after = store.load_calls.load(std::sync::atomic::Ordering::SeqCst);
@@ -1590,7 +1689,15 @@ mod activation_tests {
                 content_width: Some(60),
             })
             .await;
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        // The store actor must have processed the command before the state
+        // is read back. A fixed sleep could let the read happen before
+        // the actor wrote it, and the assertion would then prove nothing.
+        jinn_testutil::wait::await_inbox_drained(
+            fixture.harness.system(),
+            &fixture.actor_path,
+            Duration::from_secs(10),
+        )
+        .await;
 
         // Then the guard is still held: the in-memory path measures, and this
         // fixture has no layout workers, so the measurement never completes.
@@ -1622,7 +1729,15 @@ mod activation_tests {
                 content_width: Some(60),
             })
             .await;
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        // The store actor must have processed the command before the state
+        // is read back. A fixed sleep could let the read happen before
+        // the actor wrote it, and the assertion would then prove nothing.
+        jinn_testutil::wait::await_inbox_drained(
+            fixture.harness.system(),
+            &fixture.actor_path,
+            Duration::from_secs(10),
+        )
+        .await;
 
         // Then the guard is released rather than left spinning on a measurement
         // that will never run.
@@ -1732,7 +1847,10 @@ mod tree_load_tests {
             &child_id,
             &grandchild_id,
         ];
-        let loaded = poll_until(|| async { all_loaded(&fixture, &ids) }).await;
+        let loaded = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            all_loaded(&fixture, &ids)
+        })
+        .await;
         assert!(loaded, "every tree member must land live and Loaded");
         // And the picked node is the one on screen.
         assert_eq!(
@@ -1789,7 +1907,10 @@ mod tree_load_tests {
             &sibling_id,
             &nephew_id,
         ];
-        let loaded = poll_until(|| async { all_loaded(&fixture, &ids) }).await;
+        let loaded = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            all_loaded(&fixture, &ids)
+        })
+        .await;
 
         // Then the whole connected tree is live, not just the picked spine.
         assert!(
@@ -1833,7 +1954,10 @@ mod tree_load_tests {
             &child_id,
             &grandchild_id,
         ];
-        let loaded = poll_until(|| async { all_loaded(&fixture, &ids) }).await;
+        let loaded = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            all_loaded(&fixture, &ids)
+        })
+        .await;
         assert!(loaded, "the archived member must land live and Loaded");
 
         // Then the store no longer holds it as archived either — a tree load
@@ -1889,7 +2013,10 @@ mod tree_load_tests {
             &child_id,
             &grandchild_id,
         ];
-        let loaded = poll_until(|| async { all_loaded(&fixture, &ids) }).await;
+        let loaded = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            all_loaded(&fixture, &ids)
+        })
+        .await;
         assert!(loaded, "the rest of the tree must still land");
 
         // Then the live member was not re-read: its unsaved entry is intact.
@@ -1941,7 +2068,10 @@ mod tree_load_tests {
             &child_id,
             &grandchild_id,
         ];
-        let loaded = poll_until(|| async { all_loaded(&fixture, &ids) }).await;
+        let loaded = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            all_loaded(&fixture, &ids)
+        })
+        .await;
         assert!(loaded, "the tree must land before judging the jobs");
 
         // Then exactly the picked member was handed to the layout workers:
@@ -1981,7 +2111,10 @@ mod tree_load_tests {
             })
             .await;
         let ids = [&parent_id, &self_id, &child_id, &grandchild_id];
-        let loaded = poll_until(|| async { all_loaded(&fixture, &ids) }).await;
+        let loaded = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            all_loaded(&fixture, &ids)
+        })
+        .await;
 
         // Then the surviving members all land despite the gap.
         assert!(
@@ -2075,13 +2208,15 @@ mod working_time_tests {
                 session_id: session_id.clone(),
             })
             .await;
-        let removed =
-            poll_until(|| async { !fixture.state.read().session.contains(&session_id) }).await;
+        let removed = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            !fixture.state.read().session.contains(&session_id)
+        })
+        .await;
         assert!(removed, "the archive should complete");
 
         // Then the stored blob carries the cell's record, not the empty list
         // a bare capture holds — otherwise the next load displays 00:00:00.
-        let stored = poll_until(|| async {
+        let stored = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
             stored_intervals(&fixture, &session_id)
                 .await
                 .is_some_and(|intervals| {
@@ -2116,7 +2251,7 @@ mod working_time_tests {
         // Then the stored blob carries the cell's record, the same stamp an
         // archive writes — the two actors share one stamped-save flow, so no
         // trigger can store an un-stamped snapshot.
-        let stored = poll_until(|| async {
+        let stored = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
             stored_intervals(&fixture, &session_id)
                 .await
                 .is_some_and(|intervals| {
@@ -2151,13 +2286,17 @@ mod working_time_tests {
                 session_id: session_id.clone(),
             })
             .await;
-        let removed =
-            poll_until(|| async { !fixture.state.read().session.contains(&session_id) }).await;
+        let removed = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            !fixture.state.read().session.contains(&session_id)
+        })
+        .await;
         assert!(removed, "the archive should complete");
 
         // Then the blob stores none — zero is recorded as zero, not invented.
-        let stored =
-            poll_until(|| async { stored_intervals(&fixture, &session_id).await.is_some() }).await;
+        let stored = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            stored_intervals(&fixture, &session_id).await.is_some()
+        })
+        .await;
         assert!(stored, "the archive should have written the session");
         let intervals = stored_intervals(&fixture, &session_id)
             .await
@@ -2196,7 +2335,7 @@ mod working_time_tests {
                 content_width: Some(60),
             })
             .await;
-        let loaded = poll_until(|| async {
+        let loaded = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
             fixture
                 .state
                 .read()
@@ -2209,7 +2348,7 @@ mod working_time_tests {
 
         // Then the monitor holds the recorded time again — the status bar's
         // source — rather than reading 00:00:00 for a session that worked.
-        let restored = poll_until(|| async {
+        let restored = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
             fixture.work_time.read().working_time(&session_id, at(1000))
                 == jiff::SignedDuration::from_secs(90)
         })
@@ -2249,7 +2388,7 @@ mod working_time_tests {
                 content_width: Some(60),
             })
             .await;
-        let loaded = poll_until(|| async {
+        let loaded = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
             fixture
                 .state
                 .read()
@@ -2262,7 +2401,7 @@ mod working_time_tests {
 
         // Then the stored blob still totals 90s — the write that made the
         // session live must not erase the record the load just read.
-        let kept = poll_until(|| async {
+        let kept = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
             stored_intervals(&fixture, &session_id)
                 .await
                 .is_some_and(|intervals| {
@@ -2298,7 +2437,7 @@ mod working_time_tests {
                 last_active_at: at(90),
             })
             .await;
-        let restored = poll_until(|| async {
+        let restored = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
             fixture.work_time.read().working_time(&session_id, at(1000))
                 == jiff::SignedDuration::from_secs(90)
         })
@@ -2316,7 +2455,7 @@ mod working_time_tests {
 
         // Then the ordinary cell read stamps what the cell holds — the
         // override is the load's crutch only, not the persist path's.
-        let stamped = poll_until(|| async {
+        let stamped = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
             stored_intervals(&fixture, &session_id)
                 .await
                 .is_some_and(|intervals| {
@@ -2582,11 +2721,15 @@ mod fork_tests {
             .await;
 
         // Then the child is on screen and nothing is loading any more.
-        let arrived =
-            poll_until(|| async { fixture.state.read().session.active_session_id() != &source_id })
-                .await;
+        let arrived = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            fixture.state.read().session.active_session_id() != &source_id
+        })
+        .await;
         assert!(arrived, "the fork should switch to the child it created");
-        let released = poll_until(|| async { !fixture.state.read().session.is_loading() }).await;
+        let released = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            !fixture.state.read().session.is_loading()
+        })
+        .await;
         assert!(
             released,
             "a completed fork must not leave the chat log's loading indication up"
@@ -2614,7 +2757,10 @@ mod fork_tests {
                 at_ordinal: 39,
             })
             .await;
-        let released = poll_until(|| async { !fixture.state.read().session.is_loading() }).await;
+        let released = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            !fixture.state.read().session.is_loading()
+        })
+        .await;
 
         // Then the indication is down, and it came down in seconds rather than
         // at the thirty-second deadline that used to be the only backstop.
@@ -2631,7 +2777,7 @@ mod fork_tests {
         // Given a live source session, and a store that records every read it
         // is asked for.
         let store = Arc::new(ForkStore::new());
-        let (harness, state, _picker) = controlled_actor_fixture(store.clone()).await;
+        let (harness, state, _picker, _actor_path) = controlled_actor_fixture(store.clone()).await;
         let source_id = SessionId::new();
         live_source_in(&state, &source_id, 3);
 
@@ -2642,8 +2788,10 @@ mod fork_tests {
                 at_ordinal: 2,
             })
             .await;
-        let done =
-            poll_until(|| async { state.read().session.active_session_id() != &source_id }).await;
+        let done = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            state.read().session.active_session_id() != &source_id
+        })
+        .await;
         assert!(done, "the fork should complete");
 
         // Then the source was never read from storage — the history it is
@@ -2674,9 +2822,10 @@ mod fork_tests {
                 at_ordinal: 2,
             })
             .await;
-        let arrived =
-            poll_until(|| async { fixture.state.read().session.active_session_id() != &source_id })
-                .await;
+        let arrived = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            fixture.state.read().session.active_session_id() != &source_id
+        })
+        .await;
         assert!(arrived, "the fork should switch to the child it created");
 
         // Then the child holds the source's entries through the fork point.
@@ -2701,7 +2850,7 @@ mod fork_tests {
         // Given a live source with three entries, and a store that records
         // every write it is asked for.
         let store = Arc::new(ForkStore::new());
-        let (harness, state, _picker) = controlled_actor_fixture(store.clone()).await;
+        let (harness, state, _picker, _actor_path) = controlled_actor_fixture(store.clone()).await;
         let source_id = SessionId::new();
         live_source_in(&state, &source_id, 3);
 
@@ -2712,7 +2861,10 @@ mod fork_tests {
                 at_ordinal: 1,
             })
             .await;
-        let written = poll_until(|| async { !store.written().is_empty() }).await;
+        let written = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            !store.written().is_empty()
+        })
+        .await;
         assert!(written, "the fork should write the child it created");
 
         // Then what landed is the fork of the source it was taken from. The
@@ -2745,9 +2897,10 @@ mod fork_tests {
                 at_ordinal: 1,
             })
             .await;
-        let arrived =
-            poll_until(|| async { fixture.state.read().session.active_session_id() != &source_id })
-                .await;
+        let arrived = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            fixture.state.read().session.active_session_id() != &source_id
+        })
+        .await;
         assert!(arrived, "the fork should switch to the child it created");
 
         // Then the source still shows what it showed.
@@ -2759,7 +2912,7 @@ mod fork_tests {
     async fn a_fork_of_a_source_that_is_not_in_memory_leaves_the_loading_indication_down() {
         // Given a load guard armed for a session that has since left the map.
         let store = Arc::new(ForkStore::new());
-        let (harness, state, _picker) = controlled_actor_fixture(store.clone()).await;
+        let (harness, state, _picker, _actor_path) = controlled_actor_fixture(store.clone()).await;
         let source_id = SessionId::new();
         {
             let mut guard = state.write();
@@ -2773,7 +2926,10 @@ mod fork_tests {
                 at_ordinal: 0,
             })
             .await;
-        let released = poll_until(|| async { !state.read().session.is_loading() }).await;
+        let released = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            !state.read().session.is_loading()
+        })
+        .await;
 
         // Then nothing is left spinning.
         assert!(
@@ -2788,7 +2944,7 @@ mod fork_tests {
         // Given a source session, and a store refusing every write.
         let store = Arc::new(ForkStore::new());
         store.inner.fail_saves();
-        let (harness, state, _picker) = controlled_actor_fixture(store.clone()).await;
+        let (harness, state, _picker, _actor_path) = controlled_actor_fixture(store.clone()).await;
         let source_id = SessionId::new();
         live_source_in(&state, &source_id, 1);
 
@@ -2800,9 +2956,15 @@ mod fork_tests {
             })
             .await;
         let attempted =
-            poll_until(|| async { store.inner.save_calls.load(Ordering::SeqCst) > 1 }).await;
+            jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+                store.inner.save_calls.load(Ordering::SeqCst) > 1
+            })
+            .await;
         assert!(attempted, "the fork should have tried to write the child");
-        let released = poll_until(|| async { !state.read().session.is_loading() }).await;
+        let released = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+            !state.read().session.is_loading()
+        })
+        .await;
 
         // Then nothing is left spinning, and the source is still on screen.
         assert!(

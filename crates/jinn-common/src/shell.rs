@@ -1,194 +1,910 @@
-//! Cross-platform POSIX-shell resolution for command execution.
+//! Cross-platform shell resolution for command execution.
 //!
-//! jinn runs lifecycle (setup/teardown) and tool (bash) commands through a
-//! POSIX shell. Which shell to use differs by platform:
+//! jinn runs lifecycle (setup/teardown) commands, tool commands (`bash`,
+//! `powershell`), and the interactive terminal through a shell. Which
+//! shell to use differs by platform:
 //!
-//! - **Unix** — bare `bash` via `PATH`. The bash tool promises bash syntax
-//!   (brace expansion, `$$`), and `$SHELL` may be fish, dash, or zsh, so the
-//!   environment hint is deliberately ignored there.
+//! - **Unix** — `/bin/bash`, or bare `bash` via `PATH`. The bash tool
+//!   promises bash syntax (brace expansion, `$$`), and `$SHELL` may be
+//!   fish, dash, or zsh, so the environment hint is deliberately ignored.
 //! - **Windows** — a POSIX shell is never on `PATH` under its own name:
 //!   bare `bash` resolves to `C:\Windows\System32\bash.exe`, the WSL
 //!   launcher, which routes commands into a Linux VM and breaks native
 //!   Windows tooling (cargo produces Linux binaries, process trees become
 //!   invisible to the Windows kill path). So Git Bash is preferred when
-//!   installed, `$SHELL` (as set by MSYS environments) next, bare `bash`
-//!   last.
+//!   installed, and there is **no** WSL fallback on any code path.
 //!
-//! [`resolve_shell`] is the one shared resolver both consumers call, so the
-//! precedence cannot drift between them.
+//! The environment is probed once, at launch: [`Shells::resolve`] builds
+//! the candidate chains and picks the program each one names, and every
+//! later read is a lookup in the already-resolved value. A user names
+//! their own executables through the `[shell]` section of `jinn.toml` —
+//! see [`ShellPathKey`] for the two keys and what they mean.
+//!
+//! [`Shells`] is the resolved value, and it is the one thing every
+//! consumer reads: the bash tool, the PowerShell tool, the PTY, and the
+//! session-lifecycle command runner.
 
 use std::path::{Path, PathBuf};
 
-/// The canonical Git Bash install location, the preferred Windows shell.
-#[cfg(windows)]
-const GIT_BASH: &str = r"C:\Program Files\Git\bin\bash.exe";
+use marked_path::{Absolute, MarkedPathBuf};
+use wherror::Error;
 
-/// Resolves the shell to run commands through on this platform.
-///
-/// Returns a shell that is either a proven-existing file (a candidate that
-/// was checked on disk) or a bare command name for `PATH` resolution — the
-/// caller spawns it directly. See the [module docs](self) for the platform
-/// precedence; the decision itself is [`resolve_shell_from`], which is pure
-/// and unit-tested.
-#[must_use]
-pub fn resolve_shell() -> String {
-    #[cfg(windows)]
-    {
-        let git_bash = Some(PathBuf::from(GIT_BASH));
-        let env_shell = std::env::var("SHELL").ok().map(PathBuf::from);
-        resolve_shell_from([git_bash, env_shell, None])
-    }
-    #[cfg(not(windows))]
-    {
-        resolve_shell_from([None::<PathBuf>; 0])
+/// The platform a resolution chain is built for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Platform {
+    /// Windows.
+    Windows,
+    /// Unix — Linux, macOS, and the BSDs.
+    Unix,
+}
+
+impl Platform {
+    /// The platform this build runs on.
+    #[must_use]
+    pub const fn current() -> Self {
+        if cfg!(windows) {
+            Self::Windows
+        } else {
+            Self::Unix
+        }
     }
 }
 
-/// Pure precedence core of [`resolve_shell`]: picks the first *usable*
-/// candidate.
-///
-/// A candidate is usable when its `Some(path)` exists on disk (an absolute
-/// hint like the Git Bash install location or `$SHELL` must be real before
-/// it wins), or when it is `None`, which stands for the bare `bash` name —
-/// left to `PATH` resolution at spawn time, so it is always usable. The
-/// ordering the callers pass in encodes the platform precedence:
-///
-/// - Windows: Git Bash path, `$SHELL`, then bare `bash`.
-/// - Unix: bare `bash` only (the single `None` candidate).
-///
-/// Duplicated candidates are skipped, so a `$SHELL` that already points at
-/// Git Bash resolves identically whether it or the install path won.
-#[must_use]
-pub fn resolve_shell_from<I>(candidates: I) -> String
-where
-    I: IntoIterator,
-    I::Item: Into<Option<PathBuf>>,
-{
-    let mut seen: Vec<String> = Vec::new();
-    for candidate in candidates {
-        match candidate.into() {
-            Some(path) => {
-                let text = path.to_string_lossy().into_owned();
-                if seen.iter().any(|prior| prior == &text) {
-                    continue;
-                }
-                if Path::new(&path).exists() {
-                    return text;
-                }
-                seen.push(text);
-            }
-            // Bare name for `PATH` resolution — the universal fallback.
-            None => return "bash".to_owned(),
+/// Which configured shell path a resolution is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShellPathKey {
+    /// The POSIX shell — `[shell] bash_path`.
+    Bash,
+    /// The PowerShell executable — `[shell] powershell_path`.
+    PowerShell,
+}
+
+impl ShellPathKey {
+    /// The `jinn.toml` key this path is configured under.
+    #[must_use]
+    pub const fn config_key(self) -> &'static str {
+        match self {
+            Self::Bash => "shell.bash_path",
+            Self::PowerShell => "shell.powershell_path",
         }
     }
-    "bash".to_owned()
+
+    /// The guidance shown when the configured path cannot be used.
+    #[must_use]
+    pub const fn missing_hint(self) -> &'static str {
+        match self {
+            Self::Bash => {
+                "Install Git for Windows, or point shell.bash_path at a valid bash.exe. Write the path with forward slashes."
+            }
+            Self::PowerShell => {
+                "Install PowerShell, or point shell.powershell_path at a valid executable. Write the path with forward slashes."
+            }
+        }
+    }
+}
+
+/// Why a shell could not be resolved.
+#[derive(Debug, Clone, Error)]
+pub enum ShellError {
+    /// The configured path names no file on this machine.
+    #[error("{key} is configured to \"{path}\", which does not exist. {hint}")]
+    ConfiguredPathMissing {
+        /// The `jinn.toml` key that carries the path.
+        key: &'static str,
+        /// The path the key carries.
+        path: String,
+        /// What the user can do about it.
+        hint: &'static str,
+    },
+
+    /// The configured path is not absolute.
+    #[error("{key} is configured to \"{path}\", which is not an absolute path. {hint}")]
+    ConfiguredPathNotAbsolute {
+        /// The `jinn.toml` key that carries the path.
+        key: &'static str,
+        /// The path the key carries.
+        path: String,
+        /// What the user can do about it.
+        hint: &'static str,
+    },
+
+    /// No candidate named a usable shell.
+    #[error("no {kind} was found. Searched: {searched}. {hint}")]
+    NotFound {
+        /// What was being looked for.
+        kind: &'static str,
+        /// Every location that was searched, in order.
+        searched: String,
+        /// What the user can do about it.
+        hint: &'static str,
+    },
+}
+
+impl ShellError {
+    /// Whether the failure is the user's configuration rather than the
+    /// machine's state.
+    ///
+    /// A configured path that names no file is a typo the user wants to
+    /// hear about at launch. A shell that is simply not installed is a
+    /// fact about the machine, reported at the point of use.
+    #[must_use]
+    pub const fn is_configuration_error(&self) -> bool {
+        matches!(
+            self,
+            Self::ConfiguredPathMissing { .. } | Self::ConfiguredPathNotAbsolute { .. }
+        )
+    }
+}
+
+/// A shell jinn can run commands through, named concretely.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedShell {
+    /// The program to spawn — an absolute path to the executable.
+    program: String,
+}
+
+impl ResolvedShell {
+    /// The program to spawn.
+    #[must_use]
+    pub fn program(&self) -> &str {
+        &self.program
+    }
+}
+
+/// The shells jinn runs commands through, resolved once at launch.
+///
+/// The value carries the *outcome* of the resolution, not just a path: a
+/// machine with no POSIX shell is a state the consumer has to be able to
+/// report, not a crash. The bash tool turns an absent shell into an
+/// error the model reads; the session-lifecycle runner turns it into a
+/// failed lifecycle command.
+#[derive(Debug, Clone)]
+pub struct Shells {
+    bash: Result<ResolvedShell, ShellError>,
+    powershell: Result<ResolvedShell, ShellError>,
+}
+
+impl Shells {
+    /// Resolves both shells from the user's configuration and this machine.
+    ///
+    /// A configured path that names no file is an error rather than a
+    /// fall-through: on Windows the fallback chain's worst case is the
+    /// WSL launcher this module exists to avoid, and a typo in the
+    /// configuration should never land there.
+    #[must_use]
+    pub fn resolve(configured_bash: Option<&str>, configured_powershell: Option<&str>) -> Self {
+        Self {
+            bash: resolve_shell(configured_bash),
+            powershell: resolve_powershell(configured_powershell),
+        }
+    }
+
+    /// The POSIX shell, or the reason there is none.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error the resolution produced: a configured path that
+    /// names no file, a configured path that is not absolute, or the
+    /// absence of any usable shell on this machine.
+    pub fn bash(&self) -> Result<&ResolvedShell, &ShellError> {
+        self.bash.as_ref()
+    }
+
+    /// The PowerShell executable, or the reason there is none.
+    ///
+    /// A machine with no PowerShell is a fact about the machine, not a
+    /// configuration error: the `powershell` tool reports it when the
+    /// model reaches for it, and the launch is not stopped.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error the resolution produced: a configured path that
+    /// names no file, a configured path that is not absolute, or the
+    /// absence of PowerShell on this machine.
+    pub fn powershell(&self) -> Result<&ResolvedShell, &ShellError> {
+        self.powershell.as_ref()
+    }
+}
+
+impl Default for Shells {
+    /// Auto-detects the shells, ignoring any user configuration.
+    fn default() -> Self {
+        Self::resolve(None, None)
+    }
+}
+
+/// One candidate in a shell resolution chain.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ShellCandidate {
+    /// A concrete path — usable when the file exists.
+    Path(PathBuf),
+    /// A bare command name, resolved against `PATH`.
+    Command(String),
+}
+
+/// The candidate chain for the POSIX shell on `platform`.
+///
+/// The Windows chain never offers the bare name `bash`: that name
+/// resolves to the WSL launcher, which would build Linux binaries inside
+/// a VM. `local_app_data` is the user's `%LOCALAPPDATA%` — the third
+/// standard Git for Windows install location — and is ignored elsewhere.
+#[must_use]
+pub fn bash_candidates(platform: Platform, local_app_data: Option<&Path>) -> Vec<ShellCandidate> {
+    match platform {
+        Platform::Windows => {
+            let mut candidates = vec![
+                ShellCandidate::Path(PathBuf::from(r"C:\Program Files\Git\bin\bash.exe")),
+                ShellCandidate::Path(PathBuf::from(r"C:\Program Files (x86)\Git\bin\bash.exe")),
+            ];
+            if let Some(local) = local_app_data {
+                candidates.push(ShellCandidate::Path(
+                    local
+                        .join("Programs")
+                        .join("Git")
+                        .join("bin")
+                        .join("bash.exe"),
+                ));
+            }
+            candidates
+        }
+        Platform::Unix => vec![
+            ShellCandidate::Path(PathBuf::from("/bin/bash")),
+            ShellCandidate::Command("bash".to_owned()),
+        ],
+    }
+}
+
+/// The candidate chain for PowerShell on `platform`.
+///
+/// PowerShell 7 (`pwsh`) comes first: it is the maintained release and
+/// the one that ships on a current Windows install. Windows PowerShell 5.1
+/// (`powershell.exe`) is the fallback, because it is present on every
+/// Windows install.
+#[must_use]
+pub fn powershell_candidates(platform: Platform) -> Vec<ShellCandidate> {
+    match platform {
+        Platform::Windows => vec![
+            ShellCandidate::Command("pwsh.exe".to_owned()),
+            ShellCandidate::Command("powershell.exe".to_owned()),
+        ],
+        Platform::Unix => vec![ShellCandidate::Command("pwsh".to_owned())],
+    }
+}
+
+/// The first path in `paths` the predicate accepts.
+///
+/// The predicate is injected so the precedence can be asserted without a
+/// filesystem: a caller that knows which paths are usable hands them in.
+/// The resolver passes "is a file", because a directory is not an
+/// executable.
+#[must_use]
+pub fn first_existing<F>(paths: &[PathBuf], exists: F) -> Option<PathBuf>
+where
+    F: Fn(&Path) -> bool,
+{
+    paths.iter().find(|path| exists(path)).cloned()
+}
+
+/// Resolves the POSIX shell jinn runs commands through.
+///
+/// `configured_bash_path` is the user's `[shell] bash_path`, if any. A
+/// configured path that names no file is an error rather than a
+/// fall-through: a typo there would otherwise silently land on
+/// auto-detection, whose worst case on Windows is the WSL launcher.
+///
+/// # Errors
+///
+/// Returns [`ShellError::ConfiguredPathMissing`] when the configured path
+/// names no file, [`ShellError::ConfiguredPathNotAbsolute`] when it is not
+/// absolute, and [`ShellError::NotFound`] when no candidate yielded a
+/// usable shell.
+pub fn resolve_shell(configured_bash_path: Option<&str>) -> Result<ResolvedShell, ShellError> {
+    let platform = Platform::current();
+    if let Some(configured) = configured_bash_path {
+        match configured_path(ShellPathKey::Bash, configured, platform)? {
+            ConfiguredPath::Use(path) => return Ok(ResolvedShell::from_path(&path)),
+            ConfiguredPath::Ignore => {}
+        }
+    }
+    let candidates = bash_candidates(platform, local_app_data().as_deref());
+    resolve_candidates(&candidates, "POSIX shell", bash_missing_hint(platform))
+}
+
+/// Resolves the PowerShell executable.
+///
+/// # Errors
+///
+/// Returns [`ShellError::ConfiguredPathMissing`] when the configured path
+/// names no file, [`ShellError::ConfiguredPathNotAbsolute`] when it is not
+/// absolute, and [`ShellError::NotFound`] when this machine has no
+/// PowerShell.
+pub fn resolve_powershell(
+    configured_powershell_path: Option<&str>,
+) -> Result<ResolvedShell, ShellError> {
+    let platform = Platform::current();
+    if let Some(configured) = configured_powershell_path {
+        match configured_path(ShellPathKey::PowerShell, configured, platform)? {
+            ConfiguredPath::Use(path) => return Ok(ResolvedShell::from_path(&path)),
+            ConfiguredPath::Ignore => {}
+        }
+    }
+    let candidates = powershell_candidates(platform);
+    resolve_candidates(&candidates, "PowerShell", POWERSHELL_MISSING_HINT)
+}
+
+/// What a configured path means for the platform that will run it.
+enum ConfiguredPath {
+    /// The path names an existing file on this platform — use it.
+    Use(PathBuf),
+    /// The path names the other platform — ignore it here.
+    Ignore,
+}
+
+/// Resolves a configured path against the platform that will run it.
+fn configured_path(
+    key: ShellPathKey,
+    path: &str,
+    platform: Platform,
+) -> Result<ConfiguredPath, ShellError> {
+    match path_platform(path) {
+        // A path written for the other platform is not the path this
+        // machine runs, so it is not this machine's to check.
+        Some(other) if other != platform => Ok(ConfiguredPath::Ignore),
+        None => Err(ShellError::ConfiguredPathNotAbsolute {
+            key: key.config_key(),
+            path: path.to_owned(),
+            hint: key.missing_hint(),
+        }),
+        Some(_) => {
+            let normalized = normalize_configured_path(key, path)?;
+            if normalized.is_file() {
+                Ok(ConfiguredPath::Use(normalized))
+            } else {
+                Err(ShellError::ConfiguredPathMissing {
+                    key: key.config_key(),
+                    path: path.to_owned(),
+                    hint: key.missing_hint(),
+                })
+            }
+        }
+    }
+}
+
+/// The platform a configured path names, or `None` when it names none.
+fn path_platform(path: &str) -> Option<Platform> {
+    let bytes = path.as_bytes();
+    let has_drive_prefix = matches!(
+        (bytes.first(), bytes.get(1)),
+        (Some(first), Some(b':')) if first.is_ascii_alphabetic()
+    );
+    if has_drive_prefix || path.starts_with(r"\\") {
+        Some(Platform::Windows)
+    } else if path.starts_with('/') {
+        Some(Platform::Unix)
+    } else {
+        None
+    }
+}
+
+/// Normalizes a configured path to the platform's own spelling.
+///
+/// The separator rewrite is `marked-path`'s: on Windows every forward
+/// slash becomes a backslash, and on Unix the path is left alone —
+/// `\` is an ordinary character in a file name there, so rewriting it
+/// would corrupt the path.
+fn normalize_configured_path(key: ShellPathKey, path: &str) -> Result<PathBuf, ShellError> {
+    MarkedPathBuf::<Absolute>::new(path)
+        .map(MarkedPathBuf::<Absolute>::into_inner)
+        .map_err(|_error| ShellError::ConfiguredPathNotAbsolute {
+            key: key.config_key(),
+            path: path.to_owned(),
+            hint: key.missing_hint(),
+        })
+}
+
+/// Picks the first usable candidate in a chain.
+fn resolve_candidates(
+    candidates: &[ShellCandidate],
+    kind: &'static str,
+    hint: &'static str,
+) -> Result<ResolvedShell, ShellError> {
+    let searched = candidates
+        .iter()
+        .map(describe_candidate)
+        .collect::<Vec<_>>()
+        .join(", ");
+    let paths = candidate_paths(candidates);
+    match first_existing(&paths, Path::is_file) {
+        Some(path) => Ok(ResolvedShell::from_path(&path)),
+        None => Err(ShellError::NotFound {
+            kind,
+            searched,
+            hint,
+        }),
+    }
+}
+
+/// How a candidate is named in a "searched these places" message.
+fn describe_candidate(candidate: &ShellCandidate) -> String {
+    match candidate {
+        ShellCandidate::Path(path) => path.display().to_string(),
+        ShellCandidate::Command(name) => format!("{name} (on PATH)"),
+    }
+}
+
+/// The concrete paths a candidate chain names, in order.
+#[must_use]
+pub fn candidate_paths(candidates: &[ShellCandidate]) -> Vec<PathBuf> {
+    candidates
+        .iter()
+        .filter_map(|candidate| match candidate {
+            ShellCandidate::Path(path) => Some(path.clone()),
+            ShellCandidate::Command(name) => find_on_path(name),
+        })
+        .collect()
+}
+
+/// The first `PATH` entry that holds a file named `name`.
+fn find_on_path(name: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .filter(|directory| !directory.as_os_str().is_empty())
+        .map(|directory| directory.join(name))
+        .find(|candidate| candidate.is_file())
+}
+
+/// The user's `%LOCALAPPDATA%`, read at resolution time.
+fn local_app_data() -> Option<PathBuf> {
+    std::env::var_os("LOCALAPPDATA").map(PathBuf::from)
+}
+
+/// The guidance shown when no POSIX shell was found.
+fn bash_missing_hint(platform: Platform) -> &'static str {
+    match platform {
+        Platform::Windows => {
+            "Install Git for Windows, or set shell.bash_path in jinn.toml to the path of your bash.exe."
+        }
+        Platform::Unix => {
+            "Install bash, or set shell.bash_path in jinn.toml to the path of your bash."
+        }
+    }
+}
+
+/// The guidance shown when no PowerShell was found.
+const POWERSHELL_MISSING_HINT: &str = "Install PowerShell, or set shell.powershell_path in jinn.toml to the path of your PowerShell executable.";
+
+/// The arguments a PowerShell command is given, in order.
+///
+/// `-NoProfile` keeps the user's PowerShell profile out of the run — a
+/// profile is arbitrary user code, and a tool call must run the same
+/// command the same way every time. `-NonInteractive` keeps PowerShell
+/// from blocking on a prompt nobody can answer. `-Command` runs the
+/// command that follows it.
+///
+/// The list lives here rather than in the tool that uses it so the
+/// invocation shape is asserted on every platform, not only on the one
+/// the tool is registered on.
+#[must_use]
+pub fn powershell_command_args(command: &str) -> Vec<String> {
+    vec![
+        "-NoProfile".to_owned(),
+        "-NonInteractive".to_owned(),
+        "-Command".to_owned(),
+        command.to_owned(),
+    ]
+}
+
+impl ResolvedShell {
+    /// Names an already-resolved program.
+    fn from_path(path: &Path) -> Self {
+        Self {
+            program: path.to_string_lossy().into_owned(),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
-    use super::{resolve_shell, resolve_shell_from};
-    use std::path::PathBuf;
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        reason = "test code asserts with expect/panic for clear failure messages"
+    )]
+    use super::{
+        Platform, ShellCandidate, Shells, bash_candidates, candidate_paths, first_existing,
+        powershell_candidates, resolve_candidates, resolve_powershell, resolve_shell,
+    };
+    use std::path::{Path, PathBuf};
+
+    /// Creates a file that exists, for a candidate to win on.
+    ///
+    /// The caller keeps the temp dir alive: a dropped dir takes its file
+    /// with it, and the candidate would no longer exist by the time it is
+    /// tested.
+    fn existing_file(dir: &std::path::Path, name: &str) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, b"probe").expect("write probe");
+        path
+    }
 
     #[rstest::rstest]
     #[test]
-    fn resolve_shell_returns_a_nonempty_command() {
-        // Given any platform's candidate set.
+    fn first_existing_picks_the_earliest_existing_candidate() {
+        // Given two candidate paths where only the second exists.
+        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver").expect("temp dir");
+        let existing = existing_file(dir.path(), "second");
+        let missing = PathBuf::from("/definitely/not/here/shell");
+        let candidates = vec![missing, existing.clone()];
+
+        // When picking the first existing one.
+        let picked = first_existing(&candidates, Path::exists);
+
+        // Then the existing candidate wins.
+        assert_eq!(picked, Some(existing));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn first_existing_returns_none_when_no_candidate_exists() {
+        // Given candidates that name no file.
+        let candidates = vec![PathBuf::from("/nope/one"), PathBuf::from("/nope/two")];
+
+        // When picking the first existing one.
+        let picked = first_existing(&candidates, Path::exists);
+
+        // Then there is none.
+        assert_eq!(picked, None);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn windows_bash_chain_never_offers_the_bare_bash_name() {
+        // Given the Windows candidate chain.
+        let candidates = bash_candidates(Platform::Windows, None);
+
+        // When looking for a bare command name in it.
+        let bare = candidates
+            .iter()
+            .any(|candidate| matches!(candidate, ShellCandidate::Command(name) if name == "bash"));
+
+        // Then there is none: bare `bash` on Windows is the WSL launcher.
+        assert!(
+            !bare,
+            "the Windows chain must not offer the bare `bash` name: {candidates:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn windows_bash_chain_prefers_the_program_files_install() {
+        // Given the Windows candidate chain.
+        let candidates = bash_candidates(Platform::Windows, None);
+
+        // When reading its first candidate.
+        let first = candidates.first().expect("the chain is never empty");
+
+        // Then it is the standard 64-bit Git for Windows install.
+        assert_eq!(
+            first,
+            &ShellCandidate::Path(PathBuf::from(r"C:\Program Files\Git\bin\bash.exe"))
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn windows_bash_chain_includes_the_local_app_data_install() {
+        // Given a `%LOCALAPPDATA%` root.
+        let local = PathBuf::from(r"C:\Users\jinn\AppData\Local");
+
+        // When building the Windows candidate chain.
+        let candidates = bash_candidates(Platform::Windows, Some(&local));
+
+        // Then the per-user Git install is offered.
+        let expected = local
+            .join("Programs")
+            .join("Git")
+            .join("bin")
+            .join("bash.exe");
+        assert!(
+            candidates.contains(&ShellCandidate::Path(expected)),
+            "the per-user Git install must be in the chain: {candidates:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn unix_bash_chain_falls_back_to_the_path_lookup() {
+        // Given the Unix candidate chain.
+        let candidates = bash_candidates(Platform::Unix, None);
+
+        // When reading its last candidate.
+        let last = candidates.last().expect("the chain is never empty");
+
+        // Then it is the bare `bash` name, resolved against PATH.
+        assert_eq!(last, &ShellCandidate::Command("bash".to_owned()));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn windows_powershell_chain_prefers_pwsh_over_windows_powershell() {
+        // Given the Windows PowerShell candidate chain.
+        let candidates = powershell_candidates(Platform::Windows);
+
+        // When reading the chain.
+        // Then PowerShell 7 comes first and Windows PowerShell second.
+        assert_eq!(
+            candidates,
+            vec![
+                ShellCandidate::Command("pwsh.exe".to_owned()),
+                ShellCandidate::Command("powershell.exe".to_owned()),
+            ]
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn candidate_paths_keeps_the_chain_order() {
+        // Given a chain of two concrete paths.
+        let candidates = vec![
+            ShellCandidate::Path(PathBuf::from("/first")),
+            ShellCandidate::Path(PathBuf::from("/second")),
+        ];
+
+        // When resolving the chain into concrete paths.
+        let paths = candidate_paths(&candidates);
+
+        // Then the order is preserved.
+        assert_eq!(
+            paths,
+            vec![PathBuf::from("/first"), PathBuf::from("/second")]
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn resolve_shell_uses_a_configured_path_that_exists() {
+        // Given a configured bash path that names a real file.
+        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver").expect("temp dir");
+        let bash = existing_file(dir.path(), "bash-exe");
+        let configured = bash.to_string_lossy().into_owned();
+
         // When resolving the shell.
-        let shell = resolve_shell();
+        let resolved = resolve_shell(Some(&configured));
 
-        // Then the result names a shell to spawn.
-        assert!(!shell.is_empty(), "resolver must always return a shell");
+        // Then the configured file is the shell.
+        let resolved = resolved.expect("the configured path exists");
+        assert_eq!(Path::new(resolved.program()), bash.as_path());
     }
 
     #[rstest::rstest]
     #[test]
-    fn nonexistent_first_candidate_falls_through_to_bare_bash() {
-        // Given a candidate list whose only entry is a path that does not exist.
-        let missing = PathBuf::from(r"Z:\nowhere\bash.exe");
+    fn resolve_shell_reports_a_configured_path_that_does_not_exist() {
+        // Given a configured bash path that names no file.
+        let configured = "definitely-not-here/bash.exe";
 
-        // When resolving from that list.
-        let shell = resolve_shell_from([Some(missing), None]);
+        // When resolving the shell.
+        let result = resolve_shell(Some(configured));
 
-        // Then the bare PATH-resolved name is the fallback.
-        assert_eq!(shell, "bash");
+        // Then the failure names the key and the path.
+        let Err(error) = result else {
+            panic!("a missing configured path must not resolve");
+        };
+        let message = error.to_string();
+        assert!(
+            message.contains("shell.bash_path"),
+            "the failure must name the key: {message}"
+        );
+        assert!(
+            message.contains(configured),
+            "the failure must name the path: {message}"
+        );
     }
 
     #[rstest::rstest]
     #[test]
-    fn existing_candidate_wins_over_later_candidates() {
-        // Given a list where an existing file comes before the bare fallback.
+    fn a_missing_configured_path_is_a_configuration_error() {
+        // Given a configured bash path that names no file.
+        // When resolving the shell.
+        let result = resolve_shell(Some("definitely-not-here/bash.exe"));
+
+        // Then the failure is the user's configuration, not the machine.
+        let Err(error) = result else {
+            panic!("a missing configured path must not resolve");
+        };
+        assert!(error.is_configuration_error());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn resolve_shell_reports_a_relative_configured_path() {
+        // Given a configured bash path that is not absolute.
+        // When resolving the shell.
+        let result = resolve_shell(Some("bash.exe"));
+
+        // Then the failure names the key.
+        let Err(error) = result else {
+            panic!("a relative configured path must not resolve");
+        };
+        assert!(
+            error.to_string().contains("shell.bash_path"),
+            "the failure must name the key: {error}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_configured_path_for_the_other_platform_is_ignored() {
+        // Given a configured path written for the other platform.
+        let configured = if cfg!(windows) {
+            "/usr/bin/bash"
+        } else {
+            r"C:\Program Files\Git\bin\bash.exe"
+        };
+
+        // When resolving the shell.
+        let result = resolve_shell(Some(configured));
+
+        // Then the path is not this machine's to check: the failure, if
+        // any, is about the machine rather than about the configuration.
+        if let Err(error) = result {
+            assert!(
+                !error.is_configuration_error(),
+                "a path for the other platform must not be a configuration error: {error}"
+            );
+        }
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_failed_auto_detection_names_every_place_searched() {
+        // Given a candidate chain where nothing exists.
+        let candidates = vec![
+            ShellCandidate::Path(PathBuf::from("/nowhere/one")),
+            ShellCandidate::Command("nowhere-two".to_owned()),
+        ];
+
+        // When resolving it.
+        let result = resolve_candidates(&candidates, "POSIX shell", "install one");
+
+        // Then the failure names each place that was searched.
+        let Err(error) = result else {
+            panic!("a chain with nothing usable must not resolve");
+        };
+        let message = error.to_string();
+        assert!(
+            message.contains("/nowhere/one"),
+            "the failure must name the searched path: {message}"
+        );
+        assert!(
+            message.contains("nowhere-two"),
+            "the failure must name the searched command: {message}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_configured_path_that_is_a_directory_is_rejected() {
+        // Given a configured path that names a directory.
         let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver").expect("temp dir");
-        let existing = dir.path().join("shell-resolver-probe");
-        std::fs::write(&existing, b"probe").expect("write probe");
+        let configured = dir.path().to_string_lossy().into_owned();
 
-        // When resolving from that list.
-        let shell = resolve_shell_from([Some(existing.clone()), None]);
+        // When resolving the shell.
+        let result = resolve_shell(Some(&configured));
 
-        // Then the earlier existing candidate wins.
-        assert_eq!(shell, existing.to_string_lossy());
+        // Then the directory is not accepted as an executable.
+        let Err(error) = result else {
+            panic!("a directory must not resolve as a shell");
+        };
+        assert!(
+            error.to_string().contains("shell.bash_path"),
+            "the failure must name the key: {error}"
+        );
     }
 
     #[rstest::rstest]
     #[test]
-    fn empty_candidate_list_falls_back_to_bare_bash() {
-        // Given no candidates at all.
-        // When resolving from the empty list.
-        let shell = resolve_shell_from(Vec::<Option<PathBuf>>::new());
+    fn a_powershell_command_runs_with_no_profile_and_non_interactively() {
+        // Given a PowerShell command.
+        // When building the argument list.
+        let args = super::powershell_command_args("Get-ChildItem");
 
-        // Then the bare PATH-resolved name is the answer.
-        assert_eq!(shell, "bash");
+        // Then the profile is skipped, the shell never prompts, and the
+        // command is the last argument.
+        assert_eq!(
+            args,
+            vec![
+                "-NoProfile".to_owned(),
+                "-NonInteractive".to_owned(),
+                "-Command".to_owned(),
+                "Get-ChildItem".to_owned(),
+            ]
+        );
     }
 
     #[rstest::rstest]
     #[test]
-    fn duplicate_existing_candidate_is_not_double_matched() {
-        // Given the same existing file twice around a bare fallback.
+    fn resolve_powershell_reports_a_configured_path_that_does_not_exist() {
+        // Given a configured PowerShell path that names no file.
+        let configured = "definitely-not-here/pwsh.exe";
+
+        // When resolving PowerShell.
+        let result = resolve_powershell(Some(configured));
+
+        // Then the failure names the key and the path.
+        let Err(error) = result else {
+            panic!("a missing configured path must not resolve");
+        };
+        let message = error.to_string();
+        assert!(
+            message.contains("shell.powershell_path"),
+            "the failure must name the key: {message}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn shells_reports_a_missing_bash_as_a_resolved_error() {
+        // Given a configured bash path that names no file.
+        // When resolving the shells.
+        let shells = Shells::resolve(Some("definitely-not-here/bash.exe"), None);
+
+        // Then the bash shell is an error naming the key.
+        let Err(error) = shells.bash() else {
+            panic!("a missing configured path must not resolve");
+        };
+        assert!(error.to_string().contains("shell.bash_path"));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn shells_reports_a_missing_powershell_as_a_resolved_error() {
+        // Given a configured PowerShell path that names no file.
+        // When resolving the shells.
+        let shells = Shells::resolve(None, Some("definitely-not-here/pwsh.exe"));
+
+        // Then the PowerShell shell is an error naming the key.
+        let Err(error) = shells.powershell() else {
+            panic!("a missing configured path must not resolve");
+        };
+        assert!(error.to_string().contains("shell.powershell_path"));
+    }
+
+    #[cfg(not(windows))]
+    #[rstest::rstest]
+    #[test]
+    fn a_configured_path_is_used_verbatim_on_unix() {
+        // Given a configured path whose backslashes are ordinary characters.
         let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver").expect("temp dir");
-        let existing = dir.path().join("shell-resolver-dup");
-        std::fs::write(&existing, b"probe").expect("write probe");
+        let bash = dir.path().join("bash");
+        std::fs::write(&bash, b"probe").expect("write probe");
+        let configured = bash.to_string_lossy().into_owned();
 
-        // When resolving from the duplicated list.
-        let shell = resolve_shell_from([Some(existing.clone()), Some(existing.clone()), None]);
+        // When resolving the shell.
+        let resolved = resolve_shell(Some(&configured));
 
-        // Then the existing candidate still resolves once, to itself.
-        assert_eq!(shell, existing.to_string_lossy());
+        // Then the very same path is used, separators untouched.
+        let resolved = resolved.expect("the configured path exists");
+        assert_eq!(Path::new(resolved.program()), bash.as_path());
     }
 
     #[cfg(windows)]
-    mod windows {
-        use super::super::{GIT_BASH, resolve_shell, resolve_shell_from};
-        use std::path::PathBuf;
+    #[rstest::rstest]
+    #[test]
+    fn a_configured_path_is_normalized_to_native_separators() {
+        // Given a configured path written with forward slashes.
+        let configured = r"C:/Program Files/Git/bin/bash.exe";
 
-        #[rstest::rstest]
-        #[test]
-        fn git_bash_precedes_the_bare_bash_fallback() {
-            // Given the real Git Bash install (verified present on this machine).
-            // When resolving with Git Bash ahead of the bare fallback.
-            let shell = resolve_shell_from([Some(PathBuf::from(GIT_BASH)), None]);
+        // When resolving the shell.
+        let result = resolve_shell(Some(configured));
 
-            // Then the Git Bash path wins when it exists, and otherwise the
-            // fallback does — never a different candidate.
-            if PathBuf::from(GIT_BASH).exists() {
-                assert_eq!(shell, GIT_BASH);
-            } else {
-                assert_eq!(shell, "bash");
-            }
-        }
-
-        #[rstest::rstest]
-        #[test]
-        fn resolve_shell_prefers_git_bash_when_installed() {
-            // Given a machine with the canonical Git Bash install.
-            if !PathBuf::from(GIT_BASH).exists() {
-                return;
-            }
-
-            // When resolving the shell for this platform.
-            let shell = resolve_shell();
-
-            // Then the Git Bash path is chosen over any bare name.
-            assert_eq!(shell, GIT_BASH);
-        }
+        // Then the path is looked up in its native spelling, and the
+        // failure names it in the spelling the user wrote.
+        let Err(error) = result else {
+            panic!("the path does not exist on this machine");
+        };
+        assert!(
+            matches!(error, super::ShellError::ConfiguredPathMissing { .. }),
+            "the failure must be a missing configured path: {error}"
+        );
     }
 }

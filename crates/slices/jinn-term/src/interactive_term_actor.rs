@@ -110,6 +110,8 @@ pub struct InteractiveTermActor {
     /// on every settle rather than baked at spawn, so tuning the wait does
     /// not need a restart.
     config: jinn_config::ConfigLayer,
+    /// The shell pty children run through, resolved at launch.
+    shell: String,
 }
 
 /// Dependencies for [`InteractiveTermActor`].
@@ -125,6 +127,8 @@ pub struct InteractiveTermActorDeps {
     /// The configuration layer, from which the two settle durations are
     /// read per settle.
     pub config: jinn_config::ConfigLayer,
+    /// The shell pty children run through, resolved at launch.
+    pub shell: String,
 }
 
 impl InteractiveTermActor {
@@ -179,6 +183,7 @@ impl InteractiveTermActor {
                             sessions: HashMap::new(),
                             state: deps.state,
                             config: deps.config,
+                            shell: deps.shell,
                         })
                     })
                 }
@@ -306,6 +311,7 @@ impl InteractiveTermActor {
                 pixel_height: 0,
             },
             self.wiring(&msg.chat_session_id),
+            &self.shell,
         );
         let (pty, _pump) = match spawned {
             Ok(pair) => pair,
@@ -803,6 +809,20 @@ mod tests {
         bus: BusService,
         controls: TermControls,
     ) -> (InteractiveTermActorDeps, jinn_kernel::common::state::State) {
+        deps_with_windows(bus, controls, QUIET, CAP)
+    }
+
+    /// The dependency bundle with explicit settle windows.
+    ///
+    /// A takeover test needs a settle window long enough that the ask is
+    /// provably still inside it when the control flips — the window is the
+    /// subject, so it is named by the caller rather than fixed here.
+    fn deps_with_windows(
+        bus: BusService,
+        controls: TermControls,
+        quiet: Duration,
+        cap: Duration,
+    ) -> (InteractiveTermActorDeps, jinn_kernel::common::state::State) {
         let state = jinn_kernel::common::state::State::new(
             jinn_kernel::common::app_state::AppState::default_with_scope_focus(),
         );
@@ -813,7 +833,13 @@ mod tests {
             // A layer carrying the settle windows the tests assert on, so
             // the same values a production user configures drive the
             // timing these tests check.
-            config: term_layer(QUIET, CAP),
+            config: term_layer(quiet, cap),
+            // The shell the pty children run through — the same shared
+            // resolver production uses.
+            shell: jinn_common::shell::Shells::default()
+                .bash()
+                .map(|shell| shell.program().to_owned())
+                .unwrap_or_else(|_| "bash".to_owned()),
         };
         (deps, state)
     }
@@ -879,8 +905,18 @@ mod tests {
         harness: &TestHarness,
         controls: TermControls,
     ) -> (TermAskClient, jinn_kernel::common::state::State) {
+        spawn_coordinator_with_windows(harness, controls, QUIET, CAP).await
+    }
+
+    /// Spawns a coordinator with explicit settle windows and a state handle.
+    async fn spawn_coordinator_with_windows(
+        harness: &TestHarness,
+        controls: TermControls,
+        quiet: Duration,
+        cap: Duration,
+    ) -> (TermAskClient, jinn_kernel::common::state::State) {
         let services = harness.services().await;
-        let (deps, state) = deps(harness.bus(), controls);
+        let (deps, state) = deps_with_windows(harness.bus(), controls, quiet, cap);
         let (path, _controls) = InteractiveTermActor::spawn(&services.trouper_system, deps).await;
         let client = TermAskClient {
             system: services.trouper_system.clone(),
@@ -1292,16 +1328,32 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn in_flight_send_sees_mid_wait_takeover() {
-        // Given a coordinator with a program that trickles output over a second.
+        // Given a coordinator with a program that trickles output over a
+        // second while echoing whatever it is sent.
         // Windows: the 400 ms quiet window exceeds the 250 ms tick gap, so the
         // spawn settle runs to its cap — the trickle must outlive that wait.
         #[cfg(windows)]
-        let trickle = "for i in $(seq 1 16); do echo tick-$i; sleep 0.25; done";
+        let trickle = "for i in $(seq 1 16); do echo tick-$i; sleep 0.25; done; cat";
         #[cfg(not(windows))]
-        let trickle = "for i in 1 2 3 4 5 6; do echo tick-$i; sleep 0.25; done";
+        let trickle = "for i in 1 2 3 4 5 6; do echo tick-$i; sleep 0.25; done; cat";
         let harness = TestHarness::new().await;
         let controls = TermControls::default();
-        let (actor, _system) = spawn_coordinator(&harness, controls.clone()).await;
+        // A quiet window longer than the trickle's tick gap but shorter than
+        // the ask's own cap, so the SCREEN never goes quiet: the send's
+        // settle can only end at the ask's `max_wait` (3s) or at the
+        // takeover. That is what makes the refusal's PROMPTNESS the
+        // observable — without the in-settle takeover abort the ask would
+        // run to its cap, and a prompt refusal would not be prompt.
+        //
+        // The spawn's own settle uses the same window, so the trickle must
+        // outlive it: the spawn cap is 3s and the trickle runs longer.
+        let (actor, state) = spawn_coordinator_with_windows(
+            &harness,
+            controls.clone(),
+            Duration::from_secs(3),
+            Duration::from_secs(3),
+        )
+        .await;
         let chat = jinn_core_types::SessionId::new();
         {
             let outcome = actor
@@ -1313,14 +1365,28 @@ mod tests {
         }
 
         // When a send starts and the user takes control mid-wait.
-        controls.set(&chat, ControlHolder::User);
+        //
+        // The takeover must land *inside* the settle wait, so the control
+        // flips after the ask has provably entered it. The agent's bytes
+        // appearing in the mirror is that proof: the pty write happens
+        // after the actor's pre-send takeover check, and the screen task
+        // pumps the program's echo independently of the actor — so the echo
+        // is visible exactly when the ask is inside the settle.
+        let mut msg = send_msg(chat.clone());
+        msg.text = Some("agent-marker".to_owned());
+        msg.enter = true;
         let ask = {
             let actor = actor.clone();
-            let chat = chat.clone();
-            tokio::spawn(async move { actor.ask::<_, SendTermOutcome>(send_msg(chat)).await })
+            tokio::spawn(async move { actor.ask::<_, SendTermOutcome>(msg).await })
         };
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        controls.set(&chat, ControlHolder::User); // already user; flips are re-read each poll
+        assert!(
+            mirror_shows(&state, &chat, "agent-marker", Duration::from_secs(5)).await,
+            "the agent's bytes never reached the program, so the ask never \
+             entered the settle wait the takeover is supposed to interrupt"
+        );
+
+        // And the user takes control while the ask is in that wait.
+        controls.set(&chat, ControlHolder::User);
         let replied = tokio::time::timeout(Duration::from_secs(1), ask).await;
 
         // Then the send returns promptly (well under the 3s cap) with UserHasControl.
@@ -1357,14 +1423,28 @@ mod tests {
 
         // When a send starts against a `cat` with no trailing newline
         // (never settles on its own — the wait runs until the cap).
-        let ask = {
-            let actor = actor.clone();
-            let chat = chat.clone();
-            tokio::spawn(async move { actor.ask::<_, SendTermOutcome>(send_msg(chat)).await })
-        };
-
+        //
         // And the user takes control mid-call and types through the bus.
-        tokio::time::sleep(Duration::from_millis(60)).await;
+        //
+        // The takeover is only *mid-call* if the ask has already entered
+        // the settle wait; the ask's own reply cannot tell the two apart
+        // (an ask that sees the user before its pre-send check also
+        // replies UserHasControl). The agent's bytes appearing in the
+        // mirror is what proves the ask got past that check and into the
+        // settle — the pty write happens after it, and the screen task
+        // pumps the program's echo independently of the actor.
+        let mut msg = send_msg(chat.clone());
+        msg.text = Some("agent-marker".to_owned());
+        msg.enter = true;
+        let in_flight = {
+            let actor = actor.clone();
+            tokio::spawn(async move { actor.ask::<_, SendTermOutcome>(msg).await })
+        };
+        assert!(
+            mirror_shows(&state, &chat, "agent-marker", Duration::from_secs(5)).await,
+            "the agent's bytes never reached the program, so the ask never \
+             entered the settle wait the takeover is supposed to interrupt"
+        );
         controls.set(&chat, ControlHolder::User);
         harness
             .publish(SendTermKey {
@@ -1374,7 +1454,7 @@ mod tests {
             .await;
 
         // Then the in-flight ask resolves promptly with UserHasControl.
-        let reply = tokio::time::timeout(Duration::from_secs(1), ask)
+        let reply = tokio::time::timeout(Duration::from_secs(1), in_flight)
             .await
             .expect("send must resolve promptly after takeover")
             .expect("join");
@@ -1670,21 +1750,15 @@ mod tests {
             })
             .await;
 
-        // Then the session's emulator regrided to the requested size.
-        // (The tell is async-dispatched; give the handler a beat, and poll
-        // briefly in case the message lands after the first sleep.)
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        for _ in 0..20 {
-            {
-                let guard = state.read();
-                if let Some(m) = test_mirror(&guard, &chat)
-                    && (m.cells.rows, m.cells.cols) == (10, 40)
-                {
-                    break;
-                }
-            }
-            tokio::time::sleep(Duration::from_millis(25)).await;
-        }
+        // Then the session's emulator regridded to the requested size.
+        // The wait is on the mirror itself — a fixed sleep would only guess
+        // at when the async tell landed, and the read could land before
+        // it, leaving the assertion to fail on a stale mirror.
+        jinn_testutil::wait::wait_for(Duration::from_secs(5), || {
+            let guard = state.read();
+            test_mirror(&guard, &chat).is_some_and(|m| (m.cells.rows, m.cells.cols) == (10, 40))
+        })
+        .await;
         let guard = state.read();
         let mirror = test_mirror(&guard, &chat).expect("mirror");
         assert_eq!(
@@ -1713,10 +1787,16 @@ mod tests {
                 size: (10, 40),
             })
             .await;
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        // Allow the async tell delivery to land before reading mirrors.
 
-        // Then chat_a regrided and chat_b kept the default grid.
+        // Then chat_a regrided and chat_b kept the default grid. The wait is
+        // on chat_a's mirror — a fixed sleep would only guess at when the
+        // async tell landed, and the read could land before it.
+        jinn_testutil::wait::wait_for(Duration::from_secs(5), || {
+            let guard = state.read();
+            test_mirror(&guard, &chat_a).is_some_and(|m| (m.cells.rows, m.cells.cols) == (10, 40))
+        })
+        .await;
+
         let guard = state.read();
         let a = test_mirror(&guard, &chat_a).expect("a mirror");
         let b = test_mirror(&guard, &chat_b).expect("b mirror");
@@ -1810,19 +1890,21 @@ mod tests {
         assert!(plain_screen(&screen.screen).contains("second-run"));
 
         // And the *killed* program is gone (no orphans of the first spawn).
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        // The kernel reaps the killed group asynchronously, so the wait is
+        // on the orphans' absence with a deadline — a fixed sleep would
+        // only guess at how long the reap takes, and the "no orphans"
+        // claim would fail in the direction that makes the assertion pass
+        // for the wrong reason.
         let mut orphans = find_sleep_orphans("sleep 31");
-        for _ in 0..3 {
-            if orphans.is_empty() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(150)).await;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while !orphans.is_empty() {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "expected no 'sleep 31' orphans after respawn, found: {orphans:?}"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
             orphans = find_sleep_orphans("sleep 31");
         }
-        assert!(
-            orphans.is_empty(),
-            "expected no 'sleep 31' orphans after respawn, found: {orphans:?}"
-        );
     }
 
     #[rstest::rstest]
@@ -1922,7 +2004,11 @@ mod tests {
         }
 
         // When the program exits and the screen task observes EOF.
-        tokio::time::sleep(Duration::from_millis(600)).await;
+        // The wait is on the live flag itself — a fixed sleep would only
+        // guess at when the screen task noticed the EOF, and the read could
+        // land before it, leaving the assertion to fail on a stale flag.
+        jinn_testutil::wait::wait_for(Duration::from_secs(5), || !test_live(&state.read(), &chat))
+            .await;
 
         // Then the live flag cleared without any kill call.
         assert!(
@@ -2098,7 +2184,18 @@ mod tests {
                 session_id: chat_a.clone(),
             })
             .await;
-        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // And the actor has drained that close from its inbox. The teardown
+        // clears the live flag inside the handler, so an empty inbox is
+        // what proves the flag was cleared — a fixed sleep would only
+        // guess at when the handler ran, and the "the terminal is gone"
+        // claim would hold for the wrong reason on a loaded host.
+        jinn_testutil::wait::await_inbox_drained(
+            &actor.system,
+            &actor.path,
+            Duration::from_secs(5),
+        )
+        .await;
 
         // Then A's terminal is gone (send → UnknownSession), its mirror and
         // live flag cleared, and its control entry removed.
@@ -2139,7 +2236,18 @@ mod tests {
                 session_id: chat_a.clone(),
             })
             .await;
-        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // And the actor has drained that close from its inbox. The control
+        // entry is removed inside the handler, so an empty inbox is what
+        // proves the removal happened — a fixed sleep would only guess at
+        // when the handler ran, and the "the stale User holder is gone"
+        // claim would hold for the wrong reason on a loaded host.
+        jinn_testutil::wait::await_inbox_drained(
+            &actor.system,
+            &actor.path,
+            Duration::from_secs(5),
+        )
+        .await;
 
         // Then A's control entry is removed (reads as the Agent default), so
         // a later terminal for A cannot inherit a stale User holder.

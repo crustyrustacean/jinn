@@ -21,16 +21,6 @@ use jinn_kernel::common::state::State;
 use jinn_session_lifecycle_msg::SessionCreated;
 
 /// Polls `check` until it passes or the retry budget runs out.
-async fn wait_for(check: impl Fn() -> bool) {
-    for _ in 0..200 {
-        if check() {
-            return;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    panic!("condition never held within the retry budget");
-}
-
 /// Writes one skill under `<base>/.agents/skills/<name>`.
 fn write_skill(base: &std::path::Path, name: &str) {
     let dir = base.join(".agents").join("skills").join(name);
@@ -109,7 +99,7 @@ async fn session_created_triggers_discovery_for_that_session() {
         .await;
 
     // Then the worker discovers the skill into the session.
-    wait_for(|| {
+    jinn_testutil::wait::wait_for(Duration::from_secs(2), || {
         let guard = wired.state.read();
         guard
             .session
@@ -136,7 +126,19 @@ async fn pending_cwd_session_produces_no_scan() {
         .await;
 
     // Then no scan runs: the discovered set stays empty.
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    // The wait must be long enough for a scan that was going to happen to
+    // have happened; a fixed window could pass simply because the scan had
+    // not been processed yet. The poll returns whether the condition ever
+    // held, so the assertion below reads the settled state.
+    let scanned = jinn_testutil::wait::poll_until_async(Duration::from_secs(1), || {
+        let guard = wired.state.read();
+        guard
+            .session
+            .get(&wired.session_id)
+            .is_some_and(|s| !s.discovered_skills().is_empty())
+    })
+    .await;
+    assert!(!scanned, "a pending-cwd session must not produce a scan");
     let guard = wired.state.read();
     let session = guard.session.get(&wired.session_id).expect("session");
     assert!(session.discovered_skills().is_empty());
@@ -160,7 +162,7 @@ async fn scan_skills_command_threads_cwd_to_the_worker() {
 
     // Then the manual rescan ran against the payload cwd: the skill is
     // discovered into the session.
-    wait_for(|| {
+    jinn_testutil::wait::wait_for(Duration::from_secs(2), || {
         let guard = wired.state.read();
         guard
             .session
@@ -188,7 +190,7 @@ async fn manual_rescan_reaches_only_the_addressed_session() {
         .await;
 
     // Then only the addressed session discovers skills.
-    wait_for(|| {
+    jinn_testutil::wait::wait_for(Duration::from_secs(2), || {
         let guard = wired.state.read();
         guard
             .session
@@ -215,7 +217,7 @@ async fn worker_settles_and_notifier_writes_the_summary_entry() {
         .await;
 
     // Then the settle fires and the notifier writes one transient entry.
-    wait_for(|| {
+    jinn_testutil::wait::wait_for(Duration::from_secs(2), || {
         let guard = wired.state.read();
         guard
             .session
@@ -235,7 +237,7 @@ async fn rescan_into_empty_dir_clears_stale_discovered_skills() {
     wired
         .send_run_discovery(&wired.session_id, &wired.home)
         .await;
-    wait_for(|| {
+    jinn_testutil::wait::wait_for(Duration::from_secs(2), || {
         let guard = wired.state.read();
         guard
             .session
@@ -254,7 +256,7 @@ async fn rescan_into_empty_dir_clears_stale_discovered_skills() {
     wired
         .send_run_discovery(&wired.session_id, &wired.home)
         .await;
-    wait_for(|| {
+    jinn_testutil::wait::wait_for(Duration::from_secs(2), || {
         let guard = wired.state.read();
         guard
             .session

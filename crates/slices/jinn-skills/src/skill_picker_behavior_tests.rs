@@ -478,13 +478,18 @@ async fn a_published_scan_repaints_an_open_picker() {
             error: None,
         })
         .await;
-    // The broadcast is asynchronous; give the subscription a turn to drain.
-    for _ in 0..100 {
-        if visible_names(&cell).len() == 2 {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    }
+    // The broadcast is asynchronous; wait for the cell to carry the new
+    // skill rather than giving the subscription a fixed window to drain.
+    jinn_testutil::wait::await_cell(&cell, std::time::Duration::from_secs(5), |value| {
+        value
+            .selection
+            .items()
+            .iter()
+            .filter(|item| item.entry().name == "delta")
+            .count()
+            == 1
+    })
+    .await;
 
     // Then the open menu shows the new skill without being reopened.
     assert_eq!(visible_names(&cell), vec!["alpha", "delta"]);

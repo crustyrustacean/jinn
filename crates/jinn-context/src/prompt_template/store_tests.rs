@@ -9,7 +9,6 @@
 use crate::PromptTemplate;
 use crate::prompt_template::store::{MAX_FUZZY_RESULTS, PromptTemplateStore};
 use std::path::Path;
-use tempfile::TempDir;
 
 fn write_template(dir: &Path, filename: &str, content: &str) {
     std::fs::write(dir.join(filename), content).expect("write template file");
@@ -18,7 +17,7 @@ fn write_template(dir: &Path, filename: &str, content: &str) {
 #[rstest::rstest]
 fn load_from_dir_returns_empty_when_missing() {
     // Given a path that does not exist.
-    let dir = TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let path = dir.path().join("jinn-nonexistent-test-dir");
 
     // When loading from that path.
@@ -31,7 +30,7 @@ fn load_from_dir_returns_empty_when_missing() {
 #[rstest::rstest]
 fn load_from_dir_parses_templates() {
     // Given a directory with two template files.
-    let dir = TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     write_template(
         dir.path(),
         "hello.md",
@@ -55,7 +54,7 @@ fn load_from_dir_parses_templates() {
 #[rstest::rstest]
 fn load_from_dir_scans_subdirectories() {
     // Given a directory with a subdirectory containing a template.
-    let dir = TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let sub = dir.path().join("subdir");
     std::fs::create_dir_all(&sub).expect("create subdir");
     write_template(
@@ -75,7 +74,7 @@ fn load_from_dir_scans_subdirectories() {
 #[rstest::rstest]
 fn load_from_dir_skips_non_md_files() {
     // Given a directory with a non-markdown file.
-    let dir = TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     write_template(dir.path(), "ignore.txt", "this is not a template");
 
     // When loading.
@@ -88,7 +87,7 @@ fn load_from_dir_skips_non_md_files() {
 #[rstest::rstest]
 fn load_from_dir_handles_duplicate_names() {
     // Given two files with the same name in their frontmatter.
-    let dir = TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     write_template(
         dir.path(),
         "a.md",
@@ -225,7 +224,7 @@ fn fuzzy_search_caps_at_max_results() {
 #[rstest::rstest]
 fn scan_dir_skips_underscore_prefixed_files() {
     // Given a directory with both a normal template and an underscore-prefixed file.
-    let dir = TempDir::new().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     write_template(
         dir.path(),
         "normal.md",
@@ -249,8 +248,8 @@ fn scan_dir_skips_underscore_prefixed_files() {
 #[rstest::rstest]
 fn load_from_dirs_user_override_skips_underscore_prefixed() {
     // Given a user dir with an underscore-prefixed file and a system dir with a normal template.
-    let user_dir = TempDir::new().expect("temp dir");
-    let system_dir = TempDir::new().expect("temp dir");
+    let user_dir = jinn_testutil::tempdir().expect("temp dir");
+    let system_dir = jinn_testutil::tempdir().expect("temp dir");
     write_template(
         user_dir.path(),
         "_compaction.md",
@@ -294,14 +293,14 @@ fn fuzzy_search_never_returns_underscore_prefixed_templates() {
 #[rstest::rstest]
 fn load_from_dirs_ordered_project_adds_net_new_template() {
     // Given a user dir with one template and a project dir with a different one.
-    let user_dir = TempDir::new().expect("user dir");
+    let user_dir = jinn_testutil::tempdir().expect("user dir");
     write_template(
         user_dir.path(),
         "hello.md",
         "+++\nname = \"hello\"\ndescription = \"User hello\"\n+++\nBody hello",
     );
-    let system_dir = TempDir::new().expect("system dir");
-    let project_dir = TempDir::new().expect("project dir");
+    let system_dir = jinn_testutil::tempdir().expect("system dir");
+    let project_dir = jinn_testutil::tempdir().expect("project dir");
     write_template(
         project_dir.path(),
         "extra.md",
@@ -325,14 +324,14 @@ fn load_from_dirs_ordered_project_adds_net_new_template() {
 #[rstest::rstest]
 fn load_from_dirs_ordered_project_overrides_user() {
     // Given a user template and a project template with the same name.
-    let user_dir = TempDir::new().expect("user dir");
+    let user_dir = jinn_testutil::tempdir().expect("user dir");
     write_template(
         user_dir.path(),
         "shared.md",
         "+++\nname = \"shared\"\ndescription = \"User version\"\n+++\nUser body",
     );
-    let system_dir = TempDir::new().expect("system dir");
-    let project_dir = TempDir::new().expect("project dir");
+    let system_dir = jinn_testutil::tempdir().expect("system dir");
+    let project_dir = jinn_testutil::tempdir().expect("project dir");
     write_template(
         project_dir.path(),
         "shared.md",
@@ -357,15 +356,15 @@ fn load_from_dirs_ordered_project_overrides_user() {
 #[rstest::rstest]
 fn load_from_dirs_ordered_most_local_ancestor_wins() {
     // Given two project ancestors each with a template of the same name.
-    let user_dir = TempDir::new().expect("user dir");
-    let system_dir = TempDir::new().expect("system dir");
-    let ancestor = TempDir::new().expect("ancestor dir");
+    let user_dir = jinn_testutil::tempdir().expect("user dir");
+    let system_dir = jinn_testutil::tempdir().expect("system dir");
+    let ancestor = jinn_testutil::tempdir().expect("ancestor dir");
     write_template(
         ancestor.path(),
         "dup.md",
         "+++\nname = \"dup\"\ndescription = \"Ancestor version\"\n+++\nAncestor body",
     );
-    let local = TempDir::new().expect("local dir");
+    let local = jinn_testutil::tempdir().expect("local dir");
     write_template(
         local.path(),
         "dup.md",

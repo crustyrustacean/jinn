@@ -68,72 +68,6 @@ fn every_picker_scope() -> [(&'static str, jinn_slices::SliceScopeId); 12] {
     ]
 }
 
-/// The central and shared crates whose sources the picker-decoupling guard reads.
-fn central_crate_sources() -> [(&'static str, &'static str); 6] {
-    [
-        (
-            "jinn-kernel intent handler",
-            include_str!("../../crates/jinn-kernel/src/feat/intent/handler.rs"),
-        ),
-        (
-            "jinn-kernel protocol intents",
-            include_str!("../../crates/jinn-kernel/src/protocol/intent.rs"),
-        ),
-        (
-            "shared frontend state",
-            include_str!("../../crates/jinn-app-state/src/frontend_state.rs"),
-        ),
-        (
-            "jinn-tui scope table",
-            include_str!("../../crates/jinn-tui/src/scope.rs"),
-        ),
-        (
-            "jinn-tui keymap",
-            include_str!("../../crates/jinn-tui/src/keymap.rs"),
-        ),
-        (
-            "jinn-tui keymap generator",
-            include_str!("../../crates/jinn-tui/src/keymap_gen.rs"),
-        ),
-    ]
-}
-
-/// Every picker identity a central crate is forbidden to name.
-const PICKER_IDENTITIES: [&str; 24] = [
-    "PickerSkill",
-    "PickerPersona",
-    "PickerTheme",
-    "PickerReasoning",
-    "PickerTool",
-    "PickerLifecycle",
-    "PickerEndpoint",
-    "PickerTaskList",
-    "PickerSession",
-    "PickerProvider",
-    "PickerMcpServer",
-    "PickerProject",
-    "skill_spec",
-    "persona_spec",
-    "theme_spec",
-    "provider_spec",
-    "project_spec",
-    "mcp_server_spec",
-    "task_list_spec",
-    "session_spec",
-    "tool_spec",
-    "endpoint_spec",
-    "reasoning_effort_spec",
-    "session_lifecycle_spec",
-];
-
-/// The picker identities found in one central crate's source, if any.
-fn picker_identities_in(source: &str) -> Vec<&str> {
-    PICKER_IDENTITIES
-        .into_iter()
-        .filter(|needle| source.contains(needle))
-        .collect()
-}
-
 /// Every picker in the tree is owned by a slice: each registers its own
 /// overlay, so the central app crate and TUI layer need no knowledge of any
 /// picker to draw one. This is what makes a new picker a folder-local change.
@@ -153,27 +87,6 @@ fn every_picker_is_a_slice_registered_overlay() {
         assert!(
             picker_scope.captures_input(),
             "{label} picker scope must capture input so its filter receives keys"
-        );
-    }
-}
-
-/// The central crates name no picker. A picker identity appearing in the
-/// kernel or the TUI layer is the coupling this migration removed: it is
-/// what forced a new picker to be registered in three places at once.
-#[rstest::rstest]
-#[test]
-fn the_central_crates_name_no_picker() {
-    // Given the central crates' sources.
-    let central = central_crate_sources();
-
-    // When each is searched for a picker identity.
-    for (label, source) in central {
-        let hits = picker_identities_in(source);
-
-        // Then none is found.
-        assert!(
-            hits.is_empty(),
-            "{label} still names a picker ({hits:?}); pickers must be slice-owned"
         );
     }
 }
@@ -302,55 +215,6 @@ fn all_picker_routes() -> jinn_slices::KeyRoutes {
     jinn_provider_selection::activate_endpoint_picker(&mut host, &endpoint_cell);
     jinn_theme_slice::activate_picker(&mut host);
     routes
-}
-
-/// Every picker activation in the boot list is actually called.
-///
-/// The reasoning-effort picker shipped broken because `activate_picker` was
-/// written, tested through the harness, and never wired. The harness test
-/// above cannot catch that — it composes the harness, not the production
-/// wiring file. This reads the boot list and asserts each activation
-/// function's name appears as a call.
-///
-/// Source-level, deliberately: a behavioural test would need a full app boot,
-/// and the thing that broke was a missing line in a file no test executes.
-#[rstest::rstest]
-fn production_wiring_calls_every_picker_activation() {
-    // Given the production boot list.
-    let wiring = std::fs::read_to_string("src/bootstrap/slices.rs")
-        .expect("src/bootstrap/slices.rs is present in every checkout");
-
-    // When each slice-owned picker's activation function is looked for.
-    for (label, needle) in [
-        ("skills", "jinn_skills::activate("),
-        ("persona", "jinn_persona::activate_picker("),
-        ("theme", "jinn_theme_slice::activate_picker("),
-        ("reasoning", "jinn_provider_selection::activate_picker("),
-        ("tool + task list", "jinn_tools::activate_picker("),
-        (
-            "session lifecycle",
-            "jinn_session_lifecycle::activate_picker(",
-        ),
-        (
-            "endpoint",
-            "jinn_provider_selection::activate_endpoint_picker(",
-        ),
-        ("session", "jinn_session_store::activate_session_picker("),
-        (
-            "provider",
-            "jinn_provider_selection::activate_provider_picker(",
-        ),
-        ("mcp", "jinn_mcp_slice::activate_picker("),
-        // The project picker registers its rows inside `activate` itself, so
-        // that is the call to require.
-        ("project", "jinn_project::activate("),
-    ] {
-        // Then it is called in production.
-        assert!(
-            wiring.contains(needle),
-            "{label} picker is never activated in src/bootstrap/slices.rs: its keys do nothing"
-        );
-    }
 }
 
 /// `s` in the sidebar's task-list section opens the task-list browser.

@@ -574,12 +574,15 @@ mod tests {
             },
         );
         let sid = SessionId::new();
+        let cwd_root = jinn_testutil::tempdir().expect("temp dir");
+        let expected_cwd = cwd_root.path().to_path_buf();
+        let cwd = expected_cwd.clone();
 
         // When a failed setup completion is published on the session topic.
         fabric
             .send_to_topic(SessionSetupCompleted {
                 session_id: sid.clone(),
-                cwd: std::path::PathBuf::from("/repo"),
+                cwd: cwd.clone(),
                 error: Some("boom".to_owned()),
             })
             .await;
@@ -593,7 +596,7 @@ mod tests {
                 error,
             } => {
                 assert_eq!(session_id, sid);
-                assert_eq!(cwd, std::path::PathBuf::from("/repo"));
+                assert_eq!(cwd, expected_cwd);
                 assert_eq!(error.as_deref(), Some("boom"));
             }
             other => panic!("expected SetupCompleted, got {other:?}"),

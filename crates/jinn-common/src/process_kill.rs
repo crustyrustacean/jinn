@@ -191,9 +191,14 @@ mod tests {
             .spawn()
             .expect("spawn should succeed");
         let pid = child.id().expect("child has a pid before it exits");
-        // The shell exits once it has launched the grandchild.
-        // Give it a moment to do so.
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        // The shell exits once it has launched the grandchild. The wait is
+        // on the grandchild's *existence* — the group signal can only reach
+        // it once it is running, and a fixed sleep would only guess at when
+        // that happens.
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(5), || {
+            !jinn_testutil::platform::find_orphans("sleep 65", "sleep").is_empty()
+        })
+        .await;
 
         // When killing the process group by PID (the cancel-path entry point).
         // Mirror the real call context — a synchronous handler on a runtime
@@ -202,20 +207,14 @@ mod tests {
             .await
             .expect("kill task should complete");
 
-        // Then give the kernel a moment to reap the grandchild.
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-        // And no 'sleep 65' grandchild survived the group signal.
-        let output = tokio::process::Command::new("pgrep")
-            .arg("-f")
-            .arg("sleep 65")
-            .output()
-            .await
-            .expect("pgrep should run");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            stdout.trim().is_empty(),
-            "expected no 'sleep 65' grandchildren, but found: {stdout}"
-        );
+        // Then no 'sleep 65' grandchild survived the group signal. The wait
+        // is on the grandchild's *absence* after the signal — the kernel
+        // reaps it asynchronously, and a fixed sleep would only guess at how
+        // long that takes.
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(5), || {
+            jinn_testutil::platform::find_orphans("sleep 65", "sleep").is_empty()
+        })
+        .await;
     }
 
     /// Calling the helper on an already-exited child must not panic. On Unix the

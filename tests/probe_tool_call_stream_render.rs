@@ -37,10 +37,19 @@ const WRITE_ARGS: &[&str] = &[
     ",\"mode\":\"overwrite\"}",
 ];
 
-/// Settles async bus delivery. A real publish hands the message to the
-/// actor's mailbox; the state write lands on a later task turn.
-async fn settle() {
-    tokio::time::sleep(Duration::from_millis(150)).await;
+/// Settles async bus delivery.
+///
+/// A real publish hands the message to the actor's mailbox; the state write
+/// lands on a later task turn. The wait is on the state's own quiescence —
+/// a fixed sleep would only guess at when the actor's write landed, and the
+/// read could land before it.
+async fn settle(state: &State) {
+    jinn_testutil::wait::await_value_settled(
+        Duration::from_millis(50),
+        Duration::from_secs(5),
+        || state.read().session.active_session().history().len(),
+    )
+    .await;
 }
 
 /// A live session actor over a real bus, plus the bus and the state handle
@@ -67,7 +76,7 @@ async fn live_session() -> (BusService, State) {
             image_converter: jinn_llm_support::image_convert::ImageConverterService::unavailable(),
         },
     );
-    settle().await;
+    settle(&state).await;
     (services.bus.clone(), state)
 }
 
@@ -112,7 +121,7 @@ async fn streamed_tool_call_arguments_are_visible_before_the_call_completes() {
         dispatched_at: jiff::Timestamp::now(),
     })
     .await;
-    settle().await;
+    settle(&state).await;
     bus.publish(ToolUseStarted {
         session_id: session_id.clone(),
         index: 0,
@@ -121,14 +130,14 @@ async fn streamed_tool_call_arguments_are_visible_before_the_call_completes() {
         dispatched_at: jiff::Timestamp::now(),
     })
     .await;
-    settle().await;
+    settle(&state).await;
     bus.publish(ToolCallStreaming {
         session_id: session_id.clone(),
         index: 0,
         partial_json: WRITE_ARGS[0].to_owned(),
     })
     .await;
-    settle().await;
+    settle(&state).await;
     let frame = painted(&state.read(), 80, 20);
 
     // Then the streamed bytes are on screen, not merely in session state.
@@ -157,14 +166,14 @@ async fn streamed_arguments_are_visible_when_the_turn_starts_with_a_tool_call() 
         dispatched_at: jiff::Timestamp::now(),
     })
     .await;
-    settle().await;
+    settle(&state).await;
     bus.publish(ToolCallStreaming {
         session_id: session_id.clone(),
         index: 0,
         partial_json: WRITE_ARGS[0].to_owned(),
     })
     .await;
-    settle().await;
+    settle(&state).await;
     let frame = painted(&state.read(), 80, 20);
 
     // Then the streamed bytes are on screen.
@@ -189,7 +198,7 @@ async fn a_streamed_delta_lands_on_the_tool_call_entry_it_started_on() {
         dispatched_at: jiff::Timestamp::now(),
     })
     .await;
-    settle().await;
+    settle(&state).await;
     bus.publish(ToolUseStarted {
         session_id: session_id.clone(),
         index: 0,
@@ -204,7 +213,7 @@ async fn a_streamed_delta_lands_on_the_tool_call_entry_it_started_on() {
         partial_json: WRITE_ARGS[0].to_owned(),
     })
     .await;
-    settle().await;
+    settle(&state).await;
 
     // When the call completes and the finalized arguments arrive.
     bus.publish(ToolCallReceived {
@@ -217,7 +226,7 @@ async fn a_streamed_delta_lands_on_the_tool_call_entry_it_started_on() {
         dispatched_at: jiff::Timestamp::now(),
     })
     .await;
-    settle().await;
+    settle(&state).await;
 
     // Then the entry carries the payload, proving the deltas landed on the
     // entry the call started on rather than being dropped.
@@ -254,7 +263,7 @@ async fn the_streamed_display_grows_monotonically_as_deltas_arrive() {
         dispatched_at: jiff::Timestamp::now(),
     })
     .await;
-    settle().await;
+    settle(&state).await;
 
     // When three deltas arrive and the log paints after each.
     let mut frames = Vec::new();
@@ -265,7 +274,7 @@ async fn the_streamed_display_grows_monotonically_as_deltas_arrive() {
             partial_json: (*delta).to_owned(),
         })
         .await;
-        settle().await;
+        settle(&state).await;
         frames.push(painted(&state.read(), 80, 20));
     }
 
@@ -304,14 +313,14 @@ async fn every_streaming_tool_paints_its_arguments(#[case] tool: &str) {
         dispatched_at: jiff::Timestamp::now(),
     })
     .await;
-    settle().await;
+    settle(&state).await;
     bus.publish(ToolCallStreaming {
         session_id: session_id.clone(),
         index: 0,
         partial_json: WRITE_ARGS[0].to_owned(),
     })
     .await;
-    settle().await;
+    settle(&state).await;
     let frame = painted(&state.read(), 80, 20);
 
     // Then the streamed bytes are painted, with no per-tool special case.

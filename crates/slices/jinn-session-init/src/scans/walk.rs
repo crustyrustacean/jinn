@@ -175,6 +175,16 @@ mod tests {
     )]
     use super::*;
 
+    /// A home directory that is nowhere near the tree under test.
+    ///
+    /// The walk must not reach it, so it lives in its own temp root — a
+    /// sibling of the tree, never one of its ancestors. Building it from a
+    /// typed root keeps the path absolute on every platform.
+    fn far_away_home() -> PathBuf {
+        let root = jinn_testutil::paths::TestRoot::new().expect("test root");
+        root.join_str("home").expect("relative path").into_inner()
+    }
+
     /// Builds a nested temp dir tree and returns the root + a leaf path.
     struct Tree {
         root: PathBuf,
@@ -217,7 +227,7 @@ mod tests {
         let tree = Tree::new(Some(".git"));
 
         // When walking up from the leaf with home far away.
-        let dirs = project_dirs(&tree.leaf, Path::new("/nonexistent/home"));
+        let dirs = project_dirs(&tree.leaf, &far_away_home());
 
         // Then the walk collects leaf -> sub, then root (VCS root, inclusive),
         // and stops. Root comes first after reverse, leaf last.
@@ -233,7 +243,7 @@ mod tests {
         let tree = Tree::new(Some(".fslckout"));
 
         // When walking up from the leaf.
-        let dirs = project_dirs(&tree.leaf, Path::new("/nonexistent/home"));
+        let dirs = project_dirs(&tree.leaf, &far_away_home());
 
         // Then the walk stops at the Fossil root (dogfoods this repo's VCS).
         assert_eq!(dirs.len(), 3);
@@ -246,7 +256,7 @@ mod tests {
         let tree = Tree::new(Some(".fossil"));
 
         // When walking up from the leaf.
-        let dirs = project_dirs(&tree.leaf, Path::new("/nonexistent/home"));
+        let dirs = project_dirs(&tree.leaf, &far_away_home());
 
         // Then the walk stops at the Fossil repo root.
         assert_eq!(dirs.len(), 3);
@@ -259,7 +269,7 @@ mod tests {
         let tree = Tree::new(Some(".git"));
 
         // When walking from the root itself.
-        let dirs = project_dirs(&tree.root, Path::new("/nonexistent/home"));
+        let dirs = project_dirs(&tree.root, &far_away_home());
 
         // Then only the root is collected (inclusive), no parents.
         assert_eq!(dirs, vec![tree.root]);
@@ -357,7 +367,7 @@ mod tests {
         let tree = Tree::new(Some(".git"));
 
         // When resolving skills dirs.
-        let dirs = project_skills_dirs(&tree.leaf, Path::new("/nonexistent/home"));
+        let dirs = project_skills_dirs(&tree.leaf, &far_away_home());
 
         // Then each project dir has the .agents/skills suffix with native
         // separators, computed from a PathBuf join.
@@ -374,7 +384,7 @@ mod tests {
         let tree = Tree::new(Some(".git"));
 
         // When resolving prompts dirs.
-        let dirs = project_prompts_dirs(&tree.leaf, Path::new("/nonexistent/home"));
+        let dirs = project_prompts_dirs(&tree.leaf, &far_away_home());
 
         // Then each project dir has the .agents/prompts suffix with native
         // separators, computed from a PathBuf join.
@@ -395,7 +405,7 @@ mod tests {
         let tree = Tree::new(Some(".git"));
 
         // When resolving skills dirs.
-        let dirs = project_skills_dirs(&tree.leaf, Path::new("/nonexistent/home"));
+        let dirs = project_skills_dirs(&tree.leaf, &far_away_home());
 
         // Then the rendered string of every dir contains no separator other
         // than the platform's own.
@@ -419,7 +429,7 @@ mod tests {
         std::fs::write(tree.root.join("AGENTS.md"), "# root").expect("write AGENTS.md");
 
         // When resolving context files.
-        let files = project_context_files(&tree.leaf, Path::new("/nonexistent/home"));
+        let files = project_context_files(&tree.leaf, &far_away_home());
 
         // Then only the root contributes a context file.
         assert_eq!(files.len(), 1);
@@ -432,7 +442,7 @@ mod tests {
         let tree = Tree::new(Some(".git"));
 
         // When resolving context files.
-        let files = project_context_files(&tree.leaf, Path::new("/nonexistent/home"));
+        let files = project_context_files(&tree.leaf, &far_away_home());
 
         // Then no dirs contribute (all filtered out).
         assert!(files.is_empty());
@@ -447,7 +457,7 @@ mod tests {
         std::fs::write(root.join("CLAUDE.md"), "# claude").expect("write");
 
         // When resolving context files.
-        let files = project_context_files(&root, Path::new("/nonexistent/home"));
+        let files = project_context_files(&root, &far_away_home());
 
         // Then only AGENTS.md is returned (first candidate wins).
         assert_eq!(files.len(), 1);

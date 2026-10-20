@@ -296,6 +296,7 @@ impl TestServices {
                 svc.reload().expect("test app state storage initial reload");
                 svc
             },
+            shells: jinn_common::shell::Shells::default(),
             tempdir,
             bus,
             bridge,

@@ -97,7 +97,7 @@ use super::*;
 use crate::session::SessionState;
 use test_fakes::{ErroringLlmFactory, HangingLlmFactory};
 
-use jinn_inference_msg::StreamOrigin;
+use jinn_inference_msg::{StreamActivity, StreamOrigin};
 use jinn_provider::FakeLlmServiceFactory;
 use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 
@@ -546,8 +546,11 @@ async fn a_cancel_turn_publishes_no_completion_of_its_own() {
             dispatched_at: jiff::Timestamp::now(),
         })
         .await;
-    // Give the stream a moment to start.
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    // The stream must be actively streaming before the cancel, or the
+    // cancel would prove nothing. A fixed sleep could let the cancel
+    // arrive before the stream ever started.
+    let activity = harness.spawn_recorder::<StreamActivity>().await;
+    let _ = await_recorded(&activity, 1, std::time::Duration::from_secs(5)).await;
 
     // When cancelling the turn.
     actor.abort_stream(&session_id, None).await;
@@ -1216,8 +1219,15 @@ async fn an_intercept_aborts_the_stream_before_the_done_event() {
     run_with_rules(&harness, stream, &sid, Some(rule_set("FORBIDDEN"))).await;
 
     // Then the loop returned at the intercept: the tool call never ran.
-    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-    let recorded = await_recorded(&batches, 1, std::time::Duration::from_millis(150)).await;
+    // The recorder must have stopped changing before "no batch was
+    // published" is an observation rather than a race with a publish that
+    // is still in flight.
+    let recorded = jinn_testutil::wait::await_settled_messages(
+        &batches,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(5),
+    )
+    .await;
     assert!(
         recorded.is_empty(),
         "an intercepted response must not go on to execute the tool calls it was building"
@@ -1347,18 +1357,27 @@ async fn an_intercept_aborts_the_stream_without_cancelling_the_turn() {
 
     // When a turn streams output that trips the rule.
     harness.bus().publish(dispatch_for(&SessionId::new())).await;
-    tokio::time::sleep(std::time::Duration::from_millis(600)).await;
 
     // Then the turn was aborted, not cancelled: a cancel would emit a second
     // completion pushing the literal `Cancelled` entry every consumer reads
     // as a user cancel.
-    let aborts = await_recorded(&aborts, 1, std::time::Duration::from_millis(200)).await;
+    // The abort is the positive signal: until it arrives, the intercept
+    // cycle has not run and nothing below can be observed. A fixed sleep
+    // could let the read happen before the intercept even began.
+    let aborts = await_recorded(&aborts, 1, std::time::Duration::from_secs(5)).await;
     assert_eq!(
         aborts.len(),
         1,
         "the intercept must abort the generation it stopped"
     );
-    let cancels = await_recorded(&cancels, 1, std::time::Duration::from_millis(100)).await;
+    // The abort has arrived; the cancel recorder must now have stopped
+    // changing before "no cancel was published" means anything.
+    let cancels = jinn_testutil::wait::await_settled_messages(
+        &cancels,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(5),
+    )
+    .await;
     assert!(
         cancels.is_empty(),
         "the intercept must never publish a cancel: that races a second, \
@@ -1366,7 +1385,7 @@ async fn an_intercept_aborts_the_stream_without_cancelling_the_turn() {
     );
 
     // And the only completion is the intercept's.
-    let completed = await_recorded(&completed, 1, std::time::Duration::from_millis(200)).await;
+    let completed = await_recorded(&completed, 1, std::time::Duration::from_secs(5)).await;
     assert_eq!(
         completed.len(),
         1,
@@ -1393,13 +1412,14 @@ async fn an_intercept_publishes_the_guidance_and_the_abort_before_completing() {
 
     // When a turn trips the rule.
     harness.bus().publish(dispatch_for(&SessionId::new())).await;
-    tokio::time::sleep(std::time::Duration::from_millis(600)).await;
 
     // Then the abort carried the dispatch it stopped, so the actor can tell a
     // live abort from one the resume has already superseded.
-    let aborts = await_recorded(&aborts, 1, std::time::Duration::from_millis(200)).await;
+    // The abort is the positive signal: until it arrives, the intercept
+    // cycle has not run and nothing below can be observed.
+    let aborts = await_recorded(&aborts, 1, std::time::Duration::from_secs(5)).await;
     assert_eq!(aborts.len(), 1);
-    let completed = await_recorded(&completed, 1, std::time::Duration::from_millis(200)).await;
+    let completed = await_recorded(&completed, 1, std::time::Duration::from_secs(5)).await;
     assert_eq!(completed.len(), 1);
     assert_eq!(
         aborts[0].dispatched_at, completed[0].dispatched_at,

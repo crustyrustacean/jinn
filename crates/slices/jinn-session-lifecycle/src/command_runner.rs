@@ -459,7 +459,14 @@ mod tests {
     /// caller prints a skip reason and returns — a visible skip, never a
     /// silent pass.
     fn shell_or_skip() -> Option<String> {
-        let shell = jinn_common::shell::resolve_shell();
+        let Some(shell) = jinn_common::shell::Shells::default()
+            .bash()
+            .ok()
+            .map(|shell| shell.program().to_owned())
+        else {
+            eprintln!("SKIP: no usable POSIX shell resolved for command_runner tests");
+            return None;
+        };
         if shell != "bash" {
             return Some(shell);
         }
@@ -641,9 +648,14 @@ mod tests {
         let Some(shell) = shell_or_skip() else {
             return;
         };
-        // Given a setup command that outputs a non-existent path.
+        // Given a setup command that outputs a path under a temp root which
+        // does not exist.
+        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let missing = dir.path().join("nonexistent").join("path").join("xyzzy");
+        let missing_text = missing.to_string_lossy().to_string();
+
         // When running it.
-        let result = run_setup_command("echo /nonexistent/path/xyzzy", &shell).await;
+        let result = run_setup_command(&format!("echo '{missing_text}'"), &shell).await;
 
         // Then the result is an InvalidPath error.
         assert!(result.is_err());
@@ -653,7 +665,7 @@ mod tests {
             .expect("downcast");
         match err {
             LifecycleCommandError::InvalidPath { path } => {
-                assert_eq!(path, &PathBuf::from("/nonexistent/path/xyzzy"));
+                assert_eq!(path, &missing);
             }
             other => panic!("expected InvalidPath, got {other:?}"),
         }

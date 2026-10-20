@@ -262,12 +262,25 @@ async fn provider_init_writes_the_disk_cache_through_the_provider_cell() {
             config: config.clone(),
         })
         .await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
 
     // Then the boot actor's cache write went through the provider cell.
     // With no disk cache seeded, the write lands as `None` — the
     // observable proof the actor reached the cell at all is that the
     // provider registry is now built from the loaded config.
+    //
+    // The wait is on the registry itself — a fixed sleep would only guess
+    // at when the boot actor built it, and the read could land before it,
+    // leaving the assertion to fail on an empty registry.
+    jinn_testutil::wait::wait_for(Duration::from_secs(5), || {
+        services
+            .provider_registry
+            .read()
+            .get(&jinn_provider_config::ProviderId::new(
+                "sample/sample".to_owned(),
+            ))
+            .is_some()
+    })
+    .await;
     let registry = services.provider_registry.read();
     assert!(
         registry

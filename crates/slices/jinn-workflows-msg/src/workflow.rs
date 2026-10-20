@@ -33,11 +33,13 @@ mod tests {
 
     #[rstest::rstest]
     fn workflow_roundtrips_through_serde() {
-        // Given a workflow with every field set.
+        // Given a workflow with every field set. The directory is built from
+        // a temp root, so it is an absolute path on every platform.
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let workflow = Workflow {
             name: "research-report".to_owned(),
             description: "Research a topic and deliver a cited brief.".to_owned(),
-            dir: std::path::PathBuf::from("/cfg/workflows/research-report"),
+            dir: root.path().join("workflows").join("research-report"),
         };
 
         // When serializing then deserializing.

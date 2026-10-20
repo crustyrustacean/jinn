@@ -99,7 +99,7 @@ fn parity_matches_reference_vectors(#[case] index: usize, #[case] sentence: &str
 fn unavailable_model_error_names_the_prefetch_hint() {
     // Given an embedder whose cache dir cannot hold a model: a file where
     // hf-hub needs a directory, under a tempdir root.
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir().expect("temp dir");
     let blocker = dir.path().join("blocker");
     std::fs::write(&blocker, b"not a directory").expect("writes the blocker file");
     let embedder: Arc<dyn Embedder> = Arc::new(CandleEmbedder::new(

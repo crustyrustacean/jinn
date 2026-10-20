@@ -15,9 +15,9 @@ use jinn_config::ConfigLayer;
 
 use crate::schemas::{
     AutoPruneConfig, ChatLogConfig, CompactionConfig, CwdSelectorConfig, DiscordConfig,
-    InteractiveTermPrefs, McpServersConfig, MinimapConfig, RequestRetryConfig, SkillsConfig,
-    StallWatchdogConfig, StreamRuleWatchdogConfig, ToolCallWatchdogConfig, ToolsConfig,
-    WebSearchConfig,
+    InteractiveTermPrefs, McpServersConfig, MinimapConfig, RequestRetryConfig, ShellConfig,
+    SkillsConfig, StallWatchdogConfig, StreamRuleWatchdogConfig, ToolCallWatchdogConfig,
+    ToolsConfig, WebSearchConfig,
 };
 
 /// Registers every `jinn.toml` section that can be validated at launch.
@@ -63,6 +63,7 @@ pub fn register_all_sections(config: &ConfigLayer) {
     config.register::<StreamRuleWatchdogConfig>();
     config.register::<AutoPruneConfig>();
     config.register::<InteractiveTermPrefs>();
+    config.register::<ShellConfig>();
     config.register::<McpServersConfig>();
     config.register::<DiscordConfig>();
 }

@@ -17,7 +17,6 @@ pub struct Ctx<'a> {
     state: &'a State,
     services: &'a mut Services,
     compaction_prompt: String,
-    shell: String,
     token_counter: jinn_llm_support::token_estimator::TiktokenCounter,
     image_converter: jinn_llm_support::image_convert::ImageConverterService,
 }
@@ -25,21 +24,16 @@ pub struct Ctx<'a> {
 impl<'a> Ctx<'a> {
     /// Assembles the context for one boot.
     ///
-    /// `compaction_prompt` and `shell` are read here, at startup, and
-    /// carried on the struct: the environment is a global namespace and is
-    /// not consulted again after launch.
+    /// `compaction_prompt` is read here, at startup, and carried on the
+    /// struct. The shell is not carried here: it was resolved at launch
+    /// and rides on the services container, so every consumer reads the
+    /// same resolved value.
     #[must_use]
-    pub fn new(
-        state: &'a State,
-        services: &'a mut Services,
-        compaction_prompt: String,
-        shell: String,
-    ) -> Self {
+    pub fn new(state: &'a State, services: &'a mut Services, compaction_prompt: String) -> Self {
         Self {
             state,
             services,
             compaction_prompt,
-            shell,
             token_counter: jinn_llm_support::token_estimator::TiktokenCounter::o200k_base(),
             image_converter: jinn_llm_support::image_convert::ImageConverterService::system(),
         }
@@ -94,12 +88,6 @@ impl<'a> Ctx<'a> {
                 panic!("cell not registered at boot: {slot}");
             }
         }
-    }
-
-    /// The shell scripted commands run under (bash semantics; see
-    /// `jinn_common::shell`), resolved once at startup.
-    pub(crate) fn shell(&self) -> String {
-        self.shell.clone()
     }
 
     /// The prune-worker list context-curation runs.

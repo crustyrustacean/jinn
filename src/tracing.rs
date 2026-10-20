@@ -778,14 +778,17 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn panic_log_path_is_sibling_of_log_path() {
-        // Given a resolved log path /x/jinn.log.
-        let log_path = Path::new("/x/jinn.log");
+        // Given a resolved log path in a directory of its own. The path is
+        // rooted at the platform's own filesystem root, so it is absolute on
+        // every platform without naming a POSIX literal.
+        let root = Path::new(std::path::MAIN_SEPARATOR_STR);
+        let log_path = root.join("x").join("jinn.log");
 
         // When deriving the panic-log path.
-        let panic_path = panic_log_path(log_path);
+        let panic_path = panic_log_path(&log_path);
 
         // Then it is jinn-panic.log in the same directory.
-        assert_eq!(panic_path, PathBuf::from("/x/jinn-panic.log"));
+        assert_eq!(panic_path, root.join("x").join("jinn-panic.log"));
     }
 
     #[rstest::rstest]

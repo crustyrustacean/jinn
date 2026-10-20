@@ -72,6 +72,12 @@ pub struct Services {
     /// The configuration layer: every `jinn.toml` value is read and
     /// written through this handle, and none is cached anywhere else.
     pub config: jinn_config::ConfigLayer,
+    /// The shells jinn runs commands through, resolved once at launch.
+    ///
+    /// The environment is probed here and nowhere else: a tool, the PTY,
+    /// and the lifecycle runner all read the resolved value rather than
+    /// re-probing `PATH` for themselves.
+    pub shells: jinn_common::shell::Shells,
     /// App state storage for persisting `state.toml`.
     pub app_state_storage: AppStateStorageService,
     /// Test-only owned temp directory. `None` in production.
@@ -214,6 +220,7 @@ impl Services {
                 svc.reload().expect("test app state storage initial reload");
                 svc
             },
+            shells: jinn_common::shell::Shells::default(),
             tempdir: Some(tempdir),
             bus,
             bridge,
@@ -281,6 +288,7 @@ impl Services {
                 svc.reload().expect("test app state storage initial reload");
                 svc
             },
+            shells: jinn_common::shell::Shells::default(),
             tempdir: Some(tempdir),
             bus,
             bridge,

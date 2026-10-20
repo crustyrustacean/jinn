@@ -464,7 +464,11 @@ mod tests {
     use super::*;
     fn default_map() -> SessionMap {
         let session = ChatSessionState::new();
-        SessionMap::new(session, PathBuf::from("/"))
+        // The default cwd is a token the tests never touch on disk, so it is
+        // rooted at the platform's own filesystem root rather than named as a
+        // POSIX literal.
+        let default_cwd = std::path::Path::new(std::path::MAIN_SEPARATOR_STR).to_path_buf();
+        SessionMap::new(session, default_cwd)
     }
 
     #[rstest::rstest]

@@ -151,6 +151,16 @@ pub fn builtin_tools(default_timeout_secs: u64) -> Vec<BuiltinToolEntry> {
             false,
         ),
     ];
+
+    // The PowerShell tool is Windows-only: on Linux and macOS the model
+    // must not see a tool it cannot run.
+    #[cfg(windows)]
+    entries.push((
+        crate::powershell::definition(default_timeout_secs),
+        crate::powershell::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+        false,
+    ));
+
     entries.extend(crate::todo_tools::tool_entries());
 
     entries
@@ -181,6 +191,41 @@ mod tests {
             .position(|n| *n == "capabilities_apply")
             .expect("capabilities_apply must be registered");
         assert!(query_pos < apply_pos);
+    }
+
+    #[cfg(windows)]
+    #[rstest::rstest]
+    #[test]
+    fn the_powershell_tool_is_registered_on_windows() {
+        // Given the builtin tool list.
+        let tools = builtin_tools(30);
+
+        // When collecting the registered tool names.
+        let names: Vec<&str> = tools.iter().map(|(d, _, _)| d.name.as_str()).collect();
+
+        // Then the powershell tool is present.
+        assert!(
+            names.contains(&"powershell"),
+            "the powershell tool must be registered on Windows; got: {names:?}"
+        );
+    }
+
+    #[cfg(not(windows))]
+    #[rstest::rstest]
+    #[test]
+    fn the_powershell_tool_is_not_registered_off_windows() {
+        // Given the builtin tool list.
+        let tools = builtin_tools(30);
+
+        // When collecting the registered tool names.
+        let names: Vec<&str> = tools.iter().map(|(d, _, _)| d.name.as_str()).collect();
+
+        // Then the powershell tool is absent: the model must not see a
+        // tool it cannot run.
+        assert!(
+            !names.contains(&"powershell"),
+            "the powershell tool must not be registered off Windows; got: {names:?}"
+        );
     }
 
     #[rstest::rstest]

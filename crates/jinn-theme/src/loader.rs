@@ -185,14 +185,14 @@ pub fn resolve_theme_from_dir(
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
-    use tempfile::TempDir;
 
     use super::*;
 
     #[rstest::rstest]
     fn discover_themes_returns_empty_for_missing_dir() {
         // Given a themes directory that doesn't exist.
-        let dir = PathBuf::from("/nonexistent/path/themes");
+        let root = jinn_testutil::tempdir().expect("temp dir");
+        let dir = root.path().join("nonexistent").join("path").join("themes");
 
         // When discovering themes.
         let result = discover_themes(&dir);
@@ -208,7 +208,7 @@ mod tests {
     #[rstest::rstest]
     fn load_theme_returns_not_found_for_missing_file() {
         // Given a themes directory with no such theme file.
-        let dir = TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
 
         // When loading a theme name that doesn't exist.
         let result = load_theme_from_dir("nonexistent_theme_xyz", dir.path());
@@ -227,7 +227,7 @@ mod tests {
     #[rstest::rstest]
     fn load_theme_from_file_parses_valid_toml() {
         // Given a valid theme TOML file.
-        let dir = TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("test.toml");
         std::fs::write(&path, "focus_accent = \"red\"\nprimary_text = \"#FFFFFF\"").expect("write");
 
@@ -247,7 +247,7 @@ mod tests {
     #[rstest::rstest]
     fn load_theme_from_file_rejects_invalid_toml() {
         // Given an invalid TOML file.
-        let dir = TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("bad.toml");
         std::fs::write(&path, "this is not valid toml {{{{").expect("write");
 
@@ -268,7 +268,7 @@ mod tests {
     #[rstest::rstest]
     fn load_theme_from_file_rejects_invalid_color() {
         // Given a TOML file with an invalid color value.
-        let dir = TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("bad-color.toml");
         std::fs::write(&path, "focus_accent = \"not_a_color\"").expect("write");
 
@@ -289,7 +289,7 @@ mod tests {
     #[rstest::rstest]
     fn resolve_theme_none_returns_default_when_no_file() {
         // Given an empty themes directory.
-        let dir = TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
 
         // When resolving with None.
         let theme = resolve_theme_from_dir(None, dir.path()).expect("resolve");
@@ -301,7 +301,7 @@ mod tests {
     #[rstest::rstest]
     fn resolve_theme_default_string_returns_default_when_no_file() {
         // Given an empty themes directory.
-        let dir = TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
 
         // When resolving with "default".
         let theme = resolve_theme_from_dir(Some("default"), dir.path()).expect("resolve");
@@ -313,7 +313,7 @@ mod tests {
     #[rstest::rstest]
     fn resolve_theme_default_loads_from_filesystem() {
         // Given a themes directory with a custom default.toml.
-        let dir = TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let path = dir.path().join("default.toml");
         std::fs::write(&path, "focus_accent = \"red\"").expect("write");
 
@@ -329,7 +329,7 @@ mod tests {
     #[rstest::rstest]
     fn discover_themes_finds_toml_files() {
         // Given a temp directory with theme files.
-        let dir = TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         std::fs::write(dir.path().join("ocean.toml"), "focus_accent = \"blue\"").expect("write");
         std::fs::write(dir.path().join("forest.toml"), "focus_accent = \"green\"").expect("write");
         std::fs::write(dir.path().join("readme.txt"), "not a theme").expect("write");
@@ -346,8 +346,8 @@ mod tests {
     #[rstest::rstest]
     fn load_theme_searches_user_then_system() {
         // Given a user dir without the theme and a system dir with it.
-        let user_dir = TempDir::new().expect("temp dir");
-        let system_dir = TempDir::new().expect("temp dir");
+        let user_dir = jinn_testutil::tempdir().expect("temp dir");
+        let system_dir = jinn_testutil::tempdir().expect("temp dir");
         std::fs::write(
             system_dir.path().join("ocean.toml"),
             "focus_accent = \"blue\"",
@@ -364,8 +364,8 @@ mod tests {
     #[rstest::rstest]
     fn load_theme_user_overrides_system() {
         // Given user dir with "ocean" (blue) and system dir with "ocean" (red).
-        let user_dir = TempDir::new().expect("temp dir");
-        let system_dir = TempDir::new().expect("temp dir");
+        let user_dir = jinn_testutil::tempdir().expect("temp dir");
+        let system_dir = jinn_testutil::tempdir().expect("temp dir");
         std::fs::write(
             user_dir.path().join("ocean.toml"),
             "focus_accent = \"blue\"",
@@ -387,8 +387,8 @@ mod tests {
     #[rstest::rstest]
     fn resolve_theme_searches_both_dirs() {
         // Given user dir with "ocean" and system dir with "forest".
-        let user_dir = TempDir::new().expect("temp dir");
-        let system_dir = TempDir::new().expect("temp dir");
+        let user_dir = jinn_testutil::tempdir().expect("temp dir");
+        let system_dir = jinn_testutil::tempdir().expect("temp dir");
         std::fs::write(
             user_dir.path().join("ocean.toml"),
             "focus_accent = \"blue\"",

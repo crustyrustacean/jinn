@@ -739,6 +739,21 @@ mod tests {
         fn cell_model_cache(&self) -> Option<ModelCache> {
             self.cell().read().model_cache.clone()
         }
+
+        /// Waits until the model cache is set, then returns it.
+        ///
+        /// A fixed sleep would be a guess at how long the actor takes to
+        /// process the event — a guess that is wrong in the direction that
+        /// makes the test pass vacuously on a slow host. Waiting on the
+        /// cell's own predicate is the signal that the work completed.
+        async fn await_model_cache(&self) -> ModelCache {
+            let cell = self.cell();
+            jinn_testutil::wait::await_cell(&cell, std::time::Duration::from_secs(2), |c| {
+                c.model_cache.is_some()
+            })
+            .await;
+            self.cell_model_cache().expect("cache set after the wait")
+        }
     }
 
     async fn create_ctx() -> Ctx {
@@ -822,10 +837,7 @@ mod tests {
         ctx.harness.publish(ModelCacheLoaded { cache }).await;
 
         // Then the model cache is set in the cell.
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        let loaded = ctx
-            .cell_model_cache()
-            .expect("actor should have processed the event");
+        let loaded = ctx.await_model_cache().await;
         assert_eq!(loaded.entries["ollama"].len(), 1);
         assert_eq!(loaded.entries["ollama"][0].id, "llama3");
     }
@@ -846,10 +858,7 @@ mod tests {
         // When publishing ModelCacheLoaded via bus.
         ctx.harness.publish(ModelCacheLoaded { cache }).await;
 
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-        // Then the timestamp is preserved in the cell.
-        let loaded = ctx.cell_model_cache().expect("cache set");
+        let loaded = ctx.await_model_cache().await;
         assert!(loaded.last_updated_at.is_some());
     }
 
@@ -898,10 +907,7 @@ mod tests {
         };
         ctx.harness.publish(event).await;
 
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-        // Then the model cache has context_length from the registry.
-        let cache = ctx.cell_model_cache().expect("cache should be set");
+        let cache = ctx.await_model_cache().await;
         assert_eq!(cache.entries["zai"][0].context_length, Some(128_000));
 
         // And the model is registered in the provider registry.
@@ -938,9 +944,19 @@ mod tests {
 
         // When publishing the refresh result.
         ctx.harness.publish(event).await;
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         // Then the session history contains one transient refresh entry.
+        // The wait is on the history itself: a fixed sleep would be a guess
+        // at how long the actor takes, and a guess that is wrong in the
+        // direction that makes the assertion pass vacuously.
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            ctx.state
+                .read()
+                .session
+                .get(&session_id)
+                .is_some_and(|s| s.history().len() == 1)
+        })
+        .await;
         let state = ctx.state.read();
         let session = state.session.get(&session_id).expect("session");
         assert_eq!(session.history().len(), 1);
@@ -996,11 +1012,7 @@ mod tests {
         };
         ctx.harness.publish(event).await;
 
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-        // Then the block config value wins (4096), not the API value (8192) —
-        // unified precedence: per-model config > block config > API > models.dev.
-        let cache = ctx.cell_model_cache().expect("cache should be set");
+        let cache = ctx.await_model_cache().await;
         assert_eq!(cache.entries["ollama"][0].context_length, Some(4096));
     }
 
@@ -1028,10 +1040,7 @@ mod tests {
         };
         ctx.harness.publish(event).await;
 
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-        // Then the cache entry stays None.
-        let cache = ctx.cell_model_cache().expect("cache should be set");
+        let cache = ctx.await_model_cache().await;
         assert_eq!(cache.entries["ollama"][0].context_length, None);
     }
 
@@ -1059,10 +1068,7 @@ mod tests {
         };
         ctx.harness.publish(event).await;
 
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-        // Then the cache entry is stored as-is, no panic.
-        let cache = ctx.cell_model_cache().expect("cache should be set");
+        let cache = ctx.await_model_cache().await;
         assert_eq!(cache.entries["groq"][0].context_length, None);
     }
 
@@ -1110,10 +1116,7 @@ mod tests {
 
         ctx.harness.publish(ModelCacheLoaded { cache }).await;
 
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-        // Then the model cache in the cell has context_length from the registry.
-        let loaded = ctx.cell_model_cache().expect("cache should be set");
+        let loaded = ctx.await_model_cache().await;
         assert_eq!(loaded.entries["zai"][0].context_length, Some(128_000));
 
         // And the model is registered in the provider registry.
@@ -1161,11 +1164,7 @@ mod tests {
 
         ctx.harness.publish(ModelCacheLoaded { cache }).await;
 
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-        // Then the block config value wins (4096), not the API value (8192) —
-        // unified precedence: per-model config > block config > API > models.dev.
-        let loaded = ctx.cell_model_cache().expect("cache should be set");
+        let loaded = ctx.await_model_cache().await;
         assert_eq!(loaded.entries["ollama"][0].context_length, Some(4096));
     }
 
@@ -1243,10 +1242,7 @@ mod tests {
         // When publishing ModelCacheLoaded with an API-discovered value of 8192.
         let cache = cache_with_ollama_llama3(Some(8192));
         ctx.harness.publish(ModelCacheLoaded { cache }).await;
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-        // Then the per-model config value wins.
-        let loaded = ctx.cell_model_cache().expect("cache set");
+        let loaded = ctx.await_model_cache().await;
         assert_eq!(loaded.entries["ollama"][0].context_length, Some(16384));
         // And the configured modalities replace the discovered text-only value.
         assert!(
@@ -1278,10 +1274,7 @@ mod tests {
         );
         cache.last_updated_at = Some(jiff::Timestamp::now());
         ctx.harness.publish(ModelCacheLoaded { cache }).await;
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-        // Then the static-only model is injected with its config values.
-        let loaded = ctx.cell_model_cache().expect("cache set");
+        let loaded = ctx.await_model_cache().await;
         let injected = loaded.entries["ollama"]
             .iter()
             .find(|m| m.id == "llama3")
@@ -1336,10 +1329,7 @@ mod tests {
         );
         cache.last_updated_at = Some(jiff::Timestamp::now());
         ctx.harness.publish(ModelCacheLoaded { cache }).await;
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-        // Then the static model is injected carrying the block-level value.
-        let loaded = ctx.cell_model_cache().expect("cache set");
+        let loaded = ctx.await_model_cache().await;
         let injected = loaded.entries["ollama"]
             .iter()
             .find(|m| m.id == "llama3")
@@ -1365,11 +1355,7 @@ mod tests {
         // When publishing ModelCacheLoaded for that model.
         let cache = cache_with_ollama_llama3(Some(8192));
         ctx.harness.publish(ModelCacheLoaded { cache }).await;
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-        // Then the config modalities win: the loaded cache stays text-only even
-        // though models.dev enrichment (run before the overlay) stamps Image.
-        let loaded = ctx.cell_model_cache().expect("cache set");
+        let loaded = ctx.await_model_cache().await;
         assert!(
             !loaded.entries["ollama"][0]
                 .input_modalities
@@ -1635,8 +1621,15 @@ mod tests {
             .await
             .expect("load command delivers");
 
-        // Give the actor time to process.
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        // The picker cell is the signal that the command was processed.
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            !ctx.provider_picker_cell()
+                .read()
+                .selection
+                .items()
+                .is_empty()
+        })
+        .await;
 
         // Then the model picker has entries — in its own cell, since the
         // menu is slice-owned and there is no kernel-side mirror to check.
@@ -1674,7 +1667,15 @@ mod tests {
             )
             .await
             .expect("load command delivers");
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        // The picker cell is the signal that the command was processed.
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            !ctx.endpoint_picker_cell()
+                .read()
+                .selection
+                .items()
+                .is_empty()
+        })
+        .await;
 
         // Then loading is cleared (no stuck spinner) and a placeholder row shows.
         assert!(
@@ -1847,9 +1848,15 @@ mod endpoint_default_tests {
             .tell(ActorPath::new(PROVIDER_ACTOR_PATH), msg)
             .await
             .expect("command delivers");
-        // The handler is synchronous once dequeued; the sleep only covers the
-        // queue hop.
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        // The handler is synchronous once dequeued; draining the actor's
+        // inbox is what proves it was dequeued and run. A fixed sleep
+        // would only guess at the queue hop.
+        jinn_testutil::wait::await_inbox_drained(
+            &deps.services.trouper_system,
+            &ActorPath::new(PROVIDER_ACTOR_PATH),
+            std::time::Duration::from_secs(2),
+        )
+        .await;
     }
 
     const CLAUDE: &str = "openrouter/anthropic/claude-sonnet-4";

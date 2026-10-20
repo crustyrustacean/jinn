@@ -189,24 +189,29 @@ impl ExitWatcher {
 }
 
 impl PtySession {
-    /// Spawns `command` (shell syntax, executed via `bash -c`) inside a fresh
-    /// pty of `size`, and starts its realtime screen task.
+    /// Spawns `command` (shell syntax, executed via `shell -c`) inside a
+    /// fresh pty of `size`, and starts its realtime screen task.
     ///
     /// The screen task (owned by the session) drains the pty output pump into
     /// the shared emulator on a ~50 ms cadence and republishes the mirror on
     /// change; [`PtySession::screen`] reaches the emulator and the settle
     /// signals. `wiring` carries the bus + mirror endpoints for publication.
     ///
+    /// `shell` is the executable to run the command through. It is passed
+    /// in rather than resolved here: the shell was resolved once at
+    /// launch, and the environment is not consulted again.
+    ///
     /// # Errors
     ///
     /// Returns an error if the pty cannot be opened, the writer/reader cannot
     /// be taken, the pump thread cannot start, or the command fails to spawn
-    /// (e.g. `bash` is missing).
+    /// (e.g. the shell is missing).
     pub fn spawn(
         command: &str,
         cwd: &Path,
         size: PtySize,
         wiring: ScreenWiring,
+        shell: &str,
     ) -> Result<(Self, ReadPump), Report<PtyError>> {
         let pair = {
             let opened = native_pty_system().openpty(size);
@@ -237,10 +242,11 @@ impl PtySession {
         let pump = spawn_read_pump(reader, tx)?;
 
         // The command is shell syntax, so the child is always a shell: the
-        // shared resolver picks a proven-existing POSIX shell per platform
-        // (Unix: bare `bash`; Windows: git-bash — bare `bash` there resolves
-        // to System32's WSL launcher, which routes commands into a VM).
-        let mut cmd = CommandBuilder::new(jinn_common::shell::resolve_shell());
+        // shell was resolved at launch, and it is a proven-existing POSIX
+        // shell per platform (Unix: `/bin/bash` or bare `bash`; Windows:
+        // git-bash — bare `bash` there resolves to System32's WSL launcher,
+        // which routes commands into a VM).
+        let mut cmd = CommandBuilder::new(shell);
         cmd.arg("-c");
         cmd.arg(command);
         cmd.cwd(cwd);
@@ -583,15 +589,30 @@ mod tests {
         }
     }
 
+    /// The shell these tests spawn their pty children through — the same
+    /// shared resolver production uses.
+    #[cfg(unix)]
+    fn shell_for_tests() -> String {
+        jinn_common::shell::Shells::default()
+            .bash()
+            .map(|shell| shell.program().to_owned())
+            .unwrap_or_else(|_| "bash".to_owned())
+    }
+
     #[cfg(unix)]
     #[rstest::rstest]
     #[tokio::test]
     async fn spawned_child_echoes_input_back_through_screen() {
         // Given a `cat` session in a pty (cat echoes pty line-discipline input).
         let dir = jinn_testutil::tempdir().expect("temp dir");
-        let (mut session, pump) =
-            PtySession::spawn("cat", dir.path(), default_size(), wiring().await)
-                .expect("spawn cat");
+        let (mut session, pump) = PtySession::spawn(
+            "cat",
+            dir.path(),
+            default_size(),
+            wiring().await,
+            &shell_for_tests(),
+        )
+        .expect("spawn cat");
 
         // When writing bytes to the pty.
         session.write(b"hello pty\n").expect("write");
@@ -628,9 +649,14 @@ mod tests {
     async fn kill_terminates_whole_group_leaving_no_orphans() {
         // Given a session running a long sleep (the whole group to kill).
         let dir = jinn_testutil::tempdir().expect("temp dir");
-        let (mut session, pump) =
-            PtySession::spawn("sleep 65", dir.path(), default_size(), wiring().await)
-                .expect("spawn sleep");
+        let (mut session, pump) = PtySession::spawn(
+            "sleep 65",
+            dir.path(),
+            default_size(),
+            wiring().await,
+            &shell_for_tests(),
+        )
+        .expect("spawn sleep");
         let pid = session.pid().expect("child pid");
         // And the child is its own group leader (the invariant the group kill
         // relies on) — captured before the kill, since the group ceases to
@@ -645,19 +671,22 @@ mod tests {
         session.kill();
         pump.join();
 
-        // Then no `sleep 65` process survived the group signal.
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        let output = tokio::process::Command::new("pgrep")
-            .arg("-f")
-            .arg("sleep 65")
-            .output()
-            .await
-            .expect("pgrep should run");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            stdout.trim().is_empty(),
-            "expected no 'sleep 65', found: {stdout}"
-        );
+        // Then no `sleep 65` process survived the group signal. The kernel
+        // reaps the killed group asynchronously, so the wait is on the
+        // survivors' absence with a deadline — a fixed sleep would only
+        // guess at how long the reap takes, and the "no survivors" claim
+        // would fail in the direction that makes the assertion pass for the
+        // wrong reason.
+        let mut survivors = jinn_testutil::platform::find_orphans("sleep 65", "sleep");
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while !survivors.is_empty() {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "expected no 'sleep 65', found: {survivors:?}"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            survivors = jinn_testutil::platform::find_orphans("sleep 65", "sleep");
+        }
     }
 
     #[cfg(unix)]
@@ -666,9 +695,14 @@ mod tests {
     async fn try_wait_reports_exit_code_after_natural_exit() {
         // Given a session whose command exits with a known code.
         let dir = jinn_testutil::tempdir().expect("temp dir");
-        let (session, pump) =
-            PtySession::spawn("exit 7", dir.path(), default_size(), wiring().await)
-                .expect("spawn exit");
+        let (session, pump) = PtySession::spawn(
+            "exit 7",
+            dir.path(),
+            default_size(),
+            wiring().await,
+            &shell_for_tests(),
+        )
+        .expect("spawn exit");
 
         // When polling until the child terminates.
         let deadline = tokio::time::Instant::now() + wait_timeout();
@@ -697,26 +731,33 @@ mod tests {
     async fn dropping_session_kills_child() {
         // Given a session running a long sleep.
         let dir = jinn_testutil::tempdir().expect("temp dir");
-        let (session, _pump) =
-            PtySession::spawn("sleep 66", dir.path(), default_size(), wiring().await)
-                .expect("spawn sleep");
+        let (session, _pump) = PtySession::spawn(
+            "sleep 66",
+            dir.path(),
+            default_size(),
+            wiring().await,
+            &shell_for_tests(),
+        )
+        .expect("spawn sleep");
 
         // When dropping the session (the guard's whole point).
         drop(session);
 
-        // Then the sleep is gone.
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        let output = tokio::process::Command::new("pgrep")
-            .arg("-f")
-            .arg("sleep 66")
-            .output()
-            .await
-            .expect("pgrep should run");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            stdout.trim().is_empty(),
-            "expected no 'sleep 66', found: {stdout}"
-        );
+        // Then the sleep is gone. The kernel reaps the killed child
+        // asynchronously, so the wait is on the survivors' absence with a
+        // deadline — a fixed sleep would only guess at how long the reap
+        // takes, and the "the sleep is gone" claim would fail in the
+        // direction that makes the assertion pass for the wrong reason.
+        let mut survivors = jinn_testutil::platform::find_orphans("sleep 66", "sleep");
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while !survivors.is_empty() {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "expected no 'sleep 66', found: {survivors:?}"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            survivors = jinn_testutil::platform::find_orphans("sleep 66", "sleep");
+        }
     }
 
     #[cfg(unix)]
@@ -725,9 +766,14 @@ mod tests {
     async fn resize_updates_pty_and_deduplicates_noop() {
         // Given a session at the default size.
         let dir = jinn_testutil::tempdir().expect("temp dir");
-        let (mut session, pump) =
-            PtySession::spawn("cat", dir.path(), default_size(), wiring().await)
-                .expect("spawn cat");
+        let (mut session, pump) = PtySession::spawn(
+            "cat",
+            dir.path(),
+            default_size(),
+            wiring().await,
+            &shell_for_tests(),
+        )
+        .expect("spawn cat");
 
         // When resizing to 40x120.
         let new_size = PtySize {
@@ -761,7 +807,12 @@ mod tests {
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
         loop {
             let output = tokio::process::Command::new("ps")
-                .args(["-eo", "stat,comm"])
+                // `-A` (all processes) with two headerless `-o` columns. The
+                // GNU combined form `-eo stat,comm` is rejected by BSD `ps`,
+                // and BSD names the executable column `command`, not `comm`.
+                // `ucomm` is the executable name on both, and the empty
+                // header specifier (`stat=`) suppresses the header row.
+                .args(["-A", "-o", "stat=,ucomm="])
                 .output()
                 .await
                 .expect("ps should run");
@@ -793,9 +844,14 @@ mod tests {
         // replaces bash, so the pty child IS the program — the reported btop
         // zombie).
         let dir = jinn_testutil::tempdir().expect("temp dir");
-        let (session, pump) =
-            PtySession::spawn("exec true", dir.path(), default_size(), wiring().await)
-                .expect("spawn true");
+        let (session, pump) = PtySession::spawn(
+            "exec true",
+            dir.path(),
+            default_size(),
+            wiring().await,
+            &shell_for_tests(),
+        )
+        .expect("spawn true");
 
         // When the program terminates naturally and the watcher reaps it.
         let deadline = tokio::time::Instant::now() + wait_timeout();
@@ -825,9 +881,14 @@ mod tests {
     async fn killed_session_is_reaped_immediately_on_drop() {
         // Given a session running a long sleep.
         let dir = jinn_testutil::tempdir().expect("temp dir");
-        let (session, pump) =
-            PtySession::spawn("exec sleep 68", dir.path(), default_size(), wiring().await)
-                .expect("spawn sleep");
+        let (session, pump) = PtySession::spawn(
+            "exec sleep 68",
+            dir.path(),
+            default_size(),
+            wiring().await,
+            &shell_for_tests(),
+        )
+        .expect("spawn sleep");
 
         // When dropping the session (kills + bounded reap in drop).
         drop(session);

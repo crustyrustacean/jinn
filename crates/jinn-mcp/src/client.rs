@@ -690,8 +690,12 @@ mod tests {
     async fn connect_http_spawns_and_captures_combined_output() {
         // Given a no-op server script that prints to both stdout and stderr
         // and stays alive (sleeps), with a <port> token in args.
-        // Use `sh -c` to print to both streams; the <port> token is unused
-        // by the script but must expand without error.
+        // The script runs through the resolved shell, so the test works on
+        // a machine whose shell is not named `sh`; the <port> token is
+        // unused by the script but must expand without error.
+        let Some(shell) = jinn_testutil::platform::shell_or_skip() else {
+            return; // the helper already printed why
+        };
         let args = vec![
             "-c".to_owned(),
             "echo stdout-line; echo stderr-line >&2; sleep 1".to_owned(),
@@ -700,20 +704,27 @@ mod tests {
 
         // When connecting over HTTP.
         let mut half =
-            McpClient::connect_http("sh", &args, "http://127.0.0.1:<port>/mcp", Vec::new())
+            McpClient::connect_http(&shell, &args, "http://127.0.0.1:<port>/mcp", Vec::new())
                 .expect("spawn");
 
         // Then the URL is a localhost URL on a real port.
         assert!(half.url.starts_with("http://127.0.0.1:"));
         assert!(half.url.ends_with("/mcp"));
 
-        // And after a brief wait, the buffer captures both streams.
-        tokio::time::sleep(Duration::from_millis(300)).await;
+        // And once both streams have arrived, the buffer captures them.
+        let captured = jinn_testutil::wait::poll_until_async(Duration::from_secs(5), || {
+            half.buffer.lock().is_ok_and(|b| {
+                let tail = b.tail().to_owned();
+                tail.contains("stdout-line") && tail.contains("stderr-line")
+            })
+        })
+        .await;
         let tail = half
             .buffer
             .lock()
             .map(|b| b.tail().to_owned())
             .unwrap_or_default();
+        assert!(captured, "both streams captured: {tail}");
         assert!(tail.contains("stdout-line"), "stdout captured: {tail}");
         assert!(tail.contains("stderr-line"), "stderr captured: {tail}");
 

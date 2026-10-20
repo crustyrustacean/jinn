@@ -166,10 +166,15 @@ mod tests {
         flush_pending_clipboard(&mut app, &buf);
 
         // Then after the clipboard thread completes, the clipboard contains
-        // the selected text.
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        let mut clipboard = arboard::Clipboard::new().expect("clipboard access");
-        let content = clipboard.get_text().expect("read clipboard");
-        assert_eq!(content, "Hello");
+        // the selected text. The wait is on the observable itself — the
+        // clipboard is written on a detached thread, and a fixed sleep would
+        // only guess at how long that thread takes.
+        jinn_testutil::wait::poll_until_async_fn(std::time::Duration::from_secs(5), || async {
+            arboard::Clipboard::new()
+                .ok()
+                .and_then(|mut cb| cb.get_text().ok())
+                .is_some_and(|content| content == "Hello")
+        })
+        .await;
     }
 }

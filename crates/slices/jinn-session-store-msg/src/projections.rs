@@ -106,6 +106,8 @@ mod tests {
         // Given a summary with project and parent metadata.
         let session_id = SessionId::new();
         let parent_id = SessionId::new();
+        let project_dir = jinn_testutil::tempdir().expect("temp dir");
+        let project = project_dir.path().join("repo");
         let summary = SessionSummary {
             session_id: session_id.clone(),
             title: "Child".to_owned(),
@@ -113,7 +115,7 @@ mod tests {
             created_at: Timestamp::UNIX_EPOCH,
             session_state: SessionState::Loaded,
             parent_session: Some(parent_id.clone()),
-            project: Some(PathBuf::from("/repo")),
+            project: Some(project.clone()),
         };
 
         // When serialized and deserialized.
@@ -123,7 +125,7 @@ mod tests {
         // Then the complete projection survives.
         assert_eq!(restored.session_id, session_id);
         assert_eq!(restored.parent_session, Some(parent_id));
-        assert_eq!(restored.project, Some(PathBuf::from("/repo")));
+        assert_eq!(restored.project, Some(project));
         assert_eq!(restored.title, "Child");
     }
 }

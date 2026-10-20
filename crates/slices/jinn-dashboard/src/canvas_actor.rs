@@ -219,16 +219,6 @@ mod tests {
     use trouper::schema::Schema;
 
     /// Polls `check` until it passes or the bounded retry budget runs out.
-    async fn wait_for(check: impl Fn() -> bool) {
-        for _ in 0..200 {
-            if check() {
-                return;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        }
-        panic!("condition never held within the retry budget");
-    }
-
     /// A snapshot of one dashboard row, by field name.
     ///
     /// Named fields rather than a positional tuple: these tests assert
@@ -325,8 +315,10 @@ mod tests {
         fabric.send_to_topic(running("session")).await;
 
         // Then the actor has a row, and it reads Running.
-        wait_for(|| row(&cell, "session").is_some_and(|r| r.lifecycle == ActorLifecycle::Running))
-            .await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "session").is_some_and(|r| r.lifecycle == ActorLifecycle::Running)
+        })
+        .await;
     }
 
     /// THE decisive test: a row appears for an actor that publishes no
@@ -345,7 +337,7 @@ mod tests {
         fabric.send_to_topic(running("mcp/coordinator")).await;
 
         // Then the row exists purely because the runtime said so.
-        wait_for(|| {
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
             row(&cell, "mcp/coordinator").is_some_and(|r| r.lifecycle == ActorLifecycle::Running)
         })
         .await;
@@ -369,7 +361,7 @@ mod tests {
             .collect();
 
         // Then every row exists, keyed by the runtime's own path.
-        wait_for(|| {
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
             let names = row_names(&cell);
             paths.iter().all(|p| names.contains(p))
         })
@@ -387,7 +379,10 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric.send_to_topic(running("jinn.discovery/abc")).await;
-        wait_for(|| row(&cell, "jinn.discovery/abc").is_some()).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "jinn.discovery/abc").is_some()
+        })
+        .await;
 
         // When the runtime announces a passivation.
         fabric
@@ -395,7 +390,7 @@ mod tests {
             .await;
 
         // Then the row reads Idle — the actor is dormant, not gone.
-        wait_for(|| {
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
             row(&cell, "jinn.discovery/abc").is_some_and(|r| r.lifecycle == ActorLifecycle::Idle)
         })
         .await;
@@ -411,7 +406,10 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric.send_to_topic(running("idle-worker")).await;
-        wait_for(|| row(&cell, "idle-worker").is_some()).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "idle-worker").is_some()
+        })
+        .await;
 
         // When the runtime announces a passivation.
         fabric
@@ -419,8 +417,10 @@ mod tests {
             .await;
 
         // Then the row is Idle with an empty Notes cell.
-        wait_for(|| row(&cell, "idle-worker").is_some_and(|r| r.lifecycle == ActorLifecycle::Idle))
-            .await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "idle-worker").is_some_and(|r| r.lifecycle == ActorLifecycle::Idle)
+        })
+        .await;
         let entry = row(&cell, "idle-worker").unwrap();
         assert_eq!(entry.status, None, "and no feature status message");
     }
@@ -434,19 +434,26 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric.send_to_topic(running("wake-me")).await;
-        wait_for(|| row(&cell, "wake-me").is_some()).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "wake-me").is_some()
+        })
+        .await;
         fabric
             .send_to_topic(stopped("wake-me", LifecycleState::Passivated))
             .await;
-        wait_for(|| row(&cell, "wake-me").is_some_and(|r| r.lifecycle == ActorLifecycle::Idle))
-            .await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "wake-me").is_some_and(|r| r.lifecycle == ActorLifecycle::Idle)
+        })
+        .await;
 
         // When the partition factory re-spawns it on the next send.
         fabric.send_to_topic(running("wake-me")).await;
 
         // Then the row is Running.
-        wait_for(|| row(&cell, "wake-me").is_some_and(|r| r.lifecycle == ActorLifecycle::Running))
-            .await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "wake-me").is_some_and(|r| r.lifecycle == ActorLifecycle::Running)
+        })
+        .await;
     }
 
     /// A crash keeps its row. The actor will never re-announce itself —
@@ -459,7 +466,10 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric.send_to_topic(running("worker")).await;
-        wait_for(|| row(&cell, "worker").is_some()).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "worker").is_some()
+        })
+        .await;
 
         // When the runtime announces a crash.
         fabric
@@ -467,8 +477,10 @@ mod tests {
             .await;
 
         // Then the row survives, reading Crashed.
-        wait_for(|| row(&cell, "worker").is_some_and(|r| r.lifecycle == ActorLifecycle::Crashed))
-            .await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "worker").is_some_and(|r| r.lifecycle == ActorLifecycle::Crashed)
+        })
+        .await;
     }
 
     /// Escalation is a worse outcome than a crash, and the State column
@@ -480,7 +492,10 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric.send_to_topic(running("worker")).await;
-        wait_for(|| row(&cell, "worker").is_some()).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "worker").is_some()
+        })
+        .await;
 
         // When the runtime escalates it.
         fabric
@@ -488,8 +503,10 @@ mod tests {
             .await;
 
         // Then the row reads Escalated.
-        wait_for(|| row(&cell, "worker").is_some_and(|r| r.lifecycle == ActorLifecycle::Escalated))
-            .await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "worker").is_some_and(|r| r.lifecycle == ActorLifecycle::Escalated)
+        })
+        .await;
     }
 
     /// THE bug this change exists for. Every session archive tears down
@@ -508,7 +525,10 @@ mod tests {
         fabric
             .send_to_topic(running("jinn.mcp.connection.abc"))
             .await;
-        wait_for(|| row(&cell, "jinn.mcp.connection.abc").is_some()).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "jinn.mcp.connection.abc").is_some()
+        })
+        .await;
 
         // When the runtime announces the sanctioned stop.
         fabric
@@ -516,7 +536,10 @@ mod tests {
             .await;
 
         // Then the row is gone from the list entirely.
-        wait_for(|| !row_names(&cell).contains(&"jinn.mcp.connection.abc".to_owned())).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            !row_names(&cell).contains(&"jinn.mcp.connection.abc".to_owned())
+        })
+        .await;
     }
 
     /// Repeated teardowns leave the list flat rather than growing one
@@ -528,7 +551,10 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric.send_to_topic(running("long-lived")).await;
-        wait_for(|| row(&cell, "long-lived").is_some()).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "long-lived").is_some()
+        })
+        .await;
         // The census also lists the dashboard actor itself, so this
         // pins the transient rows' absence rather than a total count.
         let transient: Vec<String> = (0..5)
@@ -538,7 +564,10 @@ mod tests {
         // When five transient actors each start and then stop cleanly.
         for name in &transient {
             fabric.send_to_topic(running(name)).await;
-            wait_for(|| row(&cell, name).is_some()).await;
+            jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+                row(&cell, name).is_some()
+            })
+            .await;
             fabric
                 .send_to_topic(stopped(name, LifecycleState::Normal))
                 .await;
@@ -546,7 +575,7 @@ mod tests {
 
         // Then every one of them is gone, leaving the list no taller
         // than it was.
-        wait_for(|| {
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
             let names = row_names(&cell);
             transient.iter().all(|name| !names.contains(name))
         })
@@ -569,8 +598,10 @@ mod tests {
             .await;
 
         // Then the row exists and reads Crashed.
-        wait_for(|| row(&cell, "vanished").is_some_and(|r| r.lifecycle == ActorLifecycle::Crashed))
-            .await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "vanished").is_some_and(|r| r.lifecycle == ActorLifecycle::Crashed)
+        })
+        .await;
     }
 
     /// A stop for an unseen actor is nothing to report, so it leaves no
@@ -586,7 +617,15 @@ mod tests {
         fabric
             .send_to_topic(stopped("vanished", LifecycleState::Shutdown))
             .await;
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        // The canvas actor's inbox draining is the positive signal that the
+        // announcement was *processed*. Asserting the absence before that
+        // would prove nothing — the actor might simply not have run yet.
+        jinn_testutil::wait::await_inbox_drained(
+            fabric.system(),
+            &trouper::actor::ActorPath::new("dashboard"),
+            std::time::Duration::from_secs(5),
+        )
+        .await;
 
         // Then no row was conjured up for it.
         assert!(
@@ -606,7 +645,10 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric.send_to_topic(running("discord")).await;
-        wait_for(|| row(&cell, "discord").is_some()).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "discord").is_some()
+        })
+        .await;
         fabric
             .send_to_topic(ServiceStatusUpdate {
                 name: "discord".to_owned(),
@@ -615,7 +657,7 @@ mod tests {
                 note_tone: None,
             })
             .await;
-        wait_for(|| {
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
             row(&cell, "discord").is_some_and(|r| r.status.as_deref() == Some("connected"))
         })
         .await;
@@ -626,8 +668,10 @@ mod tests {
             .await;
 
         // Then the row survives with its feature message and description.
-        wait_for(|| row(&cell, "discord").is_some_and(|r| r.lifecycle == ActorLifecycle::Crashed))
-            .await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "discord").is_some_and(|r| r.lifecycle == ActorLifecycle::Crashed)
+        })
+        .await;
         let row = row(&cell, "discord").unwrap();
         assert_eq!(row.status.as_deref(), Some("connected"));
         assert_eq!(row.description.as_deref(), Some("Discord gateway"));
@@ -642,20 +686,27 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric.send_to_topic(running("flaky")).await;
-        wait_for(|| row(&cell, "flaky").is_some()).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "flaky").is_some()
+        })
+        .await;
         fabric
             .send_to_topic(stopped("flaky", LifecycleState::Crashed))
             .await;
-        wait_for(|| row(&cell, "flaky").is_some_and(|r| r.lifecycle == ActorLifecycle::Crashed))
-            .await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "flaky").is_some_and(|r| r.lifecycle == ActorLifecycle::Crashed)
+        })
+        .await;
 
         // When the runtime announces it running again — which is exactly
         // what a supervised restart does, indistinguishably.
         fabric.send_to_topic(running("flaky")).await;
 
         // Then the row reads Running again.
-        wait_for(|| row(&cell, "flaky").is_some_and(|r| r.lifecycle == ActorLifecycle::Running))
-            .await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "flaky").is_some_and(|r| r.lifecycle == ActorLifecycle::Running)
+        })
+        .await;
     }
 
     /// A failure sorts to the top of the dashboard, above every healthy
@@ -669,7 +720,7 @@ mod tests {
         for name in ["a", "b", "c"] {
             fabric.send_to_topic(running(name)).await;
         }
-        wait_for(|| {
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
             let names = row_names(&cell);
             ["a", "b", "c"]
                 .iter()
@@ -681,7 +732,10 @@ mod tests {
             .await;
 
         // When reading the display order.
-        wait_for(|| row_names(&cell).first() == Some(&"b".to_owned())).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row_names(&cell).first() == Some(&"b".to_owned())
+        })
+        .await;
     }
 
     /// The dashboard folds the runtime's OWN type. Delivery is by schema
@@ -714,7 +768,10 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric.send_to_topic(running("sample-actor")).await;
-        wait_for(|| row(&cell, "sample-actor").is_some()).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "sample-actor").is_some()
+        })
+        .await;
 
         // When a ServiceStatusUpdate projection arrives with a status message.
         fabric
@@ -727,7 +784,7 @@ mod tests {
             .await;
 
         // Then the row carries the message.
-        wait_for(|| {
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
             row(&cell, "sample-actor")
                 .is_some_and(|r| r.status.as_deref() == Some("3 urls verified"))
         })
@@ -744,7 +801,10 @@ mod tests {
         let fabric = TestFabric::new();
         let cell = wire_actor(&fabric);
         fabric.send_to_topic(running("gateway")).await;
-        wait_for(|| row(&cell, "gateway").is_some()).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "gateway").is_some()
+        })
+        .await;
 
         // When the owning feature reports a failure with an error tone.
         fabric
@@ -757,7 +817,10 @@ mod tests {
             .await;
 
         // Then the tone lands on the row.
-        wait_for(|| row(&cell, "gateway").is_some_and(|r| r.tone == NoteTone::Error)).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "gateway").is_some_and(|r| r.tone == NoteTone::Error)
+        })
+        .await;
         // And the State cell still reports what the runtime last said.
         let row = row(&cell, "gateway").unwrap();
         assert_eq!(
@@ -778,7 +841,7 @@ mod tests {
         for name in ["a", "b", "c"] {
             fabric.send_to_topic(running(name)).await;
         }
-        wait_for(|| {
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
             let names = row_names(&cell);
             ["a", "b", "c"]
                 .iter()
@@ -791,7 +854,10 @@ mod tests {
         fabric.send_to_topic(DashboardNav::Down).await;
 
         // Then the cursor advances twice.
-        wait_for(|| cell.read().selected_index() == 2).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            cell.read().selected_index() == 2
+        })
+        .await;
     }
 
     /// The cursor addresses a position, so a row that sorts away from
@@ -806,7 +872,7 @@ mod tests {
         for name in ["a", "b", "c", "d"] {
             fabric.send_to_topic(running(name)).await;
         }
-        wait_for(|| {
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
             let names = row_names(&cell);
             ["a", "b", "c", "d"]
                 .iter()
@@ -816,16 +882,25 @@ mod tests {
         for _ in 0..2 {
             fabric.send_to_topic(DashboardNav::Down).await;
         }
-        wait_for(|| cell.read().selected_index() == 2).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            cell.read().selected_index() == 2
+        })
+        .await;
         let before = row_names(&cell)[2].clone();
 
         // When a later-announced actor fails and sorts to the top.
         fabric.send_to_topic(running("e")).await;
-        wait_for(|| row(&cell, "e").is_some()).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "e").is_some()
+        })
+        .await;
         fabric
             .send_to_topic(stopped("e", LifecycleState::Crashed))
             .await;
-        wait_for(|| row_names(&cell).first() == Some(&"e".to_owned())).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row_names(&cell).first() == Some(&"e".to_owned())
+        })
+        .await;
 
         // Then the cursor still holds its POSITION, and that position
         // now addresses a different actor — the failed row slid to the

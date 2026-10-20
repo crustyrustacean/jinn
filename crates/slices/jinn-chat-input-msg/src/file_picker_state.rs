@@ -171,19 +171,27 @@ mod tests {
         assert_eq!(dir, cwd);
     }
 
+    /// The one path literal this module's tests spell out.
+    ///
+    /// The resolver recognizes an absolute filter by its leading `/` — that
+    /// is the *syntax* under test, not a location on disk. The filter names
+    /// nothing: it is never opened, and the expectation is built from the
+    /// same text, so the assertion holds identically on every platform.
+    const ABSOLUTE_FILTER: &str = "/etc";
+
     #[rstest::rstest]
     #[test]
     fn resolve_absolute_filter_returns_path_as_is() {
         // Given a cwd, home, and an absolute filter.
-        let cwd = PathBuf::from("/proj");
         let home_root = jinn_testutil::tempdir().expect("temp dir");
+        let cwd = home_root.path().join("proj");
         let home = home_root.path().join("u");
 
         // When resolving an absolute path.
-        let dir = resolve_list_dir("/etc", &cwd, &home);
+        let dir = resolve_list_dir(ABSOLUTE_FILTER, &cwd, &home);
 
         // Then the result is the absolute path.
-        assert_eq!(dir, PathBuf::from("/etc"));
+        assert_eq!(dir, PathBuf::from(ABSOLUTE_FILTER));
     }
 
     #[rstest::rstest]

@@ -315,8 +315,16 @@ async fn transport_close_publishes_dead_status() {
             .any(|m| m.status == McpConnectionStatus::Running),
         "the actor must report Running before the kill, got: {startup:?}"
     );
-    tokio::time::sleep(Duration::from_millis(800)).await;
-    let drained = await_recorded(&status_recorder, 0, Duration::from_millis(50)).await;
+    // The recorder must have stopped changing before "no Dead fired while
+    // the connection was alive" is an observation rather than a race with
+    // the watcher. A fixed sleep could let the assertion run before the
+    // watcher had published anything at all.
+    let drained = jinn_testutil::wait::await_settled_messages(
+        &status_recorder,
+        Duration::from_millis(300),
+        Duration::from_secs(5),
+    )
+    .await;
     drop(killer);
 
     // Then a Dead status is published within the watch cadence + slack. The
@@ -394,8 +402,14 @@ async fn restarted_actor_has_no_zombie_watcher_from_the_previous_one() {
 
     // Then the second actor runs without any spurious Dead from the first
     // actor's (now-killed) watcher.
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    let trailing = await_recorded(&status_recorder, 0, Duration::from_millis(50)).await;
+    // The recorder must have stopped changing first, so "no Dead fired" is
+    // an observation rather than a race with the watcher.
+    let trailing = jinn_testutil::wait::await_settled_messages(
+        &status_recorder,
+        Duration::from_millis(300),
+        Duration::from_secs(5),
+    )
+    .await;
     assert!(
         trailing
             .iter()
@@ -487,8 +501,15 @@ async fn normal_teardown_publishes_exactly_one_dead() {
     // drained Starting + Running, so a single new message is the on_stop Dead.
     // A grace window then catches any racing watcher publish that would make two.
     let on_stop_statuses = await_recorded(&status_recorder, 1, Duration::from_secs(5)).await;
-    tokio::time::sleep(Duration::from_millis(450)).await;
-    let trailing = await_recorded(&status_recorder, 0, Duration::from_millis(50)).await;
+    // The recorder must have stopped changing first, so "exactly one Dead"
+    // counts every Dead that will be published rather than the ones that
+    // had arrived when the read was taken.
+    let trailing = jinn_testutil::wait::await_settled_messages(
+        &status_recorder,
+        Duration::from_millis(300),
+        Duration::from_secs(5),
+    )
+    .await;
     let final_statuses = [on_stop_statuses, trailing].concat();
     let dead_count = final_statuses
         .iter()
@@ -604,13 +625,25 @@ async fn disable_cycle_calls_fail_fast_after_teardown() {
             max_output_bytes: None,
         })
         .await;
-    tokio::time::sleep(Duration::from_millis(300)).await;
 
     // Then the call fails fast rather than hanging.
-    // The actor is stopped; the raw ExecuteTool now has no subscriber. This
-    // test pins the actor-side half of the cycle; the orchestrator-side
-    // fail-fast (gate + prune) is covered by mcp_dispatch_gate_tests, which
-    // together with this test proves the full disable path never hangs.
+    // The actor is stopped, so the raw ExecuteTool has no subscriber: the
+    // completion must not arrive. The recorder must have stopped changing
+    // first, so "no completion arrived" is an observation rather than a
+    // race with the dispatch. A fixed sleep would pass on a slow host
+    // simply because the dispatch had not been processed yet.
+    let completions = jinn_testutil::wait::await_settled_messages(
+        &_results,
+        Duration::from_millis(300),
+        Duration::from_secs(5),
+    )
+    .await;
+
+    // And nothing completes: the call hangs on a subscriber that is gone.
+    assert!(
+        completions.is_empty(),
+        "a call to a torn-down MCP server must not complete, got: {completions:?}"
+    );
 }
 
 /// The HTTP child-exit watcher reaps the child (no zombie) and cancels the

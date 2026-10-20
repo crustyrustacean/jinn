@@ -54,6 +54,8 @@ pub struct LaunchServices {
     pub config: jinn_config::ConfigLayer,
     /// Persisted app state, reloaded from disk.
     pub app_state_storage: AppStateStorageService,
+    /// The shells jinn runs commands through, resolved at launch.
+    pub shells: jinn_common::shell::Shells,
 }
 
 /// Outcome of the pre-wiring phase.
@@ -92,6 +94,7 @@ pub fn prepare(
     }
 
     let (config_storage, config, app_state_storage) = read_config(cli)?;
+    let shells = resolve_shells(&config);
     let (session_store, session_pool) = open_session_store(cli, runtime)?;
 
     Ok(Prepared::Ready(LaunchServices {
@@ -111,7 +114,47 @@ pub fn prepare(
         session_pool,
         config,
         app_state_storage,
+        shells,
     }))
+}
+
+/// Resolves the shells jinn runs commands through, from the `[shell]`
+/// section of `jinn.toml`.
+///
+/// A configured path that names no file is a typo, and it stops the
+/// launch: the user configured that executable deliberately, and falling
+/// through to auto-detection would silently run something else — on
+/// Windows, potentially the WSL launcher. A shell that is simply not
+/// installed is a fact about the machine, not a configuration error, so
+/// it is reported at the point of use instead.
+///
+/// The environment is probed here, at launch, and never again: the
+/// resolved value is carried on [`jinn_kernel::Services`] from here on.
+fn resolve_shells(config: &jinn_config::ConfigLayer) -> jinn_common::shell::Shells {
+    // A malformed `[shell]` section is a broken file, not a broken
+    // machine: it stops the launch the same way a broken `jinn.toml`
+    // does, naming the section.
+    let shell_config = match config.get::<jinn_preferences_config::schemas::ShellConfig>() {
+        Ok(shell_config) => shell_config,
+        Err(error) => {
+            eprintln!("error: [shell] in jinn.toml is malformed: {error}");
+            std::process::exit(1);
+        }
+    };
+    let shells = jinn_common::shell::Shells::resolve(
+        shell_config.bash_path.as_deref(),
+        shell_config.powershell_path.as_deref(),
+    );
+    for error in [shells.bash().err(), shells.powershell().err()]
+        .into_iter()
+        .flatten()
+    {
+        if error.is_configuration_error() {
+            eprintln!("error: {error}");
+            std::process::exit(1);
+        }
+    }
+    shells
 }
 
 /// The subcommands that must run before anything is parsed or opened.

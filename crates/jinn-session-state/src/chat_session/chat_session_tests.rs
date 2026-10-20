@@ -2483,6 +2483,9 @@ fn append_tool_result_output_bumps_history_activity_timestamp() {
 
     // When appending streaming output.
     let before = session.core.identity.last_history_activity_at;
+    // wall-clock-under-test: the timestamp this test reads is written from
+    // the wall clock, so the clock has to move for the comparison to mean
+    // anything. A signal cannot substitute here.
     std::thread::sleep(std::time::Duration::from_millis(10));
     session.append_tool_result_output(
         &jinn_core_types::ToolCallId::from("call_1"),

@@ -314,7 +314,14 @@ async fn epoch_loaded_rejoins_rows_without_a_refetch() {
             total: 1,
         })
         .await;
-    tokio::time::sleep(SETTLE).await;
+
+    // The ECI scores land on the cell's rows, so wait for the cell to
+    // carry them. Reading the cell after a fixed sleep could happen
+    // before the write, and the assertion would then prove nothing.
+    jinn_testutil::wait::await_cell(&world.data, std::time::Duration::from_secs(10), |state| {
+        state.rows.iter().any(|row| row.eci.is_some())
+    })
+    .await;
 
     // Then the rows in the cell carry ECI scores — no second fetch.
     models_mock.assert_async().await;
@@ -450,7 +457,21 @@ async fn one_refresh_publish_reaches_both_market_actors_exactly_once() {
         "one publish must reach the epoch actor's cache drop too"
     );
     // And one publish is one refresh, not two: neither half ran twice.
-    tokio::time::sleep(SETTLE).await;
+    // The absence assertion below is only meaningful once the event stream
+    // has stopped changing. A fixed sleep would pass on a slow host
+    // simply because the unwanted event had not arrived yet.
+    jinn_testutil::wait::await_settled(
+        &models_recorder,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
+    jinn_testutil::wait::await_settled(
+        &epoch_recorder,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
     assert!(
         models_recorder.is_empty() && epoch_recorder.is_empty(),
         "one publish must deliver one refresh per half, got models: {:?}, epoch: {:?}",
@@ -492,7 +513,16 @@ async fn refresh_all_emits_the_chain_fact_exactly_once() {
     models_mock.assert_async().await;
     // And the refresh announced itself once — a second fact would mean a
     // second refresh.
-    tokio::time::sleep(SETTLE).await;
+    // The absence assertion below is only meaningful once the event stream
+    // has stopped changing. A fixed sleep would pass on a slow host
+    // simply because the unwanted event had not arrived yet.
+    jinn_testutil::wait::await_settled(
+        &chain_recorder,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
+
     assert!(
         chain_recorder.is_empty(),
         "one refresh emits one chain fact, got: {:?}",
@@ -651,7 +681,14 @@ async fn fetch_models_failure_emits_refresh_failed_and_keeps_stale_rows() {
         .create_async()
         .await;
     world.harness.publish(FetchModels).await;
-    tokio::time::sleep(SETTLE).await;
+
+    // The error line lands in the data cell, so wait for the cell to carry
+    // it. Reading the cell after a fixed sleep could happen before the
+    // write, and the assertion would then prove nothing.
+    jinn_testutil::wait::await_cell(&world.data, std::time::Duration::from_secs(10), |state| {
+        state.last_error.is_some()
+    })
+    .await;
 
     // Then the stale rows stand and the error line is set.
     let d = world.data.read();
@@ -710,7 +747,15 @@ async fn fetch_models_fetches_no_detail() {
     // no drill-in.
     world.harness.publish(FetchModels).await;
     let loaded = await_recorded(&models_recorder, 1, SETTLE).await;
-    tokio::time::sleep(SETTLE).await;
+    // The absence assertion below is only meaningful once the event stream
+    // has stopped changing. A fixed sleep would pass on a slow host
+    // simply because the unwanted event had not arrived yet.
+    jinn_testutil::wait::await_settled(
+        &endpoints_recorder,
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
 
     // Then the models rows land and nothing else was requested: the
     // endpoints mocks never fired and no EndpointsLoaded rode the bus.

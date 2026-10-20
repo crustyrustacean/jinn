@@ -418,13 +418,16 @@ async fn read_child_output_and_wait(
 /// `setsid` makes the child a session and group leader (pid == pgid), the
 /// same invariant the kill-on-drop guard relies on to terminate the whole
 /// group (child + all descendants) on cancel.
-fn spawn_shell_command(command: &str, cwd: &std::path::Path) -> std::io::Result<KillOnDrop> {
-    // The shared resolver owns the platform precedence: Git Bash over the
-    // WSL `bash.exe` launcher on Windows, bare `bash` on Unix (this tool
+fn spawn_shell_command(
+    command: &str,
+    cwd: &std::path::Path,
+    shell: &str,
+) -> std::io::Result<KillOnDrop> {
+    // The shell was resolved at launch: Git Bash over the WSL `bash.exe`
+    // launcher on Windows, `/bin/bash` or bare `bash` on Unix (this tool
     // promises bash semantics, and $SHELL may be fish, dash, or zsh —
     // shells that reject bash syntax such as brace expansion and `$$`).
-    let shell = jinn_common::shell::resolve_shell();
-    let mut std_cmd = std::process::Command::new(&shell);
+    let mut std_cmd = std::process::Command::new(shell);
     std_cmd
         .arg("-c")
         .arg(command)
@@ -461,6 +464,16 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             return failed(call.id, call.name, "command is empty".to_owned());
         }
 
+        // The shell jinn runs commands through, resolved at launch. A
+        // machine with no POSIX shell is a real state, and the model reads
+        // why it cannot run the command.
+        let shell = match ctx.shells.bash() {
+            Ok(shell) => shell.program().to_owned(),
+            Err(error) => {
+                return failed(call.id, call.name, error.to_string());
+            }
+        };
+
         let cwd = ctx.cwd.clone();
 
         // Emit ToolExecutionStarted if we have a bus and session_id.
@@ -476,7 +489,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         )
         .await;
 
-        let spawn_result = spawn_shell_command(&command, &cwd);
+        let spawn_result = spawn_shell_command(&command, &cwd, &shell);
 
         let mut child = match spawn_result {
             Ok(child) => child,
@@ -554,6 +567,7 @@ mod tests {
         ToolContext {
             cwd: cwd.to_owned(),
             config: jinn_config::testutil::config_layer(""),
+            shells: Default::default(),
             timeout: None,
             state: None,
             session_id: None,
@@ -570,6 +584,16 @@ mod tests {
             trouper_system: None,
             model_name_resolver: None,
         }
+    }
+
+    /// The shell these tests run their commands through — the same shared
+    /// resolver production uses.
+    #[cfg(unix)]
+    fn shell_for_tests() -> String {
+        jinn_common::shell::Shells::default()
+            .bash()
+            .map(|shell| shell.program().to_owned())
+            .unwrap_or_else(|_| "bash".to_owned())
     }
 
     #[rstest::rstest]
@@ -672,15 +696,25 @@ mod tests {
         // fixture's Windows path; `pwd -W` prints the same directory in
         // forward-slash Windows form, which is derivable (backslashes →
         // slashes). Unix `pwd` prints the plain path, so it asserts as-is.
+        //
+        // The expected path is **canonicalized** before the comparison: the
+        // shell reports the physical directory, while a temp dir created
+        // under `/var` on macOS is physically `/private/var` (a symlink).
+        // Without the canonical form the two spellings differ and the
+        // assertion fails on every macOS host.
         let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let canonical = jinn_common::fs_paths::canonicalize_display(dir.path())
+            .expect("canonicalize temp dir")
+            .to_string_lossy()
+            .into_owned();
         #[cfg(windows)]
-        let (pwd_command, expected_cwd) =
-            ("pwd -W", dir.path().to_string_lossy().replace('\\', "/"));
+        let (pwd_command, expected_cwd) = ("pwd -W", canonical.replace('\\', "/"));
         #[cfg(not(windows))]
-        let (pwd_command, expected_cwd) = ("pwd", dir.path().to_string_lossy().into_owned());
+        let (pwd_command, expected_cwd) = ("pwd", canonical);
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
             config: jinn_config::testutil::config_layer(""),
+            shells: Default::default(),
             timeout: None,
             state: None,
             session_id: None,
@@ -793,7 +827,7 @@ mod tests {
     async fn spawned_shell_runs_in_new_session() {
         // Given a shell spawned through the tool's own spawn path, kept
         // alive long enough to inspect.
-        let child = spawn_shell_command("sleep 5", std::path::Path::new("."))
+        let child = spawn_shell_command("sleep 5", std::path::Path::new("."), &shell_for_tests())
             .expect("spawn should succeed");
 
         // When reading the session ids of the test process and the shell
@@ -860,28 +894,25 @@ mod tests {
             KillOnDrop::new(child)
         };
 
-        // Give the processes a moment to start.
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        // Wait until both spawned processes are running. The wait is on the
+        // processes' *existence* — the shell starts them asynchronously, and
+        // a fixed sleep would only guess at when they appear.
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(5), || {
+            jinn_testutil::platform::find_orphans("sleep 60", "sleep").len() >= 2
+        })
+        .await;
 
         // When dropping the guard (simulating task abort).
         drop(guard);
 
-        // Then give the kernel a moment to reap the processes.
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-
-        // Verify no 'sleep 60' processes survived.
-        let output = tokio::process::Command::new("pgrep")
-            .arg("-f")
-            .arg("sleep 60")
-            .output()
-            .await
-            .expect("pgrep should run");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        // No "sleep 60" processes should be running.
-        assert!(
-            stdout.trim().is_empty(),
-            "expected no 'sleep 60' processes, but found: {stdout}"
-        );
+        // Then the group signal takes the whole group down. The wait is on
+        // the processes' *absence* after the signal — the kernel reaps them
+        // asynchronously, and a fixed sleep would only guess at how long
+        // that takes.
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(5), || {
+            jinn_testutil::platform::find_orphans("sleep 60", "sleep").is_empty()
+        })
+        .await;
     }
 
     /// Regression for the `tcache 2` double-free crash. The bash tool drains
@@ -924,21 +955,16 @@ mod tests {
             );
         }
 
-        // Give the kernel a moment to reap the killed `yes` processes.
-        tokio::time::sleep(Duration::from_millis(150)).await;
-
-        // And no orphaned `yes` process survived the kill-on-drop guard.
-        let output = tokio::process::Command::new("pgrep")
-            .arg("-x")
-            .arg("yes")
-            .output()
-            .await
-            .expect("pgrep should run");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            stdout.trim().is_empty(),
-            "expected no 'yes' processes after cancellation, but found: {stdout}"
-        );
+        // Then no orphaned `yes` process survived the kill-on-drop guard.
+        // The kernel reaps the killed children asynchronously, so the wait
+        // is on their absence with a deadline — a fixed sleep would only
+        // guess at how long the reap takes, and the "no orphans" claim
+        // would fail in the direction that makes the assertion pass for the
+        // wrong reason.
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(5), || {
+            jinn_testutil::platform::find_orphans("yes", "yes").is_empty()
+        })
+        .await;
     }
 
     /// Windows mirror of `kill_on_drop_terminates_process_group`.
@@ -952,6 +978,20 @@ mod tests {
     #[tokio::test]
     async fn kill_on_drop_terminates_process_tree_windows() {
         use std::process::Stdio;
+
+        /// Counts the `ping.exe` processes the task list reports.
+        async fn ping_process_count() -> usize {
+            let output = tokio::process::Command::new("tasklist")
+                .args(["/FI", "IMAGENAME eq ping.exe", "/NH"])
+                .output()
+                .await
+                .expect("tasklist should run");
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            stdout
+                .lines()
+                .filter(|line| line.to_ascii_lowercase().contains("ping.exe"))
+                .count()
+        }
 
         // Given a cmd command that launches a long-running background child.
         // `ping -n 60` waits ~59s — a reliable Windows-native delay.
@@ -968,26 +1008,33 @@ mod tests {
             KillOnDrop::new(child)
         };
 
-        // Give the process a moment to start.
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        // Wait until the ping process is actually running. The wait is on the
+        // process's *existence* — the command starts it asynchronously, and a
+        // fixed sleep would only guess at when it appears.
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+        while ping_process_count().await == 0 {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "the ping process never started, so there was nothing to kill"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
 
         // When dropping the guard (simulating task abort).
         drop(guard);
 
-        // Then give kill_tree a moment to enumerate and terminate the tree.
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-
-        // Verify no `ping` processes survived via tasklist.
-        let output = tokio::process::Command::new("tasklist")
-            .args(["/FI", "IMAGENAME eq ping.exe", "/NH"])
-            .output()
-            .await
-            .expect("tasklist should run");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            stdout.trim().is_empty() || stdout.contains("INFO: No tasks"),
-            "expected no 'ping' processes, but found: {stdout}"
-        );
+        // Then kill_tree takes the whole tree down. The wait is on the
+        // processes' *absence* after the signal — Windows enumerates and
+        // terminates asynchronously, and a fixed sleep would only guess at
+        // how long that takes.
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+        while ping_process_count().await > 0 {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "expected no 'ping' processes to survive the tree kill"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
     }
 
     #[rstest::rstest]
@@ -1108,9 +1155,11 @@ mod tests {
     #[rstest::rstest]
     fn format_exit_result_success_with_output() {
         // Given a successful exit and some output.
-        let status = std::process::Command::new("true")
+        let (program, args) = jinn_testutil::platform::success_command();
+        let status = std::process::Command::new(program)
+            .args(&args)
             .status()
-            .expect("true should run");
+            .expect("success command should run");
         let exit_result: Result<std::process::ExitStatus, std::io::Error> = Ok(status);
 
         // When formatting the exit result.
@@ -1132,10 +1181,11 @@ mod tests {
     #[rstest::rstest]
     fn format_exit_result_failure_with_exit_code() {
         // Given a non-zero exit.
-        let status = std::process::Command::new("bash")
-            .args(["-c", "exit 42"])
+        let (program, args) = jinn_testutil::platform::exit_command(42);
+        let status = std::process::Command::new(program)
+            .args(&args)
             .status()
-            .expect("bash should run");
+            .expect("exit command should run");
         let exit_result: Result<std::process::ExitStatus, std::io::Error> = Ok(status);
 
         // When formatting the exit result with output.
@@ -1157,10 +1207,11 @@ mod tests {
     #[rstest::rstest]
     fn format_exit_result_failure_without_output() {
         // Given a non-zero exit with empty output.
-        let status = std::process::Command::new("bash")
-            .args(["-c", "exit 1"])
+        let (program, args) = jinn_testutil::platform::exit_command(1);
+        let status = std::process::Command::new(program)
+            .args(&args)
             .status()
-            .expect("bash should run");
+            .expect("exit command should run");
         let exit_result: Result<std::process::ExitStatus, std::io::Error> = Ok(status);
 
         // When formatting the exit result.
@@ -1202,10 +1253,11 @@ mod tests {
     #[rstest::rstest]
     fn format_exit_result_failure_appends_newline_if_missing() {
         // Given a non-zero exit with output not ending in newline.
-        let status = std::process::Command::new("bash")
-            .args(["-c", "exit 3"])
+        let (program, args) = jinn_testutil::platform::exit_command(3);
+        let status = std::process::Command::new(program)
+            .args(&args)
             .status()
-            .expect("bash should run");
+            .expect("exit command should run");
         let exit_result: Result<std::process::ExitStatus, std::io::Error> = Ok(status);
 
         // When formatting the exit result with output not ending in newline.

@@ -40,6 +40,7 @@ async fn ctx(
     ToolContext {
         cwd: paths_root.to_path_buf(),
         config: jinn_config::testutil::config_layer(""),
+        shells: Default::default(),
         timeout: None,
         state: Some(state.clone()),
         session_id: Some(session_id),
@@ -220,10 +221,18 @@ async fn busy_attendant_queues_and_never_cancels() {
     );
     let recorded = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
     assert_eq!(recorded[0].session_id, attendant_id);
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // The positive signal has arrived; now the negative one is an
+    // observation. The cancel recorder must have stopped changing before
+    // "no cancel was published" means anything.
+    let cancelled = jinn_testutil::wait::await_settled_messages(
+        &cancels,
+        Duration::from_millis(100),
+        Duration::from_secs(5),
+    )
+    .await;
     assert!(
-        cancels.is_empty(),
-        "delivery must never cancel in-flight work"
+        cancelled.is_empty(),
+        "delivery must never cancel in-flight work, got: {cancelled:?}"
     );
 }
 
@@ -524,8 +533,20 @@ async fn unknown_session_id_fails_naming_the_target() {
     // Then the tool fails naming the target and publishes nothing.
     assert!(!result.success, "unknown target must fail, not vanish");
     assert!(result.content.contains(&missing.to_string()));
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    assert!(enqueues.is_empty(), "a refused send must publish nothing");
+    // The recorder must have stopped changing before "nothing was
+    // published" is an observation rather than a race with a publish that
+    // is still in flight. A fixed sleep would pass on a slow host simply
+    // because the publish had not been processed yet.
+    let published = jinn_testutil::wait::await_settled_messages(
+        &enqueues,
+        Duration::from_millis(100),
+        Duration::from_secs(5),
+    )
+    .await;
+    assert!(
+        published.is_empty(),
+        "a refused send must publish nothing, got: {published:?}"
+    );
 }
 
 #[rstest::rstest]
@@ -548,8 +569,16 @@ async fn malformed_session_id_fails_without_publishing() {
     // Then it fails naming the argument and publishes nothing.
     assert!(!result.success);
     assert!(result.content.contains("not-a-uuid"));
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    assert!(enqueues.is_empty());
+    // The recorder must have stopped changing before "nothing was
+    // published" is an observation rather than a race with a publish that
+    // is still in flight.
+    let published = jinn_testutil::wait::await_settled_messages(
+        &enqueues,
+        Duration::from_millis(100),
+        Duration::from_secs(5),
+    )
+    .await;
+    assert!(published.is_empty(), "a refused send must publish nothing");
 }
 
 #[rstest::rstest]
@@ -583,8 +612,16 @@ async fn prep_mode_attendant_refuses_delivery() {
     // Then delivery is refused with the reason and nothing is published.
     assert!(!result.success);
     assert!(result.content.contains("prep mode"));
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    assert!(enqueues.is_empty());
+    // The recorder must have stopped changing before "nothing was
+    // published" is an observation rather than a race with a publish that
+    // is still in flight.
+    let published = jinn_testutil::wait::await_settled_messages(
+        &enqueues,
+        Duration::from_millis(100),
+        Duration::from_secs(5),
+    )
+    .await;
+    assert!(published.is_empty(), "a refused send must publish nothing");
 }
 
 #[rstest::rstest]

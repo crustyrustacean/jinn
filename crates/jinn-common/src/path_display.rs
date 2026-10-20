@@ -49,14 +49,21 @@ mod tests {
 
     #[rstest::rstest]
     fn path_outside_home_is_returned_unchanged() {
-        // Given a path outside the home directory.
-        let path = Path::new("/opt/jinn/config.toml");
+        // Given a path outside the home directory. It is rooted at the
+        // platform's own filesystem root, so it lies outside the user's
+        // home directory on every platform — the platform temp directory
+        // hangs off the user profile on Windows, so a temp root would be
+        // tilde-compressed there.
+        let path = Path::new(std::path::MAIN_SEPARATOR_STR)
+            .join("opt")
+            .join("jinn")
+            .join("config.toml");
 
         // When shortening it.
-        let display = shorten_path(path);
+        let display = shorten_path(&path);
 
         // Then the full path is shown.
-        assert_eq!(display, "/opt/jinn/config.toml");
+        assert_eq!(display, path.to_string_lossy());
     }
 
     #[rstest::rstest]

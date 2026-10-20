@@ -29,19 +29,24 @@ use crate::session_lifecycle_actor::{SessionLifecycleActor, SessionLifecycleActo
 /// resolver production wiring uses, so the tests exercise the platform's
 /// real POSIX shell instead of a Unix-only absolute path.
 fn shell_for_tests() -> String {
-    jinn_common::shell::resolve_shell()
+    jinn_common::shell::Shells::default()
+        .bash()
+        .map_or_else(|_| "bash".to_owned(), |shell| shell.program().to_owned())
 }
 
 struct ActorFixture {
     harness: TestHarness,
     state: State,
+    /// The actor's path — a test that must know the actor has processed
+    /// its inbox drains it through this.
+    actor_path: trouper::actor::ActorPath,
 }
 
 async fn actor_fixture(builtin_registry: BuiltinRegistry) -> ActorFixture {
     let harness = TestHarness::new().await;
     let services = harness.services().await;
     let state = State::new(AppState::default());
-    SessionLifecycleActor::spawn(
+    let actor_path = SessionLifecycleActor::spawn(
         harness.system(),
         SessionLifecycleActorDeps {
             state: state.clone(),
@@ -50,25 +55,15 @@ async fn actor_fixture(builtin_registry: BuiltinRegistry) -> ActorFixture {
             shell: shell_for_tests(),
         },
     );
-    ActorFixture { harness, state }
+    ActorFixture {
+        harness,
+        state,
+        actor_path,
+    }
 }
 
 async fn plain_fixture() -> ActorFixture {
     actor_fixture(BuiltinRegistry::new()).await
-}
-
-async fn poll_until<F, Fut>(mut condition: F) -> bool
-where
-    F: FnMut() -> Fut,
-    Fut: std::future::Future<Output = bool>,
-{
-    for _ in 0..80 {
-        if condition().await {
-            return true;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    condition().await
 }
 
 /// A successful builtin whose setup path the owning test provides: the test
@@ -115,7 +110,7 @@ async fn set_session_cwd_updates_session_working_directory() {
         .await;
 
     // Then the session uses the requested working directory.
-    let updated = poll_until(|| async {
+    let updated = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
         fixture
             .state
             .read()
@@ -168,7 +163,16 @@ async fn cancel_lifecycle_command_is_noop_without_running_child() {
             session_id: session_id.clone(),
         })
         .await;
-    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // The actor must have processed the cancel before the session is read
+    // back. Draining its inbox is that guarantee: a fixed sleep would let
+    // the read happen before the actor was even scheduled.
+    jinn_testutil::wait::await_inbox_drained(
+        fixture.harness.system(),
+        &fixture.actor_path,
+        Duration::from_secs(10),
+    )
+    .await;
 
     // Then the session remains unchanged and idle.
     let state = fixture.state.read();
@@ -254,8 +258,11 @@ async fn builtin_setup_publishes_setup_completion_event() {
     // Then the setup completion event is published without an error.
     let completions = await_recorded(&completed_recorder, 1, Duration::from_secs(1)).await;
     assert_eq!(completions.len(), 1);
-    assert_eq!(completions[0].session_id, session_id);
-    assert!(completions[0].error.is_none());
+    let completion = completions
+        .first()
+        .expect("exactly one completion was asserted above");
+    assert_eq!(completion.session_id, session_id);
+    assert!(completion.error.is_none());
 }
 
 #[rstest::rstest]
@@ -398,7 +405,7 @@ async fn config_fixture(config: jinn_config::ConfigLayer) -> ActorFixture {
     let mut services = harness.services().await;
     services.config = config;
     let state = State::new(AppState::default());
-    SessionLifecycleActor::spawn(
+    let actor_path = SessionLifecycleActor::spawn(
         harness.system(),
         SessionLifecycleActorDeps {
             state: state.clone(),
@@ -407,7 +414,11 @@ async fn config_fixture(config: jinn_config::ConfigLayer) -> ActorFixture {
             shell: shell_for_tests(),
         },
     );
-    ActorFixture { harness, state }
+    ActorFixture {
+        harness,
+        state,
+        actor_path,
+    }
 }
 
 /// Builds an actor fixture with the shell lifecycle config in services.
@@ -416,7 +427,7 @@ async fn shell_fixture() -> ActorFixture {
     let mut services = harness.services().await;
     services.config = shell_config();
     let state = State::new(AppState::default());
-    SessionLifecycleActor::spawn(
+    let actor_path = SessionLifecycleActor::spawn(
         harness.system(),
         SessionLifecycleActorDeps {
             state: state.clone(),
@@ -425,7 +436,11 @@ async fn shell_fixture() -> ActorFixture {
             shell: shell_for_tests(),
         },
     );
-    ActorFixture { harness, state }
+    ActorFixture {
+        harness,
+        state,
+        actor_path,
+    }
 }
 
 /// Seeds one plain session into the fixture's state; returns its id.
@@ -540,8 +555,17 @@ async fn a_second_setup_for_a_session_with_one_in_flight_is_refused() {
             lifecycle_command: Some(LifecycleCommand::Shell("sleep 2; echo .".to_owned())),
         })
         .await;
-    // Give the actor time to spawn the child before the second command.
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    // The actor must have spawned the child before the second command
+    // arrives, so the second one is refused for the right reason. The
+    // actor's inbox is the guarantee: once it is drained, the first
+    // command has been handled and the child spawned. A fixed sleep
+    // would let the second command race the spawn.
+    jinn_testutil::wait::await_inbox_drained(
+        fixture.harness.system(),
+        &fixture.actor_path,
+        Duration::from_secs(10),
+    )
+    .await;
 
     // When a second setup arrives for the same session while it runs.
     fixture
@@ -606,8 +630,15 @@ async fn cancel_kills_only_the_named_session_s_command() {
             lifecycle_command: Some(LifecycleCommand::Shell("sleep 2; echo .".to_owned())),
         })
         .await;
-    // The cancel lands while both are mid-flight.
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // The cancel lands while both are mid-flight. The actor must have
+    // processed both setups before the cancel is published, so the cancel
+    // genuinely races a running command rather than an unhandled one.
+    jinn_testutil::wait::await_inbox_drained(
+        fixture.harness.system(),
+        &fixture.actor_path,
+        Duration::from_secs(10),
+    )
+    .await;
 
     // When cancelling one session's command.
     fixture
@@ -674,9 +705,17 @@ async fn a_finish_releases_only_its_own_session_s_slot() {
 
     // When the quick one completes.
     let completions = await_recorded(&setups, 1, Duration::from_secs(5)).await;
-    assert_eq!(
-        completions[0].session_id, quick_id,
-        "the quick one finished"
+    // The quick session's command finishes first, so it is the one that
+    // completes. The assertion names the session rather than trusting the
+    // recorder's arrival order — a slow one that finished first would
+    // otherwise be silently accepted.
+    let quick_completion = completions
+        .iter()
+        .find(|completion| completion.session_id == quick_id)
+        .expect("the quick session's setup completes first");
+    assert!(
+        quick_completion.error.is_none(),
+        "the quick one finished cleanly"
     );
 
     // Then the slow session's slot is still held: a follow-up setup for IT
@@ -728,15 +767,18 @@ async fn setup_for_a_session_that_already_ran_setup_is_refused() {
 
     // Then it is refused naming the state, and the state is untouched.
     let completions = await_recorded(&setups, 1, Duration::from_secs(2)).await;
+    let refusal = completions
+        .iter()
+        .find(|completion| completion.session_id == session_id)
+        .expect("the refusal names its session");
     assert!(
-        completions[0]
+        refusal
             .error
             .as_deref()
             .is_some_and(|e| e.contains("setup requires nothing_ran")),
         "the refusal must name the state gate: {:?}",
-        completions[0].error
+        refusal.error
     );
-    assert_eq!(completions[0].session_id, session_id);
     assert_eq!(
         fixture
             .state
@@ -1029,7 +1071,7 @@ async fn builtin_teardown_receives_recorded_values_in_template_order() {
     let mut services = harness.services().await;
     services.config = builtin_teardown_config();
     let state = State::new(AppState::default());
-    SessionLifecycleActor::spawn(
+    let actor_path = SessionLifecycleActor::spawn(
         harness.system(),
         SessionLifecycleActorDeps {
             state: state.clone(),
@@ -1038,7 +1080,11 @@ async fn builtin_teardown_receives_recorded_values_in_template_order() {
             shell: shell_for_tests(),
         },
     );
-    let fixture = ActorFixture { harness, state };
+    let fixture = ActorFixture {
+        harness,
+        state,
+        actor_path,
+    };
     let session_id = seed_session(&fixture);
     advance_past_setup(&fixture, &session_id);
     fixture
@@ -1060,7 +1106,10 @@ async fn builtin_teardown_receives_recorded_values_in_template_order() {
 
     // Then the handler received the values in recorded (template) order,
     // keys dropped.
-    let delivered = poll_until(|| async { !received.lock().expect("mutex").is_empty() }).await;
+    let delivered = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        !received.lock().expect("mutex").is_empty()
+    })
+    .await;
     assert!(delivered, "builtin teardown should have run");
     assert_eq!(
         received.lock().expect("mutex").as_slice(),
@@ -1102,11 +1151,18 @@ async fn caller_refusals_push_no_child_transcript_entries() {
             args: Vec::new(),
         })
         .await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
 
     // Then no chat entry was pushed for either session: caller errors
     // ride the completion events, never the child transcript.
-    let pushed = entries.drain();
+    // The entries recorder must have stopped changing before "no entry was
+    // pushed" is an observation rather than a race with a publish that is
+    // still in flight.
+    let pushed = jinn_testutil::wait::await_settled_messages(
+        &entries,
+        Duration::from_millis(200),
+        Duration::from_secs(5),
+    )
+    .await;
     let leaky: Vec<_> = pushed
         .iter()
         .filter(|m| m.session_id == refused_setup || m.session_id == refused_teardown)

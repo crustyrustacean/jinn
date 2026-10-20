@@ -1070,12 +1070,14 @@ mod tests {
     fn assemble_prompt_includes_context_files_in_system_message() {
         // Given a state with cached context files.
         let (state, session_id) = state_with_history(vec![]);
+        let context_dir = jinn_testutil::tempdir().expect("temp dir");
+        let context_file = context_dir.path().join("AGENTS.md");
         {
             let mut guard = state.write();
             guard
                 .active_session_mut()
                 .set_discovered_context_files(vec![ContextFile {
-                    path: std::path::PathBuf::from("/project/AGENTS.md"),
+                    path: context_file,
                     content: "Use Rust.".to_owned(),
                 }]);
         }
@@ -1523,6 +1525,7 @@ mod tests {
     /// A state populated so every system-prompt section carries its marker.
     fn state_with_every_system_section() -> (State, SessionId) {
         let (state, session_id) = state_with_history(vec![]);
+        let context_dir = jinn_testutil::tempdir().expect("temp dir");
         let cell = state
             .read()
             .persona_selection()
@@ -1543,7 +1546,7 @@ mod tests {
         guard
             .active_session_mut()
             .set_discovered_context_files(vec![ContextFile {
-                path: std::path::PathBuf::from("/project/AGENTS.md"),
+                path: context_dir.path().join("AGENTS.md"),
                 content: "ORDER-MARK-FILES".to_owned(),
             }]);
         guard

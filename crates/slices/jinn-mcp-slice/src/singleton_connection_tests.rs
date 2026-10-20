@@ -107,7 +107,11 @@ async fn singleton_actor_serves_a_session_that_never_spawned_it() {
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<ToolExecutionCompleted>().await;
     let (_services, _path) = spawn_singleton_actor(&harness, &SessionId::new()).await;
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // The actor must have subscribed to ExecuteTool before the dispatch
+    // below, or the call would find no subscriber and the test would
+    // prove nothing. A fixed sleep could let the dispatch happen first.
+    jinn_testutil::wait::await_inbox_drained(harness.system(), &_path, Duration::from_secs(10))
+        .await;
 
     // When session B — a different session — dispatches an ExecuteTool.
     harness
@@ -140,16 +144,26 @@ async fn singleton_actor_stop_does_not_publish_tools_unregistered() {
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<ToolsUnregistered>().await;
     let (services, path) = spawn_singleton_actor(&harness, &SessionId::new()).await;
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // The actor must have subscribed before it is stopped, or the stop
+    // would find nothing to tear down and the test would prove nothing.
+    jinn_testutil::wait::await_inbox_drained(harness.system(), &path, Duration::from_secs(10))
+        .await;
 
     // When the actor stops (a restart does exactly this).
     services.trouper_system.stop(&path).await;
-    tokio::time::sleep(Duration::from_millis(300)).await;
 
     // Then no ToolsUnregistered event is published: the registration was
     // global, and a restart re-registers over the same provider key —
     // publishing the event would strand the global registrations.
-    let events = await_recorded(&recorder, 1, Duration::from_millis(500)).await;
+    // The recorder must have stopped changing before "nothing was
+    // published" is an observation rather than a race with a publish that
+    // is still in flight.
+    let events = jinn_testutil::wait::await_settled_messages(
+        &recorder,
+        Duration::from_millis(300),
+        Duration::from_secs(5),
+    )
+    .await;
     assert!(
         events.is_empty(),
         "singleton teardown must not publish ToolsUnregistered; got {events:?}"

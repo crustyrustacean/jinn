@@ -584,12 +584,19 @@ mod tests {
         }
     }
 
+    /// A project path whose leaf name is `jinn`, built under `root` so the
+    /// fixture names the same directory on every platform.
+    fn project_path_named_jinn(root: &std::path::Path) -> std::path::PathBuf {
+        root.join("code").join("jinn")
+    }
+
     #[rstest::rstest]
     #[tokio::test]
     async fn load_session_entries_applies_project_column_width_across_all_entries() {
         // Given a store returning one project-bearing summary and one without.
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let summaries = vec![
-            summary_with_project("Short", Some(std::path::PathBuf::from("/code/jinn"))),
+            summary_with_project("Short", Some(project_path_named_jinn(root.path()))),
             summary_with_project("Blank", None),
         ];
         let store =
@@ -612,9 +619,10 @@ mod tests {
     #[tokio::test]
     async fn load_session_entries_passes_summary_project_to_entries() {
         // Given a store returning one project-bearing summary.
+        let root = jinn_testutil::tempdir().expect("temp dir");
         let summaries = vec![summary_with_project(
             "Stamped",
-            Some(std::path::PathBuf::from("/code/jinn")),
+            Some(project_path_named_jinn(root.path())),
         )];
         let store =
             jinn_session_state::SessionStoreService::new(std::sync::Arc::new(ManySummariesStore {

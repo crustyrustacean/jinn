@@ -306,13 +306,10 @@ mod tests {
         let name = format!("jinn_cwd_test_{}", std::process::id());
         let target = home.path().join(&name);
         fs::create_dir_all(&target).unwrap();
+        let unrelated = unrelated_cwd();
 
         // When resolving `~/<name>` from an unrelated cwd against that home.
-        let res = resolve_cwd_input_with_home(
-            &format!("~/{name}"),
-            Path::new("/some/unrelated/cwd"),
-            home.path(),
-        );
+        let res = resolve_cwd_input_with_home(&format!("~/{name}"), unrelated.path(), home.path());
 
         // Then it expands to the directory under the temp home — never
         // touching the real home.
@@ -323,9 +320,10 @@ mod tests {
     fn bare_tilde_resolves_to_home() {
         // Given a temp home.
         let home = jinn_testutil::tempdir().unwrap();
+        let unrelated = unrelated_cwd();
 
         // When resolving a bare `~` from an unrelated cwd against that home.
-        let res = resolve_cwd_input_with_home("~", Path::new("/some/unrelated/cwd"), home.path());
+        let res = resolve_cwd_input_with_home("~", unrelated.path(), home.path());
 
         // Then it resolves to the temp home itself.
         assert_eq!(res, CwdResolution::Ok(canonicalize(home.path())));
@@ -338,6 +336,7 @@ mod tests {
         let name = format!("jinn_cwd_test_{}", std::process::id());
         let target = home.path().join(&name);
         fs::create_dir_all(&target).unwrap();
+        let unrelated = unrelated_cwd();
 
         // When resolving the input the popup seeds — the native-separator
         // form after `~` — from an unrelated cwd. `Path::join` emits the
@@ -345,11 +344,8 @@ mod tests {
         // reseeded native form) and `~/name` on Unix (the plain tilde
         // form); both must resolve to the directory under the temp home.
         let input = Path::new("~").join(&name);
-        let res = resolve_cwd_input_with_home(
-            &input.to_string_lossy(),
-            Path::new("/some/unrelated/cwd"),
-            home.path(),
-        );
+        let res =
+            resolve_cwd_input_with_home(&input.to_string_lossy(), unrelated.path(), home.path());
 
         // Then it expands to the directory under the temp home.
         assert_eq!(res, CwdResolution::Ok(canonicalize(&target)));
@@ -359,12 +355,22 @@ mod tests {
     fn absolute_path_passes_through() {
         // Given a temp dir to resolve against.
         let dir = jinn_testutil::tempdir().unwrap();
+        let unrelated = unrelated_cwd();
 
         // When resolving that absolute path from an unrelated cwd.
-        let res = resolve_cwd_input(&dir.path().to_string_lossy(), Path::new("/unrelated"));
+        let res = resolve_cwd_input(&dir.path().to_string_lossy(), unrelated.path());
 
         // Then it passes through unchanged, canonicalized.
         assert_eq!(res, CwdResolution::Ok(canonicalize(dir.path())));
+    }
+
+    /// A directory that plays the "unrelated cwd" role: it exists, but it
+    /// is never the directory the resolution is expected to land in.
+    ///
+    /// Built under a temp root so the fixture names the same place on every
+    /// platform.
+    fn unrelated_cwd() -> jinn_testutil::paths::TestRoot {
+        jinn_testutil::paths::TestRoot::new().unwrap()
     }
 
     /// Helper: canonicalize without dragging the shared canonicalizer into

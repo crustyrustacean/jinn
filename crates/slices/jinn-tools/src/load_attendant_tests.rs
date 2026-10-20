@@ -38,6 +38,7 @@ async fn ctx(
     ToolContext {
         cwd: paths_root.to_path_buf(),
         config: jinn_config::testutil::config_layer(""),
+        shells: Default::default(),
         timeout: None,
         state: Some(state.clone()),
         session_id: Some(session_id),

@@ -45,6 +45,7 @@ fn ctx_with(session_id: Option<SessionId>, app_paths_root: &Path, cwd: &Path) ->
     ToolContext {
         cwd: cwd.to_path_buf(),
         config: jinn_config::testutil::config_layer(""),
+        shells: Default::default(),
         timeout: None,
         state: None,
         session_id,

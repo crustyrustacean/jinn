@@ -59,6 +59,7 @@ async fn ctx_with(
     ToolContext {
         cwd: cwd.to_path_buf(),
         config: jinn_config::testutil::config_layer(SCRIPT_DOC),
+        shells: Default::default(),
         timeout: None,
         state: Some(state.clone()),
         session_id: Some(session_id),
@@ -205,7 +206,10 @@ async fn setup_stamps_coordinates_and_persists_before_the_run_command() {
     ));
     // Give the listener a moment to subscribe, then answer as the actor
     // would.
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    // The tool spawns its completion listener before it publishes the
+    // run command, so the command's arrival on the bus is the signal that
+    // the listener is subscribed. A fixed sleep raced that subscription.
+    let published = await_recorded::<RunSessionSetup>(&setups, 1, Duration::from_secs(5)).await;
     harness
         .publish(jinn_session_lifecycle_msg::SessionSetupCompleted {
             session_id: id.clone(),
@@ -240,7 +244,7 @@ async fn setup_stamps_coordinates_and_persists_before_the_run_command() {
 
     // And the published command carries the rendered, quoted command with
     // ordered args.
-    let recorded = await_recorded::<RunSessionSetup>(&setups, 1, Duration::from_secs(2)).await;
+    let recorded = published.clone();
     assert_eq!(recorded[0].session_id, id);
     // Safe values pass through unquoted (shell_quote quotes only specials).
     assert!(
@@ -293,7 +297,11 @@ async fn teardown_ignores_supplied_options_and_replays_the_stored_coordinates() 
         ),
         tool_ctx,
     ));
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    // The tool spawns its completion listener before it publishes the
+    // run command, so the command's arrival on the bus is the signal that
+    // the listener is subscribed. A fixed sleep raced that subscription.
+    let published =
+        await_recorded::<RunSessionTeardown>(&teardowns, 1, Duration::from_secs(5)).await;
     harness
         .publish(jinn_session_lifecycle_msg::SessionTeardownFinished {
             session_id: id.clone(),
@@ -316,8 +324,7 @@ async fn teardown_ignores_supplied_options_and_replays_the_stored_coordinates() 
     );
     assert_eq!(session.lifecycle_source(), None);
     drop(guard);
-    let recorded =
-        await_recorded::<RunSessionTeardown>(&teardowns, 1, Duration::from_secs(2)).await;
+    let recorded = published.clone();
     assert_eq!(recorded[0].session_id, id);
     assert!(
         recorded[0].command.contains("rm -rf 'wt-a'")
@@ -533,7 +540,11 @@ async fn missing_placeholder_argument_fails_before_any_publish() {
     // Then it fails naming <base> and publishes nothing.
     assert!(!result.success);
     assert!(result.content.contains("<base>"));
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // The tool's own result is the positive signal that it failed before
+    // publishing. The recorder must have stopped changing before "nothing
+    // was published" is a real observation rather than a race.
+    jinn_testutil::wait::await_settled(&setups, Duration::from_millis(200), Duration::from_secs(5))
+        .await;
     assert!(setups.is_empty());
 }
 
@@ -543,6 +554,7 @@ async fn a_failed_script_reports_the_failure_as_a_failed_result() {
     // Given a session whose script will report an error.
     let dir = jinn_testutil::tempdir().expect("temp dir");
     let harness = TestHarness::new().await;
+    let setups = harness.spawn_recorder::<RunSessionSetup>().await;
     let (state, id) = fixture();
     let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
 
@@ -553,7 +565,10 @@ async fn a_failed_script_reports_the_failure_as_a_failed_result() {
         )),
         tool_ctx,
     ));
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    // The tool spawns its completion listener before it publishes the
+    // run command, so the command's arrival on the bus is the signal that
+    // the listener is subscribed. A fixed sleep raced that subscription.
+    await_recorded::<RunSessionSetup>(&setups, 1, Duration::from_secs(5)).await;
     harness
         .publish(jinn_session_lifecycle_msg::SessionSetupCompleted {
             session_id: id.clone(),
@@ -632,7 +647,10 @@ async fn path_source_resolves_the_named_entry_and_publishes_the_same_shape() {
         ),
         tool_ctx,
     ));
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    // The tool spawns its completion listener before it publishes the
+    // run command, so the command's arrival on the bus is the signal that
+    // the listener is subscribed. A fixed sleep raced that subscription.
+    let published = await_recorded::<RunSessionSetup>(&setups, 1, Duration::from_secs(5)).await;
     harness
         .publish(jinn_session_lifecycle_msg::SessionSetupCompleted {
             session_id: id.clone(),
@@ -644,7 +662,7 @@ async fn path_source_resolves_the_named_entry_and_publishes_the_same_shape() {
 
     // Then the command rendered from the FILE's entry, not the config's.
     assert!(result.success, "{}", result.content);
-    let recorded = await_recorded::<RunSessionSetup>(&setups, 1, Duration::from_secs(2)).await;
+    let recorded = published.clone();
     assert!(
         recorded[0].command.contains("mkdir -p wt"),
         "{}",
@@ -689,7 +707,10 @@ async fn a_relative_path_resolves_against_the_session_cwd() {
         ),
         tool_ctx,
     ));
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    // The tool spawns its completion listener before it publishes the
+    // run command, so the command's arrival on the bus is the signal that
+    // the listener is subscribed. A fixed sleep raced that subscription.
+    let published = await_recorded::<RunSessionSetup>(&setups, 1, Duration::from_secs(5)).await;
     harness
         .publish(jinn_session_lifecycle_msg::SessionSetupCompleted {
             session_id: id.clone(),
@@ -702,12 +723,12 @@ async fn a_relative_path_resolves_against_the_session_cwd() {
     // Then the file was found through the cwd: the call succeeded and the
     // published command is the purge entry rendered from the file.
     assert!(result.success, "{}", result.content);
-    let recorded = await_recorded::<RunSessionSetup>(&setups, 1, Duration::from_secs(2)).await;
-    assert!(
-        recorded[0].command.contains("rm -rf .trash"),
-        "{}",
-        recorded[0].command
-    );
+    let command = published
+        .first()
+        .expect("the setup command was published")
+        .command
+        .clone();
+    assert!(command.contains("rm -rf .trash"), "{command}");
 }
 
 #[rstest::rstest]
@@ -998,7 +1019,11 @@ async fn teardown_replays_even_when_the_call_carries_a_path() {
         ),
         tool_ctx,
     ));
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    // The tool spawns its completion listener before it publishes the
+    // run command, so the command's arrival on the bus is the signal that
+    // the listener is subscribed. A fixed sleep raced that subscription.
+    let published =
+        await_recorded::<RunSessionTeardown>(&teardowns, 1, Duration::from_secs(5)).await;
     harness
         .publish(jinn_session_lifecycle_msg::SessionTeardownFinished {
             session_id: id.clone(),
@@ -1017,8 +1042,7 @@ async fn teardown_replays_even_when_the_call_carries_a_path() {
     assert_eq!(session.lifecycle_name(), Some("worktree"));
     assert_eq!(session.lifecycle_source(), None);
     drop(guard);
-    let recorded =
-        await_recorded::<RunSessionTeardown>(&teardowns, 1, Duration::from_secs(2)).await;
+    let recorded = published.clone();
     assert!(
         recorded[0].command.contains("rm -rf") && !recorded[0].command.contains("closing"),
         "the replay must come from the recorded lifecycle, not the call's file: {}",

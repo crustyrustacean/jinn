@@ -173,6 +173,8 @@ mod tests {
         reason = "test code"
     )]
 
+    use std::path::PathBuf;
+
     use super::*;
 
     /// Writes one loadable theme TOML into `dir`.
@@ -226,7 +228,7 @@ mod tests {
         write_theme(user.path(), "default", "#123456");
 
         // When scanning.
-        let entries = scan(user.path(), system_dir_absent());
+        let entries = scan(user.path(), &system_dir_absent());
 
         // Then the pinned first entry carries the scanned look under the
         // reserved "default" name.
@@ -246,7 +248,7 @@ mod tests {
         write_theme(user.path(), "good", "#00ff00");
 
         // When scanning.
-        let entries = scan(user.path(), system_dir_absent());
+        let entries = scan(user.path(), &system_dir_absent());
 
         // Then only the good theme survives, alongside the pinned default.
         let names: Vec<_> = entries.entries.iter().map(|e| e.name.as_str()).collect();
@@ -256,8 +258,12 @@ mod tests {
     #[rstest::rstest]
     fn missing_directories_yield_default_only() {
         // Given directories that do not exist.
+        let root = jinn_testutil::tempdir().expect("tmpdir");
+        let user = root.path().join("nonexistent-a");
+        let system = root.path().join("nonexistent-b");
+
         // When scanning both directories.
-        let entries = scan(Path::new("/nonexistent-a"), Path::new("/nonexistent-b"));
+        let entries = scan(&user, &system);
 
         // Then the selection is the built-in default alone.
         assert_eq!(entries.entries.len(), 1);
@@ -265,7 +271,12 @@ mod tests {
     }
 
     /// A path guaranteed not to exist (keeps the missing-dir case explicit).
-    fn system_dir_absent() -> &'static Path {
-        Path::new("/nonexistent-system-themes")
+    ///
+    /// The temp root is removed when this returns, and the child path below
+    /// it was never created, so the named directory is absent on every
+    /// platform.
+    fn system_dir_absent() -> PathBuf {
+        let dir = jinn_testutil::tempdir().expect("tmpdir");
+        dir.path().join("nonexistent-system-themes")
     }
 }

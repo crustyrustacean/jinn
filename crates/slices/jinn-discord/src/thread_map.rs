@@ -231,7 +231,7 @@ mod tests {
     use tempfile::TempDir;
 
     async fn make_map() -> (TempDir, DiscordThreadMap) {
-        let dir = TempDir::new().expect("temp dir");
+        let dir = jinn_testutil::tempdir().expect("temp dir");
         let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
         let map = DiscordThreadMap::new(store.pool().clone());
         (dir, map)

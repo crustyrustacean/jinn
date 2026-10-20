@@ -1258,6 +1258,9 @@ fn streaming_token_append_renders_updated_content() {
         .active_session_mut()
         .append_stream_token(" + more text", jiff::Timestamp::now())
         .expect("ok");
+    // wall-clock-under-test: the render throttle compares against the wall
+    // clock, so the clock has to move for the interval to have elapsed. A
+    // signal cannot substitute here.
     std::thread::sleep(STREAM_RENDER_INTERVAL);
     terminal
         .draw(|frame| {
@@ -1416,6 +1419,9 @@ fn the_stream_render_interval_elapses_between_frames() {
         .unwrap();
 
     // When the render interval elapses.
+    // wall-clock-under-test: the throttle's due check reads the wall clock,
+    // so the clock has to move for the interval to have elapsed. A signal
+    // cannot substitute here.
     std::thread::sleep(STREAM_RENDER_INTERVAL);
 
     // Then the entry is due a render again.
@@ -2878,6 +2884,9 @@ fn a_loading_indication_animates_over_time() {
             &mut terminal,
             area,
         ));
+        // wall-clock-under-test: the loading animation advances on a
+        // wall-clock cadence, so the clock has to move for the frames to
+        // differ. A signal cannot substitute here.
         std::thread::sleep(std::time::Duration::from_millis(120));
     }
 

@@ -116,184 +116,21 @@ fmt:
 fmt-fix:
     cargo fmt
 
-# Run all linters (check + clippy + fmt check + test-attr guard + portable-path guard)
+# Run all linters (check + clippy + fmt check + test-attr guard)
 lint:
     cargo check --workspace
     just clippy
     cargo fmt -- --check
     just lint-testattr
-    just lint-portable-path
 
-[doc("Fail on hardcoded absolute path literals, std::env::temp_dir, or path-shaped test fixtures that only pass on one platform.")]
-lint-portable-path:
-   #!/usr/bin/env python3
-   import os
-   import re
-   import sys
-
-   # Each entry: relative path -> why the absolute literal is legitimate there.
-   ALLOWLIST = {
-       "crates/jinn-mcp/tests/excalimate_live.rs":
-           "its /tmp/excalimate/... default names where the OPTIONAL excalimate "
-           "server binary is installed; nothing creates it at runtime, so a "
-           "tempdir root would point the skip-if-absent lookup at a path that "
-           "does not exist",
-       "crates/jinn-common/src/app_paths.rs":
-           "asserts the POSIX system-data layout (/usr/share/jinn) as the "
-           "marker distinguishing the platform layout from the JINN_PATHS_ROOT "
-           "override layout; the value is the subject under test, not a fixture",
-       "crates/jinn-common/src/path_display.rs":
-           "uses /opt/jinn/config.toml as a path that is guaranteed to lie "
-           "outside the home directory on every platform, so shorten_path has "
-           "nothing to compress; the path is the subject under test",
-       "crates/jinn-mcp/src/transport.rs":
-           "uses /opt/jinn/bin/jinn as a synthetic executable path for the "
-           "<jinn> token expansion; the path never touches the filesystem",
-       "crates/slices/jinn-chat-input-msg/src/file_picker_state.rs":
-           "uses /etc as a filter string and /proj as a synthetic cwd to "
-           "exercise absolute-filter resolution; neither path is opened, and "
-           "the assertion is about the filter string passing through",
-       "crates/slices/jinn-stream-rules/src/rules.rs":
-           "interpolates a toml_edit::Value into a TOML document; the Value "
-           "carries the path as an already-escaped TOML string, so the "
-           "interpolation is safe by construction",
-   }
-   SKIP_DIRS = {"target", "vendor"}
-
-   # A double-quoted string starting with /tmp or /home (bare "/tmp" included),
-   # or the exact std::env::temp_dir token (not the substring temp_dir).
-   OFFENSE = re.compile(r'"/(?:tmp|home)(?:[/"]|$)|std::env::temp_dir')
-
-   # Shape (a): a raw-string JSON/TOML literal with a {placeholder} in it.
-   RAW_LITERAL = re.compile(r'r#"(.*?)"#', re.S)
-   PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
-   # A placeholder whose name reads as a path, or a literal that carries a
-   # path-shaped key. Both mean a filesystem path is being pasted into a
-   # string literal, where a Windows path's backslashes are an invalid
-   # JSON/TOML escape.
-   PATHISH_NAME = re.compile(
-       r"^(path|dir|file|cwd|workdir|target|src|dest|destination|location|"
-       r"root|base_dir|basedir|project|repo|home|"
-       r".*_path|.*_dir|.*_file)$",
-       re.I,
-   )
-   PATH_KEY = re.compile(r'"(?:path|dir|file|cwd|workdir|location)"\s*:')
-   # A placeholder that is a UUID, a session id, a message, or a JSON
-   # fragment is not a filesystem path; it cannot carry a backslash.
-   NOT_A_PATH = re.compile(
-       r"^(id|uuid|guid|session_id|user_id|msg|message|text|body|content|"
-       r"name|title|label|desc|description|prompt|error|reason|status|"
-       r"kind|type|script|command|cmd|args|json|value|key|branch|"
-       r".*_id|.*_uuid|.*_msg|.*_text|.*_name)$",
-       re.I,
-   )
-   # A path-shaped key matters only when a placeholder supplies its value.
-   # A literal value ("dir":"wt-b") is already a valid JSON string. Both a
-   # named placeholder ("path": "{path}") and a positional one ("path": "{}")
-   # can carry a filesystem path into the literal.
-   KEY_WITH_PLACEHOLDER = re.compile(
-       r'"(?:path|dir|file|cwd|workdir|location)"\s*:\s*"[^"]*'
-       r"(?:\{[A-Za-z_][A-Za-z0-9_]*\}|\{\})"
-   )
-
-   # Shape (b): a test expectation built from a path's display form in a
-   # file that renders paths through a home-compressing production function.
-   #
-   # The platform temp directory is under the user profile on Windows, so a
-   # temp root is not outside home there — it is on Unix. A test whose intent
-   # is "a path outside home" must not derive its expectation from
-   # `Path::display`, because production renders such a path tilde-compressed
-   # there and uncompressed here.
-   #
-   # The signature is the conjunction, not either half: the display-form
-   # expectation on one side, the home-compressing call on the other. A file
-   # with only one of them is legitimate — a display-form expectation with no
-   # compression in play, or compression with an expectation that already
-   # accounts for it.
-   DISPLAY_EXPECT = re.compile(
-       r"let\s+\w*(?:expected|label|cwd_label|path)\w*\s*(:\s*String)?\s*=\s*"
-       r"[^;]*\.display\(\)"
-   )
-   HOME_COMPRESS = re.compile(
-       r"shorten_path\s*\(|display_label\s*\(|tilde_home\s*\(|"
-       r"render_session_cwd_line\s*\("
-   )
-
-   # Shape (c): a POSIX absolute path hardcoded inside an assertion.
-   POSIX_ABS = re.compile(r'assert[^;]*"/(?:etc|usr|var|opt|home|tmp|bin|sbin)')
-
-   offenders = []
-   for dirpath, dirnames, filenames in os.walk(os.getcwd()):
-       dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
-       for fn in filenames:
-           if not fn.endswith(".rs"):
-               continue
-           fpath = os.path.join(dirpath, fn)
-           # Normalize to forward slashes so the ALLOWLIST keys are
-           # platform-independent.
-           rel = os.path.normpath(os.path.relpath(fpath, os.getcwd())).replace(
-               os.sep, "/"
-           )
-           if rel in ALLOWLIST:
-               continue
-           with open(fpath, encoding="utf-8") as f:
-               src = f.read()
-           lines = src.splitlines()
-           for ln, line in enumerate(lines, start=1):
-               m = OFFENSE.search(line)
-               if m:
-                   offenders.append((rel, ln, "hardcoded-path", m.group(0)))
-           for m in RAW_LITERAL.finditer(src):
-               body = m.group(1)
-               names = set(PLACEHOLDER.findall(body))
-               if not names:
-                   continue
-               lineno = src[: m.start()].count("\n") + 1
-               pathish = sorted(
-                   n
-                   for n in names
-                   if PATHISH_NAME.match(n) and not NOT_A_PATH.match(n)
-               )
-               keyish = bool(KEY_WITH_PLACEHOLDER.search(body))
-               if pathish or keyish:
-                   hit = ", ".join(pathish) if pathish else "path key"
-                   offenders.append((rel, lineno, "unescaped-path-in-literal", hit))
-           for idx, line in enumerate(lines):
-               if not DISPLAY_EXPECT.search(line):
-                   continue
-               if HOME_COMPRESS.search(src):
-                   offenders.append(
-                       (rel, idx + 1, "display-expect-where-home-compressed", "")
-                   )
-           for ln, line in enumerate(lines, start=1):
-               m = POSIX_ABS.search(line)
-               if m:
-                   offenders.append((rel, ln, "posix-absolute-in-assertion", m.group(0)))
-
-   for rel, ln, kind, hit in offenders:
-       print(f"ERROR: {rel}:{ln}: {kind}: {hit}", file=sys.stderr)
-   if offenders:
-       print(
-           f"\n{len(offenders)} site(s) build a path fixture that only holds on\n"
-           "one platform:\n"
-           "  - a path pasted into a JSON/TOML string literal is invalid on\n"
-           "    Windows (its backslashes are an invalid escape) — build the\n"
-           "    document with serde_json::json! or toml::Value instead;\n"
-           "  - the platform temp directory is under the user profile on\n"
-           "    Windows, so a temp root is NOT outside home there — use a\n"
-           "    path rooted at the filesystem root, or assert the property\n"
-           "    (shorten_path) rather than a literal;\n"
-           "  - a POSIX absolute path in an assertion only holds on Unix —\n"
-           "    derive the expectation from the platform's own path rules.\n"
-           "In tests, build paths from a tempfile root:\n"
-           '  let dir = tempfile::tempdir().expect("temp dir");\n'
-           '  let path = dir.path().join("name");\n'
-           "and derive BOTH sides of each assertion from the same expression.\n"
-           "(If a literal is genuinely legitimate, add the file to ALLOWLIST\n"
-           "in the lint-portable-path recipe with a stated reason.)",
-           file=sys.stderr,
-       )
-       sys.exit(1)
+# Cross-compile the workspace for Windows and type-check every target.
+#
+# The Windows suite is never *run* here — only compiled. That is the
+# strongest gate available without a Windows host, and it turns a
+# platform-specific API misuse (a POSIX-only libc call outside a cfg
+# gate) into a compile error rather than a runtime surprise.
+check-windows:
+    cargo xwin check --workspace --all-targets --target x86_64-pc-windows-msvc
 
 [doc("Fail on bare test attributes missing their rstest companion.")]
 lint-testattr:

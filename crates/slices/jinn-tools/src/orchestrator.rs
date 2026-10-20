@@ -280,14 +280,25 @@ impl ToolOrchestratorActor {
         };
         for (def, execute_fn, self_managed_timeout) in builtins {
             let name = def.name.clone();
-            // `bash` is the one builtin whose schema names a config value
-            // (the default timeout), so it is the one that re-resolves.
-            let live_definition = (name == "bash").then_some(
-                (|config: &jinn_config::ConfigLayer| {
-                    let tools = config.get::<ToolsConfig>().unwrap_or_default();
-                    crate::bash::definition(tools.default_timeout_secs)
-                }) as fn(&jinn_config::ConfigLayer) -> ToolDefinition,
-            );
+            // `bash` and `powershell` are the builtins whose schema names
+            // a config value (the default timeout), so they are the ones
+            // that re-resolve.
+            let live_definition = match name.as_str() {
+                "bash" => Some(
+                    (|config: &jinn_config::ConfigLayer| {
+                        let tools = config.get::<ToolsConfig>().unwrap_or_default();
+                        crate::bash::definition(tools.default_timeout_secs)
+                    }) as fn(&jinn_config::ConfigLayer) -> ToolDefinition,
+                ),
+                #[cfg(windows)]
+                "powershell" => Some(
+                    (|config: &jinn_config::ConfigLayer| {
+                        let tools = config.get::<ToolsConfig>().unwrap_or_default();
+                        crate::powershell::definition(tools.default_timeout_secs)
+                    }) as fn(&jinn_config::ConfigLayer) -> ToolDefinition,
+                ),
+                _ => None,
+            };
             actor.tools.insert(
                 name,
                 ToolRegistration::Builtin {
@@ -677,6 +688,7 @@ impl ToolOrchestratorActor {
             timeout: Some(timeout),
             state: Some(self.state.clone()),
             config: self.services.config.clone(),
+            shells: self.services.shells.clone(),
             session_id: Some(session_id.clone()),
             app_paths: self.services.paths.clone(),
             bus: Some(self.bus().clone()),
@@ -1159,6 +1171,7 @@ mod timeout_tests {
         ToolContext {
             cwd: dir.to_path_buf(),
             config: jinn_config::testutil::config_layer(""),
+            shells: Default::default(),
             timeout: None,
             state: None,
             session_id: None,
@@ -1179,6 +1192,8 @@ mod timeout_tests {
     /// A tool execute_fn that sleeps 500ms before succeeding.
     fn slow_execute(_call: ToolCall, _ctx: ToolContext) -> BoxedToolFuture {
         Box::pin(async {
+            // wall-clock-under-test: the tool's own delay is the subject —
+            // the test measures that a slow tool is handled as a slow tool.
             tokio::time::sleep(Duration::from_millis(500)).await;
             ToolResult {
                 tool_call_id: "call_1".into(),
@@ -1422,6 +1437,7 @@ mod panic_safety_tests {
             super::ToolContext {
                 cwd: dir.path().to_path_buf(),
                 config: jinn_config::testutil::config_layer(""),
+                shells: Default::default(),
                 timeout: None,
                 state: None,
                 session_id: None,
@@ -1649,7 +1665,19 @@ mod mcp_dispatch_gate_tests {
         }
     }
 
-    async fn register_stub_tools(harness: &TestHarness, session_id: &SessionId) {
+    /// Registers the stub tool for `session_id` and waits until the
+    /// registration is observable in the registry cell.
+    ///
+    /// `services` must be the very container the actor was spawned with:
+    /// `Services::new_fake` mints a *fresh* cell registry per call, so
+    /// reading the cell off a second `harness.services()` would look at a
+    /// different registry than the one the actor writes to, and the wait
+    /// would never see the registration.
+    async fn register_stub_tools(
+        harness: &TestHarness,
+        services: &jinn_kernel::common::services::Services,
+        session_id: &SessionId,
+    ) {
         harness
             .publish(RegisterTools {
                 provider: PROVIDER.to_owned(),
@@ -1657,7 +1685,17 @@ mod mcp_dispatch_gate_tests {
                 session_id: Some(session_id.clone()),
             })
             .await;
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        // The registry cell is the signal that the registration was
+        // processed; a fixed sleep would only guess at it. The stub
+        // registers for a *session*, so the session map is what changes.
+        let registry = tools_registry(services);
+        jinn_testutil::wait::await_cell(&registry, Duration::from_secs(5), |r| {
+            r.session
+                .values()
+                .flatten()
+                .any(|(_, tool)| tool.name == "mcp__stub__echo")
+        })
+        .await;
     }
 
     fn tools_registry(
@@ -1695,7 +1733,7 @@ mod mcp_dispatch_gate_tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         let (harness, services) = spawn_orchestrator(&state).await;
-        register_stub_tools(&harness, &session_id).await;
+        register_stub_tools(&harness, &services, &session_id).await;
 
         // When the provider unregisters its tools.
         harness
@@ -1704,10 +1742,18 @@ mod mcp_dispatch_gate_tests {
                 session_id,
             })
             .await;
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        // The registry cell is the signal that the unregistration was
+        // processed; a fixed sleep would only guess at it.
+        let registry = tools_registry(&services);
+        jinn_testutil::wait::await_cell(&registry, Duration::from_secs(5), |r| {
+            !r.session
+                .values()
+                .flatten()
+                .any(|(_, tool)| tool.name == "mcp__stub__echo")
+        })
+        .await;
 
         // Then the definition is no longer available to context assembly.
-        let registry = tools_registry(&services);
         assert!(
             !registry
                 .read()
@@ -1726,7 +1772,7 @@ mod mcp_dispatch_gate_tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         let (harness, services) = spawn_orchestrator(&state).await;
-        register_stub_tools(&harness, &session_id).await;
+        register_stub_tools(&harness, &services, &session_id).await;
 
         // When the session closes.
         harness
@@ -1734,10 +1780,15 @@ mod mcp_dispatch_gate_tests {
                 session_id: session_id.clone(),
             })
             .await;
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        // The registry cell is the signal that the close was processed; a
+        // fixed sleep would only guess at it.
+        let registry = tools_registry(&services);
+        jinn_testutil::wait::await_cell(&registry, Duration::from_secs(5), |r| {
+            !r.session.contains_key(&session_id)
+        })
+        .await;
 
         // Then its context definitions are removed.
-        let registry = tools_registry(&services);
         assert!(!registry.read().session.contains_key(&session_id));
     }
 
@@ -1748,8 +1799,8 @@ mod mcp_dispatch_gate_tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         state.write().session.get_or_create(&session_id);
-        let (harness, _services) = spawn_orchestrator(&state).await;
-        register_stub_tools(&harness, &session_id).await;
+        let (harness, services) = spawn_orchestrator(&state).await;
+        register_stub_tools(&harness, &services, &session_id).await;
 
         // When the provider unregisters its tools for that session.
         harness
@@ -1782,8 +1833,8 @@ mod mcp_dispatch_gate_tests {
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         state.write().session.get_or_create(&session_id);
-        let (harness, _services) = spawn_orchestrator(&state).await;
-        register_stub_tools(&harness, &session_id).await;
+        let (harness, services) = spawn_orchestrator(&state).await;
+        register_stub_tools(&harness, &services, &session_id).await;
         let results = harness.spawn_recorder::<ToolExecutionCompleted>().await;
 
         // When dispatching a call to the disabled server's tool.
@@ -1815,7 +1866,7 @@ mod mcp_dispatch_gate_tests {
         mcp_runtime(&services).update(|runtime| {
             runtime.set_status(&session_id, "stub", McpConnectionStatus::Dead);
         });
-        register_stub_tools(&harness, &session_id).await;
+        register_stub_tools(&harness, &services, &session_id).await;
         let results = harness.spawn_recorder::<ToolExecutionCompleted>().await;
 
         // When dispatching a call to the dead server's tool.
@@ -1847,7 +1898,7 @@ mod mcp_dispatch_gate_tests {
         mcp_runtime(&services).update(|runtime| {
             runtime.set_status(&session_id, "stub", McpConnectionStatus::Running);
         });
-        register_stub_tools(&harness, &session_id).await;
+        register_stub_tools(&harness, &services, &session_id).await;
         let dispatched = harness.spawn_recorder::<ExecuteTool>().await;
 
         // When dispatching a call to the running server's tool.
@@ -1900,7 +1951,14 @@ mod mcp_dispatch_gate_tests {
                 session_id: None,
             })
             .await;
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        // The registry cell is the signal that the registration was
+        // processed; a fixed sleep would only guess at it. This one
+        // registers globally, so the global map is what changes.
+        let registry = tools_registry(&services);
+        jinn_testutil::wait::await_cell(&registry, Duration::from_secs(5), |r| {
+            r.global.values().any(|tool| tool.name == "mcp__stub__echo")
+        })
+        .await;
         let dispatched = harness.spawn_recorder::<ExecuteTool>().await;
 
         // When dispatching a call from a session that has no per-session

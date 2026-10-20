@@ -94,15 +94,6 @@ mod tests {
     use super::QuakeBarCanvasActor;
 
     /// Polls `check` until it passes or the bounded retry budget runs out.
-    async fn wait_for(check: impl Fn() -> bool) {
-        for _ in 0..200 {
-            if check() {
-                return;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        }
-        panic!("condition never held within the retry budget");
-    }
 
     #[rstest::rstest]
     #[test]
@@ -144,7 +135,10 @@ mod tests {
             .await;
 
         // Then the command reaches the cell log through the canvas.
-        wait_for(|| cell.read().log.len() == 1).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            cell.read().log.len() == 1
+        })
+        .await;
         let guard = cell.read();
         assert_eq!(guard.log.visible_lines(5), &["hello".to_owned()]);
     }

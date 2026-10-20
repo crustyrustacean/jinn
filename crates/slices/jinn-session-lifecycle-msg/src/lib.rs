@@ -83,19 +83,25 @@ impl jinn_slices::BusMessage for SessionTeardownFinished {}
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::expect_used,
+        reason = "test code: a failed expect aborts the test loudly, which is the desired mode"
+    )]
+
     use super::{SessionSetupCompleted, SessionTeardownFinished};
     use jinn_core_types::SessionId;
-    use std::path::PathBuf;
 
     #[rstest::rstest]
     #[test]
     fn lifecycle_events_roundtrip_through_json() {
         // Given one of each lifecycle event.
         let id = SessionId::new();
+        let cwd_dir = jinn_testutil::tempdir().expect("temp dir");
+        let cwd = cwd_dir.path().to_path_buf();
         let events = (
             SessionSetupCompleted {
                 session_id: id.clone(),
-                cwd: PathBuf::from("/repo"),
+                cwd: cwd.clone(),
                 error: Some("boom".to_owned()),
             },
             SessionTeardownFinished {
@@ -111,7 +117,7 @@ mod tests {
 
         // Then both survive with their fields intact.
         assert_eq!(round.0.session_id, id);
-        assert_eq!(round.0.cwd, PathBuf::from("/repo"));
+        assert_eq!(round.0.cwd, cwd);
         assert_eq!(round.0.error.as_deref(), Some("boom"));
         assert_eq!(round.1.session_id, id);
         assert_eq!(round.1.error, None);

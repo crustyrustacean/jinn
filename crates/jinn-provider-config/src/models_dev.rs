@@ -195,6 +195,16 @@ mod tests {
     )]
     use super::*;
 
+    /// Returns the path of a file that does not exist.
+    ///
+    /// The path is built under a fresh temp root, so it is absolute on every
+    /// platform and guaranteed to name nothing on disk — which is the whole
+    /// point of the tests that use it.
+    fn missing_file(name: &str) -> std::path::PathBuf {
+        let root = jinn_testutil::paths::TestRoot::new().expect("test root");
+        root.join_str(name).expect("relative path").into_inner()
+    }
+
     fn write_json(dir: &std::path::Path, filename: &str, json: &str) -> std::path::PathBuf {
         let path = dir.join(filename);
         std::fs::write(&path, json).expect("write json");
@@ -243,7 +253,7 @@ mod tests {
         let user_path = write_json(dir.path(), "models.dev.json", minimal_models_dev_json());
 
         // When loading.
-        let data = ModelsDevData::load(&user_path, Path::new("/nonexistent"));
+        let data = ModelsDevData::load(&user_path, &missing_file("system"));
 
         // Then all model IDs map to correct context lengths.
         assert_eq!(data.get("gpt-4o"), Some(128_000));
@@ -287,7 +297,7 @@ mod tests {
         );
 
         // When loading with no user file.
-        let data = ModelsDevData::load(Path::new("/nonexistent"), &system_path);
+        let data = ModelsDevData::load(&missing_file("user"), &system_path);
 
         // Then system data is used.
         assert_eq!(data.get("gpt-4o"), Some(200));
@@ -297,10 +307,7 @@ mod tests {
     fn load_returns_empty_when_neither_exists() {
         // Given no files at either path.
         // When loading from those paths.
-        let data = ModelsDevData::load(
-            Path::new("/nonexistent/user"),
-            Path::new("/nonexistent/system"),
-        );
+        let data = ModelsDevData::load(&missing_file("user"), &missing_file("system"));
 
         // Then the lookup is empty (no panic, no error).
         assert!(data.is_empty());
@@ -318,7 +325,7 @@ mod tests {
         );
 
         // When loading.
-        let data = ModelsDevData::load(&user_path, Path::new("/nonexistent"));
+        let data = ModelsDevData::load(&user_path, &missing_file("system"));
 
         // Then the model ID is absent from the lookup table.
         assert_eq!(data.get("gpt-4o"), None);
@@ -336,7 +343,7 @@ mod tests {
         );
 
         // When loading.
-        let data = ModelsDevData::load(&user_path, Path::new("/nonexistent"));
+        let data = ModelsDevData::load(&user_path, &missing_file("system"));
 
         // Then get() returns Some(0) - not None.
         assert_eq!(data.get("text-embedding-3-large"), Some(0));
@@ -384,7 +391,7 @@ mod tests {
         );
 
         // When loading.
-        let data = ModelsDevData::load(&user_path, Path::new("/nonexistent"));
+        let data = ModelsDevData::load(&user_path, &missing_file("system"));
 
         // Then the first provider's value is used (insert wins).
         assert_eq!(data.get("glm-5.1"), Some(200_000));
@@ -414,7 +421,7 @@ mod tests {
         );
 
         // When loading it.
-        let data = ModelsDevData::load(&user_path, Path::new("/nonexistent"));
+        let data = ModelsDevData::load(&user_path, &missing_file("system"));
 
         // Then the data reports itself non-empty and serves the model.
         assert!(
@@ -429,7 +436,7 @@ mod tests {
         // Given a models.dev file with a vision-capable model.
         let dir = jinn_testutil::tempdir().expect("temp dir");
         let user_path = write_json(dir.path(), "models.dev.json", minimal_models_dev_json());
-        let data = ModelsDevData::load(&user_path, Path::new("/nonexistent"));
+        let data = ModelsDevData::load(&user_path, &missing_file("system"));
 
         // When looking up image support for gpt-4o.
         // Then it returns Some(true).
@@ -441,7 +448,7 @@ mod tests {
         // Given a models.dev file with a text-only model.
         let dir = jinn_testutil::tempdir().expect("temp dir");
         let user_path = write_json(dir.path(), "models.dev.json", minimal_models_dev_json());
-        let data = ModelsDevData::load(&user_path, Path::new("/nonexistent"));
+        let data = ModelsDevData::load(&user_path, &missing_file("system"));
 
         // When looking up image support for gpt-3.5-turbo.
         // Then it returns Some(false).
@@ -453,7 +460,7 @@ mod tests {
         // Given a models.dev file.
         let dir = jinn_testutil::tempdir().expect("temp dir");
         let user_path = write_json(dir.path(), "models.dev.json", minimal_models_dev_json());
-        let data = ModelsDevData::load(&user_path, Path::new("/nonexistent"));
+        let data = ModelsDevData::load(&user_path, &missing_file("system"));
 
         // When looking up a model not in the reference data.
         // Then None is returned (unknown model treated as "allow" by the gate).

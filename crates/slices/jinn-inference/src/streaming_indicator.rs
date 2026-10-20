@@ -552,6 +552,8 @@ mod tests {
 
         // When the indicator row is rendered twice, an animation interval apart.
         let glyphs = std::iter::repeat_with(|| {
+            // wall-clock-under-test: the animation interval is the subject —
+            // the test renders the indicator one spinner tick apart.
             std::thread::sleep(jinn_slices::SPINNER_INTERVAL + std::time::Duration::from_millis(5));
             terminal
                 .draw(|frame| {
