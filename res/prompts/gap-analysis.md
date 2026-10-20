@@ -7,6 +7,8 @@ description = "Check for gaps in the implementation versus the acceptance criter
 
 Verify the implementation against the approved spec/plan and discussion.
 
+THESE ARE READ-ONLY INSTRUCTIONS. DO NOT ATTEMPT TO FIX ANYTHING NOR MAKE EDITS TO THE CODE.
+
 ## Read the spec
 
 Read the plan/spec from the `.plans/` directory. There may be multiple from other sessions; only read those that were just implemented.
