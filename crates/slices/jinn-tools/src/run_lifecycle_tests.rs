@@ -281,10 +281,16 @@ async fn teardown_ignores_supplied_options_and_replays_the_stored_coordinates() 
     // The subdirectories are never created, so the path still does not exist.
     let gone_path = dir.path().join("gone/workflow/lifecycle.toml");
     let tool = tokio::spawn(execute(
-        call(&format!(
-            r#"{{"script":"stage","path":"{}","action":"teardown","session_id":"{id}","args":{{"dir":"WRONG","base":"WRONGER"}}}}"#,
-            gone_path.display()
-        )),
+        call(
+            &serde_json::json!({
+                "script": "stage",
+                "path": gone_path.display().to_string(),
+                "action": "teardown",
+                "session_id": id,
+                "args": { "dir": "WRONG", "base": "WRONGER" },
+            })
+            .to_string(),
+        ),
         tool_ctx,
     ));
     tokio::time::sleep(Duration::from_millis(150)).await;
@@ -671,9 +677,16 @@ async fn a_relative_path_resolves_against_the_session_cwd() {
     // completion event (the tool always awaits one — an unreadable file
     // would have failed fast, before this publish could matter).
     let tool = tokio::spawn(execute(
-        call(&format!(
-            r#"{{"script":"purge","path":"{rel}","action":"setup","session_id":"{id}","args":{{}}}}"#
-        )),
+        call(
+            &serde_json::json!({
+                "script": "purge",
+                "path": rel,
+                "action": "setup",
+                "session_id": id,
+                "args": {},
+            })
+            .to_string(),
+        ),
         tool_ctx,
     ));
     tokio::time::sleep(Duration::from_millis(150)).await;
@@ -710,10 +723,16 @@ async fn an_unreadable_path_fails_naming_the_file() {
 
     // When the tool runs with that path.
     let result = execute(
-        call(&format!(
-            r#"{{"script":"stage","path":"{}","action":"setup","session_id":"{id}","args":{{}}}}"#,
-            missing_path.display()
-        )),
+        call(
+            &serde_json::json!({
+                "script": "stage",
+                "path": missing_path.display().to_string(),
+                "action": "setup",
+                "session_id": id,
+                "args": {},
+            })
+            .to_string(),
+        ),
         tool_ctx,
     )
     .await;
