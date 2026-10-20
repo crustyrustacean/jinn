@@ -35,6 +35,10 @@ rstest = { workspace = true }
 tokio = { workspace = true }
 trouper = { workspace = true }
 jinn-testutil = { workspace = true }
+# The session-creation fixtures build their TOML documents through `toml::Value`
+# so a path carrying a Windows backslash is escaped by the writer rather than
+# pasted into a literal.
+toml = { workspace = true }
 
 [lints]
 workspace = true

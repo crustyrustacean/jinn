@@ -79,18 +79,50 @@ fn registered_argument_hook_dispatches_through_dynamic_intent() {
 /// The project directory both cross-slice tests create a session at, rendered
 /// into the fixture document the pickers activate against. The directory is
 /// derived per-test from the test's own tempdir root.
+///
+/// The document is built through `toml::Value` and serialized, so the path is
+/// escaped by the TOML writer rather than pasted into a literal: a Windows path
+/// carries backslashes, and `\U` is an invalid TOML unicode escape — a raw
+/// format! produced a document that failed to parse.
 fn cross_slice_document(root: &std::path::Path) -> String {
-    format!(
-        "\
-[[project.entry]]
-path = \"{}\"
+    let project_path = root.join("jinn-cross-slice");
+    let document = toml::Value::Table({
+        let mut table = toml::Table::new();
 
-[[session_lifecycle.script]]
-name = \"dev\"
-setup_command = \"/bin/true\"
-",
-        root.join("jinn-cross-slice").display()
-    )
+        // `[[project.entry]]` — an array of tables, one entry per project.
+        let mut entry = toml::Table::new();
+        entry.insert(
+            "path".to_owned(),
+            toml::Value::String(project_path.display().to_string()),
+        );
+        let mut project = toml::Table::new();
+        project.insert(
+            "entry".to_owned(),
+            toml::Value::Array(vec![toml::Value::Table(entry)]),
+        );
+        table.insert("project".to_owned(), toml::Value::Table(project));
+
+        // `[[session_lifecycle.script]]` — likewise an array of tables.
+        let mut script = toml::Table::new();
+        script.insert("name".to_owned(), toml::Value::String("dev".to_owned()));
+        script.insert(
+            "setup_command".to_owned(),
+            toml::Value::String("/bin/true".to_owned()),
+        );
+        let mut lifecycle = toml::Table::new();
+        lifecycle.insert(
+            "script".to_owned(),
+            toml::Value::Array(vec![toml::Value::Table(script)]),
+        );
+        table.insert(
+            "session_lifecycle".to_owned(),
+            toml::Value::Table(lifecycle),
+        );
+
+        table
+    });
+
+    toml::to_string(&document).expect("fixture document serializes")
 }
 
 /// The project picker open, both pickers activated, and a scoped app state.
