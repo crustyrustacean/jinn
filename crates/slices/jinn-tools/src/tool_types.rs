@@ -205,9 +205,12 @@ mod tests {
         // When debugging.
         let debug_str = format!("{ctx:?}");
 
-        // Then the output contains cwd, timeout, and session_id.
+        // Then the output contains cwd, timeout, and session_id. The cwd is
+        // compared in its Debug form: `PathBuf`'s Debug escapes the
+        // separator, so a Windows path appears as `C:\\Users\\...` while
+        // `to_string_lossy` gives `C:\Users\...`.
         assert!(
-            debug_str.contains(&cwd.to_string_lossy().into_owned()),
+            debug_str.contains(&format!("{cwd:?}")),
             "debug should contain cwd"
         );
         assert!(

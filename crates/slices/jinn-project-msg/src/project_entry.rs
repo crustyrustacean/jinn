@@ -160,8 +160,10 @@ mod tests {
         // When rendering unselected.
         let text = entry.render_row(false).to_string();
 
-        // Then it begins with the two-space inactive marker.
-        let expected = format!("  {}", path.display());
+        // Then it begins with the two-space inactive marker. The label is
+        // the entry's `display_label` — `shorten_path`'s form — so the
+        // expectation holds whatever the platform's home directory is.
+        let expected = format!("  {}", entry.display_label());
         assert!(text.starts_with(expected.as_str()));
     }
 
@@ -175,8 +177,10 @@ mod tests {
         // When rendering selected.
         let text = entry.render_row(true).to_string();
 
-        // Then it begins with the active arrow marker.
-        let expected = format!("> {}", path.display());
+        // Then it begins with the active arrow marker. The label is the
+        // entry's `display_label` — `shorten_path`'s form — so the
+        // expectation holds whatever the platform's home directory is.
+        let expected = format!("> {}", entry.display_label());
         assert!(text.starts_with(expected.as_str()));
     }
 

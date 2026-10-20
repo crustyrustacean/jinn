@@ -280,7 +280,6 @@ mod tests {
         // Given a fake state whose session cwd is an absolute path.
         let dir = jinn_testutil::tempdir().expect("temp dir");
         let cwd = dir.path().join("some-project");
-        let expected = cwd.display().to_string();
         let mut state = FakeState {
             cwd,
             ..FakeState::default()
@@ -291,9 +290,13 @@ mod tests {
         // When the opener action runs.
         let result = open_cwd_input(cx.state, &cell);
 
-        // Then the cell is seeded with the cwd (no tilde: the tempdir root is
-        // not under $HOME in the test env) and the result pushes the popup
-        // scope.
+        // Then the cell is seeded with the cwd and the result pushes the
+        // popup scope. The seeded form is `shorten_path`'s — the same
+        // function production uses — so the expectation holds whatever the
+        // platform's home directory is. (A temp root is under `$HOME` on
+        // Windows, so the seeded path is tilde-compressed there and not on
+        // Unix.)
+        let expected = shorten_path(&state.cwd);
         assert_eq!(cell.read().text.input, expected);
         assert_eq!(cell.read().text.cursor_pos, expected.len());
         assert!(matches!(result.scope_signal, Some(ScopeSignal::Push(_))));

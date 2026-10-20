@@ -156,27 +156,17 @@ fn autodev_setup_and_teardown_name_the_same_placeholders() {
         }
     }
 
-    // Then every script's teardown replays from its own setup. Known data
-    // defect: the git script's teardown names <parent> its setup never
-    // records — pinned here so the defect is visible, not silent. The
-    // fossil script must be clean: it is the one the workflow dispatches.
+    // Then every script's teardown replays from its own setup. The git
+    // script used to be the one exception — its teardown named a <parent>
+    // its setup never recorded — but the lifecycle was repaired upstream
+    // (d66a43ef5), so every script is now clean and this asserts that.
     for script in &scripts {
-        if script.name == "autodev implementor (git)" {
-            continue;
-        }
         assert!(
             !mismatched.iter().any(|m| m.starts_with(&script.name)),
             "{}: teardown names placeholders setup does not record",
             script.name
         );
     }
-    assert!(
-        mismatched
-            .iter()
-            .any(|m| m.starts_with("autodev implementor (git)") && m.contains("parent")),
-        "the known git-script defect (teardown names unrecorded <parent>) \
-         drifted — update this pin: {mismatched:?}"
-    );
 }
 
 #[rstest::rstest]

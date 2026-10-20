@@ -397,7 +397,7 @@ mod tests {
         .expect("read");
 
         // Then every rule is armed: absence reads empty, never an error.
-        assert!(config.disabled_rules.is_empty());
+        assert_eq!(config.disabled_rules, [] as [std::string::String; 0]);
     }
 
     #[rstest::rstest]

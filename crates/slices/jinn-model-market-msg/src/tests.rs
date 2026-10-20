@@ -97,7 +97,7 @@ fn ui_state_reset_restores_the_opener_defaults() {
     // Then every display field is back to the defaults the contract
     // names: table mode, table focused, filter empty, PROJ ascending.
     assert_eq!(state.selection, 0);
-    assert!(state.filter.is_empty());
+    assert_eq!(state.filter, "");
     assert!(!state.filter_focused);
     assert_eq!(state.sort_col, SortColumn::Proj);
     assert!(!state.sort_desc);
@@ -360,7 +360,7 @@ fn market_data_state_defaults_to_a_clean_table() {
 
     // Then nothing has loaded: empty rows, no index, no stamps, no
     // in-flight flags, seed source, no error.
-    assert!(state.rows.is_empty());
+    assert_eq!(state.rows, [] as [row::MarketRow; 0]);
     assert!(state.detail.is_none());
     assert!(state.eci.is_none());
     assert!(state.models_fetched_at.is_none());

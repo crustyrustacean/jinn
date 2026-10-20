@@ -828,7 +828,7 @@ mod filter_tests {
         let names = rows_matching(&ui);
 
         // Then the table is empty: AND means every term must hit.
-        assert!(names.is_empty());
+        assert!(names.is_empty(), "expected no rows, got: {names:?}");
     }
 
     #[rstest::rstest]

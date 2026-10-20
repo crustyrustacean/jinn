@@ -203,7 +203,11 @@ mod tests {
     /// Helper: create a read ToolCall + ToolResult pair.
     fn read_call_result(call_id: &str, path: &str, content: &str) -> [ChatEntry; 2] {
         [
-            ChatEntry::tool_call(call_id, "read", format!(r#"{{"path": "{path}"}}"#)),
+            ChatEntry::tool_call(
+                call_id,
+                "read",
+                serde_json::json!({ "path": path }).to_string(),
+            ),
             ChatEntry::tool_result(call_id, "read", content, ToolResultStatus::Success),
         ]
     }

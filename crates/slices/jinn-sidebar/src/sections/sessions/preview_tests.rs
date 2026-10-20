@@ -41,6 +41,19 @@ fn make_session_with_title(title: &str) -> ChatSessionState {
     session
 }
 
+/// A path that lies outside the user's home directory on every platform.
+///
+/// The platform temp directory is *under* the user profile on Windows
+/// (`%LOCALAPPDATA%\Temp` hangs off `%USERPROFILE%`), so a temp root is not
+/// outside home there — it is on Unix. A path rooted at the filesystem root
+/// is outside home everywhere. The directory need not exist: these tests
+/// render a path string, they do not touch the filesystem.
+fn path_outside_home(name: &str) -> std::path::PathBuf {
+    std::path::Path::new(std::path::MAIN_SEPARATOR_STR)
+        .join(name)
+        .to_path_buf()
+}
+
 /// A session whose trailing entries render to more lines than the budget allows.
 fn session_with_many_lines() -> ChatSessionState {
     let mut session = ChatSessionState::new();
@@ -424,8 +437,7 @@ fn model_shows_no_model_selected_when_unset() {
 #[rstest::rstest]
 fn cwd_shows_on_its_own_row_above_the_info_row() {
     // Given a session with a cwd and a model.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let cwd = dir.path().join("test-project");
+    let cwd = path_outside_home("test-project");
     let mut session = ChatSessionState::new();
     session.set_cwd(cwd.clone());
     session.set_model(ModelSelection::Single("ollama/llama3".to_owned()));
@@ -1241,8 +1253,7 @@ mod loading_state {
     #[rstest::rstest]
     fn the_loading_state_shows_the_previewed_sessions_cwd() {
         // Given a session with a distinctive cwd whose preview has not rendered.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let cwd = dir.path().join("loadtest-cwd");
+        let cwd = path_outside_home("loadtest-cwd");
         let mut session = make_session_with_title("busy");
         session.set_cwd(cwd.clone());
 

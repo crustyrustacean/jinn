@@ -501,14 +501,41 @@ mod tests {
 
     /// A layer carrying a single lifecycle, as a user's `jinn.toml` holds
     /// one under `[[session_lifecycle.script]]`.
+    ///
+    /// The document is built through `toml::Value` and serialized, so a
+    /// command carrying a path is escaped by the TOML writer rather than
+    /// pasted into a literal: a Windows path carries backslashes, and `\U`
+    /// is an invalid TOML unicode escape — a raw format! produced a document
+    /// that failed to parse.
     fn lifecycle_config(name: &str, setup: Option<&str>, teardown: Option<&str>) -> ConfigLayer {
-        let setup = setup.map_or_else(String::new, |s| format!("setup_command = \"{s}\"\n"));
-        let teardown =
-            teardown.map_or_else(String::new, |t| format!("teardown_command = \"{t}\"\n"));
-        let document =
-            format!("[[session_lifecycle.script]]\nname = \"{name}\"\n{setup}{teardown}");
+        let mut script = toml::Table::new();
+        script.insert("name".to_owned(), toml::Value::String(name.to_owned()));
+        if let Some(setup) = setup {
+            script.insert(
+                "setup_command".to_owned(),
+                toml::Value::String(setup.to_owned()),
+            );
+        }
+        if let Some(teardown) = teardown {
+            script.insert(
+                "teardown_command".to_owned(),
+                toml::Value::String(teardown.to_owned()),
+            );
+        }
+        let mut lifecycle = toml::Table::new();
+        lifecycle.insert(
+            "script".to_owned(),
+            toml::Value::Array(vec![toml::Value::Table(script)]),
+        );
+        let mut document = toml::Table::new();
+        document.insert(
+            "session_lifecycle".to_owned(),
+            toml::Value::Table(lifecycle),
+        );
 
-        jinn_config::testutil::config_layer(&document)
+        let text =
+            toml::to_string(&toml::Value::Table(document)).expect("fixture document serializes");
+        jinn_config::testutil::config_layer(&text)
     }
 
     #[rstest::rstest]
@@ -1050,12 +1077,40 @@ mod tests {
         // Given a scripted lifecycle and one auto-enabled server.
         let dir = jinn_testutil::tempdir().expect("temp dir");
         let mut state = AppState::default_with_scope_focus();
-        let config = jinn_config::testutil::config_layer(&format!(
-            "[[session_lifecycle.script]]\nname = \"fossil branch\"\n\
-             setup_command = \"echo {}\"\n\
-             [mcp.excalimate]\nauto_enable = true\ncommand = \"npx\"\n",
-            dir.path().join("workdir").display()
-        ));
+        // The lifecycle command carries the temp path, and the MCP block sits
+        // beside it — the document is built through `toml::Value` so the path
+        // is escaped by the TOML writer (a Windows path's backslashes are an
+        // invalid TOML escape when pasted into a literal).
+        let setup_command = format!("echo {}", dir.path().join("workdir").display());
+        let mut script = toml::Table::new();
+        script.insert(
+            "name".to_owned(),
+            toml::Value::String("fossil branch".to_owned()),
+        );
+        script.insert(
+            "setup_command".to_owned(),
+            toml::Value::String(setup_command),
+        );
+        let mut lifecycle = toml::Table::new();
+        lifecycle.insert(
+            "script".to_owned(),
+            toml::Value::Array(vec![toml::Value::Table(script)]),
+        );
+        let mut mcp_server = toml::Table::new();
+        mcp_server.insert("auto_enable".to_owned(), toml::Value::Boolean(true));
+        mcp_server.insert("command".to_owned(), toml::Value::String("npx".to_owned()));
+        let mut mcp = toml::Table::new();
+        mcp.insert("excalimate".to_owned(), toml::Value::Table(mcp_server));
+        let mut document = toml::Table::new();
+        document.insert(
+            "session_lifecycle".to_owned(),
+            toml::Value::Table(lifecycle),
+        );
+        document.insert("mcp".to_owned(), toml::Value::Table(mcp));
+
+        let config = jinn_config::testutil::config_layer(
+            &toml::to_string(&toml::Value::Table(document)).expect("fixture document serializes"),
+        );
 
         // When creating a session with the scripted lifecycle.
         let result =

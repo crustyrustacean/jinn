@@ -463,5 +463,5 @@ fn parse_seed_produces_the_full_index_with_metadata() {
             .iter()
             .any(|m| m.benchmark == "GPQA diamond" && m.in_eci && m.random_baseline == 0.25)
     );
-    assert!(!data.roster_names.is_empty());
+    assert!(!data.roster_names.is_empty(), "expected a roster, got none");
 }

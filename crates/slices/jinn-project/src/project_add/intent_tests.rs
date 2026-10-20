@@ -144,8 +144,12 @@ fn open_seeds_input_from_session_cwd_and_pushes_scope() {
     let result = open_project_add(cx.state, &cell);
 
     // Then the cell is seeded with the cwd and the result pushes the
-    // popup scope.
-    let expected = cwd.to_string_lossy().to_string();
+    // popup scope. The seeded form is `shorten_path`'s — the same
+    // function production uses — so the expectation holds whatever the
+    // platform's home directory is. (A temp root is under `$HOME` on
+    // Windows, so the seeded path is tilde-compressed there and not on
+    // Unix.)
+    let expected = jinn_common::shorten_path(&cwd);
     assert_eq!(cell.read().text.input, expected);
     assert_eq!(cell.read().text.cursor_pos, expected.len());
     assert!(matches!(result.scope_signal, Some(ScopeSignal::Push(_))));

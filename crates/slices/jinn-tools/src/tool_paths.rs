@@ -52,14 +52,24 @@ mod tests {
 
     #[rstest::rstest]
     fn resolve_path_absolute() {
-        // Given an absolute path.
+        // Given an absolute path and a CWD.
         let dir = jinn_testutil::tempdir().expect("create temp dir");
         let cwd = dir.path();
 
         // When resolving it against that CWD.
         let resolved = resolve_path("/etc/hosts", cwd);
 
-        // Then it's returned as-is.
-        assert_eq!(resolved, PathBuf::from("/etc/hosts"));
+        // Then it comes back unchanged. A leading slash is absolute on Unix
+        // but drive-relative on Windows — `Path::new("/etc/hosts")` is not
+        // absolute there — so the platform's own rule decides: the path is
+        // returned as-is where it is absolute, and joined onto the CWD where
+        // it is not.
+        let input = PathBuf::from("/etc/hosts");
+        let expected = if input.is_absolute() {
+            input
+        } else {
+            cwd.join(input)
+        };
+        assert_eq!(resolved, expected);
     }
 }

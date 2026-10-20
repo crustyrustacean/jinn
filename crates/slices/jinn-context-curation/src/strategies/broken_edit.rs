@@ -179,7 +179,11 @@ mod tests {
     /// Helper: create a failed edit ToolCall + ToolResult pair.
     fn failed_edit_call_result(call_id: &str, path: &str, error_msg: &str) -> [ChatEntry; 2] {
         [
-            ChatEntry::tool_call(call_id, "edit", format!(r#"{{"path": "{path}"}}"#)),
+            ChatEntry::tool_call(
+                call_id,
+                "edit",
+                serde_json::json!({ "path": path }).to_string(),
+            ),
             ChatEntry::tool_result(call_id, "edit", error_msg, ToolResultStatus::Failure),
         ]
     }
@@ -187,7 +191,11 @@ mod tests {
     /// Helper: create a successful edit ToolCall + ToolResult pair.
     fn successful_edit_call_result(call_id: &str, path: &str, msg: &str) -> [ChatEntry; 2] {
         [
-            ChatEntry::tool_call(call_id, "edit", format!(r#"{{"path": "{path}"}}"#)),
+            ChatEntry::tool_call(
+                call_id,
+                "edit",
+                serde_json::json!({ "path": path }).to_string(),
+            ),
             ChatEntry::tool_result(call_id, "edit", msg, ToolResultStatus::Success),
         ]
     }

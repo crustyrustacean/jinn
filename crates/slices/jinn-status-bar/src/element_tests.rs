@@ -809,9 +809,11 @@ fn render_shows_cwd_on_first_line() {
 
 #[rstest::rstest]
 fn render_shows_absolute_path_for_non_home_cwd() {
-    // Given a session with a non-home CWD.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let cwd = dir.path().join("test-project");
+    // Given a session with a non-home CWD. The path is rooted at the
+    // filesystem root so it lies outside the user's home directory on every
+    // platform — the platform temp directory is under the user profile on
+    // Windows, so a temp root would be tilde-compressed there.
+    let cwd = std::path::Path::new(std::path::MAIN_SEPARATOR_STR).join("test-project");
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state

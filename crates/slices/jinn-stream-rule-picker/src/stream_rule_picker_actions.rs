@@ -172,7 +172,7 @@ mod tests {
 
         // Then the filter is gone, the highlight is back on the first row,
         // and the stale status is cleared.
-        assert!(state.selection.filter().is_empty());
+        assert_eq!(state.selection.filter(), "");
         assert_eq!(highlighted_name(&state).as_deref(), Some("alpha"));
         assert_eq!(state.status, None);
     }
