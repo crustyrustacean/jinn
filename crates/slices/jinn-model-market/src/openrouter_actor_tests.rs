@@ -202,6 +202,24 @@ async fn expect_endpoints_once(server: &mut mockito::Server) -> mockito::Mock {
         .await
 }
 
+/// Waits for a mock to have been hit, then asserts it.
+///
+/// `mockito::Mock::assert_async` checks the hit count at the instant it is
+/// called — it does not wait. A refresh fans out across the models and
+/// endpoints fetches concurrently, so the recorder can report the models
+/// load before the endpoints request has reached the server. Asserting at
+/// that moment failed with "received 0" under full-suite parallel load.
+///
+/// Polling until the hit lands keeps the assertion's meaning (the request
+/// was made) without depending on which fetch wins the race.
+async fn assert_hit(mock: &mockito::Mock) {
+    let deadline = std::time::Instant::now() + REFRESH_SETTLE;
+    while !mock.matched() && std::time::Instant::now() < deadline {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    mock.assert_async().await;
+}
+
 #[rstest::rstest]
 #[tokio::test]
 async fn warm_models_cache_makes_no_outbound_request() {
@@ -258,7 +276,7 @@ async fn expired_models_ttl_refetches() {
     assert_eq!(loaded.len(), 1, "exactly one ModelsLoaded");
     assert!(!loaded[0].from_cache, "a refetch is not from_cache");
     assert_eq!(world.data.read().rows.len(), 1);
-    mock.assert_async().await;
+    assert_hit(&mock).await;
 }
 
 #[rstest::rstest]
@@ -317,7 +335,7 @@ async fn epoch_loaded_rejoins_rows_without_a_refetch() {
     tokio::time::sleep(SETTLE).await;
 
     // Then the rows in the cell carry ECI scores — no second fetch.
-    models_mock.assert_async().await;
+    assert_hit(&models_mock).await;
     let after = world.data.read();
     assert!(
         after.rows.iter().any(|r| r.eci.is_some()),
@@ -380,8 +398,8 @@ async fn refresh_all_drops_every_cache() {
     // Then both GETs were consumed — memory and disk caches are gone.
     assert_eq!(loaded.len(), 1, "models refetched");
     assert!(!loaded[0].from_cache);
-    models_mock.assert_async().await;
-    endpoints_mock.assert_async().await;
+    assert_hit(&models_mock).await;
+    assert_hit(&endpoints_mock).await;
     // And the sweep dropped every endpoint disk file — the only one
     // present is the displayed model's freshly refetched file.
     let leftovers: Vec<String> = std::fs::read_dir(dir.path())
@@ -443,7 +461,7 @@ async fn one_refresh_publish_reaches_both_market_actors_exactly_once() {
     // and the epoch actor dropped its cache dir.
     assert_eq!(models_loaded.len(), 1, "the models actor refetched");
     assert!(!models_loaded[0].from_cache, "a refresh is not from_cache");
-    models_mock.assert_async().await;
+    assert_hit(&models_mock).await;
     assert_eq!(epoch_loaded.len(), 1, "the epoch actor refreshed");
     assert!(
         !epoch_dir.exists(),
@@ -489,7 +507,7 @@ async fn refresh_all_emits_the_chain_fact_exactly_once() {
 
     // Then the models refresh announced itself with the chain fact.
     assert_eq!(chained.len(), 1, "exactly one chain fact");
-    models_mock.assert_async().await;
+    assert_hit(&models_mock).await;
     // And the refresh announced itself once — a second fact would mean a
     // second refresh.
     tokio::time::sleep(SETTLE).await;
@@ -575,7 +593,7 @@ async fn endpoint_debounce_drops_stale_fetches() {
     assert_eq!(loaded[0].model_id, "openrouter/test/model");
     let detail = world.data.read().detail.clone().expect("detail written");
     assert_eq!(detail.model_id, "openrouter/test/model");
-    newest.assert_async().await;
+    assert_hit(&newest).await;
 }
 
 #[rstest::rstest]
@@ -601,7 +619,7 @@ async fn equal_seq_fetch_still_serves_after_the_debounce() {
 
     // Then the fetch is served — only strictly older sequences drop.
     assert_eq!(loaded.len(), 1);
-    mock.assert_async().await;
+    assert_hit(&mock).await;
 }
 
 #[rstest::rstest]
@@ -629,7 +647,7 @@ async fn fetch_models_without_a_key_still_serves_the_table() {
     // must not gate /models.
     assert_eq!(loaded.len(), 1);
     assert!(!loaded[0].from_cache);
-    mock.assert_async().await;
+    assert_hit(&mock).await;
 }
 
 #[rstest::rstest]
@@ -717,7 +735,7 @@ async fn fetch_models_fetches_no_detail() {
     assert_eq!(loaded.len(), 1, "exactly one ModelsLoaded");
     let rows = world.data.read().rows.clone();
     assert_eq!(rows.len(), 2, "the catalog rows landed");
-    models_mock.assert_async().await;
+    assert_hit(&models_mock).await;
     cheap_mock.assert_async().await;
     dear_mock.assert_async().await;
     assert!(
