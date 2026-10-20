@@ -347,7 +347,7 @@ mod tests {
         // Then the filter is empty, the highlight is back at the top, and
         // the stale status is gone — a fresh open never inherits the last
         // one's narrowing or its feedback.
-        assert!(state.selection.filter().is_empty());
+        assert_eq!(state.selection.filter(), "");
         assert_eq!(
             state
                 .selection

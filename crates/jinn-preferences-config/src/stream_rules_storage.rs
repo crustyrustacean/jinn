@@ -361,7 +361,7 @@ mod tests {
 
         // Then the write succeeds against the embedded set: a name the
         // matcher enforces is a name the picker may address, entry or not.
-        assert!(persisted_array(&layer).is_empty());
+        assert_eq!(persisted_array(&layer), [] as [std::string::String; 0]);
     }
 
     #[rstest::rstest]
@@ -402,7 +402,7 @@ mod tests {
             .expect("rule re-arms");
 
         // Then the name is gone from the array, which is now empty.
-        assert!(persisted_array(&layer).is_empty());
+        assert_eq!(persisted_array(&layer), [] as [std::string::String; 0]);
         let written = std::fs::read_to_string(&path).expect("read");
         assert!(
             written.contains("name = \"ts-no-any\""),

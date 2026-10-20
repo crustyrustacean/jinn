@@ -91,7 +91,7 @@ fn an_absent_disabled_rules_key_reads_every_rule_armed() {
 
     // Then the array is empty, which means every pre-existing rule stays
     // armed, no migration.
-    assert!(section.disabled_rules.is_empty());
+    assert_eq!(section.disabled_rules, [] as [std::string::String; 0]);
 }
 
 #[rstest::rstest]

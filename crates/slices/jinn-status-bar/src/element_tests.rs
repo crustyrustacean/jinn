@@ -813,9 +813,7 @@ fn render_shows_absolute_path_for_non_home_cwd() {
     // filesystem root so it lies outside the user's home directory on every
     // platform — the platform temp directory is under the user profile on
     // Windows, so a temp root would be tilde-compressed there.
-    let cwd = std::path::Path::new(std::path::MAIN_SEPARATOR_STR)
-        .join("test-project")
-        .to_path_buf();
+    let cwd = std::path::Path::new(std::path::MAIN_SEPARATOR_STR).join("test-project");
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
