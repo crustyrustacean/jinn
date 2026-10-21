@@ -68,44 +68,27 @@ impl ShellPathKey {
             Self::PowerShell => "shell.powershell_path",
         }
     }
-
-    /// The guidance shown when the configured path cannot be used.
-    #[must_use]
-    pub const fn missing_hint(self) -> &'static str {
-        match self {
-            Self::Bash => {
-                "Install Git for Windows, or point shell.bash_path at a valid bash.exe. Write the path with forward slashes."
-            }
-            Self::PowerShell => {
-                "Install PowerShell, or point shell.powershell_path at a valid executable. Write the path with forward slashes."
-            }
-        }
-    }
 }
 
 /// Why a shell could not be resolved.
 #[derive(Debug, Clone, Error)]
 pub enum ShellError {
-    /// The configured path names no file on this machine.
-    #[error("{key} is configured to \"{path}\", which does not exist. {hint}")]
+    /// The configured path does not name an existing file on this machine.
+    #[error("{key} not found at {path}")]
     ConfiguredPathMissing {
         /// The `jinn.toml` key that carries the path.
         key: &'static str,
-        /// The path the key carries.
+        /// The constructed path that was not found.
         path: String,
-        /// What the user can do about it.
-        hint: &'static str,
     },
 
     /// The configured path is not absolute.
-    #[error("{key} is configured to \"{path}\", which is not an absolute path. {hint}")]
+    #[error("{key} is configured to \"{path}\", which is not an absolute path")]
     ConfiguredPathNotAbsolute {
         /// The `jinn.toml` key that carries the path.
         key: &'static str,
         /// The path the key carries.
         path: String,
-        /// What the user can do about it.
-        hint: &'static str,
     },
 
     /// No candidate named a usable shell.
@@ -124,9 +107,10 @@ impl ShellError {
     /// Whether the failure is the user's configuration rather than the
     /// machine's state.
     ///
-    /// A configured path that names no file is a typo the user wants to
-    /// hear about at launch. A shell that is simply not installed is a
-    /// fact about the machine, reported at the point of use.
+    /// A configured path that cannot be used — not absolute here, or
+    /// naming no file — is a typo the user wants to hear about at launch.
+    /// A shell that is simply not installed is a fact about the machine,
+    /// reported at the point of use.
     #[must_use]
     pub const fn is_configuration_error(&self) -> bool {
         matches!(
@@ -167,10 +151,11 @@ pub struct Shells {
 impl Shells {
     /// Resolves both shells from the user's configuration and this machine.
     ///
-    /// A configured path that names no file is an error rather than a
-    /// fall-through: on Windows the fallback chain's worst case is the
-    /// WSL launcher this module exists to avoid, and a typo in the
-    /// configuration should never land there.
+    /// A configured path is an all-or-nothing promise: it must construct as
+    /// an absolute path on this machine and name an existing file, with no
+    /// exception for a path written for another platform, or the
+    /// resolution is the configuration error the launch aborts on. Only an
+    /// unset key is auto-detected.
     #[must_use]
     pub fn resolve(configured_bash: Option<&str>, configured_powershell: Option<&str>) -> Self {
         Self {
@@ -288,118 +273,77 @@ where
 /// Resolves the POSIX shell jinn runs commands through.
 ///
 /// `configured_bash_path` is the user's `[shell] bash_path`, if any. A
-/// configured path that names no file is an error rather than a
-/// fall-through: a typo there would otherwise silently land on
-/// auto-detection, whose worst case on Windows is the WSL launcher.
+/// configured path is used only when it constructs as an absolute path on
+/// this machine and names an existing file — there is no exception for a
+/// path written for another platform, and a configured path never falls
+/// through to auto-detection. Only an unset key reaches the candidate
+/// chain.
 ///
 /// # Errors
 ///
-/// Returns [`ShellError::ConfiguredPathMissing`] when the configured path
-/// names no file, [`ShellError::ConfiguredPathNotAbsolute`] when it is not
-/// absolute, and [`ShellError::NotFound`] when no candidate yielded a
-/// usable shell.
+/// Returns [`ShellError::ConfiguredPathMissing`] when the constructed
+/// configured path names no file, [`ShellError::ConfiguredPathNotAbsolute`]
+/// when it does not construct as absolute on this machine, and
+/// [`ShellError::NotFound`] when no candidate yielded a usable shell.
 pub fn resolve_shell(configured_bash_path: Option<&str>) -> Result<ResolvedShell, ShellError> {
-    let platform = Platform::current();
     if let Some(configured) = configured_bash_path {
-        match configured_path(ShellPathKey::Bash, configured, platform)? {
-            ConfiguredPath::Use(path) => return Ok(ResolvedShell::from_path(&path)),
-            ConfiguredPath::Ignore => {}
-        }
+        let path = configured_path(ShellPathKey::Bash, configured)?;
+        return Ok(ResolvedShell::from_path(&path));
     }
+    let platform = Platform::current();
     let candidates = bash_candidates(platform, local_app_data().as_deref());
     resolve_candidates(&candidates, "POSIX shell", bash_missing_hint(platform))
 }
 
 /// Resolves the PowerShell executable.
 ///
+/// A configured `powershell_path` obeys the same no-exception rule as
+/// `bash_path`: it is used only when it constructs as an absolute path on
+/// this machine and names an existing file.
+///
 /// # Errors
 ///
-/// Returns [`ShellError::ConfiguredPathMissing`] when the configured path
-/// names no file, [`ShellError::ConfiguredPathNotAbsolute`] when it is not
-/// absolute, and [`ShellError::NotFound`] when this machine has no
-/// PowerShell.
+/// Returns [`ShellError::ConfiguredPathMissing`] when the constructed
+/// configured path names no file, [`ShellError::ConfiguredPathNotAbsolute`]
+/// when it does not construct as absolute on this machine, and
+/// [`ShellError::NotFound`] when this machine has no PowerShell.
 pub fn resolve_powershell(
     configured_powershell_path: Option<&str>,
 ) -> Result<ResolvedShell, ShellError> {
-    let platform = Platform::current();
     if let Some(configured) = configured_powershell_path {
-        match configured_path(ShellPathKey::PowerShell, configured, platform)? {
-            ConfiguredPath::Use(path) => return Ok(ResolvedShell::from_path(&path)),
-            ConfiguredPath::Ignore => {}
-        }
+        let path = configured_path(ShellPathKey::PowerShell, configured)?;
+        return Ok(ResolvedShell::from_path(&path));
     }
+    let platform = Platform::current();
     let candidates = powershell_candidates(platform);
     resolve_candidates(&candidates, "PowerShell", POWERSHELL_MISSING_HINT)
 }
 
-/// What a configured path means for the platform that will run it.
-enum ConfiguredPath {
-    /// The path names an existing file on this platform — use it.
-    Use(PathBuf),
-    /// The path names the other platform — ignore it here.
-    Ignore,
-}
-
-/// Resolves a configured path against the platform that will run it.
-fn configured_path(
-    key: ShellPathKey,
-    path: &str,
-    platform: Platform,
-) -> Result<ConfiguredPath, ShellError> {
-    match path_platform(path) {
-        // A path written for the other platform is not the path this
-        // machine runs, so it is not this machine's to check.
-        Some(other) if other != platform => Ok(ConfiguredPath::Ignore),
-        None => Err(ShellError::ConfiguredPathNotAbsolute {
-            key: key.config_key(),
-            path: path.to_owned(),
-            hint: key.missing_hint(),
-        }),
-        Some(_) => {
-            let normalized = normalize_configured_path(key, path)?;
-            if normalized.is_file() {
-                Ok(ConfiguredPath::Use(normalized))
-            } else {
-                Err(ShellError::ConfiguredPathMissing {
-                    key: key.config_key(),
-                    path: path.to_owned(),
-                    hint: key.missing_hint(),
-                })
-            }
-        }
-    }
-}
-
-/// The platform a configured path names, or `None` when it names none.
-fn path_platform(path: &str) -> Option<Platform> {
-    let bytes = path.as_bytes();
-    let has_drive_prefix = matches!(
-        (bytes.first(), bytes.get(1)),
-        (Some(first), Some(b':')) if first.is_ascii_alphabetic()
-    );
-    if has_drive_prefix || path.starts_with(r"\\") {
-        Some(Platform::Windows)
-    } else if path.starts_with('/') {
-        Some(Platform::Unix)
-    } else {
-        None
-    }
-}
-
-/// Normalizes a configured path to the platform's own spelling.
+/// Resolves a configured path to the file it must name on this machine.
 ///
-/// The separator rewrite is `marked-path`'s: on Windows every forward
-/// slash becomes a backslash, and on Unix the path is left alone —
-/// `\` is an ordinary character in a file name there, so rewriting it
-/// would corrupt the path.
-fn normalize_configured_path(key: ShellPathKey, path: &str) -> Result<PathBuf, ShellError> {
-    MarkedPathBuf::<Absolute>::new(path)
-        .map(MarkedPathBuf::<Absolute>::into_inner)
-        .map_err(|_error| ShellError::ConfiguredPathNotAbsolute {
+/// There is no cross-platform exception. The configured string is
+/// constructed as an absolute path on the platform jinn runs on — a
+/// relative spelling and a path written for the other OS both fail that
+/// construction — and the constructed path must name an existing file.
+/// Either failure is a configuration error the launch aborts on.
+fn configured_path(key: ShellPathKey, path: &str) -> Result<PathBuf, ShellError> {
+    // The construction is the check: `marked-path` accepts a string only
+    // when it is absolute here, and rewrites separators to this
+    // platform's own.
+    let constructed = MarkedPathBuf::<Absolute>::new(path).map_err(|_error| {
+        ShellError::ConfiguredPathNotAbsolute {
             key: key.config_key(),
             path: path.to_owned(),
-            hint: key.missing_hint(),
+        }
+    })?;
+    if constructed.is_file() {
+        Ok(constructed.into_inner())
+    } else {
+        Err(ShellError::ConfiguredPathMissing {
+            key: key.config_key(),
+            path: constructed.to_string(),
         })
+    }
 }
 
 /// Picks the first usable candidate in a chain.
@@ -679,33 +623,34 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn resolve_shell_reports_a_configured_path_that_does_not_exist() {
-        // Given a configured bash path that names no file.
-        let configured = "definitely-not-here/bash.exe";
+        // Given an absolute configured bash path that names no file.
+        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver").expect("temp dir");
+        let missing = dir.path().join("no-such-dir").join("bash");
+        let configured = missing.to_string_lossy().into_owned();
 
         // When resolving the shell.
-        let result = resolve_shell(Some(configured));
+        let result = resolve_shell(Some(&configured));
 
-        // Then the failure names the key and the path.
+        // Then the failure is "not found at" the constructed path.
         let Err(error) = result else {
             panic!("a missing configured path must not resolve");
         };
-        let message = error.to_string();
-        assert!(
-            message.contains("shell.bash_path"),
-            "the failure must name the key: {message}"
-        );
-        assert!(
-            message.contains(configured),
-            "the failure must name the path: {message}"
+        assert_eq!(
+            error.to_string(),
+            format!("shell.bash_path not found at {configured}")
         );
     }
 
     #[rstest::rstest]
     #[test]
     fn a_missing_configured_path_is_a_configuration_error() {
-        // Given a configured bash path that names no file.
+        // Given an absolute configured bash path that names no file.
+        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver").expect("temp dir");
+        let missing = dir.path().join("no-such-dir").join("bash");
+        let configured = missing.to_string_lossy().into_owned();
+
         // When resolving the shell.
-        let result = resolve_shell(Some("definitely-not-here/bash.exe"));
+        let result = resolve_shell(Some(&configured));
 
         // Then the failure is the user's configuration, not the machine.
         let Err(error) = result else {
@@ -733,7 +678,7 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn a_configured_path_for_the_other_platform_is_ignored() {
+    fn a_configured_path_for_the_other_platform_aborts_the_launch() {
         // Given a configured path written for the other platform.
         let configured = if cfg!(windows) {
             "/usr/bin/bash"
@@ -744,14 +689,19 @@ mod tests {
         // When resolving the shell.
         let result = resolve_shell(Some(configured));
 
-        // Then the path is not this machine's to check: the failure, if
-        // any, is about the machine rather than about the configuration.
-        if let Err(error) = result {
-            assert!(
-                !error.is_configuration_error(),
-                "a path for the other platform must not be a configuration error: {error}"
-            );
-        }
+        // Then the path is not this machine's to use: the resolution is
+        // the configuration error the launch aborts on, naming the key.
+        let Err(error) = result else {
+            panic!("a path for the other platform must not resolve");
+        };
+        assert!(
+            error.is_configuration_error(),
+            "a path for the other platform must be a configuration error: {error}"
+        );
+        assert!(
+            error.to_string().contains("shell.bash_path"),
+            "the failure must name the key: {error}"
+        );
     }
 
     #[rstest::rstest]
@@ -824,20 +774,21 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn resolve_powershell_reports_a_configured_path_that_does_not_exist() {
-        // Given a configured PowerShell path that names no file.
-        let configured = "definitely-not-here/pwsh.exe";
+        // Given an absolute configured PowerShell path that names no file.
+        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver").expect("temp dir");
+        let missing = dir.path().join("no-such-dir").join("pwsh");
+        let configured = missing.to_string_lossy().into_owned();
 
         // When resolving PowerShell.
-        let result = resolve_powershell(Some(configured));
+        let result = resolve_powershell(Some(&configured));
 
-        // Then the failure names the key and the path.
+        // Then the failure is "not found at" the constructed path.
         let Err(error) = result else {
             panic!("a missing configured path must not resolve");
         };
-        let message = error.to_string();
-        assert!(
-            message.contains("shell.powershell_path"),
-            "the failure must name the key: {message}"
+        assert_eq!(
+            error.to_string(),
+            format!("shell.powershell_path not found at {configured}")
         );
     }
 
@@ -898,7 +849,7 @@ mod tests {
         let result = resolve_shell(Some(configured));
 
         // Then the path is looked up in its native spelling, and the
-        // failure names it in the spelling the user wrote.
+        // failure names it in the constructed, native spelling.
         let Err(error) = result else {
             panic!("the path does not exist on this machine");
         };
