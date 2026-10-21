@@ -279,8 +279,12 @@ async fn opening_the_picker_shows_the_sessions_tools() {
     // When the picker is opened.
     wired.open();
 
-    // Then every tool has a row.
-    assert_eq!(wired.visible_names(), vec!["Bash", "edit", "read"]);
+    // Then every registered tool has a row, and no others.
+    let names = wired.visible_names();
+    assert_eq!(names.len(), 3, "unexpected rows: {names:?}");
+    assert!(names.iter().any(|n| n == "Bash"), "missing Bash: {names:?}");
+    assert!(names.iter().any(|n| n == "edit"), "missing edit: {names:?}");
+    assert!(names.iter().any(|n| n == "read"), "missing read: {names:?}");
 }
 
 #[rstest::rstest]

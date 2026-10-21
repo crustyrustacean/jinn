@@ -157,11 +157,12 @@ mod tests {
         // Given a config with a pin for one model.
         let config = config_with_pin();
 
+        // When each model's pin is checked.
+        let pinned = has_pin(&config, "openrouter/anthropic/claude-sonnet-4-20250514");
+        let unpinned = has_pin(&config, "openrouter/openai/gpt-oss-120b");
+
         // Then only the pinned model reports a pin.
-        assert!(has_pin(
-            &config,
-            "openrouter/anthropic/claude-sonnet-4-20250514"
-        ));
-        assert!(!has_pin(&config, "openrouter/openai/gpt-oss-120b"));
+        assert!(pinned);
+        assert!(!unpinned);
     }
 }

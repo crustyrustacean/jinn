@@ -605,40 +605,43 @@ async fn cancel_kills_only_the_named_session_s_command() {
     // still be running when the cancel lands, the second still in flight
     // at that moment but finishing quickly after — so its completion
     // proves the cancel never touched it.
-    let fixture = shell_fixture().await;
-    let setups = fixture
-        .harness
-        .spawn_recorder::<SessionSetupCompleted>()
+    let (fixture, setups, first, second) = {
+        let fixture = shell_fixture().await;
+        let setups = fixture
+            .harness
+            .spawn_recorder::<SessionSetupCompleted>()
+            .await;
+        let first = seed_session(&fixture);
+        let second = seed_session(&fixture);
+        fixture
+            .harness
+            .publish(RunSessionSetup {
+                session_id: first.clone(),
+                command: "sleep 30; echo .".to_owned(),
+                args: Vec::new(),
+                lifecycle_command: Some(LifecycleCommand::Shell("sleep 30; echo .".to_owned())),
+            })
+            .await;
+        fixture
+            .harness
+            .publish(RunSessionSetup {
+                session_id: second.clone(),
+                command: "sleep 2; echo .".to_owned(),
+                args: Vec::new(),
+                lifecycle_command: Some(LifecycleCommand::Shell("sleep 2; echo .".to_owned())),
+            })
+            .await;
+        // The cancel lands while both are mid-flight. The actor must have
+        // processed both setups before the cancel is published, so the cancel
+        // genuinely races a running command rather than an unhandled one.
+        jinn_testutil::wait::await_inbox_drained(
+            fixture.harness.system(),
+            &fixture.actor_path,
+            Duration::from_secs(10),
+        )
         .await;
-    let first = seed_session(&fixture);
-    let second = seed_session(&fixture);
-    fixture
-        .harness
-        .publish(RunSessionSetup {
-            session_id: first.clone(),
-            command: "sleep 30; echo .".to_owned(),
-            args: Vec::new(),
-            lifecycle_command: Some(LifecycleCommand::Shell("sleep 30; echo .".to_owned())),
-        })
-        .await;
-    fixture
-        .harness
-        .publish(RunSessionSetup {
-            session_id: second.clone(),
-            command: "sleep 2; echo .".to_owned(),
-            args: Vec::new(),
-            lifecycle_command: Some(LifecycleCommand::Shell("sleep 2; echo .".to_owned())),
-        })
-        .await;
-    // The cancel lands while both are mid-flight. The actor must have
-    // processed both setups before the cancel is published, so the cancel
-    // genuinely races a running command rather than an unhandled one.
-    jinn_testutil::wait::await_inbox_drained(
-        fixture.harness.system(),
-        &fixture.actor_path,
-        Duration::from_secs(10),
-    )
-    .await;
+        (fixture, setups, first, second)
+    };
 
     // When cancelling one session's command.
     fixture
@@ -677,31 +680,34 @@ async fn cancel_kills_only_the_named_session_s_command() {
 async fn a_finish_releases_only_its_own_session_s_slot() {
     // Given two sessions: the first running a slow setup, the second a
     // quick one that finishes first.
-    let fixture = shell_fixture().await;
-    let setups = fixture
-        .harness
-        .spawn_recorder::<SessionSetupCompleted>()
-        .await;
-    let slow_id = seed_session(&fixture);
-    let quick_id = seed_session(&fixture);
-    fixture
-        .harness
-        .publish(RunSessionSetup {
-            session_id: slow_id.clone(),
-            command: "sleep 30; echo .".to_owned(),
-            args: Vec::new(),
-            lifecycle_command: Some(LifecycleCommand::Shell("sleep 30; echo .".to_owned())),
-        })
-        .await;
-    fixture
-        .harness
-        .publish(RunSessionSetup {
-            session_id: quick_id.clone(),
-            command: "echo .".to_owned(),
-            args: Vec::new(),
-            lifecycle_command: Some(LifecycleCommand::Shell("echo .".to_owned())),
-        })
-        .await;
+    let (fixture, setups, slow_id, quick_id) = {
+        let fixture = shell_fixture().await;
+        let setups = fixture
+            .harness
+            .spawn_recorder::<SessionSetupCompleted>()
+            .await;
+        let slow_id = seed_session(&fixture);
+        let quick_id = seed_session(&fixture);
+        fixture
+            .harness
+            .publish(RunSessionSetup {
+                session_id: slow_id.clone(),
+                command: "sleep 30; echo .".to_owned(),
+                args: Vec::new(),
+                lifecycle_command: Some(LifecycleCommand::Shell("sleep 30; echo .".to_owned())),
+            })
+            .await;
+        fixture
+            .harness
+            .publish(RunSessionSetup {
+                session_id: quick_id.clone(),
+                command: "echo .".to_owned(),
+                args: Vec::new(),
+                lifecycle_command: Some(LifecycleCommand::Shell("echo .".to_owned())),
+            })
+            .await;
+        (fixture, setups, slow_id, quick_id)
+    };
 
     // When the quick one completes.
     let completions = await_recorded(&setups, 1, Duration::from_secs(5)).await;
@@ -1057,44 +1063,47 @@ async fn builtin_teardown_receives_recorded_values_in_template_order() {
         }
     }
 
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let received: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-    let mut registry = BuiltinRegistry::new();
-    registry.register(
-        BuiltinId("recording-teardown".to_owned()),
-        Arc::new(RecordingTeardown {
-            seen: Arc::clone(&received),
-            setup_dir: dir.path().to_path_buf(),
-        }),
-    );
-    let harness = TestHarness::new().await;
-    let mut services = harness.services().await;
-    services.config = builtin_teardown_config();
-    let state = State::new(AppState::default());
-    let actor_path = SessionLifecycleActor::spawn(
-        harness.system(),
-        SessionLifecycleActorDeps {
-            state: state.clone(),
-            services,
-            builtin_registry: registry,
-            shell: shell_for_tests(),
-        },
-    );
-    let fixture = ActorFixture {
-        harness,
-        state,
-        actor_path,
+    let (fixture, received, session_id, _dir) = {
+        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let received: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let mut registry = BuiltinRegistry::new();
+        registry.register(
+            BuiltinId("recording-teardown".to_owned()),
+            Arc::new(RecordingTeardown {
+                seen: Arc::clone(&received),
+                setup_dir: dir.path().to_path_buf(),
+            }),
+        );
+        let harness = TestHarness::new().await;
+        let mut services = harness.services().await;
+        services.config = builtin_teardown_config();
+        let state = State::new(AppState::default());
+        let actor_path = SessionLifecycleActor::spawn(
+            harness.system(),
+            SessionLifecycleActorDeps {
+                state: state.clone(),
+                services,
+                builtin_registry: registry,
+                shell: shell_for_tests(),
+            },
+        );
+        let fixture = ActorFixture {
+            harness,
+            state,
+            actor_path,
+        };
+        let session_id = seed_session(&fixture);
+        advance_past_setup(&fixture, &session_id);
+        fixture
+            .state
+            .write()
+            .session
+            .get_mut(&session_id)
+            .expect("session")
+            .set_lifecycle_name(Some("shell".to_owned()));
+        stamp_named_args(&fixture, &session_id, &[("alpha", "ONE"), ("beta", "TWO")]);
+        (fixture, received, session_id, dir)
     };
-    let session_id = seed_session(&fixture);
-    advance_past_setup(&fixture, &session_id);
-    fixture
-        .state
-        .write()
-        .session
-        .get_mut(&session_id)
-        .expect("session")
-        .set_lifecycle_name(Some("shell".to_owned()));
-    stamp_named_args(&fixture, &session_id, &[("alpha", "ONE"), ("beta", "TWO")]);
 
     // When the builtin teardown runs (a close carries the builtin teardown).
     fixture

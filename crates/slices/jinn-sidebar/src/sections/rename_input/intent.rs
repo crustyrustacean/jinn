@@ -212,6 +212,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+    use crate::sections::testing::state_with_bare_sessions;
     use jinn_kernel::common::app_state::AppState;
     use jinn_slices::FocusScope;
 
@@ -226,22 +227,12 @@ mod tests {
             .update_sections(|s| s.sessions.selected_id = Some(id));
     }
 
-    fn state_with_sessions(count: usize) -> AppState {
-        let mut state = AppState::default_with_scope_focus();
-        for _ in 1..count {
-            state
-                .session
-                .insert(jinn_session_state::ChatSessionState::new());
-        }
-        state
-    }
-
     use super::*;
 
     #[rstest::rstest]
     fn enter_requests_rename_session_input_scope() {
         // Given a state with a selected session.
-        let mut state = state_with_sessions(2);
+        let mut state = state_with_bare_sessions(2);
         state
             .frontend
             .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());

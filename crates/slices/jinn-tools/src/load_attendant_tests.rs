@@ -311,6 +311,8 @@ async fn personal_attendants_still_save_and_workflow_attendants_refuse() {
     let dir = jinn_testutil::tempdir().expect("temp dir");
     let (_file_dir, path) = attendant_file("savepath", ATTENDANT_BODY);
     let tool_ctx = ctx(&harness, &state, user_id.clone(), dir.path()).await;
+
+    // When the tool loads the attendant.
     let result = execute(
         call(&serde_json::json!({ "path": path }).to_string()),
         tool_ctx,
@@ -337,6 +339,7 @@ fn definition_names_the_path_argument() {
     // Given the tool definition.
     let def = definition();
 
+    // When its parameters are read.
     // Then it is named load_attendant with path required.
     assert_eq!(def.name, "load_attendant");
     let required = def.parameters["required"].as_array().expect("required");

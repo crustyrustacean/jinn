@@ -275,16 +275,20 @@ async fn idle_with_empty_queue_and_empty_steering_does_nothing() {
 #[tokio::test]
 async fn idle_with_both_buffers_dispatches_steering_first_and_keeps_queue() {
     // Given a session with BOTH a queued user message and a steering fragment.
-    let (actor, state, audit) = create_actor().await;
-    let sid = session_id();
-    {
-        let mut state = state.write();
-        let session = state.session_mut_or_create(&sid);
-        session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
-            "queued msg",
-        ))));
-        session.steering_buffer_mut().push_fragment("stay focused");
-    }
+    let (actor, state, audit, sid) = {
+        let (actor, state, audit) = create_actor().await;
+        let sid = session_id();
+        {
+            let mut state = state.write();
+            let session = state.session_mut_or_create(&sid);
+            session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
+                "queued msg",
+            ))));
+            session.steering_buffer_mut().push_fragment("stay focused");
+        }
+
+        (actor, state, audit, sid)
+    };
 
     // When receiving SessionPhaseChanged -> Idle.
     actor

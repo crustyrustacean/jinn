@@ -207,20 +207,23 @@ async fn orchestrator_completes_builtin_bash_batch_dispatched_over_the_bus() {
 async fn tool_batch_completed_over_the_bus_continues_the_tool_loop() {
     // Given a spawned orchestrator (bash) and a spawned session actor with a
     // tool-call entry in its history, phase Sending.
-    let harness = TestHarness::new().await;
-    let loop_recorder = harness.spawn_recorder::<SendToLlmProvider>().await;
-    let (state, session_id) = bash_batch_state();
+    let (harness, loop_recorder, session_id) = {
+        let harness = TestHarness::new().await;
+        let loop_recorder = harness.spawn_recorder::<SendToLlmProvider>().await;
+        let (state, session_id) = bash_batch_state();
 
-    ToolOrchestratorActor::spawn(
-        harness.system(),
-        ToolOrchestratorActorDeps {
-            deps: harness.actor_deps().await,
-            state: state.clone(),
-            services: harness.services().await,
-            builtin_filter: Some(vec!["bash".to_owned()]),
-        },
-    );
-    spawn_session_actor(&harness, state.clone()).await;
+        ToolOrchestratorActor::spawn(
+            harness.system(),
+            ToolOrchestratorActorDeps {
+                deps: harness.actor_deps().await,
+                state: state.clone(),
+                services: harness.services().await,
+                builtin_filter: Some(vec!["bash".to_owned()]),
+            },
+        );
+        spawn_session_actor(&harness, state.clone()).await;
+        (harness, loop_recorder, session_id)
+    };
 
     // The live generation and the mid-tool-loop shape. Production mints at
     // dispatch (the phase actor applies the fused streaming edge) and the

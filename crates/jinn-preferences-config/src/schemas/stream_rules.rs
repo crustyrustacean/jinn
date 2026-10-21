@@ -303,6 +303,8 @@ mod tests {
     #[test]
     fn a_file_carrying_the_old_key_is_still_read() {
         // Given a document written before the budget moved.
+
+        // When the document is read.
         let config: LegacyStreamRulesBudget = jinn_config::testutil::config_layer(
             r#"
             [stream_rules]
@@ -322,6 +324,8 @@ mod tests {
     #[test]
     fn an_absent_old_key_reads_zero_and_floors_at_one() {
         // Given a document with no `[stream_rules]` table at all.
+
+        // When the document is read.
         let config: LegacyStreamRulesBudget = jinn_config::testutil::config_layer("")
             .get()
             .expect("defaulted");
@@ -362,6 +366,8 @@ mod tests {
     #[test]
     fn a_rule_naming_the_removed_trigger_key_still_deserializes() {
         // Given a rule written against the removed `on_trigger` key.
+
+        // When the rules are read.
         let rules: Vec<StreamRuleConfig> = jinn_config::testutil::config_layer(
             r#"
             [[stream_rules.entry]]
@@ -385,6 +391,8 @@ mod tests {
     #[test]
     fn an_absent_disabled_rules_array_reads_empty() {
         // Given a document with rules but no `disabled_rules` key.
+
+        // When the document is read.
         let config: StreamRulesConfig = jinn_config::testutil::config_layer(
             r#"
             [[stream_rules.entry]]
@@ -404,6 +412,8 @@ mod tests {
     #[test]
     fn a_written_disabled_rules_array_round_trips() {
         // Given a document carrying the name array beside its rules.
+
+        // When the document is read.
         let config: StreamRulesConfig = jinn_config::testutil::config_layer(
             r#"
             [stream_rules]
@@ -431,6 +441,8 @@ mod tests {
     fn an_entry_carrying_the_retired_disabled_key_still_deserializes() {
         // Given an entry written by a build that persisted the per-entry
         // flag, beside the name array that replaced it.
+
+        // When the rules are read.
         let rules: Vec<StreamRuleConfig> = jinn_config::testutil::config_layer(
             r#"
             [[stream_rules.entry]]

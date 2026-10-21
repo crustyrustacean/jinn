@@ -12,6 +12,7 @@
 #![allow(clippy::expect_used, clippy::panic, reason = "test harness")]
 
 use jinn_kernel::AppCore;
+use jinn_kernel::common::render_test::seed_cell;
 use jinn_tui::TuiApp;
 use jinn_tui::app::WhichKeyInstance;
 use jinn_tui::config::TuiConfig;
@@ -244,16 +245,11 @@ pub fn composition_routes() -> jinn_slices::route::KeyRoutes {
     // seam mints a detached one (never registered into a live `Slices`)
     // since only row *shape* matters for keymap tests.
     let slices = jinn_slices::Slices::new();
-    #[expect(
-        clippy::expect_used,
-        reason = "test seam: a fresh Slices never has the quake cell registered"
-    )]
-    let cell = slices
-        .register(
-            jinn_quake_bar::quake_bar_slot(),
-            jinn_quake_bar::QuakeBarState::default(),
-        )
-        .expect("fresh Slices never has the quake cell registered");
+    let cell = seed_cell(
+        &slices,
+        &jinn_quake_bar::quake_bar_slot(),
+        jinn_quake_bar::QuakeBarState::default(),
+    );
     jinn_quake_bar::attach_quake_bar_rows(&routes, &cell);
     jinn_quake_bar::register_quake_input_hook(&routes, &cell);
     jinn_discord::attach_discord_rows(&routes);
@@ -586,6 +582,7 @@ pub fn activate_every_picker(services: &mut jinn_kernel::Services) {
 #[cfg(test)]
 mod term_keybinds_spot_check {
     use super::composed_keymap;
+
     use jinn_kernel::{KernelIntent, Key, KeyEvent, Modifiers};
     use jinn_tui::Scope;
     use jinn_tui::app::WhichKeyInstance;

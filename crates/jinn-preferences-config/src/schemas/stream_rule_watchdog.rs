@@ -77,6 +77,8 @@ mod tests {
     #[test]
     fn an_absent_section_is_the_default() {
         // Given a document with no `[watchdog.stream_rules]` section.
+
+        // When the section is read.
         let config: StreamRuleWatchdogConfig = jinn_config::testutil::config_layer("")
             .get()
             .expect("defaulted");
@@ -89,6 +91,8 @@ mod tests {
     #[test]
     fn a_configured_maximum_is_read() {
         // Given a document setting the maximum.
+
+        // When the section is read.
         let config: StreamRuleWatchdogConfig = jinn_config::testutil::config_layer(
             r#"
             [watchdog.stream_rules]
@@ -106,6 +110,8 @@ mod tests {
     #[test]
     fn a_zero_maximum_floors_at_one() {
         // Given a document setting the maximum to zero.
+
+        // When the section is read.
         let config: StreamRuleWatchdogConfig = jinn_config::testutil::config_layer(
             r#"
             [watchdog.stream_rules]

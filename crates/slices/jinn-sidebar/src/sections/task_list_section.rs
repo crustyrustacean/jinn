@@ -448,7 +448,8 @@ mod tests {
     )]
     use super::*;
     use jinn_kernel::common::app_state::AppState;
-    use jinn_kernel::common::render_ctx::RenderCtx;
+
+    use jinn_kernel::common::render_test::with_render_ctx;
     use jinn_tools_msg::{PhaseInput, TaskStatus};
 
     fn setup_with_tasks() -> AppState {
@@ -494,14 +495,9 @@ mod tests {
         let app = AppState::default_with_scope_focus();
         let mut section = TaskListSection;
         let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_slices::OverlayViews::new();
 
         // When asking the section for its content height.
-        let height = section.content_height(&RenderCtx::new_with_default_config(
-            &app,
-            &slices,
-            &overlay_views,
-        ));
+        let height = with_render_ctx(&app, &slices, |ctx| section.content_height(ctx));
 
         // Then it reserves nothing.
         assert_eq!(height, 0);
@@ -514,14 +510,9 @@ mod tests {
         let app = setup_with_tasks();
         let mut section = TaskListSection;
         let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_slices::OverlayViews::new();
 
         // When asking the section for its content height.
-        let height = section.content_height(&RenderCtx::new_with_default_config(
-            &app,
-            &slices,
-            &overlay_views,
-        ));
+        let height = with_render_ctx(&app, &slices, |ctx| section.content_height(ctx));
 
         // Then it reserves rows.
         assert!(height > 0, "expected non-zero height, got {height}");
@@ -560,12 +551,7 @@ mod tests {
 
         // When computing the height and the render line count.
         let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_slices::OverlayViews::new();
-        let height = section.content_height(&RenderCtx::new_with_default_config(
-            &app,
-            &slices,
-            &overlay_views,
-        ));
+        let height = with_render_ctx(&app, &slices, |ctx| section.content_height(ctx));
         let line_count = build_render_lines(&list, &app).len() as u16;
 
         // Then they agree (render/height lockstep).

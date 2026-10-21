@@ -358,6 +358,7 @@ fn truncate_report(body: &str) -> String {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::unwrap_used, reason = "test code")]
+    use jinn_kernel::common::render_test::render_draw;
 
     use super::{AttendantsSection, has_content};
     use crate::sections::section_trait::SidebarSection;
@@ -457,20 +458,14 @@ mod tests {
     /// Renders the section over `state` and returns the buffer, so a test
     /// can read the cells the user actually sees.
     fn render_section(state: &AppState) -> ratatui::buffer::Buffer {
-        use ratatui::Terminal;
-        use ratatui::backend::TestBackend;
-
-        let mut terminal = Terminal::new(TestBackend::new(40, 20)).expect("terminal");
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let overlays = jinn_slices::OverlayViews::new();
-                let ctx = jinn_kernel::common::render_ctx::RenderCtx::new_with_default_config(
-                    state, &slices, &overlays,
-                );
-                AttendantsSection.render(frame, ratatui::layout::Rect::new(0, 0, 40, 20), 0, &ctx);
-            })
-            .expect("draw");
+        let terminal = render_draw(state, 40, 20, |frame, _area, frame_ctx| {
+            AttendantsSection.render(
+                frame,
+                ratatui::layout::Rect::new(0, 0, 40, 20),
+                0,
+                frame_ctx,
+            );
+        });
         terminal.backend().buffer().clone()
     }
 
@@ -609,26 +604,15 @@ mod tests {
 
     /// Renders the section into a buffer of the given width.
     fn render_section_wide(state: &AppState, width: u16) -> ratatui::buffer::Buffer {
-        use ratatui::Terminal;
-        use ratatui::backend::TestBackend;
-
         let height = 20u16;
-        let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let overlays = jinn_slices::OverlayViews::new();
-                let ctx = jinn_kernel::common::render_ctx::RenderCtx::new_with_default_config(
-                    state, &slices, &overlays,
-                );
-                AttendantsSection.render(
-                    frame,
-                    ratatui::layout::Rect::new(0, 0, width, height),
-                    0,
-                    &ctx,
-                );
-            })
-            .expect("draw");
+        let terminal = render_draw(state, width, height, |frame, _area, frame_ctx| {
+            AttendantsSection.render(
+                frame,
+                ratatui::layout::Rect::new(0, 0, width, height),
+                0,
+                frame_ctx,
+            );
+        });
         terminal.backend().buffer().clone()
     }
 }

@@ -847,21 +847,24 @@ async fn loaded_from_archive_appears_in_the_session_list() {
 async fn a_session_reloaded_from_storage_can_be_archived_again() {
     // Given a session saved, archived, and then loaded back — the cycle a
     // user reaches by picking the same session out of the picker twice.
-    let fixture = actor_fixture().await;
-    let session_id = SessionId::new();
-    let mut live = ChatSessionState::new();
-    live.set_session_id(session_id.clone());
-    live.set_title("lifecycle work".to_owned());
-    live.mark_interacted();
-    live.push_entry(jinn_core_types::ChatEntry::user("first pass"));
-    fixture.state.with_session(|view| {
-        view.session.map().insert(live.clone());
-    });
-    fixture
-        .store
-        .save(&live.capture_snapshot())
-        .await
-        .expect("save session");
+    let (fixture, session_id) = {
+        let fixture = actor_fixture().await;
+        let session_id = SessionId::new();
+        let mut live = ChatSessionState::new();
+        live.set_session_id(session_id.clone());
+        live.set_title("lifecycle work".to_owned());
+        live.mark_interacted();
+        live.push_entry(jinn_core_types::ChatEntry::user("first pass"));
+        fixture.state.with_session(|view| {
+            view.session.map().insert(live.clone());
+        });
+        fixture
+            .store
+            .save(&live.capture_snapshot())
+            .await
+            .expect("save session");
+        (fixture, session_id)
+    };
     fixture
         .harness
         .publish(ArchiveSession {

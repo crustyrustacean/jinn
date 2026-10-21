@@ -1332,37 +1332,40 @@ mod tests {
         // second while echoing whatever it is sent.
         // Windows: the 400 ms quiet window exceeds the 250 ms tick gap, so the
         // spawn settle runs to its cap — the trickle must outlive that wait.
-        #[cfg(windows)]
-        let trickle = "for i in $(seq 1 16); do echo tick-$i; sleep 0.25; done; cat";
-        #[cfg(not(windows))]
-        let trickle = "for i in 1 2 3 4 5 6; do echo tick-$i; sleep 0.25; done; cat";
-        let harness = TestHarness::new().await;
-        let controls = TermControls::default();
-        // A quiet window longer than the trickle's tick gap but shorter than
-        // the ask's own cap, so the SCREEN never goes quiet: the send's
-        // settle can only end at the ask's `max_wait` (3s) or at the
-        // takeover. That is what makes the refusal's PROMPTNESS the
-        // observable — without the in-settle takeover abort the ask would
-        // run to its cap, and a prompt refusal would not be prompt.
-        //
-        // The spawn's own settle uses the same window, so the trickle must
-        // outlive it: the spawn cap is 3s and the trickle runs longer.
-        let (actor, state) = spawn_coordinator_with_windows(
-            &harness,
-            controls.clone(),
-            Duration::from_secs(3),
-            Duration::from_secs(3),
-        )
-        .await;
-        let chat = jinn_core_types::SessionId::new();
-        {
-            let outcome = actor
-                .ask::<_, SpawnTermOutcome>(spawn_msg(chat.clone(), trickle))
-                .await;
-            let SpawnTermOutcome::Started { .. } = outcome else {
-                panic!("expected Started");
-            };
-        }
+        let (actor, state, chat, controls, _harness) = {
+            #[cfg(windows)]
+            let trickle = "for i in $(seq 1 16); do echo tick-$i; sleep 0.25; done; cat";
+            #[cfg(not(windows))]
+            let trickle = "for i in 1 2 3 4 5 6; do echo tick-$i; sleep 0.25; done; cat";
+            let harness = TestHarness::new().await;
+            let controls = TermControls::default();
+            // A quiet window longer than the trickle's tick gap but shorter than
+            // the ask's own cap, so the SCREEN never goes quiet: the send's
+            // settle can only end at the ask's `max_wait` (3s) or at the
+            // takeover. That is what makes the refusal's PROMPTNESS the
+            // observable — without the in-settle takeover abort the ask would
+            // run to its cap, and a prompt refusal would not be prompt.
+            //
+            // The spawn's own settle uses the same window, so the trickle must
+            // outlive it: the spawn cap is 3s and the trickle runs longer.
+            let (actor, state) = spawn_coordinator_with_windows(
+                &harness,
+                controls.clone(),
+                Duration::from_secs(3),
+                Duration::from_secs(3),
+            )
+            .await;
+            let chat = jinn_core_types::SessionId::new();
+            {
+                let outcome = actor
+                    .ask::<_, SpawnTermOutcome>(spawn_msg(chat.clone(), trickle))
+                    .await;
+                let SpawnTermOutcome::Started { .. } = outcome else {
+                    panic!("expected Started");
+                };
+            }
+            (actor, state, chat, controls, harness)
+        };
 
         // When a send starts and the user takes control mid-wait.
         //
@@ -1408,18 +1411,21 @@ mod tests {
     #[tokio::test]
     async fn user_takeover_mid_call_sends_keys_and_in_flight_ask_reports_user_control() {
         // Given a coordinator with a program that echoes input forever.
-        let harness = TestHarness::new().await;
-        let controls = TermControls::default();
-        let (actor, state) = spawn_coordinator_with_state(&harness, controls.clone()).await;
-        let chat = jinn_core_types::SessionId::new();
-        {
-            let outcome = actor
-                .ask::<_, SpawnTermOutcome>(spawn_msg(chat.clone(), "cat"))
-                .await;
-            let SpawnTermOutcome::Started { .. } = outcome else {
-                panic!("expected Started");
-            };
-        }
+        let (harness, actor, state, chat, controls) = {
+            let harness = TestHarness::new().await;
+            let controls = TermControls::default();
+            let (actor, state) = spawn_coordinator_with_state(&harness, controls.clone()).await;
+            let chat = jinn_core_types::SessionId::new();
+            {
+                let outcome = actor
+                    .ask::<_, SpawnTermOutcome>(spawn_msg(chat.clone(), "cat"))
+                    .await;
+                let SpawnTermOutcome::Started { .. } = outcome else {
+                    panic!("expected Started");
+                };
+            }
+            (harness, actor, state, chat, controls)
+        };
 
         // When a send starts against a `cat` with no trailing newline
         // (never settles on its own — the wait runs until the cap).

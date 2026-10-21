@@ -251,6 +251,8 @@ mod tests {
     #[test]
     fn retained_tempdir_registers_its_path() {
         // Given a retained temp directory.
+
+        // When the temp directory is created.
         let dir = retained_tempdir().expect("retained temp dir");
 
         // Then its exact path sits in the registry.

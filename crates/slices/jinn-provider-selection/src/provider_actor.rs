@@ -858,6 +858,7 @@ mod tests {
         // When publishing ModelCacheLoaded via bus.
         ctx.harness.publish(ModelCacheLoaded { cache }).await;
 
+        // Then the cache's timestamp survives the load.
         let loaded = ctx.await_model_cache().await;
         assert!(loaded.last_updated_at.is_some());
     }
@@ -907,6 +908,7 @@ mod tests {
         };
         ctx.harness.publish(event).await;
 
+        // Then the context length comes from the registry, not the API.
         let cache = ctx.await_model_cache().await;
         assert_eq!(cache.entries["zai"][0].context_length, Some(128_000));
 
@@ -1012,6 +1014,7 @@ mod tests {
         };
         ctx.harness.publish(event).await;
 
+        // Then the configured block value wins over the API's.
         let cache = ctx.await_model_cache().await;
         assert_eq!(cache.entries["ollama"][0].context_length, Some(4096));
     }
@@ -1040,6 +1043,7 @@ mod tests {
         };
         ctx.harness.publish(event).await;
 
+        // Then the context length stays unset.
         let cache = ctx.await_model_cache().await;
         assert_eq!(cache.entries["ollama"][0].context_length, None);
     }
@@ -1068,6 +1072,7 @@ mod tests {
         };
         ctx.harness.publish(event).await;
 
+        // Then the unregistered provider is left as the refresh reported it.
         let cache = ctx.await_model_cache().await;
         assert_eq!(cache.entries["groq"][0].context_length, None);
     }
@@ -1116,6 +1121,7 @@ mod tests {
 
         ctx.harness.publish(ModelCacheLoaded { cache }).await;
 
+        // Then the registry supplies the context length the cache lacked.
         let loaded = ctx.await_model_cache().await;
         assert_eq!(loaded.entries["zai"][0].context_length, Some(128_000));
 
@@ -1164,6 +1170,7 @@ mod tests {
 
         ctx.harness.publish(ModelCacheLoaded { cache }).await;
 
+        // Then the configured block value wins over the API's.
         let loaded = ctx.await_model_cache().await;
         assert_eq!(loaded.entries["ollama"][0].context_length, Some(4096));
     }
@@ -1243,6 +1250,7 @@ mod tests {
         let cache = cache_with_ollama_llama3(Some(8192));
         ctx.harness.publish(ModelCacheLoaded { cache }).await;
         let loaded = ctx.await_model_cache().await;
+        // Then the per-model configuration wins over the API-discovered value.
         assert_eq!(loaded.entries["ollama"][0].context_length, Some(16384));
         // And the configured modalities replace the discovered text-only value.
         assert!(
@@ -1279,6 +1287,7 @@ mod tests {
             .iter()
             .find(|m| m.id == "llama3")
             .expect("injected entry");
+        // Then the statically configured model is injected.
         assert_eq!(injected.context_length, Some(16384));
         assert!(injected.input_modalities.contains(Modality::Image));
         // And no duplicate entries were created.
@@ -1334,6 +1343,7 @@ mod tests {
             .iter()
             .find(|m| m.id == "llama3")
             .expect("injected entry");
+        // Then the block-level static model is injected.
         assert_eq!(injected.context_length, Some(4096));
         // And no duplicate entries.
         assert_eq!(loaded.entries["ollama"].len(), 2);
@@ -1356,6 +1366,7 @@ mod tests {
         let cache = cache_with_ollama_llama3(Some(8192));
         ctx.harness.publish(ModelCacheLoaded { cache }).await;
         let loaded = ctx.await_model_cache().await;
+        // Then the configured text-only modality wins over the models.dev stamp.
         assert!(
             !loaded.entries["ollama"][0]
                 .input_modalities

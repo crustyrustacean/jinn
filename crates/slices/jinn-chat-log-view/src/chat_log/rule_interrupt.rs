@@ -146,6 +146,8 @@ mod tests {
     #[rstest::rstest]
     fn background_differs_from_the_user_block() {
         // Given the default theme.
+
+        // When the theme's colours are read.
         let theme = default_theme();
 
         // Then the interrupt block is not the user block, or it would be

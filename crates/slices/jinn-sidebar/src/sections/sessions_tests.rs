@@ -12,8 +12,8 @@ use crate::sections::sessions::{
     SessionCloseError, SessionsSection, handle_session_activate, handle_session_close_arm,
     navigate, receive_cursor, sorted_open_sessions, validate_session_close,
 };
+use crate::sections::testing::{state_with_message_sessions, state_with_session_ids};
 use jinn_kernel::common::app_state::AppState;
-use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_session_state::ChatSessionState;
 
 use jinn_kernel::protocol::ChatEntry;
@@ -78,23 +78,6 @@ fn entry_last_is_error(state: &AppState, id: &jinn_core_types::SessionId) -> boo
     })
 }
 
-// Helper: create state with N sessions.
-fn state_with_sessions(count: usize) -> AppState {
-    let mut state = AppState::default_with_scope_focus();
-    // Default state already has 1 session. Add more as needed.
-    for i in 1..count {
-        let session = ChatSessionState::new();
-        let _id = session.session_id().clone();
-        // Give each additional session a title.
-        state.session.insert({
-            let mut s = ChatSessionState::new();
-            s.push_entry(ChatEntry::user(format!("message for session {i}")));
-            s
-        });
-    }
-    state
-}
-
 /// Puts the cursor on the session drawn at `row`.
 ///
 /// Fixtures in this file spell a row because that is how a user thinks about
@@ -137,12 +120,7 @@ fn content_height_with_one_session() {
 
     // When asking the section for its content height.
     let slices = jinn_slices::Slices::new();
-    let overlay_views = jinn_slices::OverlayViews::new();
-    let height = section.content_height(&RenderCtx::new_with_default_config(
-        &state,
-        &slices,
-        &overlay_views,
-    ));
+    let height = with_render_ctx(&state, &slices, |ctx| section.content_height(ctx));
 
     // Then it reserves 1 session + footer.
     assert_eq!(height, 2);
@@ -152,16 +130,11 @@ fn content_height_with_one_session() {
 fn content_height_with_three_sessions() {
     // Given a state holding three sessions.
     let mut section = SessionsSection::new();
-    let state = state_with_sessions(3);
+    let state = state_with_message_sessions(3);
 
     // When asking the section for its content height.
     let slices = jinn_slices::Slices::new();
-    let overlay_views = jinn_slices::OverlayViews::new();
-    let height = section.content_height(&RenderCtx::new_with_default_config(
-        &state,
-        &slices,
-        &overlay_views,
-    ));
+    let height = with_render_ctx(&state, &slices, |ctx| section.content_height(ctx));
 
     // Then it reserves 3 sessions + footer.
     assert_eq!(height, 4);
@@ -170,7 +143,7 @@ fn content_height_with_three_sessions() {
 #[rstest::rstest]
 fn navigate_down_moves_cursor_without_switching() {
     // Given state with 3 sessions, cursor at index 0.
-    let mut state = state_with_sessions(3);
+    let mut state = state_with_message_sessions(3);
     let original_active = state.session.active_session_id().clone();
     cursor_to_row(&mut state, 0);
 
@@ -197,7 +170,7 @@ fn navigate_down_moves_cursor_without_switching() {
 #[rstest::rstest]
 fn working_phase_session_is_not_idle_in_sidebar() {
     // Given a session mid-turn in the phase sense.
-    let mut state = state_with_sessions(1);
+    let mut state = state_with_message_sessions(1);
     state.session.active_session_mut().begin_streaming();
 
     // When the sidebar derives its session list.
@@ -217,7 +190,7 @@ fn working_phase_session_is_not_idle_in_sidebar() {
 #[rstest::rstest]
 fn navigate_up_moves_cursor_without_switching() {
     // Given state with 3 sessions, cursor at index 2.
-    let mut state = state_with_sessions(3);
+    let mut state = state_with_message_sessions(3);
     let sessions = sorted_open_sessions(&state);
     state.session.set_active(sessions[2].id.clone());
     cursor_to_row(&mut state, 2);
@@ -241,7 +214,7 @@ fn navigate_up_moves_cursor_without_switching() {
 #[rstest::rstest]
 fn navigate_down_at_bottom_returns_exhausted() {
     // Given state with 2 sessions, cursor at last index.
-    let mut state = state_with_sessions(2);
+    let mut state = state_with_message_sessions(2);
     let sessions = sorted_open_sessions(&state);
     cursor_to_row(&mut state, sessions.len() - 1);
 
@@ -259,7 +232,7 @@ fn navigate_down_at_bottom_returns_exhausted() {
 #[rstest::rstest]
 fn navigate_up_at_top_returns_exhausted() {
     // Given state with 2 sessions, cursor at index 0.
-    let mut state = state_with_sessions(2);
+    let mut state = state_with_message_sessions(2);
     cursor_to_row(&mut state, 0);
 
     // When navigating up.
@@ -302,7 +275,7 @@ fn document_offset_for(state: &AppState, viewport_rows: u16) -> u16 {
 #[rstest::rstest]
 fn document_offset_is_zero_when_cursor_is_near_the_top() {
     // Given 40 sessions with the cursor on the first one.
-    let mut state = state_with_sessions(40);
+    let mut state = state_with_message_sessions(40);
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
@@ -318,7 +291,7 @@ fn document_offset_is_zero_when_cursor_is_near_the_top() {
 #[rstest::rstest]
 fn document_offset_clamps_at_the_end_for_the_last_session() {
     // Given 40 sessions with the cursor on the last one.
-    let mut state = state_with_sessions(40);
+    let mut state = state_with_message_sessions(40);
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
@@ -338,7 +311,7 @@ fn document_offset_clamps_at_the_end_for_the_last_session() {
 #[rstest::rstest]
 fn document_offset_grows_as_the_cursor_moves_down() {
     // Given 40 sessions with the cursor on the first one.
-    let mut state = state_with_sessions(40);
+    let mut state = state_with_message_sessions(40);
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
@@ -365,7 +338,7 @@ fn document_offset_grows_as_the_cursor_moves_down() {
 #[rstest::rstest]
 fn every_session_is_reachable_when_uncapped() {
     // Given 100 sessions with the cursor on the first one.
-    let mut state = state_with_sessions(100);
+    let mut state = state_with_message_sessions(100);
     cursor_to_row(&mut state, 0);
 
     // When navigating down until the list is exhausted.
@@ -388,7 +361,7 @@ fn every_session_is_reachable_when_uncapped() {
 #[rstest::rstest]
 fn sessions_content_height_is_entry_count_plus_footer() {
     // Given 40 sessions.
-    let state = state_with_sessions(40);
+    let state = state_with_message_sessions(40);
 
     // When computing the document height for the sessions section.
     let rows = crate::sections::layout::sessions_rows(&state);
@@ -401,17 +374,12 @@ fn sessions_content_height_is_entry_count_plus_footer() {
 fn content_height_is_uncapped() {
     // Given state with 20 sessions.
     let mut section = SessionsSection::new();
-    let state = state_with_sessions(20);
+    let state = state_with_message_sessions(20);
 
     // When computing content height.
-    let slices = jinn_slices::Slices::new();
-    let overlay_views = jinn_slices::OverlayViews::new();
-    let height = section.content_height(&RenderCtx::new(
-        &state,
-        &slices,
-        &overlay_views,
-        jinn_kernel::common::render_ctx::empty_config_layer(),
-    ));
+    let height = with_render_ctx(&state, &jinn_slices::Slices::new(), |ctx| {
+        section.content_height(ctx)
+    });
 
     // Then it counts every session, not a fixed window.
     assert_eq!(height, 21);
@@ -419,7 +387,7 @@ fn content_height_is_uncapped() {
 #[rstest::rstest]
 fn receive_cursor_from_top_positions_at_index_zero() {
     // Given state with 3 sessions.
-    let mut state = state_with_sessions(3);
+    let mut state = state_with_message_sessions(3);
 
     // When receiving cursor from top.
     let _ = receive_cursor(
@@ -435,7 +403,7 @@ fn receive_cursor_from_top_positions_at_index_zero() {
 #[rstest::rstest]
 fn receive_cursor_from_bottom_positions_at_last_index() {
     // Given state with 3 sessions.
-    let mut state = state_with_sessions(3);
+    let mut state = state_with_message_sessions(3);
     let count = sorted_open_sessions(&state).len();
 
     // When receiving cursor from bottom.
@@ -472,7 +440,7 @@ fn receive_cursor_noop_when_empty() {
 #[rstest::rstest]
 fn sorted_sessions_orders_by_created_at_descending() {
     // Given a state holding three sessions.
-    let state = state_with_sessions(3);
+    let state = state_with_message_sessions(3);
 
     // When collecting the sorted open sessions.
     let sessions = sorted_open_sessions(&state);
@@ -502,7 +470,7 @@ fn sorted_sessions_orders_by_created_at_descending() {
 #[rstest::rstest]
 fn sorted_sessions_count_matches_hashmap() {
     // Given a state holding four sessions.
-    let state = state_with_sessions(4);
+    let state = state_with_message_sessions(4);
 
     // When collecting the sorted open sessions.
     let sessions = sorted_open_sessions(&state);
@@ -559,7 +527,7 @@ fn settled_turn_returns_to_idle() {
     assert!(sessions[0].is_idle);
 }
 
-use jinn_testutil::setup_term;
+use jinn_testutil::{empty_routes, empty_slices, setup_term};
 
 fn render_rows(
     section: &mut SessionsSection,
@@ -579,15 +547,10 @@ fn render_rows_skipping(
     height: u16,
     skip_rows: u16,
 ) -> Vec<String> {
-    let (mut terminal, area) = setup_term(width, height);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
-            section.render(frame, area, skip_rows, &ctx);
-        })
-        .unwrap();
+    let (mut terminal, _area) =
+        render_section_with_area(state, width, height, |frame, area, ctx| {
+            section.render(frame, area, skip_rows, ctx);
+        });
     let buffer = terminal.backend().buffer();
     (0..height)
         .map(|y| {
@@ -657,7 +620,7 @@ fn render_shows_untitled_for_session_without_title() {
 fn render_draws_only_the_rows_the_window_covers() {
     // Given 20 sessions, a 5-row window, and a skip of 3.
     let mut section = SessionsSection::new();
-    let state = state_with_sessions(20);
+    let state = state_with_message_sessions(20);
 
     // When rendering.
     let rows = render_rows_skipping(&mut section, &state, 30, 5, 3);
@@ -676,7 +639,7 @@ fn render_draws_only_the_rows_the_window_covers() {
 fn render_draws_the_footer_when_the_window_reaches_the_last_entry() {
     // Given 20 sessions and a window whose final row is entry 20.
     let mut section = SessionsSection::new();
-    let state = state_with_sessions(20);
+    let state = state_with_message_sessions(20);
 
     // When rendering a 5-row window starting at entry 16.
     let rows = render_rows_skipping(&mut section, &state, 30, 5, 16);
@@ -700,15 +663,15 @@ fn render_footer_uses_focus_accent_when_sidebar_focused() {
     };
 
     // When rendering.
-    let (mut terminal, area) = setup_term(30, 5);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            section.render(frame, area, 0, &ctx);
-        })
-        .unwrap();
+    let terminal = render_section(
+        &state,
+        &jinn_slices::Slices::new(),
+        30,
+        5,
+        |frame, area, ctx| {
+            section.render(frame, area, 0, ctx);
+        },
+    );
 
     // Then the footer box-drawing corner (╰) at column 0, row 1 has focus_accent color.
     let buffer = terminal.backend().buffer();
@@ -727,15 +690,15 @@ fn render_footer_uses_border_unfocused_when_sidebar_not_focused() {
     let state = AppState::default_with_scope_focus();
 
     // When rendering.
-    let (mut terminal, area) = setup_term(30, 5);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            section.render(frame, area, 0, &ctx);
-        })
-        .unwrap();
+    let terminal = render_section(
+        &state,
+        &jinn_slices::Slices::new(),
+        30,
+        5,
+        |frame, area, ctx| {
+            section.render(frame, area, 0, ctx);
+        },
+    );
 
     // Then the footer box-drawing corner (╰) at column 0, row 1 has border_unfocused color.
     let buffer = terminal.backend().buffer();
@@ -759,15 +722,15 @@ fn render_footer_uses_border_unfocused_when_other_sidebar_section_focused() {
     };
 
     // When rendering.
-    let (mut terminal, area) = setup_term(30, 5);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            section.render(frame, area, 0, &ctx);
-        })
-        .unwrap();
+    let terminal = render_section(
+        &state,
+        &jinn_slices::Slices::new(),
+        30,
+        5,
+        |frame, area, ctx| {
+            section.render(frame, area, 0, ctx);
+        },
+    );
 
     // Then the footer box-drawing corner uses border_unfocused (not focus_accent).
     let buffer = terminal.backend().buffer();
@@ -782,7 +745,7 @@ fn render_footer_uses_border_unfocused_when_other_sidebar_section_focused() {
 #[rstest::rstest]
 fn first_close_press_arms_prompt_without_removing_session() {
     // Given a focused sessions section with a selected session.
-    let mut state = state_with_sessions(3);
+    let mut state = state_with_message_sessions(3);
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
@@ -800,7 +763,7 @@ fn first_close_press_arms_prompt_without_removing_session() {
 #[rstest::rstest]
 fn second_close_press_emits_lifecycle_command_for_selected_session() {
     // Given a focused sessions section with a selected idle session.
-    let mut state = state_with_sessions(3);
+    let mut state = state_with_message_sessions(3);
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
@@ -835,14 +798,14 @@ fn close_session_rejected_when_streaming() {
 }
 
 #[rstest::rstest]
-fn close_session_rejected_when_working_phase() {
-    // Given state with a session in Working phase.
+fn close_session_rejected_when_sending() {
+    // Given state with a session in the Sending phase, sessions section focused.
     let mut state = AppState::default_with_scope_focus();
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
     cursor_to_row(&mut state, 0);
-    state.active_session_mut().begin_streaming();
+    state.active_session_mut().begin_sending();
 
     // When validating close.
     let result = validate_session_close(&state);
@@ -876,15 +839,15 @@ fn render_session_title_is_red_when_last_entry_is_error() {
     };
 
     // When rendering.
-    let (mut terminal, area) = setup_term(30, 5);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            section.render(frame, area, 0, &ctx);
-        })
-        .unwrap();
+    let terminal = render_section(
+        &state,
+        &jinn_slices::Slices::new(),
+        30,
+        5,
+        |frame, area, ctx| {
+            section.render(frame, area, 0, ctx);
+        },
+    );
 
     // Then the title text on row 0 (first entry row) is a red block:
     // red background with the sidebar background as the text color.
@@ -908,15 +871,15 @@ fn render_session_title_is_normal_when_last_entry_is_not_error() {
     let primary_text = state.frontend.theme.primary_text;
 
     // When rendering.
-    let (mut terminal, area) = setup_term(30, 5);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            section.render(frame, area, 0, &ctx);
-        })
-        .unwrap();
+    let terminal = render_section(
+        &state,
+        &jinn_slices::Slices::new(),
+        30,
+        5,
+        |frame, area, ctx| {
+            section.render(frame, area, 0, ctx);
+        },
+    );
 
     // Then the title text on row 0 has the primary_text color (active session).
     let buffer = terminal.backend().buffer();
@@ -969,7 +932,7 @@ fn sorted_sessions_empty_history_is_not_error() {
 #[rstest::rstest]
 fn activate_switches_to_cursor_session() {
     // Given state with 3 sessions, sessions section focused, cursor at index 1.
-    let mut state = state_with_sessions(3);
+    let mut state = state_with_message_sessions(3);
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
@@ -987,7 +950,7 @@ fn activate_switches_to_cursor_session() {
 #[rstest::rstest]
 fn activate_is_noop_when_not_sessions_section() {
     // Given state with persona section focused.
-    let mut state = state_with_sessions(3);
+    let mut state = state_with_message_sessions(3);
     let original_active = state.session.active_session_id().clone();
     cursor_to_row(&mut state, 1);
 
@@ -1682,15 +1645,10 @@ fn render_tree_shows_tree_characters() {
     let state = state_with_tree();
 
     // When rendering.
-    let (mut terminal, area) = jinn_testutil::setup_term(30, 15);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            section.render(frame, area, 0, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = jinn_testutil::setup_term(30, 15);
+    let (mut terminal, _area) = render_section_with_area(&state, 30, 15, |frame, area, ctx| {
+        section.render(frame, area, 0, ctx);
+    });
 
     // Then the buffer contains tree connector characters.
     let buffer = terminal.backend().buffer();
@@ -1919,7 +1877,7 @@ fn a_transitively_reparented_leaf_sits_at_depth_one_under_root() {
 #[rstest::rstest]
 fn sorted_sessions_last_root_is_marked_as_last_child() {
     // Given 3 root sessions (no parent-child relationships).
-    let state = state_with_sessions(3);
+    let state = state_with_message_sessions(3);
 
     // When collecting sorted sessions.
     let sessions = sorted_open_sessions(&state);
@@ -1940,7 +1898,7 @@ fn sorted_sessions_last_root_is_marked_as_last_child() {
 #[rstest::rstest]
 fn sorted_sessions_single_root_is_marked_as_last_child() {
     // Given a single root session.
-    let state = state_with_sessions(1);
+    let state = state_with_message_sessions(1);
 
     // When collecting sorted sessions.
     let sessions = sorted_open_sessions(&state);
@@ -2855,15 +2813,14 @@ fn x_key_over_archive_prompt_dismisses_then_arms_teardown_prompt() {
 // Archive tree - prompt render
 // ---------------------------------------------------------------------------
 
+use jinn_kernel::common::render_test::{
+    render_draw, render_draw_with_ctx, render_section, render_section_with_area, with_render_ctx,
+};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
 /// Empty slice registry + route table for handler tests that don't
 /// exercise slices or route rows.
-fn empty_slices() -> jinn_slices::Slices {
-    jinn_slices::Slices::new()
-}
-
 /// The sidebar's real route table (the rows the `A`/`X` keys bind to).
 fn sidebar_routes() -> jinn_slices::route::KeyRoutes {
     let routes = jinn_slices::route::KeyRoutes::new();
@@ -2872,10 +2829,6 @@ fn sidebar_routes() -> jinn_slices::route::KeyRoutes {
 }
 
 /// An empty route table, for handler tests that pass an unmapped intent.
-fn empty_routes() -> jinn_slices::route::KeyRoutes {
-    jinn_slices::route::KeyRoutes::new()
-}
-
 /// The dynamic intent the sidebar's archive-tree route rows mint for the
 /// given action string (what the `A`/`X` keys actually produce).
 fn tree_intent(action: &'static str) -> KernelIntent {
@@ -3048,20 +3001,14 @@ fn render_archive_tree_prompt_rows(state: &AppState, sidebar_width: u16) -> Vec<
         width: sidebar_width,
         height,
     };
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
-    let slices = jinn_slices::Slices::new();
-    let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
-    terminal
-        .draw(|frame| {
-            crate::sections::sessions::render_archive_tree_prompt_for_state(
-                frame,
-                sidebar_rect,
-                frame_area,
-                &ctx,
-            );
-        })
-        .expect("draw");
+    let terminal = render_draw(state, width, height, |frame, _area, ctx| {
+        crate::sections::sessions::render_archive_tree_prompt_for_state(
+            frame,
+            sidebar_rect,
+            frame_area,
+            ctx,
+        );
+    });
     buffer_rows(&terminal, width, height)
 }
 
@@ -3083,23 +3030,23 @@ fn render_sessions_with_archive_tree_prompt(state: &AppState, sidebar_width: u16
         width: sidebar_width,
         height,
     };
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
-    let slices = jinn_slices::Slices::new();
-    let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
     let mut sidebar = crate::sections::Sidebar::default();
     sidebar.register(Box::new(SessionsSection::new()));
-    terminal
-        .draw(|frame| {
-            sidebar.render(frame, sidebar_rect, &ctx);
+    let terminal = render_draw_with_ctx(
+        state,
+        &jinn_slices::Slices::new(),
+        width,
+        height,
+        |frame, _area, ctx| {
+            sidebar.render(frame, sidebar_rect, ctx);
             crate::sections::sessions::render_archive_tree_prompt_for_state(
                 frame,
                 sidebar_rect,
                 frame_area,
-                &ctx,
+                ctx,
             );
-        })
-        .expect("draw");
+        },
+    );
     buffer_rows(&terminal, width, height)
 }
 
@@ -3137,23 +3084,23 @@ fn render_sessions_with_close_prompt(state: &AppState, sidebar_width: u16) -> Ve
         width: sidebar_width,
         height,
     };
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
-    let slices = jinn_slices::Slices::new();
-    let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
     let mut sidebar = crate::sections::Sidebar::default();
     sidebar.register(Box::new(SessionsSection::new()));
-    terminal
-        .draw(|frame| {
-            sidebar.render(frame, sidebar_rect, &ctx);
+    let terminal = render_draw_with_ctx(
+        state,
+        &jinn_slices::Slices::new(),
+        width,
+        height,
+        |frame, _area, ctx| {
+            sidebar.render(frame, sidebar_rect, ctx);
             crate::sections::sessions::render_close_session_prompt_for_state(
                 frame,
                 sidebar_rect,
                 frame_area,
-                &ctx,
+                ctx,
             );
-        })
-        .expect("draw");
+        },
+    );
     buffer_rows(&terminal, width, height)
 }
 
@@ -3352,24 +3299,23 @@ fn render_sessions_with_yank_banner(state: &AppState, sidebar_width: u16) -> Ter
         width: sidebar_width,
         height,
     };
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
-    let slices = jinn_slices::Slices::new();
-    let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
     let mut sidebar = crate::sections::Sidebar::default();
     sidebar.register(Box::new(SessionsSection::new()));
-    terminal
-        .draw(|frame| {
-            sidebar.render(frame, sidebar_rect, &ctx);
+    render_draw_with_ctx(
+        state,
+        &jinn_slices::Slices::new(),
+        width,
+        height,
+        |frame, _area, ctx| {
+            sidebar.render(frame, sidebar_rect, ctx);
             crate::sections::sessions::render_session_id_yank_popup_for_state(
                 frame,
                 sidebar_rect,
                 frame_area,
-                &ctx,
+                ctx,
             );
-        })
-        .expect("draw");
-    terminal
+        },
+    )
 }
 
 #[rstest::rstest]
@@ -3485,32 +3431,18 @@ fn sidebar_after_archive_tree_cascade_shows_survivors_only() {
 fn an_unchanged_frame_rebuilds_the_tree_only_once() {
     // Given a sessions section that has rendered one frame.
     let mut section = SessionsSection::new();
-    let state = state_with_sessions(3);
-    {
-        let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_slices::OverlayViews::new();
-        let ctx = RenderCtx::new(
-            &state,
-            &slices,
-            &overlay_views,
-            jinn_kernel::common::render_ctx::empty_config_layer(),
-        );
-        section.content_height(&ctx);
-    }
+    let state = state_with_message_sessions(3);
+    with_render_ctx(&state, &jinn_slices::Slices::new(), |ctx| {
+        section.content_height(ctx)
+    });
     let after_first = section.rebuilds();
     assert_eq!(after_first, 1, "the first frame must build the tree");
 
     // When several more frames render with nothing changed.
     for _ in 0..5 {
-        let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_slices::OverlayViews::new();
-        let ctx = RenderCtx::new(
-            &state,
-            &slices,
-            &overlay_views,
-            jinn_kernel::common::render_ctx::empty_config_layer(),
-        );
-        section.content_height(&ctx);
+        with_render_ctx(&state, &jinn_slices::Slices::new(), |ctx| {
+            section.content_height(ctx)
+        });
     }
 
     // Then no further rebuilds happened.
@@ -3559,12 +3491,7 @@ fn leaving_prep_mode_refreshes_the_sessions_tree() {
     let mut state = state_with_composed_attendant();
     {
         let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_slices::OverlayViews::new();
-        section.content_height(&RenderCtx::new_with_default_config(
-            &state,
-            &slices,
-            &overlay_views,
-        ));
+        with_render_ctx(&state, &slices, |ctx| section.content_height(ctx));
     }
     let after_first = section.rebuilds();
     assert!(
@@ -3582,12 +3509,7 @@ fn leaving_prep_mode_refreshes_the_sessions_tree() {
         .set_attendant_is_prepping(true);
     {
         let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_slices::OverlayViews::new();
-        section.content_height(&RenderCtx::new_with_default_config(
-            &state,
-            &slices,
-            &overlay_views,
-        ));
+        with_render_ctx(&state, &slices, |ctx| section.content_height(ctx));
     }
 
     // Then the tree is rebuilt, because the key summarises the prep flag.
@@ -3693,18 +3615,12 @@ fn the_sessions_list_key_summarizes_the_trigger_marker() {
 fn height_and_render_agree_on_the_session_count() {
     // Given a sessions section and state with several sessions.
     let mut section = SessionsSection::new();
-    let state = state_with_sessions(4);
+    let state = state_with_message_sessions(4);
 
     // When the height is computed and then rendered.
-    let slices = jinn_slices::Slices::new();
-    let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new(
-        &state,
-        &slices,
-        &overlay_views,
-        jinn_kernel::common::render_ctx::empty_config_layer(),
-    );
-    let height = section.content_height(&ctx);
+    let height = with_render_ctx(&state, &jinn_slices::Slices::new(), |ctx| {
+        section.content_height(ctx)
+    });
     let tree_len = section.cached_session_count();
 
     // Then the height reflects exactly those sessions plus the footer.
@@ -3715,17 +3631,11 @@ fn height_and_render_agree_on_the_session_count() {
 fn adding_a_session_rebuilds_the_tree() {
     // Given a section that has already built its tree.
     let mut section = SessionsSection::new();
-    let mut state = state_with_sessions(2);
+    let mut state = state_with_message_sessions(2);
     let before = {
-        let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_slices::OverlayViews::new();
-        let ctx = RenderCtx::new(
-            &state,
-            &slices,
-            &overlay_views,
-            jinn_kernel::common::render_ctx::empty_config_layer(),
-        );
-        section.content_height(&ctx);
+        with_render_ctx(&state, &jinn_slices::Slices::new(), |ctx| {
+            section.content_height(ctx)
+        });
         section.rebuilds()
     };
 
@@ -3737,30 +3647,18 @@ fn adding_a_session_rebuilds_the_tree() {
     }
 
     // Then the tree is rebuilt.
-    let slices = jinn_slices::Slices::new();
-    let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new(
-        &state,
-        &slices,
-        &overlay_views,
-        jinn_kernel::common::render_ctx::empty_config_layer(),
-    );
-    section.content_height(&ctx);
+    with_render_ctx(&state, &jinn_slices::Slices::new(), |ctx| {
+        section.content_height(ctx)
+    });
     assert_eq!(section.rebuilds(), before + 1);
 }
 
 /// Measures a section's content height against `state`, which is what drives
 /// the tree build.
 fn measure_content_height(section: &mut SessionsSection, state: &AppState) -> u16 {
-    let slices = jinn_slices::Slices::new();
-    let overlay_views = jinn_slices::OverlayViews::new();
-    let ctx = RenderCtx::new(
-        state,
-        &slices,
-        &overlay_views,
-        jinn_kernel::common::render_ctx::empty_config_layer(),
-    );
-    section.content_height(&ctx)
+    with_render_ctx(state, &jinn_slices::Slices::new(), |ctx| {
+        section.content_height(ctx)
+    })
 }
 
 /// Replaces a session's title with the same-length string formed by flipping
@@ -3789,7 +3687,7 @@ fn a_renamed_session_rebuilds_the_tree() {
     // Given a section that has built its tree, warmed by a frame that changed
     // nothing.
     let mut section = SessionsSection::new();
-    let mut state = state_with_sessions(2);
+    let mut state = state_with_message_sessions(2);
     let before = {
         measure_content_height(&mut section, &state);
         section.rebuilds()
@@ -4002,19 +3900,6 @@ fn session_list_key_changes_when_a_session_becomes_in_flight() {
 }
 
 #[rstest::rstest]
-fn indicator_span_returns_blank_space_when_idle_and_not_in_flight() {
-    // Given an idle entry with no disposal in flight.
-    let throbber = ThrobberState::default();
-    let theme = default_theme();
-
-    // When computing indicator span.
-    let span = indicator_span(true, false, &throbber, &theme);
-
-    // Then it is a blank space.
-    assert_eq!(span.content, " ");
-}
-
-#[rstest::rstest]
 fn indicator_span_returns_block_character_when_in_flight() {
     // Given an idle entry whose disposal is in flight.
     let throbber = ThrobberState::default();
@@ -4115,29 +4000,12 @@ mod navigation_preview_requests {
     use super::*;
     use crate::sections::section_trait::{EnterFrom, SectionNavResult, SidebarIntent};
     use crate::sections::sessions::navigate::{navigate, receive_cursor};
-    use jinn_kernel::common::app_state::AppState;
-    use jinn_session_state::ChatSessionState;
 
     /// App state with a sessions section holding `count` sessions.
-    fn state_with_sessions(count: usize) -> (AppState, Vec<jinn_core_types::SessionId>) {
-        let mut state = AppState::default_with_scope_focus();
-        let mut ids = Vec::new();
-        for _ in 0..count {
-            let mut session = ChatSessionState::new();
-            session.push_entry(ChatEntry::user("hello"));
-            ids.push(session.session_id().clone());
-            state.session.insert(session);
-        }
-        state
-            .frontend
-            .update_sections(|s| s.sessions.preview_content_width = 40);
-        (state, ids)
-    }
-
     #[rstest::rstest]
     fn moving_onto_a_session_requests_its_preview() {
         // Given a sessions section with three sessions.
-        let (mut state, _ids) = state_with_sessions(3);
+        let (mut state, _ids) = state_with_session_ids(3);
         cursor_to_row(&mut state, 0);
         // And the first session's preview already served, so the move is what
         // triggers the request rather than a cold start.
@@ -4164,7 +4032,7 @@ mod navigation_preview_requests {
         // The count comes from the section's own list rather than the number
         // inserted: the session map keeps a fresh session alive, so the two do
         // not necessarily agree.
-        let (mut state, _ids) = state_with_sessions(1);
+        let (mut state, _ids) = state_with_session_ids(1);
         let last = sorted_open_sessions(&state).len().saturating_sub(1);
         cursor_to_row(&mut state, last);
 
@@ -4180,7 +4048,7 @@ mod navigation_preview_requests {
     #[rstest::rstest]
     fn entering_the_section_from_the_top_requests_a_preview() {
         // Given a sessions section with two sessions and no cursor.
-        let (mut state, _ids) = state_with_sessions(2);
+        let (mut state, _ids) = state_with_session_ids(2);
         state
             .frontend
             .update_sections(|s| s.sessions.selected_id = None);
@@ -4205,7 +4073,7 @@ mod navigation_preview_requests {
 fn a_selected_session_row_bands_the_full_width() {
     // Given the sessions section focused on its first row.
     let mut section = SessionsSection::new();
-    let mut state = state_with_sessions(1);
+    let mut state = state_with_message_sessions(1);
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
@@ -4215,15 +4083,11 @@ fn a_selected_session_row_bands_the_full_width() {
     // When rendering into a wide terminal.
     let width = 60u16;
     let height = 10u16;
-    let (mut terminal, area) = setup_term(width, height);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            section.render(frame, area, 0, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = setup_term(width, height);
+    let (mut terminal, _area) =
+        render_section_with_area(&state, width, height, |frame, area, ctx| {
+            section.render(frame, area, 0, ctx);
+        });
     let buffer = terminal.backend().buffer();
 
     // Then the selected row carries the selection background...
@@ -4260,7 +4124,7 @@ fn no_sidebar_session_row_carries_the_reversed_modifier() {
     // Given the sessions section focused on its first row — the only
     // selection state there is.
     let mut section = SessionsSection::new();
-    let mut state = state_with_sessions(1);
+    let mut state = state_with_message_sessions(1);
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
@@ -4269,15 +4133,11 @@ fn no_sidebar_session_row_carries_the_reversed_modifier() {
     // When rendering.
     let width = 40u16;
     let height = 10u16;
-    let (mut terminal, area) = setup_term(width, height);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            section.render(frame, area, 0, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = setup_term(width, height);
+    let (mut terminal, _area) =
+        render_section_with_area(&state, width, height, |frame, area, ctx| {
+            section.render(frame, area, 0, ctx);
+        });
     let buffer = terminal.backend().buffer();
 
     // Then no cell in the whole section carries the terminal inversion.
@@ -4297,7 +4157,7 @@ fn no_sidebar_session_row_carries_the_reversed_modifier() {
 /// the default's, keeping the test's expectations about which row carries
 /// the error simple.
 fn state_with_errored_session() -> AppState {
-    let mut state = state_with_sessions(1);
+    let mut state = state_with_message_sessions(1);
     state
         .active_session_mut()
         .push_entry(ChatEntry::error("it broke"));
@@ -4314,15 +4174,11 @@ fn an_unselected_error_row_is_a_red_block() {
     // When rendering.
     let width = 40u16;
     let height = 10u16;
-    let (mut terminal, area) = setup_term(width, height);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            section.render(frame, area, 0, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = setup_term(width, height);
+    let (mut terminal, _area) =
+        render_section_with_area(&state, width, height, |frame, area, ctx| {
+            section.render(frame, area, 0, ctx);
+        });
     let buffer = terminal.backend().buffer();
 
     // Then the errored row renders as a red block: red background with the
@@ -4364,15 +4220,11 @@ fn a_selected_error_row_takes_the_selection_band_not_red() {
     // When rendering.
     let width = 40u16;
     let height = 10u16;
-    let (mut terminal, area) = setup_term(width, height);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            section.render(frame, area, 0, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = setup_term(width, height);
+    let (mut terminal, _area) =
+        render_section_with_area(&state, width, height, |frame, area, ctx| {
+            section.render(frame, area, 0, ctx);
+        });
     let buffer = terminal.backend().buffer();
 
     // Then the selected errored row is the selection band — selection

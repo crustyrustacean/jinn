@@ -286,25 +286,29 @@ async fn execute_tool_truncates_large_response_to_orchestrator_limits() {
 #[tokio::test]
 async fn transport_close_publishes_dead_status() {
     // Given an McpActor wired to a stub server we can kill, recording status.
-    let harness = TestHarness::new().await;
-    let status_recorder = harness.spawn_recorder::<McpServerStatus>().await;
-    let session_id = SessionId::new();
+    let (_harness, status_recorder, killer) = {
+        let harness = TestHarness::new().await;
+        let status_recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let session_id = SessionId::new();
 
-    let (client, killer) = spawn_stub_client_with_killer().await;
-    let services = harness.services().await;
-    let _actor_path = McpActor::spawn(
-        &services.trouper_system,
-        McpActorDeps::with_client(
-            ActorDeps {
-                services: services.clone(),
-            },
-            session_id.clone(),
-            SERVER_NAME.to_owned(),
-            stub_config(),
-            client,
-        ),
-    )
-    .await;
+        let (client, killer) = spawn_stub_client_with_killer().await;
+        let services = harness.services().await;
+        let _actor_path = McpActor::spawn(
+            &services.trouper_system,
+            McpActorDeps::with_client(
+                ActorDeps {
+                    services: services.clone(),
+                },
+                session_id.clone(),
+                SERVER_NAME.to_owned(),
+                stub_config(),
+                client,
+            ),
+        )
+        .await;
+
+        (harness, status_recorder, killer)
+    };
 
     // When the actor starts up, the watcher runs a few ticks with the
     // connection alive, and the server's transport then closes (kill -9).
@@ -356,30 +360,34 @@ async fn transport_close_publishes_dead_status() {
 #[tokio::test]
 async fn restarted_actor_has_no_zombie_watcher_from_the_previous_one() {
     // Given a first McpActor that is stopped (simulating the kill-half of restart).
-    let harness = TestHarness::new().await;
-    let status_recorder = harness.spawn_recorder::<McpServerStatus>().await;
-    let session_id = SessionId::new();
+    let (harness, status_recorder, session_id) = {
+        let harness = TestHarness::new().await;
+        let status_recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let session_id = SessionId::new();
 
-    let client = spawn_stub_client().await;
-    let services = harness.services().await;
-    let first = McpActor::spawn(
-        &services.trouper_system,
-        McpActorDeps::with_client(
-            ActorDeps {
-                services: services.clone(),
-            },
-            session_id.clone(),
-            SERVER_NAME.to_owned(),
-            stub_config(),
-            client,
-        ),
-    )
-    .await;
-    let _ = await_recorded(&status_recorder, 2, Duration::from_secs(3)).await;
-    // Stop the first actor — its on_stop kills its watcher.
-    services.trouper_system.stop(&first).await;
-    // Consume the first actor's on_stop Dead so it isn't counted later.
-    let _ = await_recorded(&status_recorder, 1, Duration::from_secs(3)).await;
+        let client = spawn_stub_client().await;
+        let services = harness.services().await;
+        let first = McpActor::spawn(
+            &services.trouper_system,
+            McpActorDeps::with_client(
+                ActorDeps {
+                    services: services.clone(),
+                },
+                session_id.clone(),
+                SERVER_NAME.to_owned(),
+                stub_config(),
+                client,
+            ),
+        )
+        .await;
+        let _ = await_recorded(&status_recorder, 2, Duration::from_secs(3)).await;
+        // Stop the first actor — its on_stop kills its watcher.
+        services.trouper_system.stop(&first).await;
+        // Consume the first actor's on_stop Dead so it isn't counted later.
+        let _ = await_recorded(&status_recorder, 1, Duration::from_secs(3)).await;
+
+        (harness, status_recorder, session_id)
+    };
 
     // When spawning a fresh actor in its place (the spawn-half of restart).
     let client2 = spawn_stub_client().await;
@@ -583,32 +591,36 @@ async fn live_disable_cycle_call_succeeds_before_teardown() {
 async fn disable_cycle_calls_fail_fast_after_teardown() {
     // Given a running McpActor wired to the stub server, its tools registered
     // for the session, and the session marked enabled + Running.
-    let harness = TestHarness::new().await;
-    let _results = harness.spawn_recorder::<ToolExecutionCompleted>().await;
-    let session_id = SessionId::new();
-    let state = jinn_kernel::common::state::State::new(
-        jinn_kernel::common::app_state::AppState::default_with_scope_focus(),
-    );
-    state.write().session.get_or_create(&session_id);
-    state
-        .write()
-        .session
-        .get_mut(&session_id)
-        .expect("session")
-        .enable_mcp_server("stub");
-    let services = harness.services().await;
-    let runtime = crate::activate_runtime(&services.slices);
-    runtime.update(|runtime| {
-        runtime.set_status(&session_id, "stub", McpConnectionStatus::Running);
-    });
-    let (_services, actor) = spawn_actor_against_stub(&harness, &session_id).await;
-    services.trouper_system.stop(&actor).await;
-    state
-        .write()
-        .session
-        .get_mut(&session_id)
-        .expect("session")
-        .disable_mcp_server("stub");
+    let (harness, session_id, _results, _state) = {
+        let harness = TestHarness::new().await;
+        let _results = harness.spawn_recorder::<ToolExecutionCompleted>().await;
+        let session_id = SessionId::new();
+        let state = jinn_kernel::common::state::State::new(
+            jinn_kernel::common::app_state::AppState::default_with_scope_focus(),
+        );
+        state.write().session.get_or_create(&session_id);
+        state
+            .write()
+            .session
+            .get_mut(&session_id)
+            .expect("session")
+            .enable_mcp_server("stub");
+        let services = harness.services().await;
+        let runtime = crate::activate_runtime(&services.slices);
+        runtime.update(|runtime| {
+            runtime.set_status(&session_id, "stub", McpConnectionStatus::Running);
+        });
+        let (_services, actor) = spawn_actor_against_stub(&harness, &session_id).await;
+        services.trouper_system.stop(&actor).await;
+        state
+            .write()
+            .session
+            .get_mut(&session_id)
+            .expect("session")
+            .disable_mcp_server("stub");
+
+        (harness, session_id, _results, state)
+    };
 
     // When calling the echo tool again after teardown (actor stopped, registry
     // pruned, session enablement flipped off — the confirm_mcp ordering).

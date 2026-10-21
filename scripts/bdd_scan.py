@@ -79,13 +79,65 @@ class FileReport:
     multi_assert: int = 0
 
 
+def _raw_string_at(src: str, i: int) -> bool:
+    """True if a raw string literal starts at `src[i]`.
+
+    Handles the `r"..."`, `r#"..."#`, and `br#"..."#` spellings. The `b`
+    (byte-string) prefix may precede the `r`; a bare `b"..."` is an ordinary
+    string and is handled by the normal `"` branch.
+    """
+    j = i
+    if src[j] == "b":
+        j += 1
+    if j >= len(src) or src[j] != "r":
+        return False
+    j += 1
+    if j >= len(src):
+        return False
+    if src[j] == '"':
+        return True
+    if src[j] == "#":
+        # A raw string needs at least one `#` before the quote.
+        k = j
+        while k < len(src) and src[k] == "#":
+            k += 1
+        return k < len(src) and src[k] == '"'
+    return False
+
+
+def _raw_string_end(src: str, i: int) -> int:
+    """Return the index just past the raw string literal starting at `src[i]`."""
+    j = i
+    if src[j] == "b":
+        j += 1
+    j += 1  # the `r`
+    hashes = 0
+    while j < len(src) and src[j] == "#":
+        hashes += 1
+        j += 1
+    # j now points at the opening quote.
+    j += 1
+    terminator = '"' + ("#" * hashes)
+    end = src.find(terminator, j)
+    if end == -1:
+        return len(src)
+    return end + len(terminator)
+
+
 def strip_strings_and_comments(src: str) -> str:
-    """Blank out string/char literals, line comments, and block comments.
+    """Blank out string/char literals, raw strings, and comments.
 
     Line and block structure is preserved exactly, so line N of the result
     still corresponds to line N of the source. Comment text is blanked here;
     the caller re-reads the ORIGINAL lines when it needs `// When`, which is
     why `scan_file` keeps both `raw` and the stripped `code`.
+
+    Raw strings (`r"..."`, `r#"..."#`, `br#"..."#`) are handled as a unit.
+    Without that, a raw string holding JSON -- `r#"{"key":"value"}"#` -- has
+    its braces left in the stripped text while its quotes are treated as the
+    start of an ordinary string literal. The braces then unbalance the
+    brace count, `find_body` walks past the end of the test, and every test
+    in the file is reported against the wrong body.
     """
     out: list[str] = []
     i = 0
@@ -97,6 +149,12 @@ def strip_strings_and_comments(src: str) -> str:
             out.append("\n")
             line += 1
             i += 1
+        elif ch in "rb" and _raw_string_at(src, i):
+            # `r"..."`, `r#"..."#`, `br#"..."#`. Blank the whole literal.
+            end = _raw_string_end(src, i)
+            for k in range(i, end):
+                out.append("\n" if src[k] == "\n" else " ")
+            i = end
         elif ch == "/" and i + 1 < n and src[i + 1] == "/":
             while i < n and src[i] != "\n":
                 out.append(" ")

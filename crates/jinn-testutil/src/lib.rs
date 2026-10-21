@@ -42,6 +42,26 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
 
+/// An empty slice registry, for a test that needs the type but no cells.
+///
+/// The registry is the seam a slice's render path reads its cells through.
+/// A test that exercises a handler rather than a render path needs one to
+/// hand to the handler, and needs it to hold nothing.
+#[must_use]
+pub fn empty_slices() -> jinn_slices::Slices {
+    jinn_slices::Slices::new()
+}
+
+/// An empty route table, for a test that needs the type but no rows.
+///
+/// The table is what a slice's keybinds are looked up in. A test that
+/// exercises a handler directly rather than through a key press needs one
+/// to hand to the handler, and needs it to bind nothing.
+#[must_use]
+pub fn empty_routes() -> jinn_slices::route::KeyRoutes {
+    jinn_slices::route::KeyRoutes::new()
+}
+
 /// Creates a test terminal and full-area rect for the given dimensions.
 ///
 /// # Panics

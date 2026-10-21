@@ -59,8 +59,10 @@ mod tests {
         let slices = jinn_slices::Slices::new();
         jinn_cell_catalog::register_all_cells(&slices);
 
-        // Then the work-time slot resolves to the payload type.
+        // When the work-time slot is resolved.
         let cell = slices.reader::<WorkingTimeState>(&work_time_slot());
+
+        // Then the work-time slot resolves to the payload type.
         assert!(
             cell.is_some(),
             "the catalog must register the work-time slot"
@@ -72,8 +74,10 @@ mod tests {
         // Given a registry the catalog never touched.
         let slices = jinn_slices::Slices::new();
 
-        // Then the work-time slot resolves to nothing.
+        // When the work-time slot is resolved.
         let cell = slices.reader::<WorkingTimeState>(&work_time_slot());
+
+        // Then the work-time slot resolves to nothing.
         assert!(cell.is_none());
     }
 }

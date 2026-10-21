@@ -802,7 +802,9 @@ fn keeping_open_binds_its_own_key_in_the_pickers_own_scope() {
 #[rstest::rstest]
 #[test]
 fn the_footer_advertises_exactly_the_pickers_keys() {
-    // Given the picker's advertised bindings.
+    // Given the picker's route table.
+
+    // When reading its advertised bindings.
     let bindings = crate::saved_picker_routes::SAVED_PICKER_BINDINGS;
 
     // Then they are the confirm, the keep-open attach, and the two ways
@@ -1006,7 +1008,9 @@ fn the_status_line_ignores_the_filter() {
 #[rstest::rstest]
 #[test]
 fn the_picker_binds_its_keys_in_the_hotkey_accent() {
-    // Given the picker's palette under the default theme.
+    // Given the default theme.
+
+    // When building the picker's palette.
     let theme = jinn_theme::default_theme();
     let palette = crate::saved_picker_render::saved_picker_palette(&theme);
 
@@ -1050,7 +1054,9 @@ trigger = "parent-completed"
 #[rstest::rstest]
 #[test]
 fn the_footer_calls_enter_an_attach() {
-    // Given the picker's advertised bindings.
+    // Given the picker's route table.
+
+    // When reading its advertised bindings.
     let bindings = crate::saved_picker_routes::SAVED_PICKER_BINDINGS;
 
     // Then <enter> says "attach": the picker grafts a saved attendant

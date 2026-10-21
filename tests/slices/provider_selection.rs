@@ -241,30 +241,33 @@ async fn model_cache_loaded_restores_the_disk_cache_into_the_cell() {
 #[timeout(Duration::from_secs(20))]
 async fn load_provider_picker_entries_fills_the_picker_from_the_registry() {
     // Given a composed app with a provider registry seeded with one model.
-    let app = composed_app().await;
-    let services = app.services.clone();
-    let registry = jinn_provider_config::ProviderRegistry::from_config(
-        jinn_provider_config::ProvidersConfig {
-            providers: std::collections::BTreeMap::from([(
-                "ollama".to_owned(),
-                jinn_provider_config::ProviderEntry {
-                    model_info: Vec::new(),
-                    backend: "ollama".to_owned(),
-                    models: vec!["llama3".to_owned()],
-                    base_url: None,
-                    api_key_env: None,
-                    requires_key: false,
-                    extra_body: None,
-                    context_length: None,
-                },
-            )]),
-            aliases: vec![],
-            default_provider: None,
-            endpoint_defaults: vec![],
-        },
-    )
-    .expect("registry builds");
-    services.provider_registry.replace(registry);
+    let app = {
+        let app = composed_app().await;
+        let services = app.services.clone();
+        let registry = jinn_provider_config::ProviderRegistry::from_config(
+            jinn_provider_config::ProvidersConfig {
+                providers: std::collections::BTreeMap::from([(
+                    "ollama".to_owned(),
+                    jinn_provider_config::ProviderEntry {
+                        model_info: Vec::new(),
+                        backend: "ollama".to_owned(),
+                        models: vec!["llama3".to_owned()],
+                        base_url: None,
+                        api_key_env: None,
+                        requires_key: false,
+                        extra_body: None,
+                        context_length: None,
+                    },
+                )]),
+                aliases: vec![],
+                default_provider: None,
+                endpoint_defaults: vec![],
+            },
+        )
+        .expect("registry builds");
+        services.provider_registry.replace(registry);
+        app
+    };
 
     // When the picker-open command is delivered to the actor.
     app.services

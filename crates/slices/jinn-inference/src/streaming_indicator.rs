@@ -234,6 +234,7 @@ mod tests {
         reason = "test code"
     )]
     use jinn_kernel::AppState;
+    use jinn_kernel::common::render_test::{render_element, render_element_with_area};
 
     use super::*;
 
@@ -253,22 +254,14 @@ mod tests {
     fn renders_working_label_during_sending_phase() {
         // Given a session in Sending phase — a turn waiting on its tool
         // loop, which is work the user watches.
-        use jinn_testutil::{buffer_row, setup_term};
+        use jinn_testutil::buffer_row;
 
         let mut element = StreamingIndicatorElement::new();
         let mut state = AppState::default();
         state.active_session_mut().begin_sending();
-        let (mut terminal, area) = setup_term(30, 1);
 
-        // When rendering the element.
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-                element.render(frame, area, &ctx);
-            })
-            .unwrap();
+        // When rendering.
+        let terminal = render_element(&mut element, &state, 30, 1);
         let buffer = terminal.backend().buffer().clone();
         let row = buffer_row(&buffer, 0, 30);
 
@@ -282,22 +275,14 @@ mod tests {
     #[rstest::rstest]
     fn renders_streaming_label_during_streaming_phase() {
         // Given a session in Streaming phase.
-        use jinn_testutil::{buffer_row, setup_term};
+        use jinn_testutil::buffer_row;
 
         let mut element = StreamingIndicatorElement::new();
         let mut state = AppState::default();
         state.active_session_mut().begin_streaming();
-        let (mut terminal, area) = setup_term(30, 1);
 
-        // When rendering the element.
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-                element.render(frame, area, &ctx);
-            })
-            .unwrap();
+        // When rendering.
+        let terminal = render_element(&mut element, &state, 30, 1);
         let buffer = terminal.backend().buffer().clone();
         let row = buffer_row(&buffer, 0, 30);
 
@@ -311,21 +296,12 @@ mod tests {
     #[rstest::rstest]
     fn does_not_render_during_idle_phase() {
         // Given a session in Idle phase (default).
-        use jinn_testutil::setup_term;
 
         let mut element = StreamingIndicatorElement::new();
         let state = AppState::default();
-        let (mut terminal, area) = setup_term(30, 1);
 
-        // When rendering the element.
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-                element.render(frame, area, &ctx);
-            })
-            .unwrap();
+        // When rendering.
+        let terminal = render_element(&mut element, &state, 30, 1);
         let buffer = terminal.backend().buffer().clone();
 
         // Then the rendered area is empty (all spaces).
@@ -342,22 +318,14 @@ mod tests {
     fn renders_working_during_sending_phase() {
         // Given a session in the Sending phase — the tool-loop wait, where
         // "working" is what the user watches.
-        use jinn_testutil::{buffer_row, setup_term};
+        use jinn_testutil::buffer_row;
 
         let mut element = StreamingIndicatorElement::new();
         let mut state = AppState::default();
         state.active_session_mut().begin_sending();
-        let (mut terminal, area) = setup_term(30, 1);
 
-        // When rendering the element.
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-                element.render(frame, area, &ctx);
-            })
-            .unwrap();
+        // When rendering.
+        let terminal = render_element(&mut element, &state, 30, 1);
         let buffer = terminal.backend().buffer().clone();
         let row = buffer_row(&buffer, 0, 30);
 
@@ -397,19 +365,11 @@ mod tests {
 
     /// The indicator row rendered on its own, as the string it shows.
     fn render_row(state: &jinn_kernel::AppState, width: u16) -> ratatui::buffer::Buffer {
-        use jinn_kernel::common::ui_element::UiElement;
         use jinn_testutil::setup_term;
 
         let mut element = StreamingIndicatorElement::new();
-        let (mut terminal, area) = setup_term(width, 1);
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
-                element.render(frame, area, &ctx);
-            })
-            .expect("draw the indicator row");
+        let (_terminal, _area) = setup_term(width, 1);
+        let (terminal, _area) = render_element_with_area(&mut element, state, width, 1);
         terminal.backend().buffer().clone()
     }
 
@@ -542,27 +502,20 @@ mod tests {
         // Given a busy attendant session, with the indicator's own animation
         // state carrying across frames — a spinner rebuilt from a fresh state
         // each frame would sit at index 0 forever and pass a text-only assertion.
-        use jinn_kernel::common::ui_element::UiElement;
+
         use jinn_testutil::setup_term;
 
         let mut state = state_with_origin(SessionOrigin::Attendant);
         state.active_session_mut().begin_streaming();
         let mut element = StreamingIndicatorElement::new();
-        let (mut terminal, area) = setup_term(40, 1);
+        let (_terminal, _area) = setup_term(40, 1);
 
         // When the indicator row is rendered twice, an animation interval apart.
         let glyphs = std::iter::repeat_with(|| {
             // wall-clock-under-test: the animation interval is the subject —
             // the test renders the indicator one spinner tick apart.
             std::thread::sleep(jinn_slices::SPINNER_INTERVAL + std::time::Duration::from_millis(5));
-            terminal
-                .draw(|frame| {
-                    let slices = jinn_slices::Slices::new();
-                    let overlay_views = jinn_slices::OverlayViews::new();
-                    let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-                    element.render(frame, area, &ctx);
-                })
-                .expect("draw the indicator row");
+            let (terminal, _area) = render_element_with_area(&mut element, &state, 40, 1);
             let buffer = terminal.backend().buffer().clone();
             buffer.cell((0, 0)).expect("a cell").symbol().to_owned()
         })

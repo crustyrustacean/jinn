@@ -671,6 +671,7 @@ fn definition_requires_both_arguments_and_names_the_tool() {
     // Given the tool definition.
     let def = definition();
 
+    // When its parameters are read.
     // Then it is named tell_session with both parameters required.
     assert_eq!(def.name, "tell_session");
     let required = def.parameters["required"].as_array().expect("required");

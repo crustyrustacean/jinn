@@ -19,7 +19,6 @@
 
 use jinn_chat_input::element::ChatInputBoxElement;
 use jinn_kernel::AppState;
-use jinn_kernel::RenderCtx;
 use jinn_kernel::common::ui_element::UiElement;
 use jinn_kernel::common::ui_registry::UiRegistry;
 use jinn_kernel::protocol::ChatEntry;
@@ -30,7 +29,7 @@ use jinn_turn_dispatch_msg::QueueItem;
 use jinn_kernel::IntentHandler;
 use jinn_kernel::protocol::KernelIntent;
 use jinn_kernel::state::frontend_state::PendingSessionCreation;
-use jinn_testutil::setup_term;
+use jinn_testutil::{empty_routes, empty_slices, setup_term};
 use ratatui::layout::Position;
 
 #[rstest::rstest]
@@ -55,17 +54,8 @@ fn render_draws_input_buffer() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 3);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box.
+    let terminal = render_element(&mut element, &state, 40, 3);
 
     // Then the buffer contains the ">" prompt character.
     let buffer = terminal.backend().buffer().clone();
@@ -84,17 +74,8 @@ fn render_input_mode_yellow_prompt() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 3);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in Input mode.
+    let terminal = render_element(&mut element, &state, 40, 3);
 
     // Then the ">" prompt is yellow.
     let buffer = terminal.backend().buffer().clone();
@@ -110,17 +91,8 @@ fn render_input_mode_yellow_border() {
     let state = AppState::default_with_scope_focus();
     state.frontend.scope_push(FocusScope::Input);
 
-    let (mut terminal, area) = setup_term(40, 3);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in Input mode.
+    let terminal = render_element(&mut element, &state, 40, 3);
 
     // Then the bottom border is yellow (sample a cell away from the badge at x=1).
     let buffer = terminal.backend().buffer().clone();
@@ -139,17 +111,8 @@ fn render_input_mode_cursor_at_end_of_text() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 3);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in Input mode.
+    let mut terminal = render_element(&mut element, &state, 40, 3);
 
     // Then cursor is at position (5, 0): inner.x=0 + "> "=2 + "abc"=3.
     terminal
@@ -170,17 +133,8 @@ fn render_cursor_at_mid_buffer() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 3);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in Input mode.
+    let mut terminal = render_element(&mut element, &state, 40, 3);
 
     // Then cursor is at position (3, 0): inner.x=0 + "> "=2 + cursor_pos=1.
     terminal
@@ -200,17 +154,8 @@ fn render_cursor_at_home() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 3);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in Input mode.
+    let mut terminal = render_element(&mut element, &state, 40, 3);
 
     // Then cursor is at position (2, 0): inner.x=0 + "> "=2 + cursor_pos=0.
     terminal
@@ -228,17 +173,8 @@ fn multiline_first_line_has_prefix() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 5);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box.
+    let terminal = render_element(&mut element, &state, 40, 5);
 
     // Then the first row is prefixed with "> " and reads "hello".
     let buffer = terminal.backend().buffer().clone();
@@ -258,17 +194,8 @@ fn multiline_second_line_has_indent() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 5);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box.
+    let terminal = render_element(&mut element, &state, 40, 5);
 
     // Then the second row is indented and reads "world".
     let buffer = terminal.backend().buffer().clone();
@@ -289,17 +216,8 @@ fn render_multiline_cursor_on_second_line() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 5);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in Input mode.
+    let mut terminal = render_element(&mut element, &state, 40, 5);
 
     // Then cursor is at position (4, 1): row 1, col 2.
     // inner.x=0, indent=2, col=2 → x=4, y=inner.y + 1 = 0 + 1 = 1.
@@ -324,17 +242,8 @@ fn render_multiline_cursor_between_newlines() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 5);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in Input mode.
+    let mut terminal = render_element(&mut element, &state, 40, 5);
 
     // Then cursor is on row 1 (empty middle line), col 0.
     // inner.y=0, row=1 → y=1, indent=2, col=0 → x=2.
@@ -355,17 +264,8 @@ fn render_wraps_long_text() {
         s
     };
 
-    let (mut terminal, area) = setup_term(10, 5);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in a narrow terminal.
+    let terminal = render_element(&mut element, &state, 10, 5);
 
     // Then the text is rendered across multiple visual lines.
     let buffer = terminal.backend().buffer().clone();
@@ -389,17 +289,8 @@ fn render_cursor_on_wrapped_continuation() {
         s
     };
 
-    let (mut terminal, area) = setup_term(10, 5);
-
-    // When rendering (cursor is at end, which is on the wrapped continuation line).
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in a narrow terminal.
+    let mut terminal = render_element(&mut element, &state, 10, 5);
 
     // Then cursor is on row 1 (the continuation line).
     let _buffer = terminal.backend().buffer().clone();
@@ -427,17 +318,8 @@ fn indicator_shows_up_arrow_when_lines_hidden_above() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 4);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the scrolled input box.
+    let terminal = render_element(&mut element, &state, 40, 4);
 
     // Then the up arrow indicator appears on the top-right.
     // "↑ 2" = 3 display cols, right-aligned on row 0 at x = 40 - 3 = 37.
@@ -465,17 +347,8 @@ fn indicator_shows_down_arrow_when_lines_hidden_below() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 4);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the scrolled input box.
+    let terminal = render_element(&mut element, &state, 40, 4);
 
     // Then the down arrow indicator appears on the bottom-right of the inner area.
     // inner area: rows 0..2 (3 rows), bottom row is y=2.
@@ -505,17 +378,8 @@ fn indicator_shows_both_arrows_when_viewport_in_middle() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 4);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the scrolled input box.
+    let terminal = render_element(&mut element, &state, 40, 4);
 
     // Then both indicators appear.
     let buffer = terminal.backend().buffer().clone();
@@ -542,17 +406,8 @@ fn no_indicators_when_content_fits() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 3);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box.
+    let terminal = render_element(&mut element, &state, 40, 3);
 
     // Then no arrow indicators appear on the right edge.
     let buffer = terminal.backend().buffer().clone();
@@ -573,17 +428,8 @@ fn render_cursor_after_cjk() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 3);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in Input mode.
+    let mut terminal = render_element(&mut element, &state, 40, 3);
 
     // Then cursor is at position (6, 0): inner.x=0 + "> "=2 + "中文"=4 display cols.
     terminal
@@ -602,17 +448,8 @@ fn render_cursor_after_emoji() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 3);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in Input mode.
+    let mut terminal = render_element(&mut element, &state, 40, 3);
 
     // Then cursor is at position (6, 0): inner.x=0 + "> "=2 + "🎉🎉"=4 display cols.
     terminal
@@ -633,17 +470,8 @@ fn render_cursor_mixed_ascii_cjk() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 3);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in Input mode.
+    let mut terminal = render_element(&mut element, &state, 40, 3);
 
     // Then cursor is at position (5, 0): inner.x=0 + "> "=2 + "a"=1 + "中"=2 = 5.
     terminal
@@ -663,17 +491,8 @@ fn render_queue_badge_in_queue_mode() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 3);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in Queue mode.
+    let terminal = render_element(&mut element, &state, 40, 3);
 
     // Then the bottom border shows [Q:QUEUE] starting at x=2 (aligned with the cursor
     // column), exposing the `─` border line in columns 0 and 1. The leading `Q` is the
@@ -708,17 +527,8 @@ fn render_steer_badge_in_steer_mode() {
     let mut element = ChatInputBoxElement;
     let state = AppState::default_with_scope_focus();
 
-    let (mut terminal, area) = setup_term(40, 3);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in Steer mode.
+    let terminal = render_element(&mut element, &state, 40, 3);
 
     // Then the bottom border shows [Q:STEER] starting at x=2 (aligned with the cursor
     // column), exposing the `─` border line in columns 0 and 1. The leading `Q` is the
@@ -762,17 +572,8 @@ fn render_steer_badge_shows_buffer_count_when_nonzero() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 3);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in Steer mode.
+    let terminal = render_element(&mut element, &state, 40, 3);
 
     // Then the badge shows [Q:STEER · 2] (13 display cells), starting at x=2
     // (aligned with the cursor column), exposing the `─` border line in columns 0 and 1.
@@ -819,17 +620,8 @@ fn render_queue_badge_shows_queue_count_when_nonzero() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 3);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in Queue mode.
+    let terminal = render_element(&mut element, &state, 40, 3);
 
     // Then the badge shows [Q:QUEUE · 2] (13 display cells), starting at x=2
     // (aligned with the cursor column). The `Q` is accent_action (orange);
@@ -864,17 +656,8 @@ fn render_queue_badge_no_count_when_buffer_empty() {
     let mut element = ChatInputBoxElement;
     let state = AppState::default_with_scope_focus();
 
-    let (mut terminal, area) = setup_term(40, 3);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box.
+    let terminal = render_element(&mut element, &state, 40, 3);
 
     // Then the badge shows [Q:QUEUE] (9 display cells), starting at x=2
     // (aligned with the cursor column), exposing the `─` border line in columns 0, 1,
@@ -905,17 +688,8 @@ fn steer_badge_is_muted_in_normal_mode() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 3);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in Normal scope.
+    let terminal = render_element(&mut element, &state, 40, 3);
 
     // Then all badge spans use muted_text — the badge is purely informational
     // when the input box is unfocused.
@@ -950,17 +724,8 @@ fn queue_badge_is_muted_in_normal_mode() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 3);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in Normal scope.
+    let terminal = render_element(&mut element, &state, 40, 3);
 
     // Then all badge spans use muted_text.
     let buffer = terminal.backend().buffer().clone();
@@ -991,17 +756,8 @@ fn steer_badge_count_is_muted_in_normal_mode() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 3);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in Normal scope.
+    let terminal = render_element(&mut element, &state, 40, 3);
 
     // Then all badge spans including the count use muted_text.
     let buffer = terminal.backend().buffer().clone();
@@ -1033,17 +789,8 @@ fn queue_badge_count_is_muted_in_normal_mode() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 3);
-
-    // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering the input box in Normal scope.
+    let terminal = render_element(&mut element, &state, 40, 3);
 
     // Then all badge spans including the count use muted_text.
     let buffer = terminal.backend().buffer().clone();
@@ -1066,14 +813,6 @@ use jinn_session_msg::PhaseKind;
 
 /// Empty slice registry + route table for handler tests that don't
 /// exercise slices or route rows.
-fn empty_slices() -> jinn_slices::Slices {
-    jinn_slices::Slices::new()
-}
-
-fn empty_routes() -> jinn_slices::route::KeyRoutes {
-    jinn_slices::route::KeyRoutes::new()
-}
-
 #[rstest::rstest]
 fn insert_char_appends_to_buffer() {
     // Given a default AppState.
@@ -2200,7 +1939,7 @@ fn slash_autocomplete_tab_completes_name() {
 
 #[rstest::rstest]
 fn slash_autocomplete_tab_confirm_emits_no_commands() {
-    // Given a state with slash autocomplete active.
+    // Given a state with slash autocomplete active ("/" typed, popup showing "new").
     let mut state = AppState::default_with_scope_focus();
     jinn_chat_input::intent::handle_insert_char('/', &mut state);
 
@@ -2625,19 +2364,6 @@ fn tab_completes_name_without_executing() {
         old_id,
         "session should not change on Tab confirm"
     );
-}
-
-#[rstest::rstest]
-fn tab_confirm_slash_emits_no_commands() {
-    // Given a state with slash autocomplete active ("/" typed, popup showing "new").
-    let mut state = AppState::default_with_scope_focus();
-    jinn_chat_input::intent::handle_insert_char('/', &mut state);
-
-    // When confirming autocomplete (Tab).
-    let result = jinn_chat_input::intent::handle_autocomplete_confirm(&mut state);
-
-    // Then no commands are emitted.
-    assert!(result.message_names.is_empty());
 }
 
 #[rstest::rstest]
@@ -3287,7 +3013,6 @@ fn file_picker_entries(state: &AppState) -> Vec<FileEntry> {
         .unwrap_or_default()
 }
 
-/// Activates the `@` popup at the cursor and optionally seeds
 // the file-picker cell with a listing. Returns the AppState for chaining.
 fn at_popup_with_entries(entries: Vec<FileEntry>) -> AppState {
     let mut state = AppState::default_with_scope_focus();
@@ -3297,7 +3022,6 @@ fn at_popup_with_entries(entries: Vec<FileEntry>) -> AppState {
     state
 }
 
-/// Activates the `@` popup with a seeded listing and positions the cursor
 // at the end of the given `filter` text (typed after the `@`).
 fn at_popup_with_filter_and_entries(filter: &str, entries: Vec<FileEntry>) -> AppState {
     let mut state = AppState::default_with_scope_focus();
@@ -4796,6 +4520,7 @@ use jinn_kernel::common::state::State;
 use jinn_testutil::bus_harness::TestHarness;
 
 use jinn_chat_input::directory_lister_actor::{DirectoryListerActor, DirectoryListerActorDeps};
+use jinn_kernel::common::render_test::render_element;
 
 // ── DirectoryListerActor (spawned harness) ─────────────────────────────────
 
@@ -5239,36 +4964,39 @@ fn a_submission_emits_exactly_the_interaction_mark_and_the_enqueue() {
 async fn seed_mode_submission_leaves_the_entry_pinned_in_the_session() {
     // Given a seed-mode attendant as the active session, with the
     // session-turn actor live on that same state so the push lands.
-    let (harness, state, deps) = create_harness().await;
-    let session_id = {
-        let mut guard = state.write();
-        let parent = jinn_session_state::ChatSessionState::new();
-        let attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
-        // Inserted under its own id and made active: writing through
-        // `active_session_mut` would leave the map keyed by the old id
-        // while the session carried a new one.
-        let id = attendant.session_id().clone();
-        guard.session.insert(attendant);
-        guard.session.set_active(id.clone());
-        id
+    let (harness, state, session_id) = {
+        let (harness, state, deps) = create_harness().await;
+        let session_id = {
+            let mut guard = state.write();
+            let parent = jinn_session_state::ChatSessionState::new();
+            let attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
+            // Inserted under its own id and made active: writing through
+            // `active_session_mut` would leave the map keyed by the old id
+            // while the session carried a new one.
+            let id = attendant.session_id().clone();
+            guard.session.insert(attendant);
+            guard.session.set_active(id.clone());
+            id
+        };
+        // The context-assembly service answers the queue actor's assemble ask;
+        // the handle is dropped here, but the service stays spawned.
+        let system = deps.services.trouper_system.clone();
+        drop(jinn_context_assembly::service::ensure_spawned(&system));
+        jinn_session_turn::activate(
+            &system,
+            jinn_session_turn::session_actor::SessionPersistenceActorDeps {
+                deps,
+                state: state.clone(),
+                counter: jinn_llm_support::token_estimator::TiktokenCounter::o200k_base(),
+                token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
+                image_converter: jinn_llm_support::image_convert::ImageConverterService::system(),
+            },
+        );
+        state
+            .write()
+            .update_active_input(|i| i.insert_text("judge this repo"));
+        (harness, state, session_id)
     };
-    // The context-assembly service answers the queue actor's assemble ask;
-    // the handle is dropped here, but the service stays spawned.
-    let system = deps.services.trouper_system.clone();
-    drop(jinn_context_assembly::service::ensure_spawned(&system));
-    jinn_session_turn::activate(
-        &system,
-        jinn_session_turn::session_actor::SessionPersistenceActorDeps {
-            deps,
-            state: state.clone(),
-            counter: jinn_llm_support::token_estimator::TiktokenCounter::o200k_base(),
-            token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
-            image_converter: jinn_llm_support::image_convert::ImageConverterService::system(),
-        },
-    );
-    state
-        .write()
-        .update_active_input(|i| i.insert_text("judge this repo"));
 
     // When the message is submitted and the emitted messages are published
     // the way the bridge publishes them.

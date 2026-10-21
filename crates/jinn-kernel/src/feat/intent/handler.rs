@@ -401,14 +401,10 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+    use crate::common::render_test::seed_cell;
+    use jinn_testutil::{empty_routes, empty_slices};
 
     use jinn_status_bar_msg::{StatusBarState, status_bar_slot};
-
-    /// Empty slice registry + route table for handler tests that don't
-    /// exercise slices or route rows.
-    fn empty_routes() -> jinn_slices::route::KeyRoutes {
-        jinn_slices::route::KeyRoutes::new()
-    }
 
     fn activate_child_route(child_id: jinn_core_types::SessionId) -> jinn_slices::route::KeyRoutes {
         use jinn_slices::route::{ActionFn, BindSite, RouteId, RouteOutcome, RouteRow};
@@ -543,23 +539,11 @@ mod tests {
         (routes, intent)
     }
 
-    fn empty_slices() -> jinn_slices::Slices {
-        jinn_slices::Slices::new()
-    }
-
     /// `Slices` with the status-bar cell registered (as the slice's
     /// `activate` does), for hint write/read assertions.
     fn status_bar_slices() -> jinn_slices::Slices {
         let slices = jinn_slices::Slices::new();
-        #[expect(
-            clippy::expect_used,
-            reason = "test seam: a fresh Slices never has the status-bar cell registered"
-        )]
-        {
-            slices
-                .register(status_bar_slot(), StatusBarState::default())
-                .expect("fresh Slices never has the status-bar cell registered");
-        }
+        let _cell = seed_cell(&slices, &status_bar_slot(), StatusBarState::default());
         slices
     }
 

@@ -244,13 +244,20 @@ fn draw_frame(wired: &Wired, area: ratatui::layout::Rect) -> Vec<String> {
 #[rstest::rstest]
 #[tokio::test]
 async fn opening_the_picker_lists_every_effort_variant() {
-    // Given a wired slice.
+    // Given a wired slice whose model carries no reasoning metadata at all.
     let wired = Wired::new().await;
 
     // When the picker is opened.
     wired.open();
 
-    // Then its rows name all seven efforts in declaration order.
+    // Then it still opens and offers the full set of efforts, in
+    // declaration order.
+    //
+    // Pinned deliberately: the picker is ungated by design. Effort is sent
+    // verbatim and a provider that rejects an unsupported value errors at
+    // request time, so a model-capability gate here would have to consult
+    // discovery data the picker never reads. Any future gate must change this
+    // test deliberately rather than by accident.
     assert_eq!(
         wired.visible_names(),
         vec!["max", "xhigh", "high", "medium", "low", "minimal", "none"]
@@ -321,28 +328,6 @@ async fn opening_the_picker_pushes_its_own_scope() {
     assert_eq!(
         state.frontend.scope(),
         jinn_kernel::FocusScope::Dynamic(reasoning_picker_scope())
-    );
-}
-
-#[rstest::rstest]
-#[tokio::test]
-async fn opening_the_picker_is_not_gated_on_the_models_reasoning_support() {
-    // Given a session whose model carries no reasoning metadata at all.
-    let wired = Wired::new().await;
-
-    // When the picker is opened.
-    wired.open();
-
-    // Then it still opens and offers the full set of efforts.
-    //
-    // Pinned deliberately: the picker is ungated by design. Effort is sent
-    // verbatim and a provider that rejects an unsupported value errors at
-    // request time, so a model-capability gate here would have to consult
-    // discovery data the picker never reads. Any future gate must change this
-    // test deliberately rather than by accident.
-    assert_eq!(
-        wired.visible_names(),
-        vec!["max", "xhigh", "high", "medium", "low", "minimal", "none"]
     );
 }
 

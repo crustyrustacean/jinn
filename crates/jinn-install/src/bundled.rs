@@ -214,6 +214,8 @@ mod tests {
     #[test]
     fn embedded_tree_is_non_empty_and_kind_covered() {
         // Given the embedded catalogue.
+
+        // When deriving the catalogue.
         let catalogue = bundled_catalogue().expect("derive catalogue");
 
         // Then it carries every kind with at least one file, so a missing
@@ -236,6 +238,8 @@ mod tests {
     #[test]
     fn catalogue_is_ordered_by_kind_then_path() {
         // Given the derived catalogue.
+
+        // When deriving the catalogue.
         let catalogue = bundled_catalogue().expect("derive catalogue");
 
         // Then its (kind, path) pairs are non-decreasing.
@@ -318,8 +322,7 @@ mod tests {
             .filter(|b| b.kind == Kind::Skill && b.relative.ends_with("mcp-servers.md"))
             .collect::<Vec<_>>();
 
-        // Then the reference ships, and it carries no transport-restricted
-        // singleton claim anywhere in its text.
+        // When reading the shipped reference text.
         let reference = skills
             .iter()
             .find_map(|b| {
@@ -328,6 +331,9 @@ mod tests {
                     .map(|f| String::from_utf8_lossy(f.contents()).into_owned())
             })
             .expect("mcp-servers.md ships as a bundled skill reference");
+
+        // Then the reference ships, and it carries no transport-restricted
+        // singleton claim anywhere in its text.
         assert!(
             !reference.contains("only applies for `local_http`"),
             "stale singleton claim reintroduced into mcp-servers.md"

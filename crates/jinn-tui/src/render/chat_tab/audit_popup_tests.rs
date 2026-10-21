@@ -29,7 +29,7 @@ mod tests {
     //! Together they pin the contract that the popup paints at the computed
     //! rect with the expected text and is registered as a selectable region.
     use jinn_chat_log_view::chat_log::AUDIT_POPUP_WIDTH;
-    use jinn_kernel::RenderCtx;
+    use jinn_kernel::common::render_test::render_draw_with_ctx;
     use jinn_kernel::protocol::{ChangeSource, ChatEntry, ContextOverride};
     use jinn_slices::FocusScope;
     use jinn_testutil::setup_term;
@@ -84,7 +84,7 @@ mod tests {
     /// chat-log area.
     async fn render_popup_buffer() -> (ratatui::buffer::Buffer, Rect, Vec<Rect>) {
         let app = app_with_audit_visible().await;
-        let (mut terminal, _area) = setup_term(100, 24);
+        let (_terminal, _area) = setup_term(100, 24);
 
         {
             let mut wstate = app.core.state.write();
@@ -98,17 +98,18 @@ mod tests {
         let chat_log_area = Rect::new(30, 0, 70, 24);
 
         let mut rects: Vec<Rect> = Vec::new();
-        terminal
-            .draw(|frame| {
-                let guard = app.core.state.read();
-                // The app's own registry, not a throwaway one: the popup's
-                // visibility is a chat-log cell, and an empty registry
-                // would read as hidden and make these tests vacuous.
-                let views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new_with_default_config(&guard, &app.services.slices, &views);
-                render_audit_popup(frame, chat_log_area, &ctx, &mut rects);
-            })
-            .unwrap();
+        let terminal = render_draw_with_ctx(
+            &app.core.state.read(),
+            // The app's own registry, not a throwaway one: the popup's
+            // visibility is a chat-log cell, and an empty registry
+            // would read as hidden and make these tests vacuous.
+            &app.services.slices,
+            100,
+            24,
+            |frame, _area, ctx| {
+                render_audit_popup(frame, chat_log_area, ctx, &mut rects);
+            },
+        );
 
         (terminal.backend().buffer().clone(), chat_log_area, rects)
     }

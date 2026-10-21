@@ -2097,8 +2097,10 @@ fn visible_entry_range_uses_rendered_scroll_offset_not_scroll_offset() {
     session.set_viewport_height(5);
     session.set_blank_count(0);
 
-    // Stale scroll_offset: None (auto-scroll → bottom = offset 5).
-    // Actual rendered position: offset 2 (viewport showing entries 1-3).
+    // The user's intent is the top of the list (offset 0), but the viewport
+    // actually sits at offset 2. A regression that read `scroll_offset`
+    // would answer 0..3 instead of 1..4.
+    session.set_scroll_offset(Some(0));
     session.set_rendered_scroll_offset(2);
 
     // When computing visible range.
@@ -4041,6 +4043,7 @@ fn force_exclude_leaves_ignored_blocks_untouched_when_nothing_is_dangling() {
 #[rstest::rstest]
 #[test]
 fn force_exclude_no_tool_calls_is_noop() {
+    // Given a history with no tool calls.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
     session.push_entry(ChatEntry::assistant("hi"));
@@ -6047,26 +6050,29 @@ fn reset_streaming_entries_for_retry_keeps_a_discarded_attempt_from_collapsing_a
     // Given a streaming session whose stalled attempt produced an assistant
     // entry, a thinking entry, and a tool call — three entries, which is
     // exactly the block size the chat log collapses by default.
-    let mut session = streaming_session();
-    session
-        .append_stream_token("Partial", dispatched_at())
-        .expect("append token");
-    session.begin_thinking(dispatched_at());
-    session
-        .append_thinking_token("thinking")
-        .expect("append thinking token");
-    session.finish_thinking_entry(session.streaming_thinking_entry_index().unwrap());
-    let tool_call_history_len = session.history().len();
-    session.begin_tool_call(
-        tool_call_history_len,
-        &jinn_core_types::ToolCallId::from("call_1"),
-        "read",
-        dispatched_at(),
-    );
-    let excluded_ids = session
-        .reset_streaming_entries_for_retry()
-        .into_iter()
-        .collect::<std::collections::HashSet<_>>();
+    let (mut session, excluded_ids) = {
+        let mut session = streaming_session();
+        session
+            .append_stream_token("Partial", dispatched_at())
+            .expect("append token");
+        session.begin_thinking(dispatched_at());
+        session
+            .append_thinking_token("thinking")
+            .expect("append thinking token");
+        session.finish_thinking_entry(session.streaming_thinking_entry_index().unwrap());
+        let tool_call_history_len = session.history().len();
+        session.begin_tool_call(
+            tool_call_history_len,
+            &jinn_core_types::ToolCallId::from("call_1"),
+            "read",
+            dispatched_at(),
+        );
+        let excluded_ids = session
+            .reset_streaming_entries_for_retry()
+            .into_iter()
+            .collect::<std::collections::HashSet<_>>();
+        (session, excluded_ids)
+    };
     assert!(
         excluded_ids.len() >= 3,
         "expected assistant+thinking+tool call to be excluded, got {}",
@@ -7421,6 +7427,8 @@ fn reasoning_beside_a_retained_call_is_still_excluded_on_retry() {
     // Given a session that thought, then made a call the rule interrupted.
     let mut session = streaming_tool_call_session("tc_1", "bash");
     session.explain_interrupted_tool_calls();
+
+    // When the attempt is prepared for retry.
     session.reset_streaming_entries_for_retry();
 
     // Then an empty assistant host is retained but adds nothing: the call is

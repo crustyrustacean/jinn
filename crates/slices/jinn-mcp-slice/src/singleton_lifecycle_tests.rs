@@ -114,10 +114,13 @@ fn spawns_in(events: &[McpServerStatus]) -> usize {
 #[tokio::test]
 async fn singleton_server_spawns_once_across_two_sessions() {
     // Given a coordinator with one singleton-configured server.
-    let harness = TestHarness::new().await;
-    let recorder = harness.spawn_recorder::<McpServerStatus>().await;
-    let (actor, _services, _state) =
-        spawn_lifecycle(&harness, &[("bundled-example", unrunnable_singleton())]).await;
+    let (harness, recorder, actor) = {
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (actor, _services, _state) =
+            spawn_lifecycle(&harness, &[("bundled-example", unrunnable_singleton())]).await;
+        (harness, recorder, actor)
+    };
 
     // When two different sessions both enable it.
     let first = SessionId::new();
@@ -185,17 +188,20 @@ async fn singleton_server_spawns_once_across_two_sessions() {
 #[tokio::test]
 async fn singleton_server_survives_closing_every_session() {
     // Given a coordinator whose singleton server was spawned by session A.
-    let harness = TestHarness::new().await;
-    let recorder = harness.spawn_recorder::<McpServerStatus>().await;
-    let (actor, _services, _state) =
-        spawn_lifecycle(&harness, &[("bundled-example", unrunnable_singleton())]).await;
-    let session_a = SessionId::new();
-    harness
-        .publish(jinn_mcp_msg::McpEnablementChanged {
-            session_id: session_a.clone(),
-            enabled: single_enabled("bundled-example"),
-        })
-        .await;
+    let (harness, recorder, actor, session_a) = {
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (actor, _services, _state) =
+            spawn_lifecycle(&harness, &[("bundled-example", unrunnable_singleton())]).await;
+        let session_a = SessionId::new();
+        harness
+            .publish(jinn_mcp_msg::McpEnablementChanged {
+                session_id: session_a.clone(),
+                enabled: single_enabled("bundled-example"),
+            })
+            .await;
+        (harness, recorder, actor, session_a)
+    };
     // The coordinator must have processed the enablement, and no further
     // status event may still be coming — the assertion below counts the
     // spawns, so a count read while events are still arriving is not the
@@ -282,17 +288,20 @@ async fn singleton_server_survives_closing_every_session() {
 #[tokio::test]
 async fn singleton_server_survives_teardown_finished() {
     // Given a coordinator whose singleton server was spawned by a session.
-    let harness = TestHarness::new().await;
-    let recorder = harness.spawn_recorder::<McpServerStatus>().await;
-    let (actor, _services, _state) =
-        spawn_lifecycle(&harness, &[("bundled-example", unrunnable_singleton())]).await;
-    let session_a = SessionId::new();
-    harness
-        .publish(jinn_mcp_msg::McpEnablementChanged {
-            session_id: session_a.clone(),
-            enabled: single_enabled("bundled-example"),
-        })
-        .await;
+    let (harness, recorder, actor, session_a) = {
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (actor, _services, _state) =
+            spawn_lifecycle(&harness, &[("bundled-example", unrunnable_singleton())]).await;
+        let session_a = SessionId::new();
+        harness
+            .publish(jinn_mcp_msg::McpEnablementChanged {
+                session_id: session_a.clone(),
+                enabled: single_enabled("bundled-example"),
+            })
+            .await;
+        (harness, recorder, actor, session_a)
+    };
     // The coordinator must have processed the enablement, and no further
     // status event may still be coming — the assertion below counts the
     // spawns, so a count read while events are still arriving is not the
@@ -404,10 +413,13 @@ async fn singleton_server_is_spawned_on_session_load_completed() {
 #[tokio::test]
 async fn per_session_server_still_spawns_per_session() {
     // Given a coordinator with a NON-singleton server.
-    let harness = TestHarness::new().await;
-    let recorder = harness.spawn_recorder::<McpServerStatus>().await;
-    let (actor, _services, _state) =
-        spawn_lifecycle(&harness, &[("excalimate", unrunnable_per_session())]).await;
+    let (harness, recorder, actor) = {
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (actor, _services, _state) =
+            spawn_lifecycle(&harness, &[("excalimate", unrunnable_per_session())]).await;
+        (harness, recorder, actor)
+    };
 
     // When two sessions enable it.
     let first = SessionId::new();
@@ -516,17 +528,20 @@ async fn singleton_spawn_is_visible_in_runtime_status_for_any_session() {
 #[tokio::test]
 async fn restarting_a_singleton_respawns_it_by_name() {
     // Given a coordinator whose singleton spawned via a session.
-    let harness = TestHarness::new().await;
-    let recorder = harness.spawn_recorder::<McpServerStatus>().await;
-    let (actor, services, _state) =
-        spawn_lifecycle(&harness, &[("bundled-example", unrunnable_singleton())]).await;
-    let session_a = SessionId::new();
-    harness
-        .publish(jinn_mcp_msg::McpEnablementChanged {
-            session_id: session_a.clone(),
-            enabled: single_enabled("bundled-example"),
-        })
-        .await;
+    let (harness, recorder, actor, services, session_a) = {
+        let harness = TestHarness::new().await;
+        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+        let (actor, services, _state) =
+            spawn_lifecycle(&harness, &[("bundled-example", unrunnable_singleton())]).await;
+        let session_a = SessionId::new();
+        harness
+            .publish(jinn_mcp_msg::McpEnablementChanged {
+                session_id: session_a.clone(),
+                enabled: single_enabled("bundled-example"),
+            })
+            .await;
+        (harness, recorder, actor, services, session_a)
+    };
     // The coordinator must have processed the enablement, and no further
     // status event may still be coming — the assertion below counts the
     // spawns, so a count read while events are still arriving is not the

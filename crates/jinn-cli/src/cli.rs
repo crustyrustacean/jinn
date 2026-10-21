@@ -429,6 +429,8 @@ mod tests {
         // Given --db-path and a session-store command. The value is never
         // read, only presence — a relative name keeps the test portable.
         let cli = Cli::parse_from(["jinn", "--db-path", "test-session-store.db", "tui"]);
+
+        // When the debug guard is run.
         let result = cli.debug_db_path_required();
 
         // Then the guard passes.

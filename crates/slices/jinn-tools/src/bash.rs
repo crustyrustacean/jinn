@@ -702,43 +702,46 @@ mod tests {
         // under `/var` on macOS is physically `/private/var` (a symlink).
         // Without the canonical form the two spellings differ and the
         // assertion fails on every macOS host.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let canonical = jinn_common::fs_paths::canonicalize_display(dir.path())
-            .expect("canonicalize temp dir")
-            .to_string_lossy()
-            .into_owned();
-        #[cfg(windows)]
-        let (pwd_command, expected_cwd) = ("pwd -W", canonical.replace('\\', "/"));
-        #[cfg(not(windows))]
-        let (pwd_command, expected_cwd) = ("pwd", canonical);
-        let ctx = ToolContext {
-            cwd: dir.path().to_owned(),
-            config: jinn_config::testutil::config_layer(""),
-            shells: Default::default(),
-            timeout: None,
-            state: None,
-            session_id: None,
-            app_paths: jinn_kernel::common::app_paths::AppPaths::default(),
-            bus: None,
-            max_output_lines: None,
-            max_output_bytes: None,
+        let (ctx, call, expected_cwd, _dir) = {
+            let dir = jinn_testutil::tempdir().expect("create temp dir");
+            let canonical = jinn_common::fs_paths::canonicalize_display(dir.path())
+                .expect("canonicalize temp dir")
+                .to_string_lossy()
+                .into_owned();
+            #[cfg(windows)]
+            let (pwd_command, expected_cwd) = ("pwd -W", canonical.replace('\\', "/"));
+            #[cfg(not(windows))]
+            let (pwd_command, expected_cwd) = ("pwd", canonical);
+            let ctx = ToolContext {
+                cwd: dir.path().to_owned(),
+                config: jinn_config::testutil::config_layer(""),
+                shells: Default::default(),
+                timeout: None,
+                state: None,
+                session_id: None,
+                app_paths: jinn_kernel::common::app_paths::AppPaths::default(),
+                bus: None,
+                max_output_lines: None,
+                max_output_bytes: None,
 
-            dispatched_at: jiff::Timestamp::now(),
-            mcp_coordinator: None,
-            interactive_term: None,
-            task_spawns: None,
-            session_store: None,
-            trouper_system: None,
-            model_name_resolver: None,
-        };
+                dispatched_at: jiff::Timestamp::now(),
+                mcp_coordinator: None,
+                interactive_term: None,
+                task_spawns: None,
+                session_store: None,
+                trouper_system: None,
+                model_name_resolver: None,
+            };
 
-        let call = ToolCall {
-            id: ToolCallId::from("call_4"),
-            name: "bash".to_owned(),
-            arguments: serde_json::json!({
-                "command": pwd_command
-            })
-            .to_string(),
+            let call = ToolCall {
+                id: ToolCallId::from("call_4"),
+                name: "bash".to_owned(),
+                arguments: serde_json::json!({
+                    "command": pwd_command
+                })
+                .to_string(),
+            };
+            (ctx, call, expected_cwd, dir)
         };
 
         // When executing the bash tool.

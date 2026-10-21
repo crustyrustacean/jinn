@@ -154,6 +154,7 @@ mod bundled_themes_load {
         // Given the default theme.
         let theme = default_theme();
 
+        // When the dormant colour is resolved.
         // Then dormancy is not painted as a failure.
         assert_ne!(
             theme.dormant_fg, theme.error_text,

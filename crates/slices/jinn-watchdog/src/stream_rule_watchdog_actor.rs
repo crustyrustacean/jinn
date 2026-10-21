@@ -486,6 +486,8 @@ mod tests {
         let session = SessionId::new();
         let mut actor = watchdog(2).await;
         let mut actions = Vec::new();
+
+        // When the responses trip the watchdog.
         for _ in 0..3 {
             actions.extend(actor.on_response_end(&session, StreamCompletedReason::RuleIntercept));
         }

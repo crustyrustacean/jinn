@@ -275,21 +275,12 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+    use jinn_testutil::{empty_routes, empty_slices};
 
     use crate::feat::intent::handler::IntentHandler;
     use jinn_core_types::SessionId;
     use jinn_session_msg::SessionOrigin;
     use jinn_session_state::ChatSessionState;
-
-    /// The slice registry with nothing registered: enough for dispatch tests
-    /// that are not exercising composition.
-    fn empty_slices() -> jinn_slices::Slices {
-        jinn_slices::Slices::new()
-    }
-
-    fn empty_routes() -> jinn_slices::route::KeyRoutes {
-        jinn_slices::route::KeyRoutes::new()
-    }
 
     /// A registry with every slice cell registered — the same catalog
     /// production boot uses, for the one assertion that reads a cell.

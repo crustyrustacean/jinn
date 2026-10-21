@@ -296,41 +296,44 @@ fn attendant_created_from_parent_links_and_defaults() {
 async fn prep_mode_makes_the_trigger_inert_end_to_end() {
     // Given a parent with a ParentCompleted attendant still in prep mode,
     // and the trigger actor live on the bus.
-    let harness = jinn_testutil::bus_harness::TestHarness::new().await;
-    let dispatched = harness
-        .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
-        .await;
-    let canceled = harness
-        .spawn_recorder::<jinn_inference_msg::CancelTurn>()
-        .await;
-    let state = State::new(AppState::default());
-    // The default state pre-seeds an active session, so the fixture parent
-    // must be identified by id at fixture time — a `find` over the map
-    // would race the HashMap's per-process iteration order and sometimes
-    // publish the completion against the wrong (default) session.
-    let parent_id = {
-        let mut s = state.write();
-        let parent = ChatSessionState::new();
-        let id = parent.session_id().clone();
-        s.session.insert(parent);
-        // Built by `new_attendant` and left composing: the user has not
-        // finished writing it, so its trigger is written down and inert.
-        let mut attendant = {
-            let read = s.session.get(&id).expect("parent").clone();
-            ChatSessionState::new_attendant(&read, true)
+    let (harness, dispatched, canceled, parent_id, actor) = {
+        let harness = jinn_testutil::bus_harness::TestHarness::new().await;
+        let dispatched = harness
+            .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
+            .await;
+        let canceled = harness
+            .spawn_recorder::<jinn_inference_msg::CancelTurn>()
+            .await;
+        let state = State::new(AppState::default());
+        // The default state pre-seeds an active session, so the fixture parent
+        // must be identified by id at fixture time — a `find` over the map
+        // would race the HashMap's per-process iteration order and sometimes
+        // publish the completion against the wrong (default) session.
+        let parent_id = {
+            let mut s = state.write();
+            let parent = ChatSessionState::new();
+            let id = parent.session_id().clone();
+            s.session.insert(parent);
+            // Built by `new_attendant` and left composing: the user has not
+            // finished writing it, so its trigger is written down and inert.
+            let mut attendant = {
+                let read = s.session.get(&id).expect("parent").clone();
+                ChatSessionState::new_attendant(&read, true)
+            };
+            attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+            attendant.set_seed_template("re-check".to_owned());
+            s.session.insert(attendant);
+            id
         };
-        attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        attendant.set_seed_template("re-check".to_owned());
-        s.session.insert(attendant);
-        id
+        let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+            harness.system(),
+            crate::trigger_actor::AttendantTriggerActorDeps {
+                services: harness.services().await,
+                state: state.clone(),
+            },
+        );
+        (harness, dispatched, canceled, parent_id, actor)
     };
-    let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
-        harness.system(),
-        crate::trigger_actor::AttendantTriggerActorDeps {
-            services: harness.services().await,
-            state: state.clone(),
-        },
-    );
 
     // When the parent's turn completes successfully.
     harness
@@ -361,39 +364,42 @@ async fn prep_mode_makes_the_trigger_inert_end_to_end() {
 #[tokio::test]
 async fn succeeded_parent_turn_fires_its_triggered_attendant() {
     // Given a parent with a reset-activated ParentCompleted attendant.
-    let harness = jinn_testutil::bus_harness::TestHarness::new().await;
-    let dispatched = harness
-        .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
-        .await;
-    let state = State::new(AppState::default());
-    // The default state pre-seeds an active session, so the fixture parent
-    // must be identified by id at fixture time — a `find` over the map
-    // would race the HashMap's per-process iteration order and sometimes
-    // publish the completion against the wrong (default) session.
-    let (parent_id, attendant_id) = {
-        let mut s = state.write();
-        let parent = ChatSessionState::new();
-        let id = parent.session_id().clone();
-        s.session.insert(parent);
-        let mut attendant = {
-            let read = s.session.get(&id).expect("parent").clone();
-            composed_attendant_of(&read)
+    let (harness, dispatched, parent_id, attendant_id) = {
+        let harness = jinn_testutil::bus_harness::TestHarness::new().await;
+        let dispatched = harness
+            .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
+            .await;
+        let state = State::new(AppState::default());
+        // The default state pre-seeds an active session, so the fixture parent
+        // must be identified by id at fixture time — a `find` over the map
+        // would race the HashMap's per-process iteration order and sometimes
+        // publish the completion against the wrong (default) session.
+        let (parent_id, attendant_id) = {
+            let mut s = state.write();
+            let parent = ChatSessionState::new();
+            let id = parent.session_id().clone();
+            s.session.insert(parent);
+            let mut attendant = {
+                let read = s.session.get(&id).expect("parent").clone();
+                composed_attendant_of(&read)
+            };
+            let attendant_id = attendant.session_id().clone();
+            attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+            attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
+            attendant.set_seed_template("verify: <prior report>".to_owned());
+            attendant.append_attendant_report("prior finding".to_owned());
+            s.session.insert(attendant);
+            (id, attendant_id)
         };
-        let attendant_id = attendant.session_id().clone();
-        attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
-        attendant.set_seed_template("verify: <prior report>".to_owned());
-        attendant.append_attendant_report("prior finding".to_owned());
-        s.session.insert(attendant);
-        (id, attendant_id)
+        let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+            harness.system(),
+            crate::trigger_actor::AttendantTriggerActorDeps {
+                services: harness.services().await,
+                state: state.clone(),
+            },
+        );
+        (harness, dispatched, parent_id, attendant_id)
     };
-    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
-        harness.system(),
-        crate::trigger_actor::AttendantTriggerActorDeps {
-            services: harness.services().await,
-            state: state.clone(),
-        },
-    );
 
     // When the parent's turn completes successfully.
     harness
@@ -437,34 +443,37 @@ async fn succeeded_parent_turn_fires_its_triggered_attendant() {
 #[tokio::test]
 async fn errored_and_canceled_turns_fire_nothing() {
     // Given a parent with a reset-activated ParentCompleted attendant.
-    let harness = jinn_testutil::bus_harness::TestHarness::new().await;
-    let dispatched = harness
-        .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
-        .await;
-    let state = State::new(AppState::default());
-    // Same fixture rule: parent id captured at fixture time (the default
-    // state pre-seeds an active session).
-    let parent_id = {
-        let mut s = state.write();
-        let parent = ChatSessionState::new();
-        let id = parent.session_id().clone();
-        s.session.insert(parent);
-        let mut attendant = {
-            let read = s.session.get(&id).expect("parent").clone();
-            composed_attendant_of(&read)
+    let (harness, dispatched, parent_id, actor) = {
+        let harness = jinn_testutil::bus_harness::TestHarness::new().await;
+        let dispatched = harness
+            .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
+            .await;
+        let state = State::new(AppState::default());
+        // Same fixture rule: parent id captured at fixture time (the default
+        // state pre-seeds an active session).
+        let parent_id = {
+            let mut s = state.write();
+            let parent = ChatSessionState::new();
+            let id = parent.session_id().clone();
+            s.session.insert(parent);
+            let mut attendant = {
+                let read = s.session.get(&id).expect("parent").clone();
+                composed_attendant_of(&read)
+            };
+            attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+            attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
+            s.session.insert(attendant);
+            id
         };
-        attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
-        s.session.insert(attendant);
-        id
+        let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+            harness.system(),
+            crate::trigger_actor::AttendantTriggerActorDeps {
+                services: harness.services().await,
+                state: state.clone(),
+            },
+        );
+        (harness, dispatched, parent_id, actor)
     };
-    let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
-        harness.system(),
-        crate::trigger_actor::AttendantTriggerActorDeps {
-            services: harness.services().await,
-            state: state.clone(),
-        },
-    );
 
     // When an errored completion is published, then a cancelled one.
     harness
@@ -503,25 +512,28 @@ async fn an_attendant_created_after_the_parent_completed_never_fires_retroactive
     // Given a parent whose turn already completed successfully — with no
     // attendant existing at that moment — and an attendant added afterward
     // with a ParentCompleted trigger.
-    let harness = jinn_testutil::bus_harness::TestHarness::new().await;
-    let dispatched = harness
-        .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
-        .await;
-    let state = State::new(AppState::default());
-    let _parent_id = {
-        let mut s = state.write();
-        let parent = ChatSessionState::new();
-        let id = parent.session_id().clone();
-        s.session.insert(parent);
-        id
+    let (harness, dispatched, state, actor) = {
+        let harness = jinn_testutil::bus_harness::TestHarness::new().await;
+        let dispatched = harness
+            .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
+            .await;
+        let state = State::new(AppState::default());
+        let _parent_id = {
+            let mut s = state.write();
+            let parent = ChatSessionState::new();
+            let id = parent.session_id().clone();
+            s.session.insert(parent);
+            id
+        };
+        let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+            harness.system(),
+            crate::trigger_actor::AttendantTriggerActorDeps {
+                services: harness.services().await,
+                state: state.clone(),
+            },
+        );
+        (harness, dispatched, state, actor)
     };
-    let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
-        harness.system(),
-        crate::trigger_actor::AttendantTriggerActorDeps {
-            services: harness.services().await,
-            state: state.clone(),
-        },
-    );
 
     // When the parent's completion is published (nothing was listening for
     // this attendant — it does not exist yet), and only *then* is the
@@ -683,36 +695,40 @@ async fn manual_trigger_attendant_does_not_fire_on_parent_completion() {
 async fn every_sibling_attendant_fires_when_the_parent_turn_succeeds() {
     // Given a parent watched by three sibling attendants, all dispatchable
     // and all on the parent-completed trigger.
-    let harness = jinn_testutil::bus_harness::TestHarness::new().await;
-    let dispatched = harness
-        .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
-        .await;
-    let state = State::new(AppState::default());
-    let parent_id = {
-        let mut s = state.write();
-        let parent = ChatSessionState::new();
-        let id = parent.session_id().clone();
-        s.session.insert(parent);
-        for index in 0..3 {
-            let mut attendant = {
-                let read = s.session.get(&id).expect("parent").clone();
-                composed_attendant_of(&read)
-            };
-            attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-            attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
-            attendant.set_seed_template(format!("check-{index}: <prior report>"));
-            attendant.append_attendant_report("prior finding".to_owned());
-            s.session.insert(attendant);
-        }
-        id
+    let (harness, dispatched, parent_id) = {
+        let harness = jinn_testutil::bus_harness::TestHarness::new().await;
+        let dispatched = harness
+            .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
+            .await;
+        let state = State::new(AppState::default());
+        let parent_id = {
+            let mut s = state.write();
+            let parent = ChatSessionState::new();
+            let id = parent.session_id().clone();
+            s.session.insert(parent);
+            for index in 0..3 {
+                let mut attendant = {
+                    let read = s.session.get(&id).expect("parent").clone();
+                    composed_attendant_of(&read)
+                };
+                attendant
+                    .set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+                attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
+                attendant.set_seed_template(format!("check-{index}: <prior report>"));
+                attendant.append_attendant_report("prior finding".to_owned());
+                s.session.insert(attendant);
+            }
+            id
+        };
+        let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+            harness.system(),
+            crate::trigger_actor::AttendantTriggerActorDeps {
+                services: harness.services().await,
+                state: state.clone(),
+            },
+        );
+        (harness, dispatched, parent_id)
     };
-    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
-        harness.system(),
-        crate::trigger_actor::AttendantTriggerActorDeps {
-            services: harness.services().await,
-            state: state.clone(),
-        },
-    );
 
     // When the parent's turn completes successfully.
     harness
@@ -749,41 +765,44 @@ async fn every_sibling_attendant_fires_when_the_parent_turn_succeeds() {
 async fn an_attendant_nested_under_another_attendant_does_not_fire_from_the_parents_completion() {
     // Given a root session with two dispatchable parent-completed
     // attendants, and a third attendant nested under the first one.
-    let harness = jinn_testutil::bus_harness::TestHarness::new().await;
-    let dispatched = harness
-        .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
-        .await;
-    let state = State::new(AppState::default());
-    // Each attendant is built from an already-cloned parent, so no read
-    // guard is ever taken while the write guard below is held.
-    let arm = |parent: &ChatSessionState| {
-        let mut attendant = composed_attendant_of(parent);
-        attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
-        attendant.set_seed_template("check".to_owned());
-        attendant.append_attendant_report("prior finding".to_owned());
-        attendant
+    let (harness, dispatched, root_id, nested_id, actor) = {
+        let harness = jinn_testutil::bus_harness::TestHarness::new().await;
+        let dispatched = harness
+            .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
+            .await;
+        let state = State::new(AppState::default());
+        // Each attendant is built from an already-cloned parent, so no read
+        // guard is ever taken while the write guard below is held.
+        let arm = |parent: &ChatSessionState| {
+            let mut attendant = composed_attendant_of(parent);
+            attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+            attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
+            attendant.set_seed_template("check".to_owned());
+            attendant.append_attendant_report("prior finding".to_owned());
+            attendant
+        };
+        let (root_id, nested_id) = {
+            let mut s = state.write();
+            let root = ChatSessionState::new();
+            let root_id = root.session_id().clone();
+            s.session.insert(root.clone());
+            let first = arm(&root);
+            let nested = arm(&first);
+            s.session.insert(first);
+            s.session.insert(arm(&root));
+            let nested_id = nested.session_id().clone();
+            s.session.insert(nested);
+            (root_id, nested_id)
+        };
+        let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+            harness.system(),
+            crate::trigger_actor::AttendantTriggerActorDeps {
+                services: harness.services().await,
+                state: state.clone(),
+            },
+        );
+        (harness, dispatched, root_id, nested_id, actor)
     };
-    let (root_id, nested_id) = {
-        let mut s = state.write();
-        let root = ChatSessionState::new();
-        let root_id = root.session_id().clone();
-        s.session.insert(root.clone());
-        let first = arm(&root);
-        let nested = arm(&first);
-        s.session.insert(first);
-        s.session.insert(arm(&root));
-        let nested_id = nested.session_id().clone();
-        s.session.insert(nested);
-        (root_id, nested_id)
-    };
-    let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
-        harness.system(),
-        crate::trigger_actor::AttendantTriggerActorDeps {
-            services: harness.services().await,
-            state: state.clone(),
-        },
-    );
 
     // When the root's turn completes successfully.
     harness
@@ -821,44 +840,48 @@ async fn an_attendant_nested_under_another_attendant_does_not_fire_from_the_pare
 async fn a_cyclic_parent_link_does_not_hang_the_trigger_walk() {
     // Given two attendants that each claim the other as their parent, both
     // dispatchable and parent-completed.
-    let harness = jinn_testutil::bus_harness::TestHarness::new().await;
-    let dispatched = harness
-        .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
-        .await;
-    let state = State::new(AppState::default());
-    let (root_id, first_id) = {
-        let mut s = state.write();
-        let root = ChatSessionState::new();
-        let root_id = root.session_id().clone();
-        s.session.insert(root.clone());
-        let arm = |parent: &ChatSessionState| {
-            let mut attendant = composed_attendant_of(parent);
-            attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-            attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
-            attendant.set_seed_template("check".to_owned());
-            attendant.append_attendant_report("prior finding".to_owned());
-            attendant
+    let (harness, dispatched, root_id, first_id, actor) = {
+        let harness = jinn_testutil::bus_harness::TestHarness::new().await;
+        let dispatched = harness
+            .spawn_recorder::<jinn_chat_input_msg::EnqueueUserMessage>()
+            .await;
+        let state = State::new(AppState::default());
+        let (root_id, first_id) = {
+            let mut s = state.write();
+            let root = ChatSessionState::new();
+            let root_id = root.session_id().clone();
+            s.session.insert(root.clone());
+            let arm = |parent: &ChatSessionState| {
+                let mut attendant = composed_attendant_of(parent);
+                attendant
+                    .set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+                attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
+                attendant.set_seed_template("check".to_owned());
+                attendant.append_attendant_report("prior finding".to_owned());
+                attendant
+            };
+            let first = arm(&root);
+            let first_id = first.session_id().clone();
+            s.session.insert(first);
+            // A second attendant under the root, then re-point the first's
+            // parent at it so the chain loops.
+            let second = arm(&root);
+            let second_id = second.session_id().clone();
+            s.session.insert(second);
+            if let Some(a) = s.session.get_mut(&first_id) {
+                a.set_parent_session(second_id);
+            }
+            (root_id, first_id)
         };
-        let first = arm(&root);
-        let first_id = first.session_id().clone();
-        s.session.insert(first);
-        // A second attendant under the root, then re-point the first's
-        // parent at it so the chain loops.
-        let second = arm(&root);
-        let second_id = second.session_id().clone();
-        s.session.insert(second);
-        if let Some(a) = s.session.get_mut(&first_id) {
-            a.set_parent_session(second_id);
-        }
-        (root_id, first_id)
+        let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+            harness.system(),
+            crate::trigger_actor::AttendantTriggerActorDeps {
+                services: harness.services().await,
+                state: state.clone(),
+            },
+        );
+        (harness, dispatched, root_id, first_id, actor)
     };
-    let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
-        harness.system(),
-        crate::trigger_actor::AttendantTriggerActorDeps {
-            services: harness.services().await,
-            state: state.clone(),
-        },
-    );
 
     // When the root's turn completes.
     harness
@@ -934,34 +957,38 @@ async fn harness_with_session_actor() -> (jinn_testutil::bus_harness::TestHarnes
 async fn every_sibling_attendant_lands_its_own_seeded_entry() {
     // Given a parent watched by five dispatchable parent-completed
     // attendants, with the session-turn actor live on the same state.
-    let (harness, state) = harness_with_session_actor().await;
-    let landed = harness
-        .spawn_recorder::<jinn_chat_input_msg::ChatEntrySubmitted>()
-        .await;
-    let (parent_id, sibling_ids) = {
-        let mut s = state.write();
-        let parent = ChatSessionState::new();
-        let parent_id = parent.session_id().clone();
-        s.session.insert(parent.clone());
-        let mut ids = Vec::new();
-        for index in 0..5 {
-            let mut attendant = composed_attendant_of(&parent);
-            attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-            attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
-            attendant.set_seed_template(format!("check-{index}: <prior report>"));
-            attendant.append_attendant_report("prior finding".to_owned());
-            ids.push(attendant.session_id().clone());
-            s.session.insert(attendant);
-        }
-        (parent_id, ids)
+    let (harness, landed, parent_id, sibling_ids) = {
+        let (harness, state) = harness_with_session_actor().await;
+        let landed = harness
+            .spawn_recorder::<jinn_chat_input_msg::ChatEntrySubmitted>()
+            .await;
+        let (parent_id, sibling_ids) = {
+            let mut s = state.write();
+            let parent = ChatSessionState::new();
+            let parent_id = parent.session_id().clone();
+            s.session.insert(parent.clone());
+            let mut ids = Vec::new();
+            for index in 0..5 {
+                let mut attendant = composed_attendant_of(&parent);
+                attendant
+                    .set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+                attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
+                attendant.set_seed_template(format!("check-{index}: <prior report>"));
+                attendant.append_attendant_report("prior finding".to_owned());
+                ids.push(attendant.session_id().clone());
+                s.session.insert(attendant);
+            }
+            (parent_id, ids)
+        };
+        let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+            harness.system(),
+            crate::trigger_actor::AttendantTriggerActorDeps {
+                services: harness.services().await,
+                state: state.clone(),
+            },
+        );
+        (harness, landed, parent_id, sibling_ids)
     };
-    let _actor = crate::trigger_actor::AttendantTriggerActor::spawn(
-        harness.system(),
-        crate::trigger_actor::AttendantTriggerActorDeps {
-            services: harness.services().await,
-            state: state.clone(),
-        },
-    );
 
     // When the parent's turn completes successfully.
     harness
@@ -1001,37 +1028,42 @@ async fn a_second_attendant_built_the_way_the_ui_builds_one_still_fires() {
     // Given two attendants constructed exactly as `N` constructs them —
     // `new_attendant` and nothing else — with the user having since flipped
     // the *first* out of seed, but not the second.
-    let (harness, state) = harness_with_session_actor().await;
-    let landed = harness
-        .spawn_recorder::<jinn_chat_input_msg::ChatEntrySubmitted>()
-        .await;
-    let (parent_id, first_id, second_id) = {
-        let mut s = state.write();
-        let parent = ChatSessionState::new();
-        let parent_id = parent.session_id().clone();
-        s.session.insert(parent.clone());
-        let mut first = composed_attendant_of(&parent);
-        first.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        // The user configured this one and left seed.
-        first.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
-        first.set_seed_template("first: <prior report>".to_owned());
-        first.append_attendant_report("prior".to_owned());
-        let first_id = first.session_id().clone();
-        s.session.insert(first);
-        let mut second = ChatSessionState::new_attendant(&parent, true);
-        second.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        second.set_seed_template("second: <prior report>".to_owned());
-        let second_id = second.session_id().clone();
-        s.session.insert(second);
-        (parent_id, first_id, second_id)
+    let (harness, landed, state, parent_id, first_id, second_id, actor) = {
+        let (harness, state) = harness_with_session_actor().await;
+        let landed = harness
+            .spawn_recorder::<jinn_chat_input_msg::ChatEntrySubmitted>()
+            .await;
+        let (parent_id, first_id, second_id) = {
+            let mut s = state.write();
+            let parent = ChatSessionState::new();
+            let parent_id = parent.session_id().clone();
+            s.session.insert(parent.clone());
+            let mut first = composed_attendant_of(&parent);
+            first.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+            // The user configured this one and left seed.
+            first.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
+            first.set_seed_template("first: <prior report>".to_owned());
+            first.append_attendant_report("prior".to_owned());
+            let first_id = first.session_id().clone();
+            s.session.insert(first);
+            let mut second = ChatSessionState::new_attendant(&parent, true);
+            second.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+            second.set_seed_template("second: <prior report>".to_owned());
+            let second_id = second.session_id().clone();
+            s.session.insert(second);
+            (parent_id, first_id, second_id)
+        };
+        let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+            harness.system(),
+            crate::trigger_actor::AttendantTriggerActorDeps {
+                services: harness.services().await,
+                state: state.clone(),
+            },
+        );
+        (
+            harness, landed, state, parent_id, first_id, second_id, actor,
+        )
     };
-    let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
-        harness.system(),
-        crate::trigger_actor::AttendantTriggerActorDeps {
-            services: harness.services().await,
-            state: state.clone(),
-        },
-    );
 
     // When the parent's turn completes.
     harness
@@ -1087,34 +1119,37 @@ async fn a_second_attendant_built_the_way_the_ui_builds_one_still_fires() {
 #[tokio::test]
 async fn a_trigger_does_not_cancel_an_attendant_that_is_already_running() {
     // Given a Streaming parent-completed attendant.
-    let harness = jinn_testutil::bus_harness::TestHarness::new().await;
-    let state = State::new(AppState::default());
-    let (attendant_id, parent_id) = {
-        let mut s = state.write();
-        let parent = ChatSessionState::new();
-        let parent_id = parent.session_id().clone();
-        s.session.insert(parent.clone());
-        let mut attendant = composed_attendant_of(&parent);
-        attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
-        attendant.set_seed_template("seeded: <prior report>".to_owned());
-        attendant.append_attendant_report("prior".to_owned());
-        let id = attendant.session_id().clone();
-        s.session.insert(attendant);
-        {
-            let session = s.session.get_mut(&id).expect("just inserted");
-            session.push_entry(ChatEntry::user("in flight"));
-            session.begin_streaming();
-        }
-        (id, parent_id)
+    let (harness, state, attendant_id, parent_id, actor) = {
+        let harness = jinn_testutil::bus_harness::TestHarness::new().await;
+        let state = State::new(AppState::default());
+        let (attendant_id, parent_id) = {
+            let mut s = state.write();
+            let parent = ChatSessionState::new();
+            let parent_id = parent.session_id().clone();
+            s.session.insert(parent.clone());
+            let mut attendant = composed_attendant_of(&parent);
+            attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+            attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
+            attendant.set_seed_template("seeded: <prior report>".to_owned());
+            attendant.append_attendant_report("prior".to_owned());
+            let id = attendant.session_id().clone();
+            s.session.insert(attendant);
+            {
+                let session = s.session.get_mut(&id).expect("just inserted");
+                session.push_entry(ChatEntry::user("in flight"));
+                session.begin_streaming();
+            }
+            (id, parent_id)
+        };
+        let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+            harness.system(),
+            crate::trigger_actor::AttendantTriggerActorDeps {
+                services: harness.services().await,
+                state: state.clone(),
+            },
+        );
+        (harness, state, attendant_id, parent_id, actor)
     };
-    let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
-        harness.system(),
-        crate::trigger_actor::AttendantTriggerActorDeps {
-            services: harness.services().await,
-            state: state.clone(),
-        },
-    );
 
     // When the parent's turn completes and the trigger fires the busy
     // attendant.
@@ -1158,33 +1193,36 @@ async fn a_trigger_does_not_cancel_an_attendant_that_is_already_running() {
 async fn a_trigger_on_a_busy_attendant_queues_its_seeded_turn_for_after_the_current_one() {
     // Given a Streaming parent-completed attendant, with the session-turn
     // actor live so the enqueue is handled the way it is in production.
-    let (harness, state) = harness_with_session_actor().await;
-    let (attendant_id, parent_id) = {
-        let mut s = state.write();
-        let parent = ChatSessionState::new();
-        let parent_id = parent.session_id().clone();
-        s.session.insert(parent.clone());
-        let mut attendant = composed_attendant_of(&parent);
-        attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
-        attendant.set_seed_template("seeded: <prior report>".to_owned());
-        attendant.append_attendant_report("prior".to_owned());
-        let id = attendant.session_id().clone();
-        s.session.insert(attendant);
-        {
-            let session = s.session.get_mut(&id).expect("just inserted");
-            session.push_entry(ChatEntry::user("in flight"));
-            session.begin_streaming();
-        }
-        (id, parent_id)
+    let (harness, state, attendant_id, parent_id, actor) = {
+        let (harness, state) = harness_with_session_actor().await;
+        let (attendant_id, parent_id) = {
+            let mut s = state.write();
+            let parent = ChatSessionState::new();
+            let parent_id = parent.session_id().clone();
+            s.session.insert(parent.clone());
+            let mut attendant = composed_attendant_of(&parent);
+            attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+            attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
+            attendant.set_seed_template("seeded: <prior report>".to_owned());
+            attendant.append_attendant_report("prior".to_owned());
+            let id = attendant.session_id().clone();
+            s.session.insert(attendant);
+            {
+                let session = s.session.get_mut(&id).expect("just inserted");
+                session.push_entry(ChatEntry::user("in flight"));
+                session.begin_streaming();
+            }
+            (id, parent_id)
+        };
+        let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
+            harness.system(),
+            crate::trigger_actor::AttendantTriggerActorDeps {
+                services: harness.services().await,
+                state: state.clone(),
+            },
+        );
+        (harness, state, attendant_id, parent_id, actor)
     };
-    let actor = crate::trigger_actor::AttendantTriggerActor::spawn(
-        harness.system(),
-        crate::trigger_actor::AttendantTriggerActorDeps {
-            services: harness.services().await,
-            state: state.clone(),
-        },
-    );
 
     // When the parent's turn completes.
     harness

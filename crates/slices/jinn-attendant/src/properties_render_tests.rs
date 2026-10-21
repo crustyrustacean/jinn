@@ -712,6 +712,7 @@ fn template_truncation_never_splits_a_grapheme() {
     let template_y = template_row_y(&buffer);
     for x in buffer.area.x..buffer.area.width {
         let symbol = symbol_at(&buffer, x, template_y);
+        // Then no cell in the template row carries the replacement glyph.
         assert!(
             symbol != "\u{FFFD}" && !symbol.contains('\u{FFFD}'),
             "grapheme was split at x={x}: {symbol:?}"

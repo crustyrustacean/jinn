@@ -185,6 +185,8 @@ fn restoring_pins_gives_every_instruction_its_own_id() {
     let parent = ChatSessionState::new();
     let mut first = ChatSessionState::new_attendant(&parent, true);
     let mut second = ChatSessionState::new_attendant(&parent, true);
+
+    // When the pins are restored into both attendants.
     saved_entry::restore_pins(&mut first, &entry.pins);
     saved_entry::restore_pins(&mut second, &entry.pins);
 

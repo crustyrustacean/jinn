@@ -247,7 +247,8 @@ mod tests {
     )]
     use super::*;
     use jinn_kernel::common::app_state::AppState;
-    use jinn_kernel::common::render_ctx::{RenderCtx, empty_config_layer};
+    use jinn_kernel::common::render_ctx::empty_config_layer;
+    use jinn_kernel::common::render_test::render_draw;
     use jinn_session_state::ChatSessionState;
 
     /// A 120-wide frame with the sidebar in the rightmost 30 columns —
@@ -309,19 +310,14 @@ mod tests {
         frame_area: Rect,
         sidebar_rect: Rect,
     ) -> (ratatui::buffer::Buffer, Rect) {
-        use ratatui::Terminal;
-        use ratatui::backend::TestBackend;
-
-        let mut terminal =
-            Terminal::new(TestBackend::new(frame_area.width, frame_area.height)).expect("terminal");
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let overlays = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new_with_default_config(state, &slices, &overlays);
-                render_attendant_reports_for_state(frame, sidebar_rect, frame_area, &ctx);
-            })
-            .expect("draw");
+        let terminal = render_draw(
+            state,
+            frame_area.width,
+            frame_area.height,
+            |frame, _area, ctx| {
+                render_attendant_reports_for_state(frame, sidebar_rect, frame_area, ctx);
+            },
+        );
         (terminal.backend().buffer().clone(), sidebar_rect)
     }
 

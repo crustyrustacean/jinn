@@ -118,35 +118,40 @@ mod tests {
     async fn activate_installs_the_matcher_and_the_actor_reinstalls_on_a_refresh() {
         // Given a registry seeded like production boot seeds it, an
         // activated slice, and a config layer holding one armed rule.
-        let slices = jinn_slices::Slices::new();
-        jinn_cell_catalog::register_all_cells(&slices);
-        let cell: jinn_slices::cell::TypedCell<StreamRules> = slices
-            .reader(&jinn_slices::stream_rules_slot())
-            .expect("the catalog registers the stream-rules slot");
-        let config = jinn_config::testutil::config_layer(
-            r#"
+        let (cell, config, prefs, system, _prefs_dir) = {
+            let slices = jinn_slices::Slices::new();
+            jinn_cell_catalog::register_all_cells(&slices);
+            let cell: jinn_slices::cell::TypedCell<StreamRules> = slices
+                .reader(&jinn_slices::stream_rules_slot())
+                .expect("the catalog registers the stream-rules slot");
+            let config = jinn_config::testutil::config_layer(
+                r#"
             [[stream_rules.entry]]
             name = "refreshable"
             conditions = ['REFRESH-MARKER']
             scopes = ['text']
             body = 'Finish it.'
             "#,
-        );
-        let prefs_dir = jinn_testutil::tempdir().expect("temp dir");
-        let prefs = prefs_dir.path().join("jinn.toml");
-        let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
-        let mut viewport = jinn_slices::view::Viewport::new();
-        let overlay_views = jinn_slices::OverlayViews::new();
-        let key_routes = jinn_slices::KeyRoutes::new();
-        let mut host = jinn_slices::SliceHost::new(
-            &slices,
-            &mut viewport,
-            &overlay_views,
-            &key_routes,
-            &system,
-        );
+            );
+            let prefs_dir = jinn_testutil::tempdir().expect("temp dir");
+            let prefs = prefs_dir.path().join("jinn.toml");
+            let system =
+                trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
+            let mut viewport = jinn_slices::view::Viewport::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let key_routes = jinn_slices::KeyRoutes::new();
+            let mut host = jinn_slices::SliceHost::new(
+                &slices,
+                &mut viewport,
+                &overlay_views,
+                &key_routes,
+                &system,
+            );
 
-        crate::activate(&mut host, &config, &prefs);
+            crate::activate(&mut host, &config, &prefs);
+
+            (cell, config, prefs, system, prefs_dir)
+        };
 
         // When the confirmed-toggle shape runs: the rule is disabled in the
         // configuration, then the refresh command is published on the bus

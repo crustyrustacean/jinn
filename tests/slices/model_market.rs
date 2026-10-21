@@ -52,17 +52,17 @@ impl Wired {
             jinn_model_market::market_data_slot(),
             MarketDataState::default(),
         )
-        .expect("fresh Slices never has the data slot registered");
+        .expect("a fresh host never has the data slot registered");
         host.register_cell(
             jinn_model_market::market_ui_slot(),
             MarketUiState::default(),
         )
-        .expect("fresh Slices never has the UI slot registered");
+        .expect("a fresh host never has the UI slot registered");
         host.register_cell(
             jinn_slices::scope_focus_slot(),
             jinn_slices::ScopeFocusState::default(),
         )
-        .expect("fresh Slices never has the scope-focus slot registered");
+        .expect("a fresh host never has the scope-focus slot registered");
         jinn_model_market::activate(&mut host);
         let state = {
             let state = jinn_kernel::AppState::default();
@@ -268,6 +268,7 @@ fn every_advertised_key_binds_in_the_popup_scope() {
     for (key, _) in jinn_model_market::routes::MARKET_BINDINGS {
         // Non-character keys must be route rows.
         if !is_char_key(key) {
+            // Then a route row binds the key.
             assert!(
                 bound.contains(key),
                 "footer advertises {key} but no route row binds it"
@@ -277,6 +278,7 @@ fn every_advertised_key_binds_in_the_popup_scope() {
         // Character keys must be hook cases: a char key cannot be a
         // row in an input-hook scope, or route dispatch would steal it
         // from filter typing.
+        // And the popup scope owns the input hook that claims them.
         assert!(
             hook_owned,
             "footer advertises {key} but the popup scope has no input hook"
@@ -460,6 +462,8 @@ fn the_opener_binds_in_the_normal_scope() {
     // Given the wired slice's rows.
     let wired = Wired::new();
     let rows = wired.routes.rows();
+
+    // When the opener row is looked up.
     let opener = rows
         .iter()
         .find(|r| r.route_id.as_str() == "model-market:open")
@@ -1958,13 +1962,19 @@ fn m_toggles_from_detail_mode_and_the_status_line_reflects_it() {
 #[rstest::rstest]
 fn mix_source_word_wears_success_green_numbers_stay_muted() {
     // Given an open popup over a seeded table (fixed mix active).
-    let mut wired = Wired::new();
-    wired.press("open-model-market", "search openrouter models");
-    seeded(&mut wired);
-    let area = ratatui::layout::Rect::new(0, 0, 120, 40);
-    let popup = jinn_model_market::view::market_overlay_rect(&area).expect("frame fits the popup");
-    let status_row = popup.y + popup.height - 3;
-    let theme = jinn_theme::default_theme();
+    let (wired, popup, status_row, theme) = {
+        let mut wired = Wired::new();
+        wired.press("open-model-market", "search openrouter models");
+        seeded(&mut wired);
+        let area = ratatui::layout::Rect::new(0, 0, 120, 40);
+        let popup =
+            jinn_model_market::view::market_overlay_rect(&area).expect("frame fits the popup");
+        let status_row = popup.y + popup.height - 3;
+        let theme = jinn_theme::default_theme();
+        (wired, popup, status_row, theme)
+    };
+
+    // When the popup renders.
     let buffer = render_to_buffer(&wired, 120, 40);
 
     // Then the status row's "fixed" cells wear success green and the
@@ -2051,16 +2061,20 @@ fn m_with_an_unmeasured_tree_degrades_to_the_fixed_mix() {
 #[rstest::rstest]
 fn sorted_header_cell_carries_the_focus_pairing() {
     // Given an open popup with the default sort (PROJ ascending).
-    let mut wired = Wired::new();
-    wired.press("open-model-market", "search openrouter models");
-    seeded(&mut wired);
+    let (mut wired, popup, header_y, theme) = {
+        let mut wired = Wired::new();
+        wired.press("open-model-market", "search openrouter models");
+        seeded(&mut wired);
+        let area = ratatui::layout::Rect::new(0, 0, 120, 40);
+        let popup =
+            jinn_model_market::view::market_overlay_rect(&area).expect("frame fits the popup");
+        let header_y = popup.y + 3;
+        let theme = jinn_theme::default_theme();
+        (wired, popup, header_y, theme)
+    };
 
     // When the popup renders.
-    let area = ratatui::layout::Rect::new(0, 0, 120, 40);
-    let popup = jinn_model_market::view::market_overlay_rect(&area).expect("frame fits the popup");
     let buffer = render_to_buffer(&wired, 120, 40);
-    let header_y = popup.y + 3;
-    let theme = jinn_theme::default_theme();
 
     // Then the PROJ header cells — name and arrow — wear the focus
     // pairing: fg gutter_bg on bg focus_accent.
@@ -2439,41 +2453,44 @@ fn table_mode_uses_the_full_height_after_the_pane_gone() {
     // Given an 80-row table with detail landed for the pinned row, then
     // the round trip back to table mode — enough rows to overflow the
     // viewport.
-    let mut wired = Wired::new();
-    wired.press("open-model-market", "search openrouter models");
-    wired.data().update(|d| {
-        d.rows = (0..80)
-            .map(|i| {
-                row(
-                    &format!("openrouter/m/model{i}"),
-                    "m",
-                    &format!("model{i}"),
-                    1e-6 + f64::from(i) * 1e-8,
-                    2e-6,
-                    Some(1e-7),
-                )
-            })
-            .collect();
-        d.detail = Some(jinn_model_market_msg::MarketDetail {
-            model_id: "openrouter/m/model0".to_owned(),
-            endpoints: vec![jinn_model_market_msg::MarketEndpointRow {
-                tag: "azure/us-east".to_owned(),
-                provider_name: "Azure".to_owned(),
-                prompt_price: 1.2e-6,
-                completion_price: 4.5e-6,
-                cache_read_price: Some(0.9e-7),
-                latency_p50_ms: Some(320.0),
-                throughput_p50: Some(88.0),
-                uptime_1d: Some(0.992),
-                quantization: None,
-                overrides: Vec::new(),
-            }],
+    let wired = {
+        let mut wired = Wired::new();
+        wired.press("open-model-market", "search openrouter models");
+        wired.data().update(|d| {
+            d.rows = (0..80)
+                .map(|i| {
+                    row(
+                        &format!("openrouter/m/model{i}"),
+                        "m",
+                        &format!("model{i}"),
+                        1e-6 + f64::from(i) * 1e-8,
+                        2e-6,
+                        Some(1e-7),
+                    )
+                })
+                .collect();
+            d.detail = Some(jinn_model_market_msg::MarketDetail {
+                model_id: "openrouter/m/model0".to_owned(),
+                endpoints: vec![jinn_model_market_msg::MarketEndpointRow {
+                    tag: "azure/us-east".to_owned(),
+                    provider_name: "Azure".to_owned(),
+                    prompt_price: 1.2e-6,
+                    completion_price: 4.5e-6,
+                    cache_read_price: Some(0.9e-7),
+                    latency_p50_ms: Some(320.0),
+                    throughput_p50: Some(88.0),
+                    uptime_1d: Some(0.992),
+                    quantization: None,
+                    overrides: Vec::new(),
+                }],
+            });
         });
-    });
-    wired
-        .ui()
-        .update(|s| s.enter_detail("openrouter/m/model0".to_owned()));
-    wired.ui().update(MarketUiState::leave_detail);
+        wired
+            .ui()
+            .update(|s| s.enter_detail("openrouter/m/model0".to_owned()));
+        wired.ui().update(MarketUiState::leave_detail);
+        wired
+    };
 
     // When the popup renders in table mode.
     let buffer = render_to_buffer(&wired, 120, 40);

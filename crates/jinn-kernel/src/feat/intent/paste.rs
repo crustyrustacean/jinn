@@ -227,6 +227,7 @@ mod tests {
     )]
     use super::*;
     use jinn_slices::FocusScope;
+    use jinn_testutil::{empty_routes, empty_slices};
 
     use crate::feat::intent::handler::IntentHandler;
     #[rstest::rstest]
@@ -535,15 +536,5 @@ mod tests {
                 }),
             },
         });
-    }
-
-    /// The slice registry with nothing registered: enough for dispatch tests
-    /// that are not exercising composition.
-    fn empty_slices() -> jinn_slices::Slices {
-        jinn_slices::Slices::new()
-    }
-
-    fn empty_routes() -> jinn_slices::route::KeyRoutes {
-        jinn_slices::route::KeyRoutes::new()
     }
 }

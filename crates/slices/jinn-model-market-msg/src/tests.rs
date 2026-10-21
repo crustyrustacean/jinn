@@ -256,7 +256,13 @@ fn projection_mix_is_the_fixed_contract_mix() {
 #[case(SortColumn::Eci, SortColumn::Model)]
 #[case(SortColumn::Model, SortColumn::Proj)]
 fn sort_cycle_advances_left_to_right_wrapping(#[case] from: SortColumn, #[case] to: SortColumn) {
-    assert_eq!(from.next(), to);
+    // Given a sort column and the column that follows it in the cycle.
+
+    // When the cycle advances.
+    let next = from.next();
+
+    // Then the next column is the expected one.
+    assert_eq!(next, to);
     // And the cycle is symmetric.
     assert_eq!(to.prev(), from);
 }
@@ -274,7 +280,13 @@ fn detail_sort_cycle_advances_in_header_order_wrapping(
     #[case] from: DetailSort,
     #[case] to: DetailSort,
 ) {
-    assert_eq!(from.next(), to);
+    // Given a detail sort and the sort that follows it in the cycle.
+
+    // When the cycle advances.
+    let next = from.next();
+
+    // Then the next sort is the expected one.
+    assert_eq!(next, to);
     // And the cycle is symmetric.
     assert_eq!(to.prev(), from);
 }
@@ -282,6 +294,8 @@ fn detail_sort_cycle_advances_in_header_order_wrapping(
 #[rstest::rstest]
 fn detail_sort_headers_name_the_eight_detail_columns() {
     // Given the eight detail sorts in cycle order.
+
+    // When their headers are read.
     let headers: Vec<&str> = DETAIL_SORT_CYCLE.iter().map(|col| col.header()).collect();
 
     // Then each names its detail column, in header order.
@@ -356,6 +370,8 @@ fn market_row_roundtrips_through_json() {
 #[rstest::rstest]
 fn market_data_state_defaults_to_a_clean_table() {
     // Given a fresh data cell payload.
+
+    // When the default payload is read.
     let state = MarketDataState::default();
 
     // Then nothing has loaded: empty rows, no index, no stamps, no

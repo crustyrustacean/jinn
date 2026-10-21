@@ -666,45 +666,51 @@ fn an_allow_filtered_attendant_saves_with_its_mode_intact() {
 fn saving_after_a_freeze_records_the_captured_set_as_an_allow_list() {
     // Given a titled attendant whose tools are a blocklist, with a tool
     // registry offering three tools.
-    let mut fx = SaveFixture::new(Some("narrow"));
-    fx.state
-        .tool_registry()
-        .expect("the cell catalog registers the tool registry")
-        .update(|registry| {
-            for name in ["read", "write", "bash"] {
-                registry.global.insert(
-                    name.to_owned(),
-                    ToolDefinition {
-                        name: name.to_owned(),
-                        description: format!("{name} description"),
-                        parameters: jinn_testutil::json_value(),
-                        prompt_snippet: None,
-                        prompt_guidelines: Vec::new(),
-                        server_tool_type: None,
-                    },
-                );
-            }
-        });
-    {
-        let session = fx
+    let mut fx = {
+        let mut fixture = SaveFixture::new(Some("narrow"));
+        fixture
+            .state
+            .tool_registry()
+            .expect("the cell catalog registers the tool registry")
+            .update(|registry| {
+                for name in ["read", "write", "bash"] {
+                    registry.global.insert(
+                        name.to_owned(),
+                        ToolDefinition {
+                            name: name.to_owned(),
+                            description: format!("{name} description"),
+                            parameters: jinn_testutil::json_value(),
+                            prompt_snippet: None,
+                            prompt_guidelines: Vec::new(),
+                            server_tool_type: None,
+                        },
+                    );
+                }
+            });
+        {
+            let session = fixture
+                .state
+                .session
+                .get_mut(&fixture.attendant_id)
+                .expect("attendant");
+            session.set_tool_filter(Some(NameFilter::deny(["bash".to_owned()])));
+        }
+        // A composing attendant's cursor is caged at the prep row, so the walk
+        // down to the tool set needs composition ended first.
+        fixture
             .state
             .session
-            .get_mut(&fx.attendant_id)
-            .expect("attendant");
-        session.set_tool_filter(Some(NameFilter::deny(["bash".to_owned()])));
-    }
-    // A composing attendant's cursor is caged at the prep row, so the walk
-    // down to the tool set needs composition ended first.
-    fx.state
-        .session
-        .get_mut(&fx.attendant_id)
-        .expect("attendant")
-        .set_attendant_is_prepping(false);
-    fx.open();
-    for _ in 0..3 {
-        fx.press("attendant-properties-field-next");
-    }
-    fx.press("attendant-properties-pick-right");
+            .get_mut(&fixture.attendant_id)
+            .expect("attendant")
+            .set_attendant_is_prepping(false);
+        fixture.open();
+        for _ in 0..3 {
+            fixture.press("attendant-properties-field-next");
+        }
+        fixture.press("attendant-properties-pick-right");
+
+        fixture
+    };
 
     // When saving.
     fx.press("attendant-properties-save");

@@ -535,6 +535,8 @@ async fn reopening_after_confirming_a_sibling_rule_shows_it_disabled() {
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");
     let mut state = AppState::default_with_scope_focus();
+
+    // When the picker is opened.
     dispatch(
         "open-stream-rule-picker",
         &mut state,
@@ -1044,29 +1046,33 @@ async fn confirm_closes_the_picker_over_the_pending_set() {
 async fn enter_after_two_tab_toggles_persists_exactly_the_two_marked_rules() {
     // Given an activated slice whose config holds three rules, opened, and
     // walked by two tabs from the top.
-    let (slices, key_routes, config, _prefs_dir, _prefs) = activated_with_three_rules().await;
-    let mut state = AppState::default_with_scope_focus();
-    dispatch(
-        "open-stream-rule-picker",
-        &mut state,
-        &slices,
-        &key_routes,
-        &config,
-    );
-    dispatch(
-        "toggle-stream-rule-picker",
-        &mut state,
-        &slices,
-        &key_routes,
-        &config,
-    );
-    dispatch(
-        "toggle-stream-rule-picker",
-        &mut state,
-        &slices,
-        &key_routes,
-        &config,
-    );
+    let (slices, key_routes, config, mut state, _prefs_dir) = {
+        let (slices, key_routes, config, prefs_dir, _prefs) = activated_with_three_rules().await;
+        let mut state = AppState::default_with_scope_focus();
+        dispatch(
+            "open-stream-rule-picker",
+            &mut state,
+            &slices,
+            &key_routes,
+            &config,
+        );
+        dispatch(
+            "toggle-stream-rule-picker",
+            &mut state,
+            &slices,
+            &key_routes,
+            &config,
+        );
+        dispatch(
+            "toggle-stream-rule-picker",
+            &mut state,
+            &slices,
+            &key_routes,
+            &config,
+        );
+
+        (slices, key_routes, config, state, prefs_dir)
+    };
 
     // When handling the picker's enter intent.
     let result = dispatch(
@@ -1204,6 +1210,8 @@ async fn reopening_after_a_confirm_shows_the_persisted_state() {
         .reader(&stream_rule_picker_slot())
         .expect("stream-rule picker cell registered at activation");
     let mut state = AppState::default_with_scope_focus();
+
+    // When the picker is opened.
     dispatch(
         "open-stream-rule-picker",
         &mut state,
@@ -1230,38 +1238,42 @@ async fn a_stale_name_confirm_publishes_the_command_and_closes_the_picker() {
     // actor's (covered by the storage and actor suites), never the
     // picker's. Do not reintroduce a picker-side check "for UX" — it was
     // the N-assemblies-per-confirm hitch this slice existed to remove.
-    let (slices, key_routes, config, _prefs_dir, _prefs) = activated().await;
-    let cell: TypedCell<StreamRulePickerState> = slices
-        .reader(&stream_rule_picker_slot())
-        .expect("stream-rule picker cell registered at activation");
-    let mut state = AppState::default_with_scope_focus();
-    dispatch(
-        "open-stream-rule-picker",
-        &mut state,
-        &slices,
-        &key_routes,
-        &config,
-    );
-    cell.update(|picker| {
-        let mut rules = config
-            .get_list::<jinn_preferences_config::schemas::StreamRuleConfig>()
-            .expect("read");
-        rules[0].name = "renamed-under-us".to_owned();
-        picker
-            .selection
-            .set_items(jinn_stream_rule_picker_msg::build_stream_rule_entries(
-                &rules,
-                &std::collections::HashSet::new(),
-                &picker.theme,
-            ));
-    });
-    dispatch(
-        "toggle-stream-rule-picker",
-        &mut state,
-        &slices,
-        &key_routes,
-        &config,
-    );
+    let (slices, key_routes, config, mut state, _prefs_dir) = {
+        let (slices, key_routes, config, prefs_dir, _prefs) = activated().await;
+        let cell: TypedCell<StreamRulePickerState> = slices
+            .reader(&stream_rule_picker_slot())
+            .expect("stream-rule picker cell registered at activation");
+        let mut state = AppState::default_with_scope_focus();
+        dispatch(
+            "open-stream-rule-picker",
+            &mut state,
+            &slices,
+            &key_routes,
+            &config,
+        );
+        cell.update(|picker| {
+            let mut rules = config
+                .get_list::<jinn_preferences_config::schemas::StreamRuleConfig>()
+                .expect("read");
+            rules[0].name = "renamed-under-us".to_owned();
+            picker
+                .selection
+                .set_items(jinn_stream_rule_picker_msg::build_stream_rule_entries(
+                    &rules,
+                    &std::collections::HashSet::new(),
+                    &picker.theme,
+                ));
+        });
+        dispatch(
+            "toggle-stream-rule-picker",
+            &mut state,
+            &slices,
+            &key_routes,
+            &config,
+        );
+
+        (slices, key_routes, config, state, prefs_dir)
+    };
 
     // When confirming — the write targets an entry that is not there, and
     // the failure is the actor's to report.
@@ -1421,27 +1433,32 @@ async fn confirming_a_large_rule_set_still_closes_with_the_command() {
     // assembled list is exactly those 120. The assertion is functional,
     // never wall-clock: timing tests are flaky under the per-test timeout,
     // and the zero-read proof above is the real cost guarantee.
-    let mut doc = String::new();
-    for i in 0..120 {
-        let _ = write!(
-            doc,
-            "[[stream_rules.entry]]\nname = \"bulk-rule-{i}\"\nconditions = ['FIXME']\nbody = \"Fix it.\"\n\n"
+    let (slices, key_routes, config, mut state, cell, _prefs_dir) = {
+        let mut doc = String::new();
+        for i in 0..120 {
+            let _ = write!(
+                doc,
+                "[[stream_rules.entry]]\nname = \"bulk-rule-{i}\"\nconditions = ['FIXME']\nbody = \"Fix it.\"\n\n"
+            );
+        }
+        let (prefs_dir, prefs) = temp_prefs_with_sibling("");
+        let (slices, key_routes, config, prefs_dir, _prefs) =
+            activated_doc(&doc, prefs_dir, prefs).await;
+        let cell: TypedCell<StreamRulePickerState> = slices
+            .reader(&stream_rule_picker_slot())
+            .expect("stream-rule picker cell registered at activation");
+        let mut state = AppState::default_with_scope_focus();
+        dispatch(
+            "open-stream-rule-picker",
+            &mut state,
+            &slices,
+            &key_routes,
+            &config,
         );
-    }
-    let (prefs_dir, prefs) = temp_prefs_with_sibling("");
-    let (slices, key_routes, config, _prefs_dir, _prefs) =
-        activated_doc(&doc, prefs_dir, prefs).await;
-    let cell: TypedCell<StreamRulePickerState> = slices
-        .reader(&stream_rule_picker_slot())
-        .expect("stream-rule picker cell registered at activation");
-    let mut state = AppState::default_with_scope_focus();
-    dispatch(
-        "open-stream-rule-picker",
-        &mut state,
-        &slices,
-        &key_routes,
-        &config,
-    );
+
+        (slices, key_routes, config, state, cell, prefs_dir)
+    };
+
     assert_eq!(
         visible_names(&cell).len(),
         120,
@@ -1500,6 +1517,8 @@ async fn confirming_a_large_rule_set_still_closes_with_the_command() {
 fn the_picker_binds_navigation_toggle_confirm_and_cancel() {
     // Given the route rows the slice attaches.
     let (_cell, routes, _config, _prefs_dir, _prefs) = wired();
+
+    // When the bound keys are collected.
     let keys: Vec<&str> = routes.rows().iter().map(|row| row.key).collect();
 
     // Then the picker walks, pages, toggles, confirms, and cancels.

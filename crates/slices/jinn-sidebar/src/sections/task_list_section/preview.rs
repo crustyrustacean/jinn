@@ -311,10 +311,10 @@ mod tests {
     )]
     use super::*;
     use jinn_kernel::common::app_state::AppState;
-    use jinn_kernel::common::render_ctx::RenderCtx;
+
+    use jinn_kernel::common::render_test::render_draw;
     use jinn_theme::default_theme;
     use jinn_tools_msg::{PhaseInput, TaskList, TaskStatus};
-    use ratatui::{Terminal, backend::TestBackend};
 
     fn frame_area() -> Rect {
         Rect::new(0, 0, 120, 40)
@@ -564,15 +564,9 @@ mod tests {
 
     /// Renders the popup into a buffer and returns its trimmed text.
     fn render_popup_text(app: &AppState) -> String {
-        let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
-        terminal
-            .draw(|f| {
-                let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new_with_default_config(app, &slices, &overlay_views);
-                render_task_list_preview_for_state(f, sidebar_rect(), frame_area(), &ctx);
-            })
-            .unwrap();
+        let terminal = render_draw(app, 120, 40, |f, _area, f_ctx| {
+            render_task_list_preview_for_state(f, sidebar_rect(), frame_area(), f_ctx);
+        });
         terminal
             .backend()
             .buffer()

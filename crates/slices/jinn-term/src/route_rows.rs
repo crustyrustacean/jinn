@@ -509,6 +509,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+    use jinn_kernel::common::render_test::seed_cell;
 
     use super::app;
     use super::attach_rows;
@@ -543,12 +544,11 @@ mod tests {
     /// `activate` does), for hint write/read assertions.
     fn status_bar_slices() -> Slices {
         let slices = Slices::new();
-        slices
-            .register(
-                jinn_status_bar_msg::status_bar_slot(),
-                jinn_status_bar_msg::StatusBarState::default(),
-            )
-            .expect("fresh Slices never has the status-bar cell registered");
+        seed_cell(
+            &slices,
+            &jinn_status_bar_msg::status_bar_slot(),
+            jinn_status_bar_msg::StatusBarState::default(),
+        );
         slices
     }
 

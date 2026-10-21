@@ -259,11 +259,13 @@ mod tests {
 
     #[rstest::rstest]
     fn two_turns_close_by_within_the_gap_are_one_interval() {
-        // Given a session that worked 0..3, idled 2s, then worked 5..8.
+        // Given a session that worked 0..3 and then idled for 2 seconds.
         let mut state = WorkingTimeState::default();
         let id = SessionId::new();
         state.begin_working(id.clone(), at(0));
         state.end_working(&id, at(3));
+
+        // When the session works again after the short gap.
         state.begin_working(id.clone(), at(5));
         state.end_working(&id, at(8));
 
@@ -278,11 +280,11 @@ mod tests {
         let id = SessionId::new();
         state.restore(id.clone(), vec![WorkingInterval::closed(at(0), at(12))]);
 
+        // When the session's total working time is read.
+        let working = state.working_time(&id, at(100));
+
         // Then the total reads the restored span.
-        assert_eq!(
-            state.working_time(&id, at(100)),
-            SignedDuration::from_secs(12)
-        );
+        assert_eq!(working, SignedDuration::from_secs(12));
     }
 
     #[rstest::rstest]

@@ -6,12 +6,11 @@
     reason = "test code"
 )]
 
-use jinn_testutil::setup_term;
+use jinn_testutil::{empty_routes, empty_slices, setup_term};
 
 use crate::sections::pins::pins_section::*;
 use crate::sections::section_trait::SidebarSection;
 use jinn_kernel::common::app_state::AppState;
-use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_kernel::protocol::{ChangeSource, ChatEntry, ChatEntryId, PinPosition};
 use jinn_slices::route::ScopeSignal;
 
@@ -237,12 +236,7 @@ fn content_height_is_zero_when_empty() {
 
     // When asking for content height.
     let slices = jinn_slices::Slices::new();
-    let overlay_views = jinn_slices::OverlayViews::new();
-    let height = section.content_height(&RenderCtx::new_with_default_config(
-        &state,
-        &slices,
-        &overlay_views,
-    ));
+    let height = with_render_ctx(&state, &slices, |ctx| section.content_height(ctx));
 
     // Then it returns 0 (section is hidden when empty).
     assert_eq!(height, 0);
@@ -256,12 +250,7 @@ fn content_height_matches_entry_count() {
 
     // When asking for content height.
     let slices = jinn_slices::Slices::new();
-    let overlay_views = jinn_slices::OverlayViews::new();
-    let height = section.content_height(&RenderCtx::new_with_default_config(
-        &state,
-        &slices,
-        &overlay_views,
-    ));
+    let height = with_render_ctx(&state, &slices, |ctx| section.content_height(ctx));
 
     // Then it returns header(1) + header-gap(1) + entries(3) + trailing gap(1) = 6.
     assert_eq!(height, 6);
@@ -273,15 +262,10 @@ fn render_rows(
     width: u16,
     height: u16,
 ) -> Vec<String> {
-    let (mut terminal, area) = setup_term(width, height);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
-            section.render(frame, area, 0, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = setup_term(width, height);
+    let (terminal, _area) = render_section_with_area(state, width, height, |frame, area, ctx| {
+        section.render(frame, area, 0, ctx);
+    });
     let buffer = terminal.backend().buffer();
     (0..height)
         .map(|y| {
@@ -359,17 +343,17 @@ fn render_selected_entry_row_keeps_a_dark_gutter_when_sidebar_focused() {
     state
         .frontend
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Pins.focus_scope());
-    let (mut terminal, area) = setup_term(60, 20);
 
-    // When rendering the section.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            section.render(frame, area, 0, &ctx);
-        })
-        .unwrap();
+    // When rendering.
+    let terminal = render_section(
+        &state,
+        &jinn_slices::Slices::new(),
+        60,
+        20,
+        |frame, area, ctx| {
+            section.render(frame, area, 0, ctx);
+        },
+    );
 
     // Then the selected entry's gutter cell is a dark blank. No bordered
     // block in section render - content
@@ -387,17 +371,17 @@ fn render_selected_entry_has_darkgray_marker_when_not_focused() {
     // (Normal scope is the default).
     let mut section = PinsSection;
     let state = state_with_pinned(2);
-    let (mut terminal, area) = setup_term(60, 20);
 
-    // When rendering the section.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            section.render(frame, area, 0, &ctx);
-        })
-        .unwrap();
+    // When rendering.
+    let terminal = render_section(
+        &state,
+        &jinn_slices::Slices::new(),
+        60,
+        20,
+        |frame, area, ctx| {
+            section.render(frame, area, 0, ctx);
+        },
+    );
 
     // Then no selection indicator is drawn on the selected entry's row.
     let buffer = terminal.backend().buffer();
@@ -681,18 +665,11 @@ fn resolve_selected_entry_id_returns_real_session_and_entry_ids() {
     );
 }
 
+use jinn_kernel::common::render_test::{render_section, render_section_with_area, with_render_ctx};
 use jinn_kernel::protocol::ToolResultStatus;
 
 /// Empty slice registry + route table for handler tests that don't
 /// exercise slices or route rows.
-fn empty_slices() -> jinn_slices::Slices {
-    jinn_slices::Slices::new()
-}
-
-fn empty_routes() -> jinn_slices::route::KeyRoutes {
-    jinn_slices::route::KeyRoutes::new()
-}
-
 /// Build an AppState with one pinned tool-result entry.
 fn state_with_pinned_tool_result(name: &str, content: &str) -> AppState {
     let mut state = AppState::default_with_scope_focus();
@@ -944,15 +921,10 @@ fn a_selected_pin_row_bands_the_full_width_with_a_dark_gutter_and_banded_badge()
     let mut section = PinsSection;
     let width = 50u16;
     let height = 10u16;
-    let (mut terminal, area) = setup_term(width, height);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            section.render(frame, area, 0, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = setup_term(width, height);
+    let (terminal, _area) = render_section_with_area(&state, width, height, |frame, area, ctx| {
+        section.render(frame, area, 0, ctx);
+    });
     let buffer = terminal.backend().buffer();
 
     // Then the selected row carries the band...

@@ -19,10 +19,9 @@ use std::time::Duration;
 
 use jinn_inference_msg::StreamToken;
 use jinn_kernel::common::app_state::AppState;
-use jinn_kernel::common::render_ctx::RenderCtx;
+use jinn_kernel::common::render_test::render_element;
 use jinn_kernel::common::services::BusService;
 use jinn_kernel::common::state::State;
-use jinn_kernel::common::ui_element::UiElement;
 use jinn_kernel::protocol::ChatEntryKind;
 use jinn_session_turn::session_actor::SessionPersistenceActorDeps;
 use jinn_tools_msg::{ToolCallReceived, ToolCallStreaming, ToolUseStarted};
@@ -87,17 +86,8 @@ fn active_session_id(state: &State) -> jinn_core_types::SessionId {
 
 /// Paints one frame of the chat log and returns the buffer's text.
 fn painted(state: &AppState, width: u16, height: u16) -> String {
-    let (mut terminal, area) = jinn_testutil::setup_term(width, height);
     let mut element = jinn_chat_log_view::kernel_element::ChatLogElement::new();
-    let guard = state;
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(guard, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .expect("draw one chat log frame");
+    let terminal = render_element(&mut element, state, width, height);
     let buffer = terminal.backend().buffer().clone();
     jinn_testutil::buffer_rows(&buffer, width, height).join("\n")
 }
@@ -187,33 +177,36 @@ async fn streamed_arguments_are_visible_when_the_turn_starts_with_a_tool_call() 
 #[tokio::test]
 async fn a_streamed_delta_lands_on_the_tool_call_entry_it_started_on() {
     // Given a live session actor mid-turn with a begun tool call.
-    let (bus, state) = live_session().await;
-    let session_id = active_session_id(&state);
-    state.write().active_session_mut().begin_sending();
-    bus.publish(StreamToken {
-        session_id: session_id.clone(),
-        index: 0,
-        token: "Let me write that file.".to_owned(),
-        is_thinking: false,
-        dispatched_at: jiff::Timestamp::now(),
-    })
-    .await;
-    settle(&state).await;
-    bus.publish(ToolUseStarted {
-        session_id: session_id.clone(),
-        index: 0,
-        id: "tc-write".into(),
-        name: "write".to_owned(),
-        dispatched_at: jiff::Timestamp::now(),
-    })
-    .await;
-    bus.publish(ToolCallStreaming {
-        session_id: session_id.clone(),
-        index: 0,
-        partial_json: WRITE_ARGS[0].to_owned(),
-    })
-    .await;
-    settle(&state).await;
+    let (bus, state, session_id) = {
+        let (bus, state) = live_session().await;
+        let session_id = active_session_id(&state);
+        state.write().active_session_mut().begin_sending();
+        bus.publish(StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "Let me write that file.".to_owned(),
+            is_thinking: false,
+            dispatched_at: jiff::Timestamp::now(),
+        })
+        .await;
+        settle(&state).await;
+        bus.publish(ToolUseStarted {
+            session_id: session_id.clone(),
+            index: 0,
+            id: "tc-write".into(),
+            name: "write".to_owned(),
+            dispatched_at: jiff::Timestamp::now(),
+        })
+        .await;
+        bus.publish(ToolCallStreaming {
+            session_id: session_id.clone(),
+            index: 0,
+            partial_json: WRITE_ARGS[0].to_owned(),
+        })
+        .await;
+        settle(&state).await;
+        (bus, state, session_id)
+    };
 
     // When the call completes and the finalized arguments arrive.
     bus.publish(ToolCallReceived {

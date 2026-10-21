@@ -114,23 +114,16 @@ mod tests {
     use super::*;
     use crate::kernel_element::history::ChatLogElement;
     use jinn_kernel::common::app_state::AppState;
-    use jinn_kernel::common::render_ctx::RenderCtx;
-    use jinn_kernel::common::ui_element::UiElement;
-    use jinn_testutil::{buffer_row, setup_term};
+
+    use jinn_kernel::common::render_test::render_element_with_area;
+
+    use jinn_testutil::buffer_row;
     use ratatui::style::Color;
 
     /// Renders the element once with a session load in flight.
     fn render_loading_into(state: &AppState, width: u16, height: u16) -> ratatui::buffer::Buffer {
         let mut element = ChatLogElement::new();
-        let (mut terminal, area) = setup_term(width, height);
-        {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
-            terminal
-                .draw(|frame| element.render(frame, area, &ctx))
-                .expect("draw");
-        }
+        let (terminal, _area) = render_element_with_area(&mut element, state, width, height);
         terminal.backend().buffer().clone()
     }
 

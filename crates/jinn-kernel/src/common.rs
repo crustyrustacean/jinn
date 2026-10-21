@@ -13,6 +13,7 @@ pub mod phase_command;
 pub mod phase_events;
 pub mod provider_resolution;
 pub mod render_ctx;
+pub mod render_test;
 pub mod request_dump;
 pub mod services;
 pub mod session_persistence;

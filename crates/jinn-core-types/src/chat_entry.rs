@@ -1097,10 +1097,14 @@ mod intersession_tests {
             "hello",
         );
 
+        // When its default-context inclusion and prompt text are read.
+        let included = entry.kind.is_included_by_default();
+        let prompt = entry.prompt_text();
+
         // Then it is user-equivalent by default, and its prompt text is the
         // message itself (the sender bakes the attribution prefix in).
-        assert!(entry.kind.is_included_by_default());
-        assert_eq!(entry.prompt_text(), Some("hello"));
+        assert!(included);
+        assert_eq!(prompt, Some("hello"));
     }
 
     #[rstest::rstest]
@@ -1114,7 +1118,10 @@ mod intersession_tests {
             "hi",
         );
 
+        // When its kind is read.
+        let kind = entry.kind_str();
+
         // Then its kind string names the kind.
-        assert_eq!(entry.kind_str(), "intersession");
+        assert_eq!(kind, "intersession");
     }
 }

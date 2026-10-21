@@ -1643,6 +1643,8 @@ fn a_frozen_skill_set_over_an_undiscovered_attendant_writes_the_allow_list() {
     // looks like for as long as the scan is still in flight.
     let mut fx = PopupFixture::new();
     fx.open_on_the_skill_set();
+
+    // When the row is frozen and applied.
     fx.press("attendant-properties-pick-right");
     fx.press("attendant-properties-apply");
 

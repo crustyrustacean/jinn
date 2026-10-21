@@ -301,10 +301,10 @@ mod tests {
     };
     use jinn_config::ConfigLayer;
     use jinn_kernel::common::app_state::AppState;
-    use jinn_kernel::common::render_ctx::RenderCtx;
+
+    use jinn_kernel::common::render_test::{render_draw_with_config, with_render_ctx_and_config};
     use jinn_mcp_msg::McpConnectionStatus;
     use jinn_preferences_config::schemas::mcp::McpServerConfig;
-    use jinn_testutil::setup_term;
 
     fn server(name: &str) -> (String, McpServerConfig) {
         (
@@ -340,14 +340,16 @@ mod tests {
         slices: &jinn_slices::Slices,
     ) -> Vec<String> {
         let mut section = McpServersSection;
-        let (mut terminal, area) = setup_term(width, height);
-        terminal
-            .draw(|frame| {
-                let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new(state, slices, &overlay_views, config);
-                section.render(frame, area, 0, &ctx);
-            })
-            .unwrap();
+        let terminal = render_draw_with_config(
+            state,
+            slices,
+            config,
+            width,
+            height,
+            |frame, area, frame_ctx| {
+                section.render(frame, area, 0, frame_ctx);
+            },
+        );
         let buffer = terminal.backend().buffer();
         (0..height)
             .map(|y| {
@@ -543,9 +545,8 @@ mod tests {
 
         // When computing the content height.
         let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_slices::OverlayViews::new();
         let height =
-            section.content_height(&RenderCtx::new(&state, &slices, &overlay_views, &config));
+            with_render_ctx_and_config(&state, &slices, &config, |ctx| section.content_height(ctx));
 
         // Then the section collapses to zero height (hidden).
         assert_eq!(
@@ -566,9 +567,8 @@ mod tests {
 
         // When computing the content height.
         let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_slices::OverlayViews::new();
         let height =
-            section.content_height(&RenderCtx::new(&state, &slices, &overlay_views, &config));
+            with_render_ctx_and_config(&state, &slices, &config, |ctx| section.content_height(ctx));
 
         // Then it counts only the enabled servers:
         // header(1) + blank(1) + 2 rows + trailing gap(1) = 5.
@@ -624,15 +624,17 @@ mod tests {
         height: u16,
     ) -> ratatui::buffer::Buffer {
         let mut section = McpServersSection;
-        let (mut terminal, area) = setup_term(width, height);
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new(state, &slices, &overlay_views, config);
-                section.render(frame, area, 0, &ctx);
-            })
-            .unwrap();
+        let slices = jinn_slices::Slices::new();
+        let terminal = render_draw_with_config(
+            state,
+            &slices,
+            config,
+            width,
+            height,
+            |frame, area, frame_ctx| {
+                section.render(frame, area, 0, frame_ctx);
+            },
+        );
         terminal.backend().buffer().clone()
     }
 
@@ -710,14 +712,16 @@ mod tests {
 
         // When rendering.
         let width = 50u16;
-        let (mut terminal, area) = setup_term(width, 8);
-        terminal
-            .draw(|frame| {
-                let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new(&state, &slices, &overlay_views, &config);
-                McpServersSection.render(frame, area, 0, &ctx);
-            })
-            .unwrap();
+        let terminal = render_draw_with_config(
+            &state,
+            &slices,
+            &config,
+            width,
+            8,
+            |frame, area, frame_ctx| {
+                McpServersSection.render(frame, area, 0, frame_ctx);
+            },
+        );
         let buffer = terminal.backend().buffer().clone();
 
         // Then the status label's cells sit on the selection background — the

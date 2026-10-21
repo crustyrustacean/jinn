@@ -1052,7 +1052,7 @@ async fn concurrent_spawn_subagent_calls_resolve_independently() {
 #[rstest::rstest]
 #[tokio::test]
 async fn parent_cancel_leaves_child_running_and_unregisters_pair() {
-    // GIVEN an in-flight spawn_subagent call awaiting its child.
+    // Given an in-flight spawn_subagent call awaiting its child.
     let harness = TestHarness::new().await;
     let dir = jinn_testutil::tempdir().expect("temp dir");
     let (state, parent_id) = parent_fixture(dir.path());

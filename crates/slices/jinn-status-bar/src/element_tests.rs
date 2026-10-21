@@ -6,13 +6,13 @@
     reason = "test code"
 )]
 
-use jinn_testutil::{buffer_row, setup_term};
+use jinn_testutil::buffer_row;
 
 use crate::element::StatusBarElement;
 use jinn_core_types::WorkingInterval;
 use jinn_core_types::model_selection::{AlloyStrategy, ModelSelection};
 use jinn_kernel::AppState;
-use jinn_kernel::common::render_ctx::RenderCtx;
+use jinn_kernel::common::render_test::{render_element, render_element_with_slices, seed_cell};
 use jinn_kernel::common::ui_element::UiElement;
 use jinn_token_count_msg::TokenRecord;
 use jinn_work_time_msg::{WorkingTimeState, work_time_slot};
@@ -34,17 +34,9 @@ fn render_shows_no_model_selected_when_unset() {
     // Given a state with no model selected.
     let mut element = StatusBarElement;
     let state = AppState::default();
-    let (mut terminal, area) = setup_term(50, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 50, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 50);
 
@@ -61,30 +53,18 @@ fn render_shows_status_hint_instead_of_model_when_set() {
     let state = AppState::default();
     let slices = jinn_slices::Slices::new();
     {
-        #[expect(
-            clippy::expect_used,
-            reason = "test seam: a fresh Slices never has the status-bar cell registered"
-        )]
-        let cell = slices
-            .register(
-                jinn_status_bar_msg::status_bar_slot(),
-                jinn_status_bar_msg::StatusBarState {
-                    hint: Some("that session has no live terminal".to_owned()),
-                },
-            )
-            .expect("fresh Slices never has the status-bar cell registered");
+        let cell = seed_cell(
+            &slices,
+            &jinn_status_bar_msg::status_bar_slot(),
+            jinn_status_bar_msg::StatusBarState {
+                hint: Some("that session has no live terminal".to_owned()),
+            },
+        );
         cell.update(|s| s.hint = Some("that session has no live terminal".to_owned()));
     }
-    let (mut terminal, area) = setup_term(60, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element_with_slices(&mut element, &state, &slices, 60, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 60);
 
@@ -105,28 +85,16 @@ fn render_short_hint_leaves_no_model_residue() {
     ));
     let slices = jinn_slices::Slices::new();
     {
-        #[expect(
-            clippy::expect_used,
-            reason = "test seam: a fresh Slices never has the status-bar cell registered"
-        )]
-        let cell = slices
-            .register(
-                jinn_status_bar_msg::status_bar_slot(),
-                jinn_status_bar_msg::StatusBarState::default(),
-            )
-            .expect("fresh Slices never has the status-bar cell registered");
+        let cell = seed_cell(
+            &slices,
+            &jinn_status_bar_msg::status_bar_slot(),
+            jinn_status_bar_msg::StatusBarState::default(),
+        );
         cell.update(|s| s.hint = Some("yanked 3 lines".to_owned()));
     }
-    let (mut terminal, area) = setup_term(60, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element_with_slices(&mut element, &state, &slices, 60, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 60);
 
@@ -148,17 +116,9 @@ fn render_defaults_to_model_when_cell_absent() {
     // activated) and no model selected.
     let mut element = StatusBarElement;
     let state = AppState::default();
-    let (mut terminal, area) = setup_term(60, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 60, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 60);
 
@@ -174,17 +134,9 @@ fn render_shows_provider_and_model() {
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
-    let (mut terminal, area) = setup_term(50, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 50, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 50);
 
@@ -214,15 +166,7 @@ fn render_single_model_ignores_stale_ledger_model_used() {
     });
 
     // When rendering.
-    let (mut terminal, area) = setup_term(50, 2);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 50, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 50);
 
@@ -245,17 +189,9 @@ fn render_right_aligns_text() {
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
-    let (mut terminal, area) = setup_term(50, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 50, 2);
     let buffer = terminal.backend().buffer().clone();
 
     // Then the info line (row 1) is right-aligned, starting with the indicator
@@ -274,17 +210,9 @@ fn render_shows_provider_with_slash_in_model() {
     state.active_session_mut().set_model(ModelSelection::Single(
         "openrouter/anthropic/claude-sonnet-4".to_owned(),
     ));
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
 
@@ -300,17 +228,9 @@ fn render_shows_token_counts_with_zero_values() {
     // Given a state with no token records.
     let mut element = StatusBarElement;
     let state = AppState::default();
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
 
@@ -338,17 +258,9 @@ fn render_shows_token_counts_with_values() {
         prompt_tokens: None,
         cached_tokens: None,
     });
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
 
@@ -377,17 +289,9 @@ fn render_shows_cache_percent_when_cached_tokens_present() {
         prompt_tokens: Some(1000),
         cached_tokens: Some(400),
     });
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
 
@@ -440,17 +344,9 @@ fn render_info_line_cache_segment_is_error_below_90_percent(
     // Given a measured turn displaying below 90%.
     let mut element = StatusBarElement;
     let state = state_with_measured_cache(1000, cached_tokens);
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
 
     // Then the cache segment reads its percentage and carries the error color.
     let row = buffer_row(terminal.backend().buffer(), 1, 80);
@@ -475,17 +371,9 @@ fn render_info_line_cache_segment_is_success_at_or_above_95_percent(
     // Given a measured turn reporting cache hits at or above 95% after rounding.
     let mut element = StatusBarElement;
     let state = state_with_measured_cache(1000, cached_tokens);
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
 
     // Then the segment shows the ROUNDED percentage and carries the success color.
     let row = buffer_row(terminal.backend().buffer(), 1, 80);
@@ -510,17 +398,9 @@ fn render_info_line_cache_segment_is_warning_between_90_and_94_percent(
     // Given a measured turn displaying between 90% and 94% inclusive.
     let mut element = StatusBarElement;
     let state = state_with_measured_cache(1000, cached_tokens);
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
 
     // Then the cache segment reads its percentage and carries the warning color.
     let row = buffer_row(terminal.backend().buffer(), 1, 80);
@@ -551,17 +431,9 @@ fn render_hides_cache_glyph_when_no_cached_tokens() {
         prompt_tokens: Some(1000),
         cached_tokens: None,
     });
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
 
@@ -598,17 +470,9 @@ fn render_cache_percent_uses_measured_turns_only() {
         prompt_tokens: None,
         cached_tokens: None,
     });
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
 
@@ -635,17 +499,9 @@ fn render_shows_zero_percent_max_when_context_size_but_no_limit() {
         cached_tokens: None,
     });
     state.active_session_mut().set_context_size(5000);
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
 
@@ -658,17 +514,9 @@ fn render_shows_zero_percent_max_when_no_context_size() {
     // Given a session with no cached context size.
     let mut element = StatusBarElement;
     let state = AppState::default();
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
 
@@ -686,17 +534,9 @@ fn render_shows_zero_turns_when_no_history() {
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
 
@@ -724,17 +564,9 @@ fn render_shows_turn_count_with_history() {
     state
         .active_session_mut()
         .push_entry(jinn_kernel::protocol::ChatEntry::assistant("doing well"));
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
 
@@ -766,17 +598,9 @@ fn render_turn_count_skips_tool_loop_intermediates() {
     state
         .active_session_mut()
         .push_entry(jinn_kernel::protocol::ChatEntry::assistant("fixed it"));
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
 
@@ -789,17 +613,9 @@ fn render_shows_cwd_on_first_line() {
     // Given default state (cwd is "." which resolves to the current dir).
     let mut element = StatusBarElement;
     let state = AppState::default();
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
 
     // Then the first row carries the cwd and is not empty.
@@ -820,17 +636,9 @@ fn render_shows_absolute_path_for_non_home_cwd() {
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     state.active_session_mut().set_cwd(cwd.clone());
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
 
     // Then the cwd line (row 0) shows the full absolute path, with no tilde.
@@ -852,17 +660,9 @@ fn render_shows_tilde_for_home_cwd() {
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
     let home = dirs::home_dir().expect("home dir exists");
     state.active_session_mut().set_cwd(home);
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
 
     // Then the cwd line collapses to just "~".
@@ -885,17 +685,9 @@ fn render_shows_tilde_substitution_for_path_under_home() {
     state
         .active_session_mut()
         .set_cwd(home.join("projects/my-app"));
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
 
     // Then only the home-directory prefix is replaced by "~", with the
@@ -966,17 +758,9 @@ fn render_shows_context_limit_with_usage_and_percentage() {
         "anthropic/claude-sonnet-4",
         Some(200_000),
     );
-    let (mut terminal, area) = setup_term(100, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 100, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 100);
 
@@ -1010,17 +794,9 @@ fn render_falls_back_to_last_ledger_tokens_when_no_cached_context_size() {
         "anthropic/claude-sonnet-4",
         Some(200_000),
     );
-    let (mut terminal, area) = setup_term(100, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 100, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 100);
 
@@ -1058,17 +834,9 @@ fn render_uses_the_last_ledger_record_not_a_sum() {
         "anthropic/claude-sonnet-4",
         Some(200_000),
     );
-    let (mut terminal, area) = setup_term(100, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 100, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 100);
 
@@ -1111,17 +879,9 @@ fn render_prefers_cached_context_size_over_the_ledger_fallback() {
         "anthropic/claude-sonnet-4",
         Some(200_000),
     );
-    let (mut terminal, area) = setup_term(100, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 100, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 100);
 
@@ -1130,37 +890,25 @@ fn render_prefers_cached_context_size_over_the_ledger_fallback() {
 }
 
 #[rstest::rstest]
-fn render_shows_zero_percent_when_ledger_empty_and_no_cached_size() {
-    // Given a session that has never dispatched — no ledger records, no cached
-    // context size — with a known context limit.
+fn render_shows_zero_usage_when_ledger_empty_and_no_cached_size() {
+    // Given a session that has never dispatched — no ledger records and no
+    // cached context size.
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state.active_session_mut().set_model(ModelSelection::Single(
         "openrouter/anthropic/claude-sonnet-4".to_owned(),
     ));
-    attach_model_cache(
-        &mut state,
-        "openrouter",
-        "anthropic/claude-sonnet-4",
-        Some(200_000),
-    );
-    let (mut terminal, area) = setup_term(100, 2);
+    attach_model_cache(&mut state, "openrouter", "anthropic/claude-sonnet-4", None);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 100, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 100);
 
-    // Then the display stays 0.0%/<max>: an unactivated session that has never
-    // dispatched is genuinely zero.
-    assert!(row.contains("0.0%/200k"), "expected 0.0%/200k, got: {row}");
+    // Then the display is 0/??? : an unactivated session that has never
+    // dispatched is genuinely zero, and with no cached size there is no max
+    // to show against it.
+    assert!(row.contains("0/???"), "expected 0/???, got: {row}");
 }
 
 #[rstest::rstest]
@@ -1183,17 +931,9 @@ fn render_falls_back_when_no_context_limit_in_cache() {
     });
     state.active_session_mut().set_context_size(5000);
     attach_model_cache(&mut state, "ollama", "llama3", None);
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
 
@@ -1230,17 +970,8 @@ fn render_falls_back_when_no_model_cache() {
             .is_none_or(|cell| cell.read().model_cache.is_none())
     );
 
-    let (mut terminal, area) = setup_term(80, 2);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
 
@@ -1266,17 +997,9 @@ fn render_shows_zero_percent_with_max_when_no_messages_sent() {
         "anthropic/claude-sonnet-4",
         Some(200_000),
     );
-    let (mut terminal, area) = setup_term(100, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 100, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 100);
 
@@ -1297,17 +1020,8 @@ fn render_shows_used_over_unknown_when_no_context_length() {
     // Model cache exists but has no context_length.
     attach_model_cache(&mut state, "ollama", "llama3", None);
 
-    let (mut terminal, area) = setup_term(100, 2);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 100, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 100);
 
@@ -1320,17 +1034,9 @@ fn render_always_shows_cost_even_when_zero() {
     // Given a state with no token records and no history.
     let mut element = StatusBarElement;
     let state = AppState::default();
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
 
@@ -1359,17 +1065,9 @@ fn render_shows_cost_with_non_zero_value() {
         prompt_tokens: None,
         cached_tokens: None,
     });
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
 
@@ -1420,15 +1118,7 @@ fn render_tree_cache_segment_is_success_when_at_or_above_95_percent() {
     let state = state_with_parent_and_child_cache();
 
     // When rendering.
-    let (mut terminal, area) = setup_term(120, 2);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 120, 2);
     let buffer = terminal.backend().buffer().clone();
     let row0 = buffer_row(&buffer, 0, 120);
 
@@ -1457,15 +1147,7 @@ fn render_tree_cache_segment_keeps_muted_neighbors() {
     let state = state_with_parent_and_child_cache();
 
     // When rendering.
-    let (mut terminal, area) = setup_term(120, 2);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 120, 2);
     let buffer = terminal.backend().buffer().clone();
 
     // Then the token arrow right after the colored cache segment keeps the
@@ -1508,17 +1190,9 @@ fn render_shows_cost_before_turns_indicator() {
         prompt_tokens: None,
         cached_tokens: None,
     });
-    let (mut terminal, area) = setup_term(80, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 80, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
 
@@ -1541,17 +1215,9 @@ fn render_hides_tree_aggregate_for_single_session() {
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
-    let (mut terminal, area) = setup_term(120, 2);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 120, 2);
     let buffer = terminal.backend().buffer().clone();
     let row0 = buffer_row(&buffer, 0, 120);
 
@@ -1598,17 +1264,8 @@ fn render_shows_tree_aggregate_when_parent_has_child() {
     });
     child.set_parent_session(active_id);
 
-    let (mut terminal, area) = setup_term(120, 2);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 120, 2);
     let buffer = terminal.backend().buffer().clone();
     let row0 = buffer_row(&buffer, 0, 120);
 
@@ -1651,17 +1308,8 @@ fn render_shows_tree_aggregate_from_child_viewpoint() {
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
 
-    let (mut terminal, area) = setup_term(120, 2);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 120, 2);
     let buffer = terminal.backend().buffer().clone();
     let row0 = buffer_row(&buffer, 0, 120);
 
@@ -1682,15 +1330,7 @@ fn render_single_model_shows_provider_and_model_without_alloy_prefix() {
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
 
     // When rendering.
-    let (mut terminal, area) = setup_term(50, 2);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 50, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 50);
 
@@ -1729,15 +1369,7 @@ fn render_alloy_with_token_records_shows_prefix_and_last_dispatched_model() {
     });
 
     // When rendering.
-    let (mut terminal, area) = setup_term(60, 2);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 60, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 60);
 
@@ -1762,15 +1394,7 @@ fn render_alloy_with_no_token_records_falls_back_to_first_model() {
     });
 
     // When rendering.
-    let (mut terminal, area) = setup_term(50, 2);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 50, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 50);
 
@@ -1792,15 +1416,7 @@ fn render_alloy_with_one_model_shows_alloy_1() {
     });
 
     // When rendering.
-    let (mut terminal, area) = setup_term(50, 2);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 50, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 50);
 
@@ -1823,15 +1439,7 @@ fn render_appends_resolved_reasoning_effort_after_model() {
         Some(jinn_kernel::ReasoningEffort::High);
 
     // When rendering.
-    let (mut terminal, area) = setup_term(50, 2);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 50, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 50);
 
@@ -1856,15 +1464,7 @@ fn render_session_override_beats_global_reasoning_effort() {
         Some(jinn_kernel::ReasoningEffort::Low);
 
     // When rendering.
-    let (mut terminal, area) = setup_term(50, 2);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 50, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 50);
 
@@ -1889,15 +1489,7 @@ fn render_omits_reasoning_effort_bracket_when_unresolved() {
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
 
     // When rendering.
-    let (mut terminal, area) = setup_term(50, 2);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 50, 2);
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 50);
 
@@ -1929,17 +1521,8 @@ fn cache_with_modalities(
 }
 
 fn render_model_row(state: &AppState) -> String {
-    use jinn_kernel::common::ui_element::UiElement;
     let mut element = StatusBarElement;
-    let (mut terminal, area) = setup_term(80, 2);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, state, 80, 2);
     buffer_row(terminal.backend().buffer(), 1, 80)
 }
 
@@ -2164,9 +1747,7 @@ fn slices_with_working_time(
     intervals: Vec<WorkingInterval>,
 ) -> jinn_slices::Slices {
     let slices = jinn_slices::Slices::new();
-    let cell = slices
-        .register(work_time_slot(), WorkingTimeState::default())
-        .expect("fresh Slices never has the work-time cell registered");
+    let cell = seed_cell(&slices, &work_time_slot(), WorkingTimeState::default());
     cell.update(|s| s.restore(session_id.clone(), intervals));
     slices
 }
@@ -2183,14 +1764,7 @@ fn render_rows(
     height: u16,
 ) -> Vec<String> {
     let mut element = StatusBarElement;
-    let (mut terminal, area) = setup_term(width, height);
-    terminal
-        .draw(|frame| {
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(state, slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .expect("draw status bar");
+    let terminal = render_element_with_slices(&mut element, state, slices, width, height);
     let buffer = terminal.backend().buffer().clone();
     (0..height).map(|r| buffer_row(&buffer, r, width)).collect()
 }
@@ -2266,9 +1840,7 @@ fn tree_block_shows_working_time_beside_the_turn_counter() {
 
     let shared = WorkingInterval::closed(at(0), at(10));
     let slices = jinn_slices::Slices::new();
-    let cell = slices
-        .register(work_time_slot(), WorkingTimeState::default())
-        .expect("fresh Slices never has the work-time cell registered");
+    let cell = seed_cell(&slices, &work_time_slot(), WorkingTimeState::default());
     cell.update(|s| {
         s.restore(parent_id.clone(), vec![shared.clone()]);
         s.restore(child_id, vec![shared]);
@@ -2296,9 +1868,7 @@ fn tree_block_shows_the_union_when_a_member_is_frozen() {
     state.session.insert_frozen_node(frozen_child);
 
     let slices = jinn_slices::Slices::new();
-    let cell = slices
-        .register(work_time_slot(), WorkingTimeState::default())
-        .expect("fresh Slices never has the work-time cell registered");
+    let cell = seed_cell(&slices, &work_time_slot(), WorkingTimeState::default());
     cell.update(|s| s.restore(parent_id, vec![WorkingInterval::closed(at(0), at(20))]));
 
     // When rendering.

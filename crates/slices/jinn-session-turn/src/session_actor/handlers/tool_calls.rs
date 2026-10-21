@@ -773,19 +773,22 @@ mod tests {
         use jinn_testutil::bus_harness::{TestHarness, await_recorded};
         use std::time::Duration;
 
-        let harness = TestHarness::new().await;
-        let recorder = harness.spawn_recorder::<SendToLlmProvider>().await;
-        let state = State::new(AppState::default());
-        {
-            let mut s = state.write();
-            let session = s.active_session_mut();
-            session.push_entry(ChatEntry::user("list files"));
-            session.push_entry(ChatEntry::assistant("checking"));
-            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
-            session.push_entry(ChatEntry::assistant("here are the files"));
-        }
-        let session_id = state.read().session.active_session_id().clone();
-        let actor = BusActor::spawn(harness, state).await;
+        let (actor, session_id, recorder) = {
+            let harness = TestHarness::new().await;
+            let recorder = harness.spawn_recorder::<SendToLlmProvider>().await;
+            let state = State::new(AppState::default());
+            {
+                let mut s = state.write();
+                let session = s.active_session_mut();
+                session.push_entry(ChatEntry::user("list files"));
+                session.push_entry(ChatEntry::assistant("checking"));
+                session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
+                session.push_entry(ChatEntry::assistant("here are the files"));
+            }
+            let session_id = state.read().session.active_session_id().clone();
+            let actor = BusActor::spawn(harness, state).await;
+            (actor, session_id, recorder)
+        };
         // The continuation's admission needs a live generation: mint the turn
         // and apply the tool-use edge, the shape a StreamCompleted(ToolUse)
         // leaves before the next batch.
@@ -911,17 +914,20 @@ mod tests {
         use jinn_testutil::bus_harness::{TestHarness, await_recorded};
         use std::time::Duration;
 
-        let harness = TestHarness::new_best_effort().await;
-        let recorder = harness.spawn_recorder::<SendToLlmProvider>().await;
-        let state = State::new(AppState::default());
-        let session_id = state.read().session.active_session_id().clone();
-        let dispatched_at = jiff::Timestamp::now();
-        {
-            let mut s = state.write();
-            let session = s.active_session_mut();
-            session.buffer_tool_results(vec![tool_result("tc-1", "bash", "ok", true)]);
-        }
-        let actor = BusActor::spawn(harness, state).await;
+        let (actor, session_id, recorder, dispatched_at) = {
+            let harness = TestHarness::new_best_effort().await;
+            let recorder = harness.spawn_recorder::<SendToLlmProvider>().await;
+            let state = State::new(AppState::default());
+            let session_id = state.read().session.active_session_id().clone();
+            let dispatched_at = jiff::Timestamp::now();
+            {
+                let mut s = state.write();
+                let session = s.active_session_mut();
+                session.buffer_tool_results(vec![tool_result("tc-1", "bash", "ok", true)]);
+            }
+            let actor = BusActor::spawn(harness, state).await;
+            (actor, session_id, recorder, dispatched_at)
+        };
         // A live generation behind the buffered batch: the terminal
         // ToolUse resolves against the mint's stamp.
         {
@@ -1543,22 +1549,27 @@ mod tests {
         }
 
         // Given a session with a turn in flight but no registration for index 7.
-        let (actor, _audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.begin_sending();
-            state.session.active_session_id().clone()
-        };
+        let (actor, session_id, capture, _guard) = {
+            let (actor, _audit) = test_actor_recording().await;
+            let session_id = {
+                let mut state = actor.state.write();
+                let session = state.active_session_mut();
+                session.begin_sending();
+                state.session.active_session_id().clone()
+            };
 
-        let capture = CapturingWriter::default();
-        let subscriber = tracing_subscriber::registry().with(
-            tracing_subscriber::fmt::layer()
-                .with_writer(capture.clone())
-                .with_ansi(false)
-                .with_filter(tracing_subscriber::EnvFilter::new("warn")),
-        );
-        let _guard = tracing::subscriber::set_default(subscriber);
+            let capture = CapturingWriter::default();
+            let subscriber = tracing_subscriber::registry().with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(capture.clone())
+                    .with_ansi(false)
+                    .with_filter(tracing_subscriber::EnvFilter::new("warn")),
+            );
+            // The guard must outlive the block: it installs the subscriber
+            // for the rest of the test.
+            let guard = tracing::subscriber::set_default(subscriber);
+            (actor, session_id, capture, guard)
+        };
 
         // When a delta arrives for an index that was never registered.
         actor.on_tool_call_streaming(&ToolCallStreaming {

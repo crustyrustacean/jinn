@@ -6,6 +6,7 @@
     reason = "test code"
 )]
 
+use jinn_kernel::common::render_test::{redraw_draw, render_draw};
 use std::time::Duration;
 
 use ratatui::Terminal;
@@ -38,7 +39,6 @@ fn cursor_row(state: &AppState) -> Option<usize> {
         .position(|entry| entry.id == id)
 }
 use jinn_kernel::common::app_state::AppState;
-use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_kernel::protocol::ChatEntry;
 use jinn_kernel::protocol::ChatEntryId;
 use jinn_kernel::protocol::PinPosition;
@@ -74,17 +74,12 @@ fn render_clears_area_with_sidebar_background() {
     let state = AppState::default_with_scope_focus();
 
     let backend = TestBackend::new(30, 10);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let _terminal = Terminal::new(backend).unwrap();
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, 30, 10), &ctx);
-        })
-        .unwrap();
+    let terminal = render_draw(&state, 30, 10, |frame, _area, frame_ctx| {
+        sidebar.render(frame, ratatui::layout::Rect::new(0, 0, 30, 10), frame_ctx);
+    });
 
     // Then the entire area has the sidebar background (#191b1e).
     let expected_bg = Color::Rgb(0x19, 0x1b, 0x1e);
@@ -572,17 +567,16 @@ fn sessions_header_anchored_to_bottom() {
     let width = 30u16;
     let height = 40u16;
     let backend = TestBackend::new(width, height);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let _terminal = Terminal::new(backend).unwrap();
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
-        })
-        .unwrap();
+    let terminal = render_draw(&state, width, height, |frame, _area, frame_ctx| {
+        sidebar.render(
+            frame,
+            ratatui::layout::Rect::new(0, 0, width, height),
+            frame_ctx,
+        );
+    });
 
     // Then the footer appears near the bottom.
     // With 1 session, content_height = 2 (1 entry + 1 footer). bottom_y = 40 - 2 = 38.
@@ -612,17 +606,16 @@ fn leading_sections_stay_at_the_top_when_the_document_is_short() {
     let width = 30u16;
     let height = 40u16;
     let backend = TestBackend::new(width, height);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let _terminal = Terminal::new(backend).unwrap();
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
-        })
-        .unwrap();
+    let terminal = render_draw(&state, width, height, |frame, _area, frame_ctx| {
+        sidebar.render(
+            frame,
+            ratatui::layout::Rect::new(0, 0, width, height),
+            frame_ctx,
+        );
+    });
 
     // Then Persona is at the very top of the column, not pushed to the bottom
     // alongside Sessions.
@@ -641,17 +634,16 @@ fn a_blank_gap_separates_the_sessions_block_from_the_sections_above_it() {
     let width = 30u16;
     let height = 40u16;
     let backend = TestBackend::new(width, height);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let _terminal = Terminal::new(backend).unwrap();
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
-        })
-        .unwrap();
+    let terminal = render_draw(&state, width, height, |frame, _area, frame_ctx| {
+        sidebar.render(
+            frame,
+            ratatui::layout::Rect::new(0, 0, width, height),
+            frame_ctx,
+        );
+    });
 
     // Then the Sessions footer is at the bottom of the column, with at least
     // one blank row between it and the last row of the content above it.
@@ -690,17 +682,16 @@ fn sessions_header_below_persona_when_sidebar_is_short() {
     let width = 30u16;
     let height = 8u16;
     let backend = TestBackend::new(width, height);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let _terminal = Terminal::new(backend).unwrap();
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
-        })
-        .unwrap();
+    let terminal = render_draw(&state, width, height, |frame, _area, frame_ctx| {
+        sidebar.render(
+            frame,
+            ratatui::layout::Rect::new(0, 0, width, height),
+            frame_ctx,
+        );
+    });
 
     // Then Sessions footer appears below Persona (clamped to not overlap).
     // Persona = 4 rows, content_height(Sessions) = 2 (1 entry + footer).
@@ -728,17 +719,16 @@ fn sessions_footer_highlights_s_in_accent_action() {
     let width = 30u16;
     let height = 40u16;
     let backend = TestBackend::new(width, height);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let _terminal = Terminal::new(backend).unwrap();
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
-        })
-        .unwrap();
+    let terminal = render_draw(&state, width, height, |frame, _area, frame_ctx| {
+        sidebar.render(
+            frame,
+            ratatui::layout::Rect::new(0, 0, width, height),
+            frame_ctx,
+        );
+    });
 
     // Then the S in Sessions has accent_action color.
     let buf = terminal.backend().buffer();
@@ -786,17 +776,16 @@ fn sessions_title_shows_spinner_during_startup_hydration() {
     let width = 30u16;
     let height = 40u16;
     let backend = TestBackend::new(width, height);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let _terminal = Terminal::new(backend).unwrap();
 
     // When rendering the sidebar.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
-        })
-        .unwrap();
+    let terminal = render_draw(&state, width, height, |frame, _area, frame_ctx| {
+        sidebar.render(
+            frame,
+            ratatui::layout::Rect::new(0, 0, width, height),
+            frame_ctx,
+        );
+    });
 
     // Then the Sessions title includes the ASCII spinner.
     let buf = terminal.backend().buffer();
@@ -818,17 +807,16 @@ fn sessions_title_spinner_uses_streaming_color() {
     let width = 30u16;
     let height = 40u16;
     let backend = TestBackend::new(width, height);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let _terminal = Terminal::new(backend).unwrap();
 
     // When rendering the sidebar.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
-        })
-        .unwrap();
+    let terminal = render_draw(&state, width, height, |frame, _area, frame_ctx| {
+        sidebar.render(
+            frame,
+            ratatui::layout::Rect::new(0, 0, width, height),
+            frame_ctx,
+        );
+    });
 
     // Then the title throbber uses the streaming foreground color.
     let buf = terminal.backend().buffer();
@@ -852,17 +840,16 @@ fn sessions_title_hides_spinner_after_startup_hydration() {
     let width = 30u16;
     let height = 40u16;
     let backend = TestBackend::new(width, height);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let _terminal = Terminal::new(backend).unwrap();
 
     // When rendering the sidebar.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
-        })
-        .unwrap();
+    let terminal = render_draw(&state, width, height, |frame, _area, frame_ctx| {
+        sidebar.render(
+            frame,
+            ratatui::layout::Rect::new(0, 0, width, height),
+            frame_ctx,
+        );
+    });
 
     // Then the Sessions title has no spinner.
     let buf = terminal.backend().buffer();
@@ -884,17 +871,16 @@ fn sessions_title_spinner_precedes_the_label() {
     let width = 30u16;
     let height = 40u16;
     let backend = TestBackend::new(width, height);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let _terminal = Terminal::new(backend).unwrap();
 
     // When rendering the sidebar.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
-        })
-        .unwrap();
+    let terminal = render_draw(&state, width, height, |frame, _area, frame_ctx| {
+        sidebar.render(
+            frame,
+            ratatui::layout::Rect::new(0, 0, width, height),
+            frame_ctx,
+        );
+    });
 
     // Then the spinner sits to the left of the "S" that starts the label.
     let buf = terminal.backend().buffer();
@@ -932,14 +918,13 @@ fn sessions_hydration_spinner_animates_without_session_rows() {
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
     let mut render = |terminal: &mut Terminal<TestBackend>| {
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-                sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
-            })
-            .unwrap();
+        redraw_draw(&state, terminal, |frame, _area, frame_ctx| {
+            sidebar.render(
+                frame,
+                ratatui::layout::Rect::new(0, 0, width, height),
+                frame_ctx,
+            );
+        });
     };
 
     // When rendering repeatedly after the animation interval.
@@ -985,17 +970,16 @@ fn sessions_hydration_spinner_preserves_footer_position() {
     let width = 30u16;
     let height = 40u16;
     let backend = TestBackend::new(width, height);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let _terminal = Terminal::new(backend).unwrap();
 
     // When rendering the sidebar.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
-        })
-        .unwrap();
+    let terminal = render_draw(&state, width, height, |frame, _area, frame_ctx| {
+        sidebar.render(
+            frame,
+            ratatui::layout::Rect::new(0, 0, width, height),
+            frame_ctx,
+        );
+    });
 
     // Then the spinner keeps the Sessions footer at the same bottom row.
     let buf = terminal.backend().buffer();
@@ -1342,15 +1326,13 @@ fn render_sidebar_rows(
     width: u16,
     height: u16,
 ) -> Vec<String> {
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
-            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
-        })
-        .unwrap();
+    let terminal = render_draw(state, width, height, |frame, _area, frame_ctx| {
+        sidebar.render(
+            frame,
+            ratatui::layout::Rect::new(0, 0, width, height),
+            frame_ctx,
+        );
+    });
     let buffer = terminal.backend().buffer();
     (0..height)
         .map(|y| {
@@ -1389,16 +1371,13 @@ fn render_sidebar_terminal(
     width: u16,
     height: u16,
 ) -> Terminal<TestBackend> {
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
-            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
-        })
-        .unwrap();
-    terminal
+    render_draw(state, width, height, |frame, _area, frame_ctx| {
+        sidebar.render(
+            frame,
+            ratatui::layout::Rect::new(0, 0, width, height),
+            frame_ctx,
+        );
+    })
 }
 
 /// A state focused on the pins section with `count` pins and the cursor on the

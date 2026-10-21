@@ -9,7 +9,10 @@
 use crate::chat_log::GUTTER_WIDTH;
 use crate::kernel_element::history::{ChatLogElement, STREAM_RENDER_INTERVAL};
 use jinn_kernel::common::app_state::AppState;
-use jinn_kernel::common::render_ctx::RenderCtx;
+use jinn_kernel::common::render_test::{
+    redraw_element, redraw_element_with_config, render_element, render_element_in_with_config,
+    render_element_with_area, render_element_with_config_and_area,
+};
 use jinn_kernel::common::ui_element::UiElement;
 use jinn_kernel::protocol::ToolResultStatus;
 use jinn_kernel::protocol::{ChatEntry, ChatEntryId, PinPosition};
@@ -74,17 +77,8 @@ fn render_few_messages_bottom_aligned() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 40, 10);
 
     // Then the user text appears in the content area (above the bottom padding).
     let buffer = terminal.backend().buffer().clone();
@@ -117,17 +111,8 @@ fn selected_entry_gutter_col0_has_context_fg_and_col1_has_cursor_bg() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 40, 10);
 
     // Then the selected entry's gutter col 0 has teal fg.
     // 2 entries × 3 lines = 6, 4 blank above. Entry 0 at rows 4-6.
@@ -166,17 +151,8 @@ fn unselected_not_ignored_entry_shows_context_color() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 40, 10);
 
     // Then the unselected, not-ignored entry's gutter has the context included color.
     // 2 entries × 3 lines = 6, 4 blank above. Entry 0 at rows 4-6.
@@ -201,17 +177,8 @@ fn unselected_ignored_entry_shows_gray() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 40, 10);
 
     // Then the unselected, ignored entry's gutter has the border_unfocused color.
     // 2 entries × 3 lines = 6, 4 blank above. Entry 0 at rows 4-6.
@@ -239,17 +206,9 @@ fn unselected_ignored_pinned_entry_shows_context_color() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 40, 10);
+    let _slices = jinn_slices::Slices::new();
 
     // Then the unselected, ignored+pinned entry's gutter shows the context included color
     // (effective inclusion: pinned overrides ignored).
@@ -278,17 +237,9 @@ fn selected_entry_gutter_is_dark_gray_when_unfocused() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 40, 10);
+    let _slices = jinn_slices::Slices::new();
 
     // Then the selected unfocused entry's gutter has context color fg and no bg.
     // Entry is not ignored, so fg is teal. Unfocused means no cursor bg.
@@ -314,17 +265,9 @@ fn selected_entry_gutter_is_dark_gray_when_input_focused() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 40, 10);
+    let _slices = jinn_slices::Slices::new();
 
     // Then the selected unfocused entry's gutter has context color fg and no bg.
     // Entry is not ignored, so fg is teal. Input focus means no cursor bg.
@@ -348,17 +291,9 @@ fn render_stores_viewport_state() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = render_element_with_area(&mut element, &state, 40, 10);
+    let _slices = jinn_slices::Slices::new();
 
     // Then viewport state is stored in the session.
     let range = state.active_session().visible_entry_range();
@@ -379,17 +314,9 @@ fn render_pinned_entry_shows_pin_in_gutter() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 40, 10);
+    let _slices = jinn_slices::Slices::new();
 
     // Then the gutter contains the 📌 character.
     let buffer = terminal.backend().buffer().clone();
@@ -416,17 +343,9 @@ fn render_unpinned_entry_has_no_pin_icon() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 40, 10);
+    let _slices = jinn_slices::Slices::new();
 
     // Then no cell in the buffer contains the 📌 character.
     let buffer = terminal.backend().buffer().clone();
@@ -455,17 +374,9 @@ fn render_pinned_multi_line_entry_shows_exactly_one_pin() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 40, 10);
+    let _slices = jinn_slices::Slices::new();
 
     // Then exactly one pin icon appears in the gutter.
     let buffer = terminal.backend().buffer().clone();
@@ -501,17 +412,10 @@ fn render_scroll_to_selected_keeps_entry_visible() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 5); // 5-line viewport
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 40, 5);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let _slices = jinn_slices::Slices::new();
 
     // Then the selected entry's gutter col 1 (yellow bg) should be visible in the viewport.
     let buffer = terminal.backend().buffer().clone();
@@ -539,17 +443,8 @@ fn render_thinking_entry_appears_above_assistant() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 40, 10);
 
     // Then the thinking entry appears above the assistant entry.
     // Thinking = 2 lines (pad + content), assistant = 3 lines (pad + content + pad).
@@ -574,17 +469,8 @@ fn render_pinned_selected_entry_gutter_has_focus_accent_bg() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 40, 10);
 
     // Then the pinned entry's gutter pin icon has yellow bg (cursor).
     // Entry is 3 lines (pad + content + pad), starts at row 7 in 10-line viewport.
@@ -612,17 +498,8 @@ fn render_pinned_unselected_entry_gutter_has_default_bg() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element(&mut element, &state, 40, 10);
 
     // Then the pinned (unselected) entry's gutter col 0 has no yellow foreground.
     // 2 entries × 3 lines = 6, 4 blank above. Pinned entry (index 0) at rows 4-6.
@@ -646,17 +523,9 @@ fn render_unpinned_selected_entry_gutter_col0_no_bg_col1_has_cursor_bg() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 40, 10);
+    let _slices = jinn_slices::Slices::new();
 
     // Then the unpinned selected entry's gutter col 0 has context fg.
     // 1 entry × 3 lines = 3, 7 blank above. Entry at rows 7-9.
@@ -690,17 +559,9 @@ fn render_pinned_selected_unfocused_entry_gutter_has_border_unfocused_bg() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 40, 10);
+    let _slices = jinn_slices::Slices::new();
 
     // Then the pinned unfocused entry's gutter pin icon has context fg (not yellow).
     // The pin icon uses context fg (not cursor color) when unfocused.
@@ -730,18 +591,10 @@ fn render_long_session_shows_last_entry_at_bottom() {
         s
     };
 
+    // When rendering.
     // 30-wide, 10-tall viewport (content width = 28 after 2-char gutter).
-    let (mut terminal, area) = setup_term(30, 10);
-
-    // When rendering at bottom (auto-scroll).
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 30, 10);
+    let _slices = jinn_slices::Slices::new();
 
     // Then the last entry's text appears near the bottom of the buffer.
     // Each entry is 3 lines (pad + content + pad), so the bottom row is padding.
@@ -778,17 +631,9 @@ fn render_scroll_to_bottom_shows_full_last_entry() {
         s
     };
 
-    let (mut terminal, area) = setup_term(30, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 30, 10);
+    let _slices = jinn_slices::Slices::new();
 
     // Then the last entry's content ("message number 14") is visible in the viewport.
     let buffer = terminal.backend().buffer().clone();
@@ -822,17 +667,9 @@ fn render_scroll_to_selected_middle_entry_adjusts_viewport() {
         s
     };
 
-    let (mut terminal, area) = setup_term(30, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 30, 10);
+    let _slices = jinn_slices::Slices::new();
 
     // Then the selected entry is visible (yellow gutter col 1 bg in viewport).
     let buffer = terminal.backend().buffer().clone();
@@ -873,27 +710,13 @@ fn render_scroll_down_through_tall_entry_works() {
         .active_session_mut()
         .push_entry(ChatEntry::assistant(long_text));
     // First render to populate last_max_offset, then scroll.
-    let (mut terminal, area) = setup_term(40, 10);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (mut terminal, area) = render_element_with_area(&mut element, &state, 40, 10);
+    let slices = jinn_slices::Slices::new();
     // Now scroll up to show the middle of the tall entry.
     state.active_session_mut().scroll_up(20);
 
     // When rendering again.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    redraw_element(&mut element, &state, &slices, &mut terminal, area);
 
     // Then the viewport shows text from the middle of the entry, not the top.
     let buffer = terminal.backend().buffer().clone();
@@ -932,30 +755,14 @@ fn render_tall_entry_snaps_when_completely_below_viewport() {
         .push_entry(ChatEntry::assistant(long_text));
     // push_entry auto-selects last entry (the tall one).
 
-    let (mut terminal, area) = setup_term(40, 5);
-
-    // First render to populate last_max_offset.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (mut terminal, area) = render_element_with_area(&mut element, &state, 40, 5);
+    let slices = jinn_slices::Slices::new();
 
     // Scroll to top so the tall entry is completely below the viewport.
     state.active_session_mut().scroll_to_top();
 
     // When rendering again.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    redraw_element(&mut element, &state, &slices, &mut terminal, area);
 
     // Then the renderer snaps to show the tall entry's start.
     let buffer = terminal.backend().buffer().clone();
@@ -985,17 +792,9 @@ fn virtualization_populates_cache_after_render() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = render_element_with_area(&mut element, &state, 40, 10);
+    let _slices = jinn_slices::Slices::new();
 
     // Then the cache has entries for all 30 entries.
     assert_eq!(
@@ -1039,17 +838,10 @@ fn collapsed_tool_result_renders_truncation_indicator() {
     // Given a ChatLogElement with a long, collapsed tool result entry.
     let mut element = ChatLogElement::new();
     let (state, _entry_id) = long_tool_result_state();
-    let (mut terminal, area) = setup_term(80, 30);
 
-    // When rendering (truncated — max_lines=5 by default).
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering.
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 80, 30);
+    let _slices = jinn_slices::Slices::new();
 
     // Then the truncation indicator is visible in the buffer.
     let buffer = terminal.backend().buffer().clone();
@@ -1065,17 +857,10 @@ fn expanded_tool_result_renders_all_lines() {
     let mut element = ChatLogElement::new();
     let (mut state, entry_id) = long_tool_result_state();
     state.active_session_mut().toggle_expand_entry(entry_id);
-    let (mut terminal, area) = setup_term(80, 30);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 80, 30);
+    let _slices = jinn_slices::Slices::new();
 
     // Then the content beyond the collapsed cutoff is visible in the buffer.
     let buffer = terminal.backend().buffer().clone();
@@ -1098,26 +883,10 @@ fn resize_clears_cache_and_rerenders() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 10);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = render_element_with_area(&mut element, &state, 40, 10);
 
     // When rendering at a different width (simulating resize).
-    let (mut terminal2, area2) = setup_term(60, 10);
-    terminal2
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area2, &ctx);
-        })
-        .unwrap();
+    let (terminal2, _area2) = render_element_with_area(&mut element, &state, 60, 10);
 
     // Then the cache is still populated (re-populated at new width).
     assert_eq!(
@@ -1171,17 +940,10 @@ fn initial_stream_render_populates_one_cache_entry() {
     // Given a ChatLogElement rendering an active stream with one token.
     let mut element = ChatLogElement::new();
     let state = streaming_state();
-    let (mut terminal, area) = setup_term(40, 10);
 
-    // When rendering with initial streaming content.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering.
+    let (_terminal, _area) = render_element_with_area(&mut element, &state, 40, 10);
+    let _slices = jinn_slices::Slices::new();
 
     // Then the cache holds the single streamed entry.
     assert_eq!(
@@ -1201,29 +963,15 @@ fn streaming_token_append_keeps_one_cache_entry() {
     // Given a ChatLogElement already rendered a stream with one token.
     let mut element = ChatLogElement::new();
     let mut state = streaming_state();
-    let (mut terminal, area) = setup_term(40, 10);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (mut terminal, area) = render_element_with_area(&mut element, &state, 40, 10);
+    let slices = jinn_slices::Slices::new();
 
     // When more tokens arrive (content changes, fingerprint changes).
     state
         .active_session_mut()
         .append_stream_token(" + more text", jiff::Timestamp::now())
         .expect("ok");
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    redraw_element(&mut element, &state, &slices, &mut terminal, area);
 
     // Then the cache still has 1 entry (re-computed with new fingerprint).
     assert_eq!(
@@ -1243,15 +991,8 @@ fn streaming_token_append_renders_updated_content() {
     // Given a ChatLogElement already rendered a stream with one token.
     let mut element = ChatLogElement::new();
     let mut state = streaming_state();
-    let (mut terminal, area) = setup_term(40, 10);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (mut terminal, area) = render_element_with_area(&mut element, &state, 40, 10);
+    let slices = jinn_slices::Slices::new();
 
     // When more tokens arrive and the stream render interval has elapsed.
     state
@@ -1262,14 +1003,7 @@ fn streaming_token_append_renders_updated_content() {
     // clock, so the clock has to move for the interval to have elapsed. A
     // signal cannot substitute here.
     std::thread::sleep(STREAM_RENDER_INTERVAL);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    redraw_element(&mut element, &state, &slices, &mut terminal, area);
 
     // Then the updated content is visible.
     let buffer = terminal.backend().buffer().clone();
@@ -1290,15 +1024,8 @@ fn a_throttled_frame_reuses_the_previous_rendered_lines() {
     // Given a ChatLogElement that rendered a stream one frame ago.
     let mut element = ChatLogElement::new();
     let mut state = streaming_state();
-    let (mut terminal, area) = setup_term(40, 10);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (mut terminal, area) = render_element_with_area(&mut element, &state, 40, 10);
+    let slices = jinn_slices::Slices::new();
     let before = cache_fingerprint_count(&state);
 
     // When a token arrives and the log is re-rendered within the interval.
@@ -1306,14 +1033,7 @@ fn a_throttled_frame_reuses_the_previous_rendered_lines() {
         .active_session_mut()
         .append_stream_token(" + more text", jiff::Timestamp::now())
         .expect("ok");
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    redraw_element(&mut element, &state, &slices, &mut terminal, area);
 
     // Then the frame did no work for the entry: the throttled path returns
     // before the cache probe, so no fingerprint was hashed.
@@ -1329,29 +1049,15 @@ fn a_throttled_frame_still_paints_the_streaming_entry() {
     // Given a ChatLogElement that rendered a stream one frame ago.
     let mut element = ChatLogElement::new();
     let mut state = streaming_state();
-    let (mut terminal, area) = setup_term(40, 10);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (mut terminal, area) = render_element_with_area(&mut element, &state, 40, 10);
+    let slices = jinn_slices::Slices::new();
 
     // When a throttled frame is drawn.
     state
         .active_session_mut()
         .append_stream_token(" + more text", jiff::Timestamp::now())
         .expect("ok");
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    redraw_element(&mut element, &state, &slices, &mut terminal, area);
 
     // Then the entry is still on screen rather than blanked — suppression
     // reuses the previous lines, it never drops them.
@@ -1378,18 +1084,11 @@ fn a_settled_entry_is_never_throttled() {
             .push_entry(ChatEntry::assistant("settled text"));
         s
     };
-    let (mut terminal, area) = setup_term(40, 10);
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 40, 10);
 
     // When the same settled content is rendered repeatedly with no interval.
     for _ in 0..3 {
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-                element.render(frame, area, &ctx);
-            })
-            .unwrap();
+        let _slices = jinn_slices::Slices::new();
     }
 
     // Then it is painted on the very first frame, with no prior render to reuse.
@@ -1408,15 +1107,8 @@ fn the_stream_render_interval_elapses_between_frames() {
     // Given an element that rendered the streaming entry just now.
     let mut element = ChatLogElement::new();
     let state = streaming_state();
-    let (mut terminal, area) = setup_term(40, 10);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = render_element_with_area(&mut element, &state, 40, 10);
+    let _slices = jinn_slices::Slices::new();
 
     // When the render interval elapses.
     // wall-clock-under-test: the throttle's due check reads the wall clock,
@@ -1470,17 +1162,9 @@ fn render_transient_entry_has_muted_text_color() {
         s
     };
 
-    let (mut terminal, area) = setup_term(40, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 40, 10);
+    let _slices = jinn_slices::Slices::new();
 
     // Then the transient text appears with the theme text color.
     let buffer = terminal.backend().buffer().clone();
@@ -1517,15 +1201,8 @@ fn compaction_is_off_screen_until_a_jump_reaches_it() {
     use crate::chat_entry_selection::intent::handle_jump_prev_entry;
     let mut element = ChatLogElement::new();
     let (mut state, compaction_id) = history_leading_with_compaction();
-    let (mut terminal, area) = setup_term(40, 6);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = render_element_with_area(&mut element, &state, 40, 6);
+    let _slices = jinn_slices::Slices::new();
     let range_before = state.active_session().visible_entry_range();
 
     // When jumping to the previous compaction from the last entry (no selection
@@ -1552,26 +1229,12 @@ fn render_auto_scrolls_jumped_compaction_into_view() {
     use crate::chat_entry_selection::intent::handle_jump_prev_entry;
     let mut element = ChatLogElement::new();
     let (mut state, _compaction_id) = history_leading_with_compaction();
-    let (mut terminal, area) = setup_term(40, 6);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (mut terminal, area) = render_element_with_area(&mut element, &state, 40, 6);
+    let slices = jinn_slices::Slices::new();
     handle_jump_prev_entry(&mut state, jinn_kernel::protocol::ChatEntry::is_compaction);
 
     // When re-rendering after the jump.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    redraw_element(&mut element, &state, &slices, &mut terminal, area);
 
     // Then the viewport auto-scrolled so the compaction is now visible.
     let range_after = state.active_session().visible_entry_range();
@@ -1613,17 +1276,8 @@ fn render_annotation_entry_collapsed_by_default_shows_hint() {
         s
     };
 
-    let (mut terminal, area) = setup_term(60, 10);
-
-    // When rendering with no expand toggle.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering.
+    let terminal = render_element(&mut element, &state, 60, 10);
 
     // Then the header and expand hint appear in the rendered output.
     let text = buffer_text(terminal.backend().buffer());
@@ -1666,17 +1320,9 @@ fn render_annotation_entry_expanded_shows_source_title_and_url() {
         s
     };
 
-    let (mut terminal, area) = setup_term(60, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 60, 10);
+    let _slices = jinn_slices::Slices::new();
 
     // Then both the citation title and its URL appear in the rendered output.
     let text = buffer_text(terminal.backend().buffer());
@@ -1750,17 +1396,9 @@ fn waiting_line_renders_for_pending_spawn_subagent_call_with_running_child() {
     let child_id = jinn_core_types::SessionId::new();
     let state = spawn_subagent_waiting_fixture(Some(child_id), Some(PhaseKind::Sending));
 
-    let (mut terminal, area) = setup_term(80, 12);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 80, 12);
+    let _slices = jinn_slices::Slices::new();
 
     // Then the waiting line is visible.
     let buffer = terminal.backend().buffer();
@@ -1781,17 +1419,9 @@ fn waiting_line_absent_for_non_spawn_subagent_tool_call() {
         r#"{"path": "a.rs"}"#,
     ));
 
-    let (mut terminal, area) = setup_term(80, 12);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 80, 12);
+    let _slices = jinn_slices::Slices::new();
 
     // Then no waiting line is rendered.
     let buffer = terminal.backend().buffer();
@@ -1823,17 +1453,9 @@ fn waiting_line_absent_when_spawn_subagent_call_has_paired_result() {
         ));
     }
 
-    let (mut terminal, area) = setup_term(80, 12);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 80, 12);
+    let _slices = jinn_slices::Slices::new();
 
     // Then no waiting line is rendered.
     let buffer = terminal.backend().buffer();
@@ -1864,17 +1486,9 @@ fn waiting_line_absent_when_child_not_in_memory() {
         s
     };
 
-    let (mut terminal, area) = setup_term(80, 12);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, _area) = render_element_with_area(&mut element, &state, 80, 12);
+    let _slices = jinn_slices::Slices::new();
 
     // Then no waiting line is rendered.
     let buffer = terminal.backend().buffer();
@@ -1894,16 +1508,8 @@ fn waiting_line_disappears_when_child_finishes_without_manual_invalidation() {
         Some(jinn_session_msg::PhaseKind::Streaming),
     );
 
-    let (mut terminal, area) = setup_term(80, 12);
-
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (mut terminal, area) = render_element_with_area(&mut element, &state, 80, 12);
+    let slices = jinn_slices::Slices::new();
     assert!(
         buffer_contains(terminal.backend().buffer(), "Waiting for subagent session"),
         "waiting line should render while child streams"
@@ -1916,14 +1522,7 @@ fn waiting_line_disappears_when_child_finishes_without_manual_invalidation() {
     // fold, then the phase actor's machine edge.
     child.finalize_entries_for_finish(false, jiff::Timestamp::now());
     child.finish_streaming_via_machine();
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    redraw_element(&mut element, &state, &slices, &mut terminal, area);
 
     // Then the waiting line is gone — the render variant change alone
     // invalidated the cached lines.
@@ -1963,17 +1562,9 @@ fn spawn_subagent_call_entry_renders_on_subagent_block() {
     ));
     let theme = jinn_theme::default_theme();
 
-    let (mut terminal, area) = setup_term(80, 12);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, area) = render_element_with_area(&mut element, &state, 80, 12);
+    let _slices = jinn_slices::Slices::new();
 
     // Then the call row is fully painted in the subagent background across
     // the content column.
@@ -2007,17 +1598,9 @@ fn non_spawn_subagent_call_entry_does_not_use_subagent_block() {
     ));
     let theme = jinn_theme::default_theme();
 
-    let (mut terminal, area) = setup_term(80, 12);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, area) = render_element_with_area(&mut element, &state, 80, 12);
+    let _slices = jinn_slices::Slices::new();
 
     // Then no row uses the subagent background.
     let buffer = terminal.backend().buffer();
@@ -2056,17 +1639,9 @@ fn completed_spawn_subagent_result_shows_finished_status_row() {
     }
     let theme = jinn_theme::default_theme();
 
-    let (mut terminal, area) = setup_term(80, 12);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, area) = render_element_with_area(&mut element, &state, 80, 12);
+    let _slices = jinn_slices::Slices::new();
 
     // Then the buffer contains the "Subagent task finished" outcome row,
     // white on the success background.
@@ -2099,15 +1674,7 @@ fn completed_spawn_subagent_result_shows_finished_status_row() {
 /// joined into a string, so tests can assert on visible text.
 fn rendered_content_rows(state: &AppState, width: u16, height: u16) -> Vec<String> {
     let mut element = ChatLogElement::new();
-    let (mut terminal, area) = setup_term(width, height);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, area) = render_element_with_area(&mut element, state, width, height);
     let buffer = terminal.backend().buffer().clone();
     (area.y..area.bottom())
         .map(|row| {
@@ -2272,14 +1839,13 @@ fn bash_tool_call_arguments_render_after_a_phase_transition_mid_stream() {
         .expect("first delta should land on a registered call");
 
     // When a prose token drives Sending -> Streaming and the rest of the
-    // command arrives.
+    // command arrives, and the turn is then rendered.
     state.active_session_mut().begin_streaming();
     state
         .active_session_mut()
         .append_tool_call_delta(0, r#" /mnt && ls"}"#)
         .expect("second delta should survive the transition");
 
-    // When rendered.
     let rows = rendered_content_rows(&state, 60, 20);
 
     // Then the command renders whole. `bash` renders a single `$ <command>` row
@@ -2389,16 +1955,8 @@ fn large_session_frame_does_not_refingerprint_unchanged_entries() {
                 ToolResultStatus::Success,
             ));
     }
-    let (mut terminal, area) = setup_term(80, 24);
     let mut element = ChatLogElement::new();
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = render_element_with_area(&mut element, &state, 80, 24);
 
     let after_warmup = state
         .frontend
@@ -2409,14 +1967,7 @@ fn large_session_frame_does_not_refingerprint_unchanged_entries() {
 
     // When redrawing several times with nothing changed.
     for _ in 0..5 {
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-                element.render(frame, area, &ctx);
-            })
-            .unwrap();
+        let _slices = jinn_slices::Slices::new();
     }
 
     // Then no further full content fingerprints were computed.
@@ -2452,16 +2003,8 @@ fn streaming_tool_output_renders_the_appended_text() {
         jinn_tools_msg::ToolOutputKind::Normal,
     );
 
-    let (mut terminal, area) = setup_term(60, 12);
     let mut element = ChatLogElement::new();
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = render_element_with_area(&mut element, &state, 60, 12);
 
     // When more output arrives, growing the entry's content.
     state.active_session_mut().append_tool_result_output(
@@ -2469,14 +2012,7 @@ fn streaming_tool_output_renders_the_appended_text() {
         "second chunk",
         jinn_tools_msg::ToolOutputKind::Normal,
     );
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let _slices = jinn_slices::Slices::new();
 
     // Then the appended text is rendered, so the cached lines were invalidated.
     let rows = rendered_content_rows(&state, 60, 12);
@@ -2506,17 +2042,10 @@ fn line_math_survives_a_session_past_65535_wrapped_lines() {
     // Given a session long enough that its wrapped line total exceeds u16::MAX.
     let state = oversized_session(4_000);
     let mut element = ChatLogElement::new();
-    let (mut terminal, area) = setup_term(40, 10);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = render_element_with_area(&mut element, &state, 40, 10);
+    let _slices = jinn_slices::Slices::new();
 
     // Then the recorded total wrapped line count is the true value, not a u16
     // wraparound, so the scroll math has something real to clamp against.
@@ -2532,17 +2061,10 @@ fn an_oversized_session_scrolls_to_a_recent_entry() {
     // Given a session past the old u16 wraparound point.
     let state = oversized_session(4_000);
     let mut element = ChatLogElement::new();
-    let (mut terminal, area) = setup_term(40, 10);
 
-    // When rendering and asking for the last entry's screen row.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    // When rendering.
+    let (_terminal, area) = render_element_with_area(&mut element, &state, 40, 10);
+    let _slices = jinn_slices::Slices::new();
 
     // Then the selected entry maps to a real row inside the viewport rather
     // than a wrapped-around one.
@@ -2563,15 +2085,7 @@ fn render_rows(
     width: u16,
     height: u16,
 ) -> Vec<String> {
-    let (mut terminal, area) = setup_term(width, height);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, _area) = render_element_with_area(element, state, width, height);
     let buffer = terminal.backend().buffer();
     (0..height)
         .map(|y| {
@@ -2680,17 +2194,8 @@ fn a_large_session_frame_avoids_rehashing_its_content() {
         s
     };
     let mut element = ChatLogElement::new();
-    let (mut terminal, area) = setup_term(100, 40);
-
-    // Warm the cache with one frame.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = render_element_with_area(&mut element, &state, 100, 40);
+    let _slices = jinn_slices::Slices::new();
 
     // When the cache is probed for the same entries 20 more times — the work a
     // second through twentieth frame would repeat.
@@ -2733,38 +2238,28 @@ fn unchanged_frame_rewrites_no_visual_items() {
         s.active_session_mut().push_entry(ChatEntry::user("world"));
         s
     };
-    let (mut terminal, area) = setup_term(40, 10);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(
-                &state,
-                &slices,
-                &overlay_views,
-                jinn_config::empty_config_layer(),
-            );
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = setup_term(40, 10);
+    let (_terminal, _area) = render_element_with_config_and_area(
+        &mut element,
+        &state,
+        &jinn_slices::Slices::new(),
+        jinn_config::empty_config_layer(),
+        40,
+        10,
+    );
     let after_first = state.active_session().visual_items_writes();
     assert_eq!(after_first, 1, "the first frame must publish the list");
 
     // When several more frames render with nothing changed.
     for _ in 0..5 {
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new(
-                    &state,
-                    &slices,
-                    &overlay_views,
-                    jinn_config::empty_config_layer(),
-                );
-                element.render(frame, area, &ctx);
-            })
-            .unwrap();
+        let (_terminal, _area) = render_element_with_config_and_area(
+            &mut element,
+            &state,
+            &jinn_slices::Slices::new(),
+            jinn_config::empty_config_layer(),
+            40,
+            10,
+        );
     }
 
     // Then the visual items list was not written back again.
@@ -2785,38 +2280,28 @@ fn unchanged_frame_rewrites_no_line_ranges() {
         s.active_session_mut().push_entry(ChatEntry::user("world"));
         s
     };
-    let (mut terminal, area) = setup_term(40, 10);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(
-                &state,
-                &slices,
-                &overlay_views,
-                jinn_config::empty_config_layer(),
-            );
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = setup_term(40, 10);
+    let (_terminal, _area) = render_element_with_config_and_area(
+        &mut element,
+        &state,
+        &jinn_slices::Slices::new(),
+        jinn_config::empty_config_layer(),
+        40,
+        10,
+    );
     let after_first = state.active_session().entry_line_ranges_writes();
     assert_eq!(after_first, 1, "the first frame must publish the ranges");
 
     // When several more frames render with nothing changed.
     for _ in 0..5 {
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new(
-                    &state,
-                    &slices,
-                    &overlay_views,
-                    jinn_config::empty_config_layer(),
-                );
-                element.render(frame, area, &ctx);
-            })
-            .unwrap();
+        let (_terminal, _area) = render_element_with_config_and_area(
+            &mut element,
+            &state,
+            &jinn_slices::Slices::new(),
+            jinn_config::empty_config_layer(),
+            40,
+            10,
+        );
     }
 
     // Then the per-entry line ranges were not written back again.
@@ -2838,22 +2323,17 @@ fn a_loading_session_shows_the_loading_indication() {
             .begin_load(s.active_session().session_id().clone());
         s
     };
-    let (mut terminal, area) = setup_term(40, 10);
+    let (_terminal, _area) = setup_term(40, 10);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(
-                &state,
-                &slices,
-                &overlay_views,
-                jinn_config::empty_config_layer(),
-            );
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, area) = render_element_with_config_and_area(
+        &mut element,
+        &state,
+        &jinn_slices::Slices::new(),
+        jinn_config::empty_config_layer(),
+        40,
+        10,
+    );
 
     // Then the conversation's own text is not drawn — the indication replaces it.
     let drawn = row_text(terminal.backend().buffer(), area);
@@ -2919,22 +2399,17 @@ fn a_loading_indication_sits_on_the_bottom_row() {
             .begin_load(s.active_session().session_id().clone());
         s
     };
-    let (mut terminal, area) = setup_term(40, 11);
+    let (_terminal, _area) = setup_term(40, 11);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(
-                &state,
-                &slices,
-                &overlay_views,
-                jinn_config::empty_config_layer(),
-            );
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, area) = render_element_with_config_and_area(
+        &mut element,
+        &state,
+        &jinn_slices::Slices::new(),
+        jinn_config::empty_config_layer(),
+        40,
+        11,
+    );
 
     // Then the indication sits on the pane's last row — the row directly above
     // the chat bar — rather than floating in the middle of the conversation.
@@ -2961,22 +2436,17 @@ fn a_loading_indication_is_centered_horizontally() {
             .begin_load(s.active_session().session_id().clone());
         s
     };
-    let (mut terminal, area) = setup_term(60, 11);
+    let (_terminal, _area) = setup_term(60, 11);
 
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(
-                &state,
-                &slices,
-                &overlay_views,
-                jinn_config::empty_config_layer(),
-            );
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, area) = render_element_with_config_and_area(
+        &mut element,
+        &state,
+        &jinn_slices::Slices::new(),
+        jinn_config::empty_config_layer(),
+        60,
+        11,
+    );
 
     // Then the label starts near the pane's horizontal centre, not at its edge.
     let row = jinn_testutil::buffer_row(terminal.backend().buffer(), area.y + 10, area.width);
@@ -3004,23 +2474,19 @@ fn a_loading_indication_tolerates_a_zero_height_pane() {
             .begin_load(s.active_session().session_id().clone());
         s
     };
-    let (mut terminal, area) = setup_term(40, 3);
+    let (_terminal, area) = setup_term(40, 3);
     let collapsed = Rect::new(area.x, area.y, area.width, 0);
 
     // When rendering into it.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(
-                &state,
-                &slices,
-                &overlay_views,
-                jinn_config::empty_config_layer(),
-            );
-            element.render(frame, collapsed, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element_in_with_config(
+        &mut element,
+        &state,
+        &jinn_slices::Slices::new(),
+        jinn_config::empty_config_layer(),
+        40,
+        3,
+        collapsed,
+    );
 
     // Then nothing is drawn and no panic escapes.
     assert!(
@@ -3039,23 +2505,19 @@ fn a_loading_indication_tolerates_a_zero_width_pane() {
             .begin_load(s.active_session().session_id().clone());
         s
     };
-    let (mut terminal, area) = setup_term(40, 3);
+    let (_terminal, area) = setup_term(40, 3);
     let collapsed = Rect::new(area.x, area.y, 0, area.height);
 
     // When rendering into it.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(
-                &state,
-                &slices,
-                &overlay_views,
-                jinn_config::empty_config_layer(),
-            );
-            element.render(frame, collapsed, &ctx);
-        })
-        .unwrap();
+    let terminal = render_element_in_with_config(
+        &mut element,
+        &state,
+        &jinn_slices::Slices::new(),
+        jinn_config::empty_config_layer(),
+        40,
+        3,
+        collapsed,
+    );
 
     // Then nothing is drawn and no panic escapes.
     assert!(
@@ -3071,19 +2533,14 @@ fn draw_loading_frame(
     terminal: &mut ratatui::Terminal<ratatui::backend::TestBackend>,
     area: ratatui::layout::Rect,
 ) -> String {
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(
-                state,
-                &slices,
-                &overlay_views,
-                jinn_config::empty_config_layer(),
-            );
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    redraw_element_with_config(
+        element,
+        state,
+        &jinn_slices::Slices::new(),
+        jinn_config::empty_config_layer(),
+        terminal,
+        area,
+    );
     row_text(terminal.backend().buffer(), area)
 }
 
@@ -3135,20 +2592,15 @@ fn coverage_at(state: &AppState, content_width: u16) -> bool {
 /// Renders one frame, filling the cache the way a real frame would.
 fn measure_by_rendering(state: &AppState, width: u16, height: u16) {
     let mut element = ChatLogElement::new();
-    let (mut terminal, area) = setup_term(width, height);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(
-                state,
-                &slices,
-                &overlay_views,
-                jinn_config::empty_config_layer(),
-            );
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = setup_term(width, height);
+    let (_terminal, _area) = render_element_with_config_and_area(
+        &mut element,
+        state,
+        &jinn_slices::Slices::new(),
+        jinn_config::empty_config_layer(),
+        width,
+        height,
+    );
 }
 
 #[rstest::rstest]
@@ -3282,20 +2734,15 @@ fn a_render_publishes_the_collapse_count_the_coverage_probe_reads_back() {
 
     // When one frame is drawn.
     let mut element = ChatLogElement::new();
-    let (mut terminal, area) = setup_term(100, 20);
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new(
-                &state,
-                &slices,
-                &overlay_views,
-                jinn_config::empty_config_layer(),
-            );
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (_terminal, _area) = setup_term(100, 20);
+    let (_terminal, _area) = render_element_with_config_and_area(
+        &mut element,
+        &state,
+        &jinn_slices::Slices::new(),
+        jinn_config::empty_config_layer(),
+        100,
+        20,
+    );
 
     // Then the session records the count that frame used, so the off-thread
     // probe builds the same visual items.
@@ -3322,17 +2769,8 @@ fn render_intersession_message_shows_attributed_text_on_intersession_block() {
         s
     };
 
-    let (mut terminal, area) = setup_term(60, 10);
-
     // When rendering.
-    terminal
-        .draw(|frame| {
-            let slices = jinn_slices::Slices::new();
-            let overlay_views = jinn_slices::OverlayViews::new();
-            let ctx = RenderCtx::new_with_default_config(&state, &slices, &overlay_views);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
+    let (terminal, area) = render_element_with_area(&mut element, &state, 60, 10);
 
     // Then the transcript shows the attributed text on the inter-session
     // block background, with no route chrome.

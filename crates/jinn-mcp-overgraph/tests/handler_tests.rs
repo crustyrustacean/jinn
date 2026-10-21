@@ -239,22 +239,25 @@ async fn graph_upsert_node_is_idempotent_for_the_same_key() {
 #[tokio::test]
 async fn graph_upsert_edge_traverses_through_gql() {
     // Given two upserted nodes.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
-    for key in ["alice", "bob"] {
-        client
-            .call_tool(
-                "graph_upsert_node",
-                Some(
-                    json!({"label": "Person", "key": key})
-                        .as_object()
-                        .expect("obj")
-                        .clone(),
-                ),
-            )
-            .await
-            .expect("node upsert");
-    }
+    let (_dir, mut client) = {
+        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let client = connect_server(dir.path()).await;
+        for key in ["alice", "bob"] {
+            client
+                .call_tool(
+                    "graph_upsert_node",
+                    Some(
+                        json!({"label": "Person", "key": key})
+                            .as_object()
+                            .expect("obj")
+                            .clone(),
+                    ),
+                )
+                .await
+                .expect("node upsert");
+        }
+        (dir, client)
+    };
 
     // When creating an edge between them.
     let result = client
@@ -720,22 +723,25 @@ async fn upsert_without_embed_text_stays_pure_graph() {
 #[tokio::test]
 async fn vector_search_respects_k_and_label_filter() {
     // Given three embedded nodes, two in one label and one in another.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
-    for (label, key) in [("Doc", "alpha"), ("Doc", "beta"), ("Person", "gamma")] {
-        client
-            .call_tool(
-                "graph_upsert_node",
-                Some(
-                    json!({"label": label, "key": key, "embed_text": "shared topic text"})
-                        .as_object()
-                        .expect("obj")
-                        .clone(),
-                ),
-            )
-            .await
-            .expect("node upsert");
-    }
+    let (_dir, mut client) = {
+        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let client = connect_server(dir.path()).await;
+        for (label, key) in [("Doc", "alpha"), ("Doc", "beta"), ("Person", "gamma")] {
+            client
+                .call_tool(
+                    "graph_upsert_node",
+                    Some(
+                        json!({"label": label, "key": key, "embed_text": "shared topic text"})
+                            .as_object()
+                            .expect("obj")
+                            .clone(),
+                    ),
+                )
+                .await
+                .expect("node upsert");
+        }
+        (dir, client)
+    };
 
     // When searching with a label filter naming only Doc.
     let search = client
@@ -760,7 +766,7 @@ async fn vector_search_respects_k_and_label_filter() {
         "every hit is a Doc: {payload}"
     );
 
-    // When searching with k smaller than the match count.
+    // And when the same query is searched with k smaller than the match count.
     let search = client
         .call_tool(
             "graph_vector_search",
@@ -1006,34 +1012,37 @@ async fn query_json(client: &mut McpClient, query: &str) -> Value {
 async fn ingest_file_processes_mixed_nodes_and_edges_in_any_order() {
     // Given a batch file whose edge lines precede the node lines they
     // reference, plus a third node living only in the database.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
-    client
-        .call_tool(
-            "graph_upsert_node",
-            Some(
-                json!({"label": "Team", "key": "platform"})
-                    .as_object()
-                    .expect("obj")
-                    .clone(),
+    let (_dir, mut client, path) = {
+        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let client = connect_server(dir.path()).await;
+        client
+            .call_tool(
+                "graph_upsert_node",
+                Some(
+                    json!({"label": "Team", "key": "platform"})
+                        .as_object()
+                        .expect("obj")
+                        .clone(),
+                ),
+            )
+            .await
+            .expect("pre-existing node");
+        let path = batch_file(
+            &dir,
+            "mixed.jsonl",
+            concat!(
+                r#"{"edge": {"label": "KNOWS", "from": "Person:alice", "to": "Person:bob", "props": {"since": 2020}}}"#,
+                "\n",
+                r#"{"edge": {"label": "JOINS", "from": "Person:alice", "to": "Team:platform"}}"#,
+                "\n",
+                r#"{"node": {"label": "Person", "key": "alice", "props": {"age": 30}}}"#,
+                "\n",
+                r#"{"node": {"label": "Person", "key": "bob"}}"#,
+                "\n",
             ),
-        )
-        .await
-        .expect("pre-existing node");
-    let path = batch_file(
-        &dir,
-        "mixed.jsonl",
-        concat!(
-            r#"{"edge": {"label": "KNOWS", "from": "Person:alice", "to": "Person:bob", "props": {"since": 2020}}}"#,
-            "\n",
-            r#"{"edge": {"label": "JOINS", "from": "Person:alice", "to": "Team:platform"}}"#,
-            "\n",
-            r#"{"node": {"label": "Person", "key": "alice", "props": {"age": 30}}}"#,
-            "\n",
-            r#"{"node": {"label": "Person", "key": "bob"}}"#,
-            "\n",
-        ),
-    );
+        );
+        (dir, client, path)
+    };
 
     // When ingesting the file in one call.
     let result = client

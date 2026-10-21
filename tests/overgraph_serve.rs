@@ -53,7 +53,7 @@ fn text_of(result: &rmcp::model::CallToolResult) -> String {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn served_child_advertises_and_executes_the_graph_tools() {
+async fn served_child_advertises_the_graph_tools() {
     // Given the real jinn binary serving overgraph on a fresh db dir.
     let bin = jinn_bin();
     let db = jinn_testutil::tempdir().expect("temp dir");
@@ -76,6 +76,18 @@ async fn served_child_advertises_and_executes_the_graph_tools() {
         ]
     );
 
+    // And the client shuts down cleanly (child exits).
+    client.shutdown().await;
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn served_child_returns_the_whole_vendored_reference() {
+    // Given the real jinn binary serving overgraph on a fresh db dir.
+    let bin = jinn_bin();
+    let db = jinn_testutil::tempdir().expect("temp dir");
+    let mut client = connect(&bin, db.path()).await;
+
     // When calling the docs tool with no arguments.
     let docs_result = client
         .call_tool(
@@ -96,6 +108,18 @@ async fn served_child_advertises_and_executes_the_graph_tools() {
         docs_text.contains("elementKey"),
         "GQL reference served: {docs_text}"
     );
+
+    // And the client shuts down cleanly (child exits).
+    client.shutdown().await;
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn served_child_upserts_a_node() {
+    // Given the real jinn binary serving overgraph on a fresh db dir.
+    let bin = jinn_bin();
+    let db = jinn_testutil::tempdir().expect("temp dir");
+    let mut client = connect(&bin, db.path()).await;
 
     // When calling the upsert tool.
     let result = client

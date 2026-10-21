@@ -1734,6 +1734,9 @@ mod tests {
             .filter(|line| line.trim_start().starts_with("# license:"))
             .count();
 
+        // When the template's attribution comments are counted against its
+        // parsed entry count.
+        //
         // Then every entry carries exactly one attribution pair.
         assert_eq!(
             source_comments, entries,

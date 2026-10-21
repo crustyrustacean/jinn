@@ -16,6 +16,7 @@
 )]
 
 use jinn_kernel::common::bus::HarnessServices;
+use jinn_kernel::common::render_test::seed_cell;
 use jinn_model_market_msg::EndpointsLoaded;
 use jinn_model_market_msg::EpochLoaded;
 use jinn_model_market_msg::FetchEndpoints;
@@ -85,12 +86,8 @@ impl World {
         let harness = TestHarness::new().await;
         let deps = harness.actor_deps().await;
         let slices = Slices::new();
-        let data = slices
-            .register(market_data_slot(), MarketDataState::default())
-            .expect("fresh Slices never has the data slot registered");
-        let ui = slices
-            .register(market_ui_slot(), MarketUiState::default())
-            .expect("fresh Slices never has the UI slot registered");
+        let data = seed_cell(&slices, &market_data_slot(), MarketDataState::default());
+        let ui = seed_cell(&slices, &market_ui_slot(), MarketUiState::default());
         OpenRouterMarketActor::spawn(
             harness.system(),
             OpenRouterMarketActorDeps {
@@ -268,29 +265,35 @@ async fn epoch_loaded_rejoins_rows_without_a_refetch() {
     // rows built with dead ECI fields — and a models mock that would
     // FAIL if hit again (the re-join must not refetch). The catalog
     // carries a real seed joinable (Claude Sonnet 4.5, dot-vs-space).
+    // The server and the temp dir outlive the setup block: the mock
+    // checks read the server's live state, and the dir owns the
+    // cache tree the actor writes into.
     let mut server = mockito::Server::new_async().await;
     let dir = jinn_testutil::tempdir().expect("temp dir");
-    let joinable_catalog = serde_json::json!({
-        "data": [
-            {
-                "id": "anthropic/claude-sonnet-4.5",
-                "pricing": {"prompt": "0.000003", "completion": "0.000015"},
-                "architecture": {"output_modalities": ["text"]},
-                "context_length": 100_000
-            }
-        ]
-    })
-    .to_string();
-    let models_mock = server
-        .mock("GET", "/models")
-        .with_status(200)
-        .with_body(joinable_catalog)
-        .create_async()
-        .await;
-    let world = World::start(&server.url(), dir.path().to_path_buf()).await;
-    let recorder = world.models_recorder().await;
-    world.harness.publish(FetchModels).await;
-    let loaded = await_recorded(&recorder, 1, SETTLE).await;
+    let (world, models_mock, loaded) = {
+        let joinable_catalog = serde_json::json!({
+            "data": [
+                {
+                    "id": "anthropic/claude-sonnet-4.5",
+                    "pricing": {"prompt": "0.000003", "completion": "0.000015"},
+                    "architecture": {"output_modalities": ["text"]},
+                    "context_length": 100_000
+                }
+            ]
+        })
+        .to_string();
+        let models_mock = server
+            .mock("GET", "/models")
+            .with_status(200)
+            .with_body(joinable_catalog)
+            .create_async()
+            .await;
+        let world = World::start(&server.url(), dir.path().to_path_buf()).await;
+        let recorder = world.models_recorder().await;
+        world.harness.publish(FetchModels).await;
+        let loaded = await_recorded(&recorder, 1, SETTLE).await;
+        (world, models_mock, loaded)
+    };
     assert!(!loaded[0].from_cache);
     let before = world.data.read().rows.clone();
     assert!(
@@ -337,48 +340,54 @@ async fn epoch_loaded_rejoins_rows_without_a_refetch() {
 async fn refresh_all_drops_every_cache() {
     // Given warm models AND endpoints caches at both levels, with mocks
     // expecting exactly one GET each for the refetch.
+    // The server and the temp dir outlive the setup block: the mock
+    // checks read the server's live state, and the dir owns the
+    // cache tree the refresh sweeps.
     let mut server = mockito::Server::new_async().await;
     let dir = jinn_testutil::tempdir().expect("temp dir");
-    let at = jiff::Timestamp::now() - jiff::SignedDuration::from_hours(1);
-    let detail = vec![MarketEndpointRow {
-        tag: "stale".to_owned(),
-        provider_name: "Stale".to_owned(),
-        prompt_price: 1.0,
-        completion_price: 1.0,
-        cache_read_price: None,
-        latency_p50_ms: None,
-        throughput_p50: None,
-        uptime_1d: None,
-        quantization: None,
-        overrides: Vec::new(),
-    }];
-    // A SECOND detail file for a model that is NOT displayed — refresh
-    // must sweep the whole cache dir, not just the visible pane's file.
-    crate::market_cache::store(
-        &dir.path().join("models.json"),
-        &crate::market_cache::stamped(fixture_rows(), at),
-    )
-    .expect("seed models cache");
-    crate::market_cache::store(
-        &dir.path().join("endpoints-test_model.json"),
-        &crate::market_cache::stamped(detail.clone(), at),
-    )
-    .expect("seed endpoints cache");
-    crate::market_cache::store(
-        &dir.path().join("endpoints-other_model.json"),
-        &crate::market_cache::stamped(detail, at),
-    )
-    .expect("seed the non-displayed endpoint cache");
-    let world = World::start(&server.url(), dir.path().to_path_buf()).await;
-    // Put a detail id on the data cell so refresh knows what to drop.
-    let displayed = jinn_model_market_msg::MarketDetail {
-        model_id: "openrouter/test/model".to_owned(),
-        endpoints: Vec::new(),
+    let (world, recorder, models_mock, endpoints_mock) = {
+        let at = jiff::Timestamp::now() - jiff::SignedDuration::from_hours(1);
+        let detail = vec![MarketEndpointRow {
+            tag: "stale".to_owned(),
+            provider_name: "Stale".to_owned(),
+            prompt_price: 1.0,
+            completion_price: 1.0,
+            cache_read_price: None,
+            latency_p50_ms: None,
+            throughput_p50: None,
+            uptime_1d: None,
+            quantization: None,
+            overrides: Vec::new(),
+        }];
+        // A SECOND detail file for a model that is NOT displayed — refresh
+        // must sweep the whole cache dir, not just the visible pane's file.
+        crate::market_cache::store(
+            &dir.path().join("models.json"),
+            &crate::market_cache::stamped(fixture_rows(), at),
+        )
+        .expect("seed models cache");
+        crate::market_cache::store(
+            &dir.path().join("endpoints-test_model.json"),
+            &crate::market_cache::stamped(detail.clone(), at),
+        )
+        .expect("seed endpoints cache");
+        crate::market_cache::store(
+            &dir.path().join("endpoints-other_model.json"),
+            &crate::market_cache::stamped(detail, at),
+        )
+        .expect("seed the non-displayed endpoint cache");
+        let world = World::start(&server.url(), dir.path().to_path_buf()).await;
+        // Put a detail id on the data cell so refresh knows what to drop.
+        let displayed = jinn_model_market_msg::MarketDetail {
+            model_id: "openrouter/test/model".to_owned(),
+            endpoints: Vec::new(),
+        };
+        world.data.update(|d| d.detail = Some(displayed));
+        let recorder = world.models_recorder().await;
+        let models_mock = expect_models_once(&mut server).await;
+        let endpoints_mock = expect_endpoints_once(&mut server).await;
+        (world, recorder, models_mock, endpoints_mock)
     };
-    world.data.update(|d| d.detail = Some(displayed));
-    let recorder = world.models_recorder().await;
-    let models_mock = expect_models_once(&mut server).await;
-    let endpoints_mock = expect_endpoints_once(&mut server).await;
 
     // When publishing RefreshAll.
     world.harness.publish(RefreshAll).await;
@@ -413,25 +422,37 @@ async fn refresh_all_drops_every_cache() {
 async fn one_refresh_publish_reaches_both_market_actors_exactly_once() {
     // Given the market's two actors on one bus — the OpenRouter models
     // actor and the epoch actor — with both caches seeded on disk.
+    // The server and the temp dir outlive the setup block: the mock
+    // checks read the server's live state, and the dir owns the
+    // cache tree the refresh sweeps.
     let mut server = mockito::Server::new_async().await;
     let dir = jinn_testutil::tempdir().expect("temp dir");
-    let at = jiff::Timestamp::now() - jiff::SignedDuration::from_hours(1);
-    crate::market_cache::store(
-        &dir.path().join("models.json"),
-        &crate::market_cache::stamped(fixture_rows(), at),
-    )
-    .expect("seed models cache");
-    let world = World::start_with_epoch_actor(&server.url(), dir.path().to_path_buf()).await;
-    let epoch_dir = world.epoch_dir.clone();
-    std::fs::create_dir_all(&epoch_dir).expect("seed epoch cache dir");
-    // The recorders watch the halves' OUTPUTS. A recorder is a trouper
-    // tap — a declarant — so tapping `RefreshAll` or the chain event
-    // would add a second handler and flip the refresh path's route
-    // policy inside the test. The outputs are inert: `ModelsLoaded` and
-    // `EpochLoaded` are events, and the tap only observes them.
-    let models_recorder = world.models_recorder().await;
-    let epoch_recorder = world.harness.spawn_recorder::<EpochLoaded>().await;
-    let models_mock = expect_models_once(&mut server).await;
+    let (world, epoch_dir, models_recorder, epoch_recorder, models_mock) = {
+        let at = jiff::Timestamp::now() - jiff::SignedDuration::from_hours(1);
+        crate::market_cache::store(
+            &dir.path().join("models.json"),
+            &crate::market_cache::stamped(fixture_rows(), at),
+        )
+        .expect("seed models cache");
+        let world = World::start_with_epoch_actor(&server.url(), dir.path().to_path_buf()).await;
+        let epoch_dir = world.epoch_dir.clone();
+        std::fs::create_dir_all(&epoch_dir).expect("seed epoch cache dir");
+        // The recorders watch the halves' OUTPUTS. A recorder is a trouper
+        // tap — a declarant — so tapping `RefreshAll` or the chain event
+        // would add a second handler and flip the refresh path's route
+        // policy inside the test. The outputs are inert: `ModelsLoaded` and
+        // `EpochLoaded` are events, and the tap only observes them.
+        let models_recorder = world.models_recorder().await;
+        let epoch_recorder = world.harness.spawn_recorder::<EpochLoaded>().await;
+        let models_mock = expect_models_once(&mut server).await;
+        (
+            world,
+            epoch_dir,
+            models_recorder,
+            epoch_recorder,
+            models_mock,
+        )
+    };
 
     // When ONE `RefreshAll` rides the ERASED publish path — the route
     // action's path (`PublishClosure` → `sink.publish_schema` →
@@ -534,12 +555,8 @@ async fn refresh_all_emits_the_chain_fact_exactly_once() {
 fn refresh_route_action_publishes_only_the_refresh_command() {
     // Given the popup's route table with the market rows attached.
     let slices = Slices::new();
-    let ui = slices
-        .register(market_ui_slot(), MarketUiState::default())
-        .expect("fresh Slices never has the UI slot registered");
-    let data = slices
-        .register(market_data_slot(), MarketDataState::default())
-        .expect("fresh Slices never has the data slot registered");
+    let ui = seed_cell(&slices, &market_ui_slot(), MarketUiState::default());
+    let data = seed_cell(&slices, &market_data_slot(), MarketDataState::default());
     let routes = jinn_slices::KeyRoutes::new();
     crate::routes::attach_market_rows(&routes, &ui, &data);
     let mut state = jinn_kernel::AppState::default();
@@ -704,44 +721,57 @@ async fn fetch_models_fetches_no_detail() {
     // expectations at the wire. Under fetch-on-drill-in-only semantics
     // a models load alone must make no endpoints request, whichever
     // row the table would highlight.
+    // The server and the temp dir outlive the setup block: the mock
+    // checks read the server's live state, and the dir owns the
+    // cache tree the actor writes into.
     let mut server = mockito::Server::new_async().await;
     let dir = jinn_testutil::tempdir().expect("temp dir");
-    let catalog = serde_json::json!({
-        "data": [
-            {
-                "id": "test/dear",
-                "pricing": {"prompt": "0.03", "completion": "0.3"},
-                "architecture": {"output_modalities": ["text"]},
-                "context_length": 100_000
-            },
-            {
-                "id": "test/cheap",
-                "pricing": {"prompt": "0.000003", "completion": "0.000015"},
-                "architecture": {"output_modalities": ["text"]},
-                "context_length": 100_000
-            }
-        ]
-    })
-    .to_string();
-    let world = World::start(&server.url(), dir.path().to_path_buf()).await;
-    let models_recorder = world.models_recorder().await;
-    let endpoints_recorder = world.endpoints_recorder().await;
-    let models_mock = server
-        .mock("GET", "/models")
-        .with_status(200)
-        .with_body(catalog)
-        .create_async()
-        .await;
-    let cheap_mock = server
-        .mock("GET", "/models/test/cheap/endpoints")
-        .expect(0)
-        .create_async()
-        .await;
-    let dear_mock = server
-        .mock("GET", "/models/test/dear/endpoints")
-        .expect(0)
-        .create_async()
-        .await;
+    let (world, models_recorder, endpoints_recorder, models_mock, cheap_mock, dear_mock) = {
+        let catalog = serde_json::json!({
+            "data": [
+                {
+                    "id": "test/dear",
+                    "pricing": {"prompt": "0.03", "completion": "0.3"},
+                    "architecture": {"output_modalities": ["text"]},
+                    "context_length": 100_000
+                },
+                {
+                    "id": "test/cheap",
+                    "pricing": {"prompt": "0.000003", "completion": "0.000015"},
+                    "architecture": {"output_modalities": ["text"]},
+                    "context_length": 100_000
+                }
+            ]
+        })
+        .to_string();
+        let world = World::start(&server.url(), dir.path().to_path_buf()).await;
+        let models_recorder = world.models_recorder().await;
+        let endpoints_recorder = world.endpoints_recorder().await;
+        let models_mock = server
+            .mock("GET", "/models")
+            .with_status(200)
+            .with_body(catalog)
+            .create_async()
+            .await;
+        let cheap_mock = server
+            .mock("GET", "/models/test/cheap/endpoints")
+            .expect(0)
+            .create_async()
+            .await;
+        let dear_mock = server
+            .mock("GET", "/models/test/dear/endpoints")
+            .expect(0)
+            .create_async()
+            .await;
+        (
+            world,
+            models_recorder,
+            endpoints_recorder,
+            models_mock,
+            cheap_mock,
+            dear_mock,
+        )
+    };
 
     // When publishing FetchModels — the popup-open publish, no nav key,
     // no drill-in.

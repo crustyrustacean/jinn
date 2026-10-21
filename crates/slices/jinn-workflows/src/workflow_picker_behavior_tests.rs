@@ -187,6 +187,8 @@ fn every_footer_entry_is_a_key_the_picker_binds() {
 fn the_picker_binds_navigation_start_rescan_and_cancel() {
     // Given the route rows the slice attaches.
     let (_cell, routes) = wired();
+
+    // When reading the bound keys.
     let keys: Vec<&str> = routes.rows().iter().map(|row| row.key).collect();
 
     // Then the picker walks, pages, loads, starts in a new session,

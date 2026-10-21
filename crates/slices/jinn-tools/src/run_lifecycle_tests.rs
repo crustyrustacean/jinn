@@ -188,13 +188,18 @@ fn pairing_stamps_names_in_template_parameter_order() {
 #[tokio::test]
 async fn setup_stamps_coordinates_and_persists_before_the_run_command() {
     // Given a session and a harness recording setup commands and persists.
+    // The temp dir outlives the setup block: the tool's context points
+    // into it, and the tool runs after the block closes.
     let dir = jinn_testutil::tempdir().expect("temp dir");
-    let harness = TestHarness::new().await;
-    let setups = harness.spawn_recorder::<RunSessionSetup>().await;
-    let persists = harness.spawn_recorder::<PersistSession>().await;
-    let (state, id) = fixture();
-    let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
-    let adopted_cwd = dir.path().join("inherited-project");
+    let (harness, setups, persists, state, id, tool_ctx, adopted_cwd) = {
+        let harness = TestHarness::new().await;
+        let setups = harness.spawn_recorder::<RunSessionSetup>().await;
+        let persists = harness.spawn_recorder::<PersistSession>().await;
+        let (state, id) = fixture();
+        let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+        let adopted_cwd = dir.path().join("inherited-project");
+        (harness, setups, persists, state, id, tool_ctx, adopted_cwd)
+    };
 
     // When the tool runs setup — racing it against our own completion
     // publish, since no lifecycle actor exists in this harness to answer.
@@ -274,11 +279,16 @@ async fn setup_stamps_coordinates_and_persists_before_the_run_command() {
 async fn teardown_ignores_supplied_options_and_replays_the_stored_coordinates() {
     // Given a session whose lifecycle already ran setup, with stored
     // coordinates, and a harness recording teardown commands.
+    // The temp dir outlives the setup block: the tool's context points
+    // into it, and the tool runs after the block closes.
     let dir = jinn_testutil::tempdir().expect("temp dir");
-    let harness = TestHarness::new().await;
-    let teardowns = harness.spawn_recorder::<RunSessionTeardown>().await;
-    let (state, id) = setup_ran_fixture();
-    let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+    let (harness, teardowns, state, id, tool_ctx) = {
+        let harness = TestHarness::new().await;
+        let teardowns = harness.spawn_recorder::<RunSessionTeardown>().await;
+        let (state, id) = setup_ran_fixture();
+        let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+        (harness, teardowns, state, id, tool_ctx)
+    };
 
     // When the tool runs teardown with a WRONG script, a WRONG path, and
     // WRONG args — none of which the call's stored coordinates agree with.

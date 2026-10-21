@@ -158,7 +158,8 @@ mod tests {
     };
     use jinn_kernel::KernelIntent;
     use jinn_kernel::common::app_state::AppState;
-    use jinn_kernel::common::render_ctx::RenderCtx;
+
+    use jinn_kernel::common::render_test::{render_draw, with_render_ctx};
     use jinn_slices::Persona;
 
     #[rstest::rstest]
@@ -190,12 +191,7 @@ mod tests {
 
         // When asking for content height.
         let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_slices::OverlayViews::new();
-        let height = section.content_height(&RenderCtx::new_with_default_config(
-            &state,
-            &slices,
-            &overlay_views,
-        ));
+        let height = with_render_ctx(&state, &slices, |ctx| section.content_height(ctx));
 
         // Then it returns 4 (header + blank + entry + trailing gap).
         assert_eq!(height, 4);
@@ -209,12 +205,7 @@ mod tests {
 
         // When asking for content height.
         let slices = jinn_slices::Slices::new();
-        let overlay_views = jinn_slices::OverlayViews::new();
-        let height = section.content_height(&RenderCtx::new_with_default_config(
-            &state,
-            &slices,
-            &overlay_views,
-        ));
+        let height = with_render_ctx(&state, &slices, |ctx| section.content_height(ctx));
 
         // Then it returns 4 (consistent layout).
         assert_eq!(height, 4);
@@ -271,23 +262,15 @@ mod tests {
         );
     }
 
-    use jinn_testutil::setup_term;
-
     fn render_rows(
         section: &mut PersonaSection,
         state: &AppState,
         width: u16,
         height: u16,
     ) -> Vec<String> {
-        let (mut terminal, area) = setup_term(width, height);
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
-                section.render(frame, area, 0, &ctx);
-            })
-            .unwrap();
+        let terminal = render_draw(state, width, height, |frame, area, frame_ctx| {
+            section.render(frame, area, 0, frame_ctx);
+        });
         let buffer = terminal.backend().buffer();
         (0..height)
             .map(|y| {

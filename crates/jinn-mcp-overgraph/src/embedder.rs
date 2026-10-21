@@ -579,9 +579,13 @@ mod tests {
         // Given the default model.
         let model = EmbedderModel::default_model();
 
+        // When its dimension and metric are read.
+        let dimension = model.dimension();
+        let metric = model.metric();
+
         // Then its dimension and metric match the documented catalog entry.
-        assert_eq!(model.dimension(), 384);
-        assert_eq!(model.metric(), overgraph::types::DenseMetric::Cosine);
+        assert_eq!(dimension, 384);
+        assert_eq!(metric, overgraph::types::DenseMetric::Cosine);
     }
 
     #[rstest::rstest]
@@ -589,8 +593,11 @@ mod tests {
         // Given the default model.
         let model = EmbedderModel::default_model();
 
-        // Then its HuggingFace repo is the BAAI bge-small mirror.
-        assert_eq!(model.hf_repo(), "BAAI/bge-small-en-v1.5");
+        // When its HuggingFace repo is read.
+        let repo = model.hf_repo();
+
+        // Then it is the BAAI bge-small mirror.
+        assert_eq!(repo, "BAAI/bge-small-en-v1.5");
     }
 
     #[rstest::rstest]

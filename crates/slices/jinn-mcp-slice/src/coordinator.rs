@@ -832,11 +832,14 @@ mod lifecycle_tests {
     #[tokio::test]
     async fn disabling_then_re_enabling_respawns_the_actor() {
         // Given a lifecycle actor with one configured server.
-        let harness = TestHarness::new().await;
-        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
-        let (_actor, _services, _state) =
-            spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
-        let session_id = SessionId::new();
+        let (harness, recorder, session_id) = {
+            let harness = TestHarness::new().await;
+            let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+            let (_actor, _services, _state) =
+                spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
+            let session_id = SessionId::new();
+            (harness, recorder, session_id)
+        };
 
         // When enabling the server (spawn #1: Starting + Dead on failed connect).
         harness
@@ -1087,11 +1090,14 @@ mod lifecycle_tests {
     #[tokio::test]
     async fn created_reconcile_against_shrunk_set_kills_leftover_actor() {
         // Given a coordinator with an already-spawned actor for a session.
-        let harness = TestHarness::new().await;
-        let recorder = harness.spawn_recorder::<McpServerStatus>().await;
-        let (_actor, _services, state) =
-            spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let (harness, recorder, state, dir) = {
+            let harness = TestHarness::new().await;
+            let recorder = harness.spawn_recorder::<McpServerStatus>().await;
+            let (_actor, _services, state) =
+                spawn_lifecycle(&harness, &[("unrunnable", unrunnable_server())]).await;
+            let dir = jinn_testutil::tempdir().expect("temp dir");
+            (harness, recorder, state, dir)
+        };
         let session_id = {
             let sid = insert_session_with_enablement(&state, &single_enabled("unrunnable"));
             harness

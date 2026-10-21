@@ -131,6 +131,8 @@ mod tests {
     #[test]
     fn root_is_an_absolute_path() {
         // Given a freshly created test root.
+
+        // When the root is created.
         let root = TestRoot::new().expect("test root");
 
         // Then its path is absolute.
@@ -141,6 +143,8 @@ mod tests {
     #[test]
     fn root_carries_the_jinn_test_prefix() {
         // Given a freshly created test root.
+
+        // When the root is created.
         let root = TestRoot::new().expect("test root");
 
         // Then its directory name carries the jinn test prefix.

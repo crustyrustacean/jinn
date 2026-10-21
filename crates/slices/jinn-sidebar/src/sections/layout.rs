@@ -548,6 +548,7 @@ mod tests {
         clippy::panic,
         reason = "test code"
     )]
+    use crate::sections::testing::state_with_plain_message_sessions;
     use jinn_kernel::common::app_state::AppState;
     use jinn_kernel::protocol::ChatEntry;
     use jinn_kernel::protocol::PinPosition;
@@ -580,18 +581,6 @@ mod tests {
     }
 
     /// A state with `count` extra loaded sessions.
-    fn state_with_sessions(count: usize) -> AppState {
-        let mut state = AppState::default_with_scope_focus();
-        for i in 1..count {
-            state.session.insert({
-                let mut session = ChatSessionState::new();
-                session.push_entry(ChatEntry::user(format!("message {i}")));
-                session
-            });
-        }
-        state
-    }
-
     #[rstest::rstest]
     fn total_rows_sums_every_section_height() {
         // Given state with 3 pins, 2 phases, and 4 sessions.
@@ -812,7 +801,7 @@ mod tests {
     #[rstest::rstest]
     fn sessions_height_counts_every_session() {
         // Given a state with 40 sessions.
-        let state = state_with_sessions(40);
+        let state = state_with_plain_message_sessions(40);
 
         // When measuring the sessions section.
         let rows = sessions_rows(&state);

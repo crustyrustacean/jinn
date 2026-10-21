@@ -264,6 +264,8 @@ async fn cancel_then_racing_dispatch_leaves_phase_idle() {
         || phase_of(&app, &session_id),
     )
     .await;
+
+    // Then the phase never flapped back to Streaming.
     assert!(
         !is_streaming(&app, &session_id),
         "a dispatch racing a cancel must not re-enter Streaming"

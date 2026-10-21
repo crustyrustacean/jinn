@@ -121,6 +121,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+    use crate::sections::testing::state_with_titled_sessions;
     use jinn_kernel::common::app_state::AppState;
     use jinn_session_state::ChatSessionState;
 
@@ -131,18 +132,6 @@ mod tests {
     };
 
     /// State holding `count` listed sessions, with no cursor on any of them.
-    fn state_with_sessions(count: usize) -> AppState {
-        let mut state = AppState::default_with_scope_focus();
-        let default_id = state.session.active_session_id().clone();
-        state.session.remove_without_replacement(&default_id);
-        for index in 0..count {
-            let mut session = ChatSessionState::new();
-            session.set_title(format!("session {index}"));
-            state.session.insert(session);
-        }
-        state
-    }
-
     /// The row the sessions cursor sits on, read through the production path.
     fn cursor_row(state: &AppState) -> Option<usize> {
         let id = state
@@ -186,7 +175,7 @@ mod tests {
     #[rstest::rstest]
     fn the_sessions_cursor_row_is_captured_from_the_row_it_is_drawn_on() {
         // Given a state with four listed sessions and the cursor on row 2.
-        let mut state = state_with_sessions(4);
+        let mut state = state_with_titled_sessions(4);
         place_cursor(&mut state, 2);
 
         // When the frame captures the cursor's row.
@@ -203,7 +192,7 @@ mod tests {
     fn the_sessions_cursor_row_is_captured_while_another_scope_holds_focus() {
         // Given a state with four listed sessions, cursor on row 1, and the
         // chat pane holding focus rather than any sidebar section.
-        let mut state = state_with_sessions(4);
+        let mut state = state_with_titled_sessions(4);
         place_cursor(&mut state, 1);
         state
             .frontend
@@ -224,7 +213,7 @@ mod tests {
     fn an_unresolvable_cursor_leaves_the_previous_capture_alone() {
         // Given a state whose last capture was row 1, and a cursor naming a
         // session that is no longer listed.
-        let mut state = state_with_sessions(4);
+        let mut state = state_with_titled_sessions(4);
         place_cursor(&mut state, 1);
         capture_sessions_cursor_row(&state);
         let stale = jinn_core_types::SessionId::new();
@@ -247,7 +236,7 @@ mod tests {
     fn a_restored_row_is_clamped_to_the_last_row_of_a_shorter_list() {
         // Given a state with three listed sessions whose cursor is captured on
         // row 2, and a list that has since shrunk to two.
-        let mut state = state_with_sessions(3);
+        let mut state = state_with_titled_sessions(3);
         place_cursor(&mut state, 2);
         capture_sessions_cursor_row(&state);
         let remaining: Vec<_> = state.session.iter().map(|(id, _)| id.clone()).collect();
@@ -272,7 +261,7 @@ mod tests {
     fn a_capture_is_taken_when_no_section_holds_focus_and_the_cursor_still_moves() {
         // Given a state with three listed sessions and no sidebar focus at all,
         // so no document cursor row can be derived from the scope stack.
-        let mut state = state_with_sessions(3);
+        let mut state = state_with_titled_sessions(3);
         place_cursor(&mut state, 2);
         state
             .frontend

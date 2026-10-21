@@ -570,10 +570,7 @@ mod preview_load_tests {
         finish_reply(&mut state, &id);
         let current = signature_of(&state, &id);
 
-        // Then the keyed lookup misses while the fallback resolves. Settling is
-        // the one moment in a turn the key legitimately moves — the reply has
-        // become something the preview shows — and this is the pair of answers
-        // the draw path acts on to keep that moment from becoming a spinner.
+        // When the keyed lookup and the fallback are resolved.
         let (keyed_hit, drawable) = state.frontend.with_sections(
             |s| {
                 (
@@ -583,6 +580,11 @@ mod preview_load_tests {
             },
             || (false, false),
         );
+
+        // Then the keyed lookup misses while the fallback resolves. Settling is
+        // the one moment in a turn the key legitimately moves — the reply has
+        // become something the preview shows — and this is the pair of answers
+        // the draw path acts on to keep that moment from becoming a spinner.
         assert!(
             !keyed_hit,
             "the keyed lookup must miss once a reply settles, or this case never arises"

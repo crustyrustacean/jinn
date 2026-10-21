@@ -33,11 +33,12 @@ fn every_alias_names_a_seed_row() {
     let index = seed_index();
     let seed_names: HashSet<&str> = index.scores.keys().map(String::as_str).collect();
 
-    // Then every alias's eci_name is a row in that seed.
-    // This is the drift tripwire: a seed update that renames or drops a
-    // version this table aliases must fail here, not silently strand an
-    // alias.
+    // When each alias is checked against those names.
     for alias in crate::eci_aliases::ECI_ALIASES {
+        // Then every alias's eci_name is a row in that seed.
+        // This is the drift tripwire: a seed update that renames or drops a
+        // version this table aliases must fail here, not silently strand an
+        // alias.
         assert!(
             seed_names.contains(alias.eci_name),
             "alias table drift: {alias:?} names no row in the shipped seed CSV",
@@ -142,6 +143,7 @@ fn canonical_name_keeps_dated_snapshots_distinct() {
     let a = canonical("Gemini 2.5 Pro (Mar 2025)");
     let b = canonical("Gemini 2.5 Pro (Jun 2025)");
 
-    // Then their canonical forms differ — parentheses survive.
+    // When their canonical forms are compared.
+    // Then they differ — parentheses survive.
     assert_ne!(a, b);
 }

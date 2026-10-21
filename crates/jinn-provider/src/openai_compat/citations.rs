@@ -216,7 +216,8 @@ mod tests {
         // Given an accumulator that has absorbed nothing.
         let mut acc = CitationAccumulator::default();
 
-        // When it is drained, nothing is emitted.
+        // When it is drained.
+        // Then nothing is emitted.
         assert_eq!(acc.drain(), [] as [crate::stream_event::StreamEvent; 0]);
     }
 }

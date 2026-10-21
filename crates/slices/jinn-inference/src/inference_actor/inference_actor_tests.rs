@@ -1127,37 +1127,40 @@ async fn an_intercept_injects_guidance_the_model_can_still_read() {
 async fn an_intercepted_tool_call_still_reaches_the_chat_log() {
     // Given a tool call whose arguments trip a bash-scoped rule.
     use jinn_provider::StreamEvent;
-    let harness = TestHarness::new().await;
-    let stream = scripted_stream(vec![
-        StreamEvent::ToolUseStart {
-            index: 0,
-            id: "tc-1".into(),
-            name: "bash".to_owned(),
-        },
-        StreamEvent::ToolUseInputDelta {
-            index: 0,
-            partial_json: r#"{"command":"echo FORBIDDEN"#.to_owned(),
-        },
-        StreamEvent::ToolUseComplete {
-            tool_call: ToolCall {
+    let (harness, stream, sid, deltas, batches) = {
+        let harness = TestHarness::new().await;
+        let stream = scripted_stream(vec![
+            StreamEvent::ToolUseStart {
+                index: 0,
                 id: "tc-1".into(),
                 name: "bash".to_owned(),
-                arguments: r#"{"command":"echo FORBIDDEN"}"#.to_owned(),
             },
-            index: 0,
-        },
-        StreamEvent::Done {
-            stop_reason: jinn_provider::StopReason::ToolUse,
-            usage: None,
-        },
-    ]);
-    let sid = SessionId::new();
-    let deltas = harness
-        .spawn_recorder::<jinn_tools_msg::ToolCallStreaming>()
-        .await;
-    let batches = harness
-        .spawn_recorder::<jinn_tools_msg::ExecuteToolBatch>()
-        .await;
+            StreamEvent::ToolUseInputDelta {
+                index: 0,
+                partial_json: r#"{"command":"echo FORBIDDEN"#.to_owned(),
+            },
+            StreamEvent::ToolUseComplete {
+                tool_call: ToolCall {
+                    id: "tc-1".into(),
+                    name: "bash".to_owned(),
+                    arguments: r#"{"command":"echo FORBIDDEN"}"#.to_owned(),
+                },
+                index: 0,
+            },
+            StreamEvent::Done {
+                stop_reason: jinn_provider::StopReason::ToolUse,
+                usage: None,
+            },
+        ]);
+        let sid = SessionId::new();
+        let deltas = harness
+            .spawn_recorder::<jinn_tools_msg::ToolCallStreaming>()
+            .await;
+        let batches = harness
+            .spawn_recorder::<jinn_tools_msg::ExecuteToolBatch>()
+            .await;
+        (harness, stream, sid, deltas, batches)
+    };
 
     // When processed with a bash-scoped rule matching FORBIDDEN.
     run_with_rules(

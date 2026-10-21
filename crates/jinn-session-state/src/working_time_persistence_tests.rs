@@ -25,6 +25,8 @@ fn metadata() -> SessionSnapshotMetadata {
 #[rstest::rstest]
 fn metadata_carries_no_intervals_by_default() {
     // Given metadata built without working time.
+
+    // When the metadata is read.
     let metadata = metadata();
 
     // Then it records none.

@@ -77,18 +77,9 @@ mod tests {
     use super::*;
     use crate::protocol::KernelIntent;
     use jinn_slices::FocusScope;
+    use jinn_testutil::{empty_routes, empty_slices};
 
     use crate::feat::intent::handler::IntentHandler;
-
-    /// The slice registry with nothing registered: enough for dispatch tests
-    /// that are not exercising composition.
-    fn empty_slices() -> jinn_slices::Slices {
-        jinn_slices::Slices::new()
-    }
-
-    fn empty_routes() -> jinn_slices::route::KeyRoutes {
-        jinn_slices::route::KeyRoutes::new()
-    }
 
     #[rstest::rstest]
     fn switch_tab_with_no_registered_tab_stays_normal() {

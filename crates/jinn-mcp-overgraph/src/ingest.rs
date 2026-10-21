@@ -771,6 +771,8 @@ mod tests {
     #[test]
     fn parse_collects_mixed_nodes_and_edges_in_any_order() {
         // Given a file whose edge lines precede the node lines they reference.
+
+        // When parsing the batch file.
         let batch = parse_batch_file(concat!(
             r#"{"edge": {"label": "KNOWS", "from": "Person:alice", "to": "Person:bob"}}"#,
             "\n",
@@ -794,6 +796,8 @@ mod tests {
     #[test]
     fn parse_rejects_a_line_carrying_both_node_and_edge() {
         // Given a line that carries both keys.
+
+        // When parsing the batch file.
         let result = parse_batch_file(concat!(
             r#"{"node": {"label": "Person", "key": "alice"}, "edge": {"label": "KNOWS", "from": "Person:alice", "to": "Person:bob"}}"#,
             "\n",
@@ -812,6 +816,8 @@ mod tests {
     #[test]
     fn parse_rejects_a_line_carrying_neither_key() {
         // Given a line that is an object but carries neither wrapper key.
+
+        // When parsing the batch file.
         let result = parse_batch_file(concat!(r#"{"label": "Person", "key": "alice"}"#, "\n",));
 
         // Then the file fails naming the line and the missing keys.
@@ -827,6 +833,8 @@ mod tests {
     #[test]
     fn parse_reports_the_first_malformed_line_and_stops() {
         // Given a file whose second line is not JSON.
+
+        // When parsing the batch file.
         let result = parse_batch_file(concat!(
             r#"{"node": {"label": "Person", "key": "alice"}}"#,
             "\n",
@@ -847,6 +855,8 @@ mod tests {
     #[test]
     fn parse_skips_blank_lines_but_counts_real_line_numbers() {
         // Given a file with a blank line before an invalid one.
+
+        // When parsing the batch file.
         let result = parse_batch_file(concat!(
             r#"{"node": {"label": "Person", "key": "alice"}}"#,
             "\n",
@@ -868,6 +878,8 @@ mod tests {
     #[test]
     fn parse_rejects_an_empty_embed_text_naming_the_line() {
         // Given a node line whose embed_text is whitespace only.
+
+        // When parsing the batch file.
         let result = parse_batch_file(concat!(
             r#"{"node": {"label": "Doc", "key": "x", "embed_text": "   "}}"#,
             "\n",
@@ -886,6 +898,8 @@ mod tests {
     #[test]
     fn parse_rejects_a_non_finite_or_non_numeric_weight() {
         // Given an edge line whose weight is a string.
+
+        // When parsing the batch file.
         let result = parse_batch_file(concat!(
             r#"{"edge": {"label": "KNOWS", "from": "Person:a", "to": "Person:b", "weight": "heavy"}}"#,
             "\n",
@@ -904,6 +918,8 @@ mod tests {
     #[test]
     fn endpoint_references_split_on_the_first_colon() {
         // Given an edge whose key itself contains a colon.
+
+        // When parsing the batch file.
         let batch = parse_batch_file(concat!(
             r#"{"node": {"label": "Doc", "key": "a:b"}}"#,
             "\n",
@@ -946,6 +962,8 @@ mod tests {
     #[test]
     fn props_convert_into_the_engine_map() {
         // Given a node line carrying scalar and array properties.
+
+        // When parsing the batch file.
         let batch = parse_batch_file(concat!(
             r#"{"node": {"label": "Person", "key": "alice", "props": {"age": 30, "tags": ["a", "b"]}}}"#,
             "\n",
@@ -961,6 +979,8 @@ mod tests {
     #[test]
     fn minimal_file_parses_into_one_node_and_one_edge() {
         // Given the minimal two-line file.
+
+        // When parsing the batch file.
         let batch = parse_batch_file(MINIMAL_FILE).expect("parses");
 
         // Then exactly one node and one edge came out.
@@ -972,6 +992,8 @@ mod tests {
     #[test]
     fn parse_treats_an_empty_file_as_a_zero_count_batch() {
         // Given an empty (or whitespace-only) file.
+
+        // When parsing the batch file.
         let batch = parse_batch_file("\n\n").expect("parses");
 
         // Then the batch carries nothing and ingest has nothing to do.

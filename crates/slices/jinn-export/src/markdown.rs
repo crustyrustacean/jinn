@@ -209,6 +209,8 @@ mod tests {
     #[rstest::rstest]
     fn plain_body_uses_a_three_backtick_fence() {
         // Given a body with no backticks.
+
+        // When a fence is picked for it.
         let fence = fence_for("nothing special");
 
         // Then the ordinary three-backtick fence is used.

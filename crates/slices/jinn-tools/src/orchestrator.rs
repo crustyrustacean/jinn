@@ -1917,49 +1917,52 @@ mod mcp_dispatch_gate_tests {
         // registered globally (the singleton registration shape), the server
         // configured singleton, and its status written to the singleton
         // bucket — not under this session's id.
-        let state = State::new(AppState::default());
-        let session_id = SessionId::new();
-        state
-            .write()
-            .session
-            .get_or_create(&session_id)
-            .enable_mcp_server("stub");
-        let (harness, services) = spawn_orchestrator(&state).await;
-        // The gate reads singleton-ness from the config layer, so the seed
-        // goes through the same path production reads.
-        use jinn_preferences_config::schemas::McpServersConfig as SeedConfig;
-        services
-            .config
-            .put::<SeedConfig>(&SeedConfig(
-                std::iter::once((
-                    "stub".to_owned(),
-                    jinn_preferences_config::schemas::mcp::McpServerConfig {
-                        singleton: true,
-                        ..Default::default()
-                    },
+        let (harness, session_id, dispatched) = {
+            let state = State::new(AppState::default());
+            let session_id = SessionId::new();
+            state
+                .write()
+                .session
+                .get_or_create(&session_id)
+                .enable_mcp_server("stub");
+            let (harness, services) = spawn_orchestrator(&state).await;
+            // The gate reads singleton-ness from the config layer, so the seed
+            // goes through the same path production reads.
+            use jinn_preferences_config::schemas::McpServersConfig as SeedConfig;
+            services
+                .config
+                .put::<SeedConfig>(&SeedConfig(
+                    std::iter::once((
+                        "stub".to_owned(),
+                        jinn_preferences_config::schemas::mcp::McpServerConfig {
+                            singleton: true,
+                            ..Default::default()
+                        },
+                    ))
+                    .collect(),
                 ))
-                .collect(),
-            ))
-            .expect("seed the mcp section");
-        mcp_runtime(&services).update(|runtime| {
-            runtime.set_singleton_status("stub", McpConnectionStatus::Running);
-        });
-        harness
-            .publish(RegisterTools {
-                provider: PROVIDER.to_owned(),
-                definitions: vec![mcp_tool_def()],
-                session_id: None,
+                .expect("seed the mcp section");
+            mcp_runtime(&services).update(|runtime| {
+                runtime.set_singleton_status("stub", McpConnectionStatus::Running);
+            });
+            harness
+                .publish(RegisterTools {
+                    provider: PROVIDER.to_owned(),
+                    definitions: vec![mcp_tool_def()],
+                    session_id: None,
+                })
+                .await;
+            // The registry cell is the signal that the registration was
+            // processed; a fixed sleep would only guess at it. This one
+            // registers globally, so the global map is what changes.
+            let registry = tools_registry(&services);
+            jinn_testutil::wait::await_cell(&registry, Duration::from_secs(5), |r| {
+                r.global.values().any(|tool| tool.name == "mcp__stub__echo")
             })
             .await;
-        // The registry cell is the signal that the registration was
-        // processed; a fixed sleep would only guess at it. This one
-        // registers globally, so the global map is what changes.
-        let registry = tools_registry(&services);
-        jinn_testutil::wait::await_cell(&registry, Duration::from_secs(5), |r| {
-            r.global.values().any(|tool| tool.name == "mcp__stub__echo")
-        })
-        .await;
-        let dispatched = harness.spawn_recorder::<ExecuteTool>().await;
+            let dispatched = harness.spawn_recorder::<ExecuteTool>().await;
+            (harness, session_id, dispatched)
+        };
 
         // When dispatching a call from a session that has no per-session
         // runtime entry for the server.

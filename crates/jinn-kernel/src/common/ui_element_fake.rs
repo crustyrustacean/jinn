@@ -67,26 +67,25 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    use jinn_testutil::setup_term;
     use ratatui::layout::Rect;
 
     use super::*;
     use crate::common::app_state::AppState;
+    use crate::common::render_test::render_element_in;
 
     /// Helper to render an element via a real ratatui frame.
     ///
     /// Uses `Terminal::draw()` to obtain a frame, which is the standard
     /// way to create a `Frame` in ratatui 0.30+.
     fn render_element(element: &mut dyn UiElement, area: Rect, state: &AppState) {
-        let (mut terminal, _area) = setup_term(area.width, area.height);
-        terminal
-            .draw(|frame| {
-                let slices = jinn_slices::Slices::new();
-                let overlay_views = jinn_slices::OverlayViews::new();
-                let ctx = RenderCtx::new_with_default_config(state, &slices, &overlay_views);
-                element.render(frame, area, &ctx);
-            })
-            .expect("draw should succeed");
+        let _terminal = render_element_in(
+            element,
+            state,
+            &jinn_slices::Slices::new(),
+            area.width,
+            area.height,
+            area,
+        );
     }
 
     #[rstest::rstest]

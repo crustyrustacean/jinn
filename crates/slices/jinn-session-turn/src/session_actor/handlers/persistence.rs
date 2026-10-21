@@ -184,17 +184,21 @@ mod tests {
         use std::sync::atomic::{AtomicBool, Ordering};
 
         // Given an interacted session with a large history.
-        let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
-        let session_id = actor.state.read().session.active_session_id().clone();
-        {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.mark_interacted();
-            // A large history makes the clone window wide enough to probe.
-            for i in 0..5000 {
-                session.push_entry(jinn_core_types::ChatEntry::user(format!("msg {i}")));
+        let (actor, store, session_id) = {
+            let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
+            let session_id = actor.state.read().session.active_session_id().clone();
+            {
+                let mut state = actor.state.write();
+                let session = state.active_session_mut();
+                session.mark_interacted();
+                // A large history makes the clone window wide enough to probe.
+                for i in 0..5000 {
+                    session.push_entry(jinn_core_types::ChatEntry::user(format!("msg {i}")));
+                }
             }
-        }
+
+            (actor, store, session_id)
+        };
 
         // When saving while a probe continuously attempts a read lock, and
         // asking what FRACTION of the probe's attempts a writer blocked.

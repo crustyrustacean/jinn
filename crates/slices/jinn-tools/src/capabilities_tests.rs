@@ -806,6 +806,8 @@ async fn apply_with_invalid_json_is_rejected() {
 #[test]
 fn both_definitions_carry_the_tool_names() {
     // Given the two tool definitions.
+
+    // When the definitions are listed.
     let query = query_definition();
     let apply = apply_definition();
 

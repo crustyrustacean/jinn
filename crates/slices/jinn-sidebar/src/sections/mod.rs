@@ -29,6 +29,8 @@ pub mod task_list_section;
 mod sessions_tests;
 #[cfg(test)]
 mod sidebar_tests;
+#[cfg(test)]
+pub mod testing;
 
 pub use section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,

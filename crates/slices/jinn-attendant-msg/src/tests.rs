@@ -496,6 +496,8 @@ mod properties_tests {
             ..AttendantPropertiesState::default()
         };
         popup.focus = PropertyField::Trigger;
+
+        // When picking on the trigger row, then on the behavior row.
         popup.pick(PickDirection::Right);
         popup.focus = PropertyField::Behavior;
         popup.pick(PickDirection::Left);

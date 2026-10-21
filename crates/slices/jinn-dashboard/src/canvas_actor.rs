@@ -732,6 +732,7 @@ mod tests {
             .await;
 
         // When reading the display order.
+        // Then the failed row sorts to the top of the dashboard.
         jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
             row_names(&cell).first() == Some(&"b".to_owned())
         })
