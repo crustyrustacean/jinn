@@ -27,6 +27,7 @@ If the user has already told you where they want the evidence from — naming a 
 **Before searching: define the domain.** A topic that is a single noun usually hides a layered system. Each layer fails differently, needs different evidence, and has different fixes — and searching the wrong layer produces a confident report answering a question nobody asked.
 
 State, then use this to aim the brief:
+
 - **The subject, in one sentence** — what it actually is
 - **Its parts** — 3-7 named layers, stages, or aspects
 - **Where the user's problem actually lives**
@@ -115,6 +116,10 @@ All sources must be cited for provenance, and classified by kind at the point of
 ## Output location
 
 Save all research output to `./research/` (create it if needed). Do not use `.plans/` or any other directory — this is research material, not an implementation plan.
+
+## Process notes
+
+Domains aggressively block automated fetching via `curl`. Prefer using other web search and web fetch tools (if available in your toolset). If you must resort to `curl`, rotate domains to avoid rate limits, and make direct calls yourself instead of scripting (to avoid runaway loops).
 
 </instructions>
 
