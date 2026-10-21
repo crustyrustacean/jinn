@@ -411,16 +411,21 @@ settle_max_wait_ms = 3000
 # > On Windows this must be a Git Bash (or MSYS2/Cygwin) `bash.exe`.
 # > Leave unset to auto-detect Git Bash at the standard install locations.
 # > There is deliberately no WSL fallback: a WSL shell builds Linux binaries
-# > in a VM, invisible to jinn's Windows process handling.
-# > Use forward slashes — a backslash in a TOML string is an escape
-# > character, and "C:\Program Files\..." will not parse.
-# bash_path = "C:/Program Files/Git/bin/bash.exe"
+# > in a VM, invisible to jinn's Windows process handling. For Linux/Mac users,
+# > recommend leaving commented out unless you want a custom shell. Note that the
+# > `bash` tool expects (and has guidance for) the bash shell, so you will
+# > get increased tool call errors using something like `zsh` or `fish`.
+# > You can use forward slashes or backslashes. Both will convert to a path.
+# > Triple quoting is to avoid having to escape Windows backslashes in paths.
+# bash_path = '''C:\Program Files\Git\bin\bash.exe'''
 
 # > Absolute path to the PowerShell executable the `powershell` tool runs
 # > through. Leave unset to auto-detect, preferring PowerShell 7 (`pwsh`)
-# > over Windows PowerShell 5.1 (`powershell.exe`).
-# > Use forward slashes for the same reason as `bash_path`.
-# powershell_path = "C:/Program Files/PowerShell/7/pwsh.exe"
+# > over Windows PowerShell 5.1 (`powershell.exe`). Note that the `powershell`
+# > tool is gated to Windows only.
+# > You can use forward slashes or backslashes. Both will convert to a path.
+# > Triple quoting is to avoid having to escape Windows backslashes in paths.
+# powershell_path = '''C:\Program Files\PowerShell\7\pwsh.exe'''
 
 # ###########################################################################
 # Attendants
@@ -434,7 +439,8 @@ settle_max_wait_ms = 3000
 [[attendant.entry]]
 behavior = "reset"
 name = "auto-nudge"
-pins = [{ role = "user", text = """
+pins = [
+    { role = "user", text = """
 You are in charge of keeping another agent on track. Please read the most recent message from the parent using the `session_fetch` tool and determine if it stopped prematurely. If it stopped prematurely, use the `notify_parent` tool to tell the agent to continue. The "continue" explanation should be brief but firm like "Continue with the <task>".
 
 Examples of agents that stopped too early:
@@ -450,11 +456,17 @@ Regardless of the outcome, always use the `conclude` tool to record your conclus
 - If you had to use `notify_parent` -> the "conclude" should be "Nudged"
 - If the agent finished -> the "conclude" should be "Task complete"
 
-You **do not** need to evaluate whether the agent actually did the work. Your job is simply to keep the agent moving if it says that it stopped before finishing. You don't need to check the work at all.""" }]
+You **do not** need to evaluate whether the agent actually did the work. Your job is simply to keep the agent moving if it says that it stopped before finishing. You don't need to check the work at all.""" },
+]
 prep_mode = false
 seed_template = "The previous run of this attendant reported: <prior report>."
 trigger = "parent_completed"
-tool_filter = { mode = "allow", names = ["conclude", "notify_parent", "session_fetch", "session_search"] }
+tool_filter = { mode = "allow", names = [
+    "conclude",
+    "notify_parent",
+    "session_fetch",
+    "session_search",
+] }
 skill_filter = { mode = "allow", names = [] }
 
 # > Checks a completed implementation turn against the criteria the session
@@ -463,7 +475,8 @@ skill_filter = { mode = "allow", names = [] }
 [[attendant.entry]]
 behavior = "preserve"
 name = "gap-check"
-pins = [{ role = "user", text = """
+pins = [
+    { role = "user", text = """
 You audit a coding session that has just finished a turn. Your job is to check whether the work that was actually done satisfies the criteria the session itself committed to — and to stay silent when there is nothing to report.
 
 You have no conversation history. Everything you know comes from the parent session's transcript and the code on disk.
@@ -539,11 +552,20 @@ Do not call `notify_parent` because the work looked risky, incomplete in a way y
 
 ## What you do not do
 
-You do not fix anything. You do not use `notify_parent` to instruct the parent agent on how to proceed beyond naming the gap — it is a notification, not a task hand-off, and a parent that starts treating it as one will begin looping. You do not re-audit work the parent already showed passing.""" }]
+You do not fix anything. You do not use `notify_parent` to instruct the parent agent on how to proceed beyond naming the gap — it is a notification, not a task hand-off, and a parent that starts treating it as one will begin looping. You do not re-audit work the parent already showed passing.""" },
+]
 prep_mode = false
 seed_template = "The previous run of this attendant reported: <prior report>."
 trigger = "parent_completed"
-tool_filter = { mode = "allow", names = ["bash", "conclude", "grep", "notify_parent", "read", "session_fetch", "session_search"] }
+tool_filter = { mode = "allow", names = [
+    "bash",
+    "conclude",
+    "grep",
+    "notify_parent",
+    "read",
+    "session_fetch",
+    "session_search",
+] }
 skill_filter = { mode = "allow", names = [] }
 
 # ###########################################################################
