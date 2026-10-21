@@ -4,7 +4,7 @@
 
 - Add custom path for `bash`
 
-```
+```toml
 [shell]
 # > Absolute path to the POSIX shell jinn runs commands through.
 # > On Windows this must be a Git Bash (or MSYS2/Cygwin) `bash.exe`.
@@ -13,13 +13,13 @@
 # > in a VM, invisible to jinn's Windows process handling.
 # > Use forward slashes — a backslash in a TOML string is an escape
 # > character, and "C:\Program Files\..." will not parse.
-# bash_path = "C:/Program Files/Git/bin/bash.exe"
+bash_path = "C:/Program Files/Git/bin/bash.exe"
 
 # > Absolute path to the PowerShell executable the `powershell` tool runs
 # > through. Leave unset to auto-detect, preferring PowerShell 7 (`pwsh`)
 # > over Windows PowerShell 5.1 (`powershell.exe`).
 # > Use forward slashes for the same reason as `bash_path`.
-# powershell_path = "C:/Program Files/PowerShell/7/pwsh.exe"
+powershell_path = "C:/Program Files/PowerShell/7/pwsh.exe"
 ```
 
 ## 2026-10-19 v1.9.2
