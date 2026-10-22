@@ -3,6 +3,7 @@
 ## 2026-10-22 v1.10.0
 
 - Add `read_image` tool so image-capable models can view images. (Previously images could only be read via user providing an `@path` shortcut).
+- (dev) Switch `Path` types to `MarkedPath`
 - `stream_rules` `project` values are now whole-path anchored globs with no single-segment fallback.
   - `project` entries that are not valid globs will hard-error on `jinn` startup.
   - If you used a single term like `foo`, convert to:
