@@ -2,11 +2,13 @@
 //!
 //! The tool reads a file, classifies it by magic bytes (the same
 //! `classify_image_bytes` sniffer the `@path` attachment path uses), transcodes
-//! non-native formats (HEIC, AVIF, TIFF, BMP, …) to PNG via ImageMagick, and
-//! attaches the image to **its own tool result**. The next dispatch carries it
-//! to the provider: Anthropic nests image blocks inside the `tool_result`,
-//! every other backend receives a synthesized user message — the choice is the
-//! provider builder's, never this tool's.
+//! non-native formats (HEIC, AVIF, TIFF, BMP, …) to PNG — decoded in-process
+//! by the `image` crate where possible, with ImageMagick as the fallback for
+//! formats it cannot decode — and attaches the image to **its own tool
+//! result**. The next dispatch carries it to the provider: Anthropic nests
+//! image blocks inside the `tool_result`, every other backend receives a
+//! synthesized user message — the choice is the provider builder's, never this
+//! tool's.
 //!
 //! Scope is deliberately narrow:
 //!
@@ -52,7 +54,8 @@ pub fn definition() -> ToolDefinition {
         name: "read_image".to_owned(),
         description: "Reads a local image file and returns it for viewing. Supports native \
             formats (PNG, JPEG, GIF, WebP) directly; other image formats (HEIC, AVIF, TIFF, BMP, \
-            ...) are transcoded to PNG via ImageMagick. Images over 5 MB are rejected."
+            ...) are transcoded to PNG (in-process decoder first, ImageMagick fallback). Images \
+            over 5 MB are rejected."
             .to_owned(),
         prompt_snippet: Some("Read an image file so you can see it".to_owned()),
         prompt_guidelines: vec![
@@ -120,8 +123,9 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     call.id,
                     call.name,
                     format!(
-                        "image at {display} needs ImageMagick to transcode to PNG, but ImageMagick \
-                        is unavailable; convert it another way and retry"
+                        "image at {display} could not be converted to PNG (the built-in decoder \
+                        and ImageMagick both failed or are unavailable); convert it another way \
+                        and retry"
                     ),
                 );
             }

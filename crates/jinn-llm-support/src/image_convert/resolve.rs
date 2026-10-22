@@ -8,7 +8,8 @@
 //!    not-an-image.
 //! 3. Native formats (PNG/JPEG/GIF/WEBP) attach directly; non-native
 //!    recognizable images are transcoded to PNG via the
-//!    [`ImageConverterService`] (ImageMagick); anything else is an error.
+//!    [`ImageConverterService`] (the Rust decoder first, ImageMagick
+//!    fallback); anything else is an error.
 //!
 //! On any failure the whole resolution fails — the actor surfaces a single
 //! `Error` entry rather than a partial attachment set.
@@ -126,16 +127,16 @@ fn resolve_one_blocking(
             bytes,
         ))),
         ImageKind::NeedsConversion => {
-            convert_via_imagemagick(path, converter).map(OneOutcome::Attached)
+            convert_to_png_attachment(path, converter).map(OneOutcome::Attached)
         }
         ImageKind::NotAnImage => Ok(OneOutcome::Degraded),
     }
 }
 
-/// Transcodes a non-native image to PNG via ImageMagick. Errors when the
-/// converter is unavailable (ImageMagick not found) or the conversion fails
-/// (non-zero exit, invalid output).
-fn convert_via_imagemagick(
+/// Transcodes a non-native image to PNG via the converter service (the Rust
+/// decoder first, ImageMagick fallback). Errors when no stage of the chain
+/// can convert the image.
+fn convert_to_png_attachment(
     path: &MarkedPathBuf<Absolute>,
     converter: &ImageConverterService,
 ) -> Result<Attachment, Report<ImageResolveError>> {
@@ -240,7 +241,10 @@ mod tests {
     use marked_path::MarkedPathAccess;
 
     use super::*;
-    use crate::image_convert::converter::{ImageConversionError, ImageConverter};
+    use crate::image_convert::UnavailableConverter;
+    use crate::image_convert::converter::{
+        FallbackConverter, ImageConversionError, ImageConverter,
+    };
 
     /// A fake converter that returns canned PNG bytes or fails, recording its
     /// calls so tests can assert conversion was/wasn't attempted.
@@ -486,5 +490,73 @@ mod tests {
         assert_eq!(outcome.attachments[0].media_type(), "image/png");
         assert_eq!(outcome.degraded.len(), 1);
         assert_eq!(outcome.degraded[0].abs, missing_path);
+    }
+
+    /// A minimal valid 1x1 24-bit BMP (BITMAPINFOHEADER, bottom-up, no
+    /// compression), generated once with `magick -size 1x1 xc:lime -depth 8
+    /// BMP3:` and inlined so tests never shell out. 58 bytes, matching the
+    /// header's declared file size (bytes 2–6) and pixel-data offset 54; the
+    /// 4-byte pixel row is one lime pixel in BGR (`00 ff 00`) plus its pad.
+    /// The `image` crate decodes BMP in-process, so a BMP input proves the
+    /// production chain's primary stage converted it.
+    const BMP1X1: &[u8] = &[
+        0x42, 0x4d, 0x3a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x36, 0x00, 0x00, 0x00, 0x28,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x18, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00,
+    ];
+
+    /// The production conversion chain with an unavailable fallback stage —
+    /// the strictest possible version of "ImageMagick missing".
+    fn production_chain_without_fallback() -> ImageConverterService {
+        ImageConverterService::new(Arc::new(FallbackConverter::with_fallback(Arc::new(
+            UnavailableConverter,
+        ))))
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn bmp_file_resolves_through_the_rust_decoder_without_imagemagick() {
+        // Given a BMP file and the production chain whose fallback is
+        // unavailable.
+        let tmp = jinn_testutil::tempdir();
+        let path = tmp
+            .path
+            .join("tiny.bmp")
+            .expect("temp root joins a bare name");
+        std::fs::write(&path, BMP1X1).expect("write bmp");
+        let converter = production_chain_without_fallback();
+
+        // When resolving the single file.
+        let resolved = resolve_image_file_blocking(&path, &converter).expect("resolves");
+
+        // Then it came back as PNG — the primary Rust decoder converted it,
+        // since the fallback stage can convert nothing.
+        assert_eq!(resolved.media_type, "image/png");
+        assert!(resolved.bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn bmp_attachment_converts_through_the_rust_decoder_without_imagemagick() {
+        // Given a BMP file and the production chain whose fallback is
+        // unavailable.
+        let tmp = jinn_testutil::tempdir();
+        let path = tmp
+            .path
+            .join("tiny.bmp")
+            .expect("temp root joins a bare name");
+        std::fs::write(&path, BMP1X1).expect("write bmp");
+        let converter = production_chain_without_fallback();
+
+        // When resolving it through the batch `@path` resolver.
+        let outcome =
+            resolve_attachments_blocking(&[pending(path.clone())], &converter).expect("resolves");
+
+        // Then exactly one image/png attachment is returned (none degraded) —
+        // the primary Rust decoder did the conversion.
+        assert_eq!(outcome.attachments.len(), 1);
+        assert_eq!(outcome.attachments[0].media_type(), "image/png");
+        assert_eq!(outcome.degraded, [] as [jinn_core_types::ResolvedToken; 0]);
     }
 }

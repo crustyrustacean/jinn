@@ -1,15 +1,21 @@
-//! Image conversion to PNG via the ImageMagick CLI.
+//! Image conversion to PNG: the `image` crate first, ImageMagick as fallback.
 //!
 //! Non-native image formats (HEIC, AVIF, TIFF, BMP, …) that the native
-//! magic-byte sniffer rejects are handed to [`ImageMagickConverter`], which
-//! shells out to `magick <input> png:-` (or `convert <input> png:-` for v6)
-//! and captures the transcoded PNG bytes from stdout. Conversion is invoked
-//! inside `tokio::task::spawn_blocking` by the session actor, keeping the
-//! blocking process spawn off the async runtime.
+//! magic-byte sniffer rejects are converted to PNG by the production
+//! [`ImageConverterService::system`] chain. [`ImageCrateConverter`] decodes
+//! in-process — no subprocess for the formats the crate handles (BMP, TIFF
+//! today); [`FallbackConverter`] hands anything the crate cannot decode to
+//! [`ImageMagickConverter`], which shells out to `magick <input> png:-` (or
+//! `convert <input> png:-` for v6) and captures the transcoded PNG bytes from
+//! stdout. Conversion is invoked inside `tokio::task::spawn_blocking` by the
+//! session actor, keeping the blocking decode or process spawn off the async
+//! runtime.
 //!
-//! If no ImageMagick binary is on `PATH` at construction time, the converter
-//! reports `is_available() == false`; the actor then surfaces a
-//! `ChatEntryKind::Error` rather than silently dropping the attachment.
+//! If no ImageMagick binary is on `PATH` at construction time, the
+//! ImageMagick stage reports `is_available() == false`; the composite still
+//! reports available (the Rust decoder is compiled in), and formats the
+//! crate cannot decode surface a conversion error rather than silently
+//! dropping the attachment.
 
 use std::sync::Arc;
 
@@ -20,6 +26,7 @@ use error_stack::{Report, ResultExt};
 use wherror::Error;
 
 use super::binary_locator::{ImageMagickLocator, SystemImageMagickLocator};
+use super::image_crate::ImageCrateConverter;
 
 /// Conversion failure. The context attached via `.attach(...)` identifies the
 /// input path and the phase that failed (binary missing, non-zero exit, …).
@@ -85,7 +92,7 @@ impl Default for ImageMagickConverter {
 }
 
 /// PNG magic signature: `\x89PNG\r\n\x1a\n`.
-const PNG_MAGIC: &[u8] = b"\x89PNG\r\n\x1a\n";
+pub(crate) const PNG_MAGIC: &[u8] = b"\x89PNG\r\n\x1a\n";
 
 impl ImageConverter for ImageMagickConverter {
     fn name(&self) -> &'static str {
@@ -138,6 +145,79 @@ impl ImageConverter for ImageMagickConverter {
     }
 }
 
+/// Conversion chain: the in-process Rust decoder first, ImageMagick fallback
+/// second.
+///
+/// The primary stage is hardcoded as [`ImageCrateConverter`] — it is a
+/// compiled-in library, not a located binary, so there is nothing to inject.
+/// The fallback stage is a trait object so tests can substitute a spy. A
+/// format the primary decodes converts without ever touching the fallback;
+/// a primary failure (unsupported format, missing file) falls through.
+pub struct FallbackConverter {
+    fallback: Arc<dyn ImageConverter>,
+}
+
+impl FallbackConverter {
+    /// Production constructor: Rust decoder first, probed ImageMagick second.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::with_fallback(Arc::new(ImageMagickConverter::new()))
+    }
+
+    /// Construct with an explicit fallback stage (for tests or alternative
+    /// backends).
+    #[must_use]
+    pub fn with_fallback(fallback: Arc<dyn ImageConverter>) -> Self {
+        Self { fallback }
+    }
+}
+
+impl Default for FallbackConverter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ImageConverter for FallbackConverter {
+    fn name(&self) -> &'static str {
+        "ImageCrate+ImageMagick"
+    }
+
+    fn is_available(&self) -> bool {
+        // The primary (Rust decoder) is always present; the chain can convert
+        // regardless of whether ImageMagick was found.
+        true
+    }
+
+    fn convert_to_png(
+        &self,
+        input: &MarkedPathBuf<Absolute>,
+    ) -> Result<Vec<u8>, Report<ImageConversionError>> {
+        match ImageCrateConverter.convert_to_png(input) {
+            Ok(png) => Ok(png),
+            // The primary cannot handle this input (unsupported format,
+            // unreadable file). The fallback gets the chance the primary
+            // could not take.
+            Err(primary_err) => match self.fallback.convert_to_png(input) {
+                Ok(png) => Ok(png),
+                Err(fallback_err) => {
+                    // Resolve, don't branch: the caller sees the same
+                    // `ImageConversionError` report either way, now naming
+                    // both failed attempts.
+                    Err(fallback_err
+                        .change_context(ImageConversionError)
+                        .attach(input.to_string())
+                        .attach(format!(
+                            "primary Rust decoder failed ({primary_err}) and {} fallback also \
+                             failed",
+                            self.fallback.name()
+                        )))
+                }
+            },
+        }
+    }
+}
+
 /// Shared, cloneable service wrapper around the converter trait object, per
 /// the AGENTS.md service-wrapper pattern.
 #[derive(Debug, Clone)]
@@ -152,10 +232,11 @@ impl ImageConverterService {
         Self { backend }
     }
 
-    /// Construct a production service backed by [`ImageMagickConverter`].
+    /// Construct the production service backed by [`FallbackConverter`] —
+    /// the `image` crate in-process first, ImageMagick as fallback.
     #[must_use]
     pub fn system() -> Self {
-        Self::new(Arc::new(ImageMagickConverter::new()))
+        Self::new(Arc::new(FallbackConverter::new()))
     }
 
     /// Construct a test service backed by a converter that reports itself

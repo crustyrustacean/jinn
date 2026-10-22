@@ -16,7 +16,8 @@ use rstest::rstest;
 
 use super::binary_locator::ImageMagickLocator;
 use super::converter::{
-    ImageConversionError, ImageConverter, ImageConverterService, ImageMagickConverter,
+    FallbackConverter, ImageConversionError, ImageConverter, ImageConverterService,
+    ImageMagickConverter,
 };
 
 // ---------------------------------------------------------------------------
@@ -212,4 +213,102 @@ fn service_name_reflects_backend() {
     // When querying the name.
     // Then it reports the spy's name.
     assert_eq!(service.name(), "Spy");
+}
+
+// ---------------------------------------------------------------------------
+// Fallback chain (ImageCrateConverter → fallback)
+// ---------------------------------------------------------------------------
+
+/// A minimal valid 1x1 24-bit BMP (BITMAPINFOHEADER, bottom-up, no
+/// compression), generated once with `magick -size 1x1 xc:lime -depth 8
+/// BMP3:` and inlined so tests never shell out. 58 bytes, matching the
+/// header's declared file size (bytes 2–6) and pixel-data offset 54; the
+/// 4-byte pixel row is one lime pixel in BGR (`00 ff 00`) plus its pad.
+/// The `image` crate decodes BMP in-process, so a BMP input exercises the
+/// chain's primary stage without ImageMagick.
+const BMP1X1: &[u8] = &[
+    0x42, 0x4d, 0x3a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x36, 0x00, 0x00, 0x00, 0x28, 0x00,
+    0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x18, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00,
+];
+
+#[rstest]
+fn fallback_converter_converts_bmp_without_touching_the_fallback() {
+    // Given a fallback chain whose fallback stage is an available spy.
+    let spy = Arc::new(SpyConverter {
+        available: true,
+        ..SpyConverter::default()
+    });
+    let converter = FallbackConverter::with_fallback(spy.clone());
+    let dir = jinn_testutil::tempdir();
+    let input = dir
+        .path
+        .join("tiny.bmp")
+        .expect("temp root joins a bare name");
+    std::fs::write(&input, BMP1X1).expect("write bmp");
+
+    // When converting the BMP (decodable by the primary Rust stage).
+    let result = converter.convert_to_png(&input);
+
+    // Then it succeeds with PNG-magic output.
+    let png = result.expect("converts in-process");
+    assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
+    // And the fallback stage was never called.
+    assert!(
+        spy.convert_calls
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_empty()
+    );
+}
+
+#[rstest]
+fn fallback_converter_uses_the_fallback_when_the_primary_cannot_decode() {
+    // Given a fallback chain whose fallback stage returns canned PNG bytes.
+    let canned = b"\x89PNG\r\n\x1a\nfrom-fallback".to_vec();
+    let spy = Arc::new(SpyConverter {
+        available: true,
+        canned: canned.clone(),
+        ..SpyConverter::default()
+    });
+    let converter = FallbackConverter::with_fallback(spy);
+    let dir = jinn_testutil::tempdir();
+    let input = dir
+        .path
+        .join("photo.heic")
+        .expect("temp root joins a bare name");
+    // ftyp box with the heic brand — undecodable by the `image` crate.
+    let mut heic = vec![0x00, 0x00, 0x00, 0x08];
+    heic.extend_from_slice(b"ftypheicpayload");
+    std::fs::write(&input, &heic).expect("write heic");
+
+    // When converting the HEIC.
+    let result = converter.convert_to_png(&input);
+
+    // Then the fallback's bytes come back.
+    assert_eq!(result.expect("converts via fallback"), canned);
+}
+
+#[rstest]
+fn fallback_converter_errors_when_both_stages_fail() {
+    // Given a fallback chain whose fallback stage errors.
+    let converter = FallbackConverter::with_fallback(Arc::new(SpyConverter {
+        fail: true,
+        ..SpyConverter::default()
+    }));
+    let dir = jinn_testutil::tempdir();
+    let input = dir
+        .path
+        .join("photo.heic")
+        .expect("temp root joins a bare name");
+    let mut heic = vec![0x00, 0x00, 0x00, 0x08];
+    heic.extend_from_slice(b"ftypheicpayload");
+    std::fs::write(&input, &heic).expect("write heic");
+
+    // When converting the HEIC (primary cannot decode, fallback errors).
+    let result = converter.convert_to_png(&input);
+
+    // Then it errors.
+    assert!(result.is_err());
 }
