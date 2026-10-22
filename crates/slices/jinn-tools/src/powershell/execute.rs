@@ -189,6 +189,7 @@ fn format_exit_result(
             full_content: full,
             truncation,
             pin_position: None,
+            attachments: Vec::new(),
         }
     } else {
         ToolResult {
@@ -199,6 +200,7 @@ fn format_exit_result(
             full_content: None,
             truncation: None,
             pin_position: None,
+            attachments: Vec::new(),
         }
     }
 }
