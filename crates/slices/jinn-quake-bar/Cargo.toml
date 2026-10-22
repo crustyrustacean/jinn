@@ -17,6 +17,7 @@ trouper = { workspace = true }
 unicode-segmentation = { workspace = true }
 
 [dev-dependencies]
+marked-path = { workspace = true }
 rstest = { workspace = true }
 jinn-testutil = { workspace = true }
 tokio = { workspace = true }

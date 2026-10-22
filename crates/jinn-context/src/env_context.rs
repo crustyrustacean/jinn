@@ -5,10 +5,18 @@
 //! (AGENTS.md/CLAUDE.md), current date, and working directory. Sections that
 //! have no content return an empty string so the assembler can omit them.
 
+// The context-file loaders join a fixed candidate filename onto a directory
+// already typed `Absolute`; a bare-name join cannot make the result
+// relative, so those joins cannot fail at runtime.
+#![allow(
+    clippy::expect_used,
+    reason = "bare-name joins onto typed-absolute dirs are infallible by construction"
+)]
+
 use std::fmt::Write;
-use std::path::{Path, PathBuf};
 
 use jinn_slices::Persona;
+use marked_path::{Absolute, MarkedPath, MarkedPathAccess, MarkedPathBuf};
 
 /// Candidates for project context files, checked in order.
 const CONTEXT_FILE_CANDIDATES: &[&str] = &["AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
@@ -34,12 +42,7 @@ pub fn context_files_section(context_files: &[ContextFile]) -> String {
     let mut section = String::from("# Project Context\n\n");
     section.push_str("Project-specific instructions and guidelines:\n\n");
     for file in context_files {
-        let _ = write!(
-            section,
-            "## {}\n\n{}\n\n",
-            file.path.display(),
-            file.content
-        );
+        let _ = write!(section, "## {}\n\n{}\n\n", file.path, file.content);
     }
     section
 }
@@ -52,15 +55,15 @@ pub fn date_section() -> String {
 
 /// Renders the working directory section.
 #[must_use]
-pub fn cwd_section(cwd: &Path) -> String {
-    format!("Current working directory: {}", cwd.to_string_lossy())
+pub fn cwd_section(cwd: &MarkedPathBuf<Absolute>) -> String {
+    format!("Current working directory: {cwd}")
 }
 
 /// A loaded project context file (e.g., AGENTS.md).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ContextFile {
     /// The file path (for display in the prompt).
-    pub path: PathBuf,
+    pub path: MarkedPathBuf<Absolute>,
     /// The file content.
     pub content: String,
 }
@@ -70,13 +73,14 @@ pub struct ContextFile {
 /// Searches for AGENTS.md, AGENTS.MD, CLAUDE.md, CLAUDE.MD in each directory
 /// from CWD up to root. Returns files ordered from root → CWD (so closer
 /// files come last, matching pi-mono's ordering).
-pub async fn load_project_context_files(cwd: &Path) -> Vec<ContextFile> {
+pub async fn load_project_context_files(cwd: &MarkedPathBuf<Absolute>) -> Vec<ContextFile> {
     let mut files = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
-    let mut current = Some(cwd.to_path_buf());
+    let mut current = Some(cwd.clone());
     while let Some(dir) = current {
-        if let Some(file) = load_context_file_from_dir(&dir).await {
+        let view = dir.as_marked_path();
+        if let Some(file) = load_context_file_from_dir(&view).await {
             let canonical = file.path.clone();
             if seen.insert(canonical) {
                 files.push(file);
@@ -84,10 +88,13 @@ pub async fn load_project_context_files(cwd: &Path) -> Vec<ContextFile> {
         }
 
         // Stop at root.
-        if dir.parent().is_none() || dir.parent() == Some(dir.as_path()) {
-            break;
+        let parent = view.parent();
+        match parent {
+            Some(p) if p.as_path() != view.as_path() => {
+                current = Some(p.to_owned());
+            }
+            _ => break,
         }
-        current = dir.parent().map(std::path::Path::to_path_buf);
     }
 
     // Reverse so root files come first, CWD files come last.
@@ -96,10 +103,12 @@ pub async fn load_project_context_files(cwd: &Path) -> Vec<ContextFile> {
 }
 
 /// Loads a context file from a single directory (first match wins).
-async fn load_context_file_from_dir(dir: &Path) -> Option<ContextFile> {
+async fn load_context_file_from_dir(dir: &MarkedPath<'_, Absolute>) -> Option<ContextFile> {
     for filename in CONTEXT_FILE_CANDIDATES {
-        let path = dir.join(filename);
-        if !path.exists() {
+        let path = dir
+            .join(filename)
+            .expect("absolute dir joins a bare filename");
+        if !path.as_path().exists() {
             continue;
         }
         match tokio::fs::read_to_string(&path).await {
@@ -107,7 +116,7 @@ async fn load_context_file_from_dir(dir: &Path) -> Option<ContextFile> {
             // Best-effort discovery, but a file that exists and cannot be
             // read is worth naming rather than silently skipping.
             Err(error) => tracing::warn!(
-                path = %path.display(),
+                path = %path,
                 %error,
                 "context file exists but could not be read"
             ),
@@ -120,13 +129,14 @@ async fn load_context_file_from_dir(dir: &Path) -> Option<ContextFile> {
 ///
 /// Used when context rescan must happen outside an async runtime
 /// (e.g., from the TUI suspend handler).
-pub fn load_project_context_files_sync(cwd: &Path) -> Vec<ContextFile> {
+pub fn load_project_context_files_sync(cwd: &MarkedPathBuf<Absolute>) -> Vec<ContextFile> {
     let mut files = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
-    let mut current = Some(cwd.to_path_buf());
+    let mut current = Some(cwd.clone());
     while let Some(dir) = current {
-        if let Some(file) = load_context_file_from_dir_sync(&dir) {
+        let view = dir.as_marked_path();
+        if let Some(file) = load_context_file_from_dir_sync(&view) {
             let canonical = file.path.clone();
             if seen.insert(canonical) {
                 files.push(file);
@@ -134,10 +144,13 @@ pub fn load_project_context_files_sync(cwd: &Path) -> Vec<ContextFile> {
         }
 
         // Stop at root.
-        if dir.parent().is_none() || dir.parent() == Some(dir.as_path()) {
-            break;
+        let parent = view.parent();
+        match parent {
+            Some(p) if p.as_path() != view.as_path() => {
+                current = Some(p.to_owned());
+            }
+            _ => break,
         }
-        current = dir.parent().map(std::path::Path::to_path_buf);
     }
 
     // Reverse so root files come first, CWD files come last.
@@ -146,16 +159,18 @@ pub fn load_project_context_files_sync(cwd: &Path) -> Vec<ContextFile> {
 }
 
 /// Synchronous single-directory context file loader.
-fn load_context_file_from_dir_sync(dir: &Path) -> Option<ContextFile> {
+fn load_context_file_from_dir_sync(dir: &MarkedPath<'_, Absolute>) -> Option<ContextFile> {
     for filename in CONTEXT_FILE_CANDIDATES {
-        let path = dir.join(filename);
-        if !path.exists() {
+        let path = dir
+            .join(filename)
+            .expect("absolute dir joins a bare filename");
+        if !path.as_path().exists() {
             continue;
         }
         match std::fs::read_to_string(&path) {
             Ok(content) => return Some(ContextFile { path, content }),
             Err(error) => tracing::warn!(
-                path = %path.display(),
+                path = %path,
                 %error,
                 "context file exists but could not be read"
             ),
@@ -249,9 +264,12 @@ mod tests {
     #[rstest::rstest]
     fn context_files_section_includes_project_context_files() {
         // Given a context file under a temp root.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let files = vec![ContextFile {
-            path: dir.path().join("AGENTS.md"),
+            path: dir
+                .path
+                .join("AGENTS.md")
+                .expect("temp root joins a bare name"),
             content: "# Style Guide\nUse Rust.".to_owned(),
         }];
 
@@ -287,8 +305,11 @@ mod tests {
     #[rstest::rstest]
     fn cwd_section_includes_working_directory() {
         // Given a working directory under a temp root.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let cwd = dir.path().join("project");
+        let dir = jinn_testutil::tempdir();
+        let cwd = dir
+            .path
+            .join("project")
+            .expect("temp root joins a bare name");
 
         // When building the cwd section.
         let result = cwd_section(&cwd);
@@ -304,11 +325,17 @@ mod tests {
     #[tokio::test]
     async fn load_project_context_files_finds_agents_md() {
         // Given a temp directory with AGENTS.md.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        std::fs::write(dir.path().join("AGENTS.md"), "# Test").expect("write");
+        let dir = jinn_testutil::tempdir();
+        std::fs::write(
+            dir.path
+                .join("AGENTS.md")
+                .expect("temp root joins a bare name"),
+            "# Test",
+        )
+        .expect("write");
 
         // When loading context files.
-        let files = load_project_context_files(dir.path()).await;
+        let files = load_project_context_files(&dir.path).await;
 
         // Then the file is found.
         assert_eq!(files.len(), 1);
@@ -320,10 +347,10 @@ mod tests {
     #[tokio::test]
     async fn load_project_context_files_returns_empty_for_missing() {
         // Given a directory with no context files.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
 
         // When loading context files.
-        let files = load_project_context_files(dir.path()).await;
+        let files = load_project_context_files(&dir.path).await;
 
         // Then no files are found.
         assert!(files.is_empty());
@@ -419,8 +446,11 @@ mod tests {
     #[tokio::test]
     async fn load_project_context_files_stops_at_root() {
         // Given a deeply nested temp dir with no context files anywhere.
-        let root = jinn_testutil::tempdir().expect("temp dir");
-        let deep = root.path().join("a/b/c");
+        let root = jinn_testutil::tempdir();
+        let deep = root
+            .path
+            .join("a/b/c")
+            .expect("temp root joins a bare name");
         std::fs::create_dir_all(&deep).expect("create");
 
         // When loading context files.
@@ -434,9 +464,19 @@ mod tests {
     #[tokio::test]
     async fn load_project_context_files_finds_file_in_parent() {
         // Given parent/AGENTS.md and child/ as CWD.
-        let parent = jinn_testutil::tempdir().expect("temp dir");
-        std::fs::write(parent.path().join("AGENTS.md"), "parent context").expect("write");
-        let child = parent.path().join("subdir");
+        let parent = jinn_testutil::tempdir();
+        std::fs::write(
+            parent
+                .path
+                .join("AGENTS.md")
+                .expect("temp root joins a bare name"),
+            "parent context",
+        )
+        .expect("write");
+        let child = parent
+            .path
+            .join("subdir")
+            .expect("temp root joins a bare name");
         std::fs::create_dir_all(&child).expect("create");
 
         // When loading from child.
@@ -450,11 +490,17 @@ mod tests {
     #[rstest::rstest]
     fn sync_load_finds_agents_md() {
         // Given a temp directory with AGENTS.md.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        std::fs::write(dir.path().join("AGENTS.md"), "# Sync Test").expect("write");
+        let dir = jinn_testutil::tempdir();
+        std::fs::write(
+            dir.path
+                .join("AGENTS.md")
+                .expect("temp root joins a bare name"),
+            "# Sync Test",
+        )
+        .expect("write");
 
         // When loading context files synchronously.
-        let files = load_project_context_files_sync(dir.path());
+        let files = load_project_context_files_sync(&dir.path);
 
         // Then the file is found.
         assert_eq!(files.len(), 1);
@@ -465,10 +511,10 @@ mod tests {
     #[rstest::rstest]
     fn sync_load_returns_empty_for_missing() {
         // Given a directory with no context files.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
 
         // When loading context files synchronously.
-        let files = load_project_context_files_sync(dir.path());
+        let files = load_project_context_files_sync(&dir.path);
 
         // Then no files are found.
         assert!(files.is_empty());
@@ -477,9 +523,19 @@ mod tests {
     #[rstest::rstest]
     fn sync_load_finds_file_in_parent() {
         // Given parent/AGENTS.md and child/ as CWD.
-        let parent = jinn_testutil::tempdir().expect("temp dir");
-        std::fs::write(parent.path().join("AGENTS.md"), "parent sync context").expect("write");
-        let child = parent.path().join("subdir");
+        let parent = jinn_testutil::tempdir();
+        std::fs::write(
+            parent
+                .path
+                .join("AGENTS.md")
+                .expect("temp root joins a bare name"),
+            "parent sync context",
+        )
+        .expect("write");
+        let child = parent
+            .path
+            .join("subdir")
+            .expect("temp root joins a bare name");
         std::fs::create_dir_all(&child).expect("create");
 
         // When loading from child synchronously.

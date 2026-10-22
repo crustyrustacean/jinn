@@ -15,6 +15,7 @@
 
 #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
+use marked_path::MarkedPathAccess;
 use std::io::Write as _;
 use std::time::Duration;
 
@@ -215,7 +216,13 @@ async fn boot_with_expired_ttl_downloads_exactly_once_into_the_app_paths_dir() {
     let loaded = await_recorded::<EpochLoaded>(&recorder, 1, Duration::from_secs(10)).await;
     assert_eq!(loaded[0].source, EpochSource::Download);
     mock.assert();
-    assert!(epoch_dir.join("eci_scores.csv").exists());
+    assert!(
+        epoch_dir
+            .join("eci_scores.csv")
+            .expect("typed parent joins a bare name")
+            .as_path()
+            .exists()
+    );
     drop(server);
 }
 
@@ -248,7 +255,10 @@ async fn boot_extraction_lands_at_app_paths_epoch_cache_dir_not_a_sibling() {
     // exists to catch): the actor reads the AppPaths dir or nothing.
     let loaded = await_recorded::<EpochLoaded>(&recorder, 1, Duration::from_secs(10)).await;
     assert_eq!(loaded[0].source, EpochSource::Seed);
-    let cache_parent = epoch_dir.parent().expect("epoch dir has a parent");
+    let cache_parent = epoch_dir
+        .as_path()
+        .parent()
+        .expect("epoch dir has a parent");
     let double_nested = cache_parent.join("jinn").join("epoch");
     assert!(
         !double_nested.exists(),
@@ -508,7 +518,9 @@ async fn warm_models_cache_serves_the_popup_without_network() {
     }];
     let now = jiff::Timestamp::now();
     jinn_model_market::market_cache::store(
-        &cache_dir.join("models.json"),
+        &cache_dir
+            .join("models.json")
+            .expect("typed parent joins a bare name"),
         &jinn_model_market::market_cache::stamped(rows, now),
     )
     .expect("warm cache writes");

@@ -4,7 +4,7 @@
 //! and resolves missing fields from the default theme. User themes override
 //! system themes of the same name.
 
-use std::path::{Path, PathBuf};
+use marked_path::{Absolute, MarkedPath, MarkedPathAccess, MarkedPathBuf};
 
 use error_stack::{Report, ResultExt as _};
 use wherror::Error;
@@ -38,7 +38,9 @@ pub enum ThemeError {
 /// # Errors
 ///
 /// Returns [`ThemeError::Io`] if the directory cannot be read.
-pub fn discover_themes(themes_dir: &Path) -> Result<Vec<(String, PathBuf)>, Report<ThemeError>> {
+pub fn discover_themes(
+    themes_dir: &MarkedPath<Absolute>,
+) -> Result<Vec<(String, MarkedPathBuf<Absolute>)>, Report<ThemeError>> {
     if !themes_dir.exists() {
         return Ok(Vec::new());
     }
@@ -50,11 +52,13 @@ pub fn discover_themes(themes_dir: &Path) -> Result<Vec<(String, PathBuf)>, Repo
 
     for entry in entries {
         let Ok(entry) = entry else { continue };
-        let path = entry.path();
-        if path.extension().is_some_and(|ext| ext == "toml")
-            && let Some(name) = path.file_stem().and_then(|s| s.to_str())
+        let Ok(typed) = MarkedPathBuf::<Absolute>::new(entry.path()) else {
+            continue;
+        };
+        if typed.extension().is_some_and(|ext| ext == "toml")
+            && let Some(name) = typed.file_stem().and_then(|s| s.to_str())
         {
-            themes.push((name.to_owned(), path));
+            themes.push((name.to_owned(), typed));
         }
     }
 
@@ -75,16 +79,24 @@ pub fn discover_themes(themes_dir: &Path) -> Result<Vec<(String, PathBuf)>, Repo
 /// - [`ThemeError::Io`] - file cannot be read.
 pub fn load_theme(
     name: &str,
-    user_dir: &Path,
-    system_dir: &Path,
+    user_dir: &MarkedPath<Absolute>,
+    system_dir: &MarkedPath<Absolute>,
 ) -> Result<Theme, Report<ThemeError>> {
-    let user_path = user_dir.join(format!("{name}.toml"));
+    let user_path = user_dir
+        .join(name)
+        .map(|joined| joined.with_added_extension("toml"))
+        .change_context(ThemeError::Io)
+        .attach("failed to build user theme path")?;
     if user_path.exists() {
-        return load_theme_from_file(&user_path);
+        return load_theme_from_file(&user_path.as_marked_path());
     }
-    let system_path = system_dir.join(format!("{name}.toml"));
+    let system_path = system_dir
+        .join(name)
+        .map(|joined| joined.with_added_extension("toml"))
+        .change_context(ThemeError::Io)
+        .attach("failed to build system theme path")?;
     if system_path.exists() {
-        return load_theme_from_file(&system_path);
+        return load_theme_from_file(&system_path.as_marked_path());
     }
     Err(Report::new(ThemeError::NotFound).attach(format!("theme file not found: {name}")))
 }
@@ -97,13 +109,20 @@ pub fn load_theme(
 /// # Errors
 ///
 /// Same as [`load_theme`].
-pub fn load_theme_from_dir(name: &str, dir: &Path) -> Result<Theme, Report<ThemeError>> {
-    let path = dir.join(format!("{name}.toml"));
+pub fn load_theme_from_dir(
+    name: &str,
+    dir: &MarkedPath<Absolute>,
+) -> Result<Theme, Report<ThemeError>> {
+    let path = dir
+        .join(name)
+        .map(|joined| joined.with_added_extension("toml"))
+        .change_context(ThemeError::Io)
+        .attach("failed to build theme path")?;
     if !path.exists() {
         return Err(Report::new(ThemeError::NotFound)
-            .attach(format!("theme file not found: {}", path.display())));
+            .attach(format!("theme file not found: {}", path.to_string_lossy())));
     }
-    load_theme_from_file(&path)
+    load_theme_from_file(&path.as_marked_path())
 }
 
 /// Loads a theme from a specific file path.
@@ -114,14 +133,20 @@ pub fn load_theme_from_dir(name: &str, dir: &Path) -> Result<Theme, Report<Theme
 ///
 /// - [`ThemeError::Parse`] - TOML is malformed or contains invalid colors.
 /// - [`ThemeError::Io`] - file cannot be read.
-pub fn load_theme_from_file(path: &Path) -> Result<Theme, Report<ThemeError>> {
+pub fn load_theme_from_file(path: &MarkedPath<Absolute>) -> Result<Theme, Report<ThemeError>> {
     let content = std::fs::read_to_string(path)
         .change_context(ThemeError::Io)
-        .attach(format!("failed to read theme file: {}", path.display()))?;
+        .attach(format!(
+            "failed to read theme file: {}",
+            path.to_string_lossy()
+        ))?;
 
     let file: ThemeFile = toml::from_str(&content)
         .change_context(ThemeError::Parse)
-        .attach(format!("failed to parse theme file: {}", path.display()))?;
+        .attach(format!(
+            "failed to parse theme file: {}",
+            path.to_string_lossy()
+        ))?;
 
     Ok(file.resolve())
 }
@@ -140,8 +165,8 @@ pub fn load_theme_from_file(path: &Path) -> Result<Theme, Report<ThemeError>> {
 /// (not-found silently falls back to embedded).
 pub fn resolve_theme(
     name: Option<&str>,
-    user_dir: &Path,
-    system_dir: &Path,
+    user_dir: &MarkedPath<Absolute>,
+    system_dir: &MarkedPath<Absolute>,
 ) -> Result<Theme, Report<ThemeError>> {
     match name {
         None | Some("default") => {
@@ -168,7 +193,7 @@ pub fn resolve_theme(
 /// Returns an error if the theme file cannot be read or parsed.
 pub fn resolve_theme_from_dir(
     name: Option<&str>,
-    themes_dir: &Path,
+    themes_dir: &MarkedPath<Absolute>,
 ) -> Result<Theme, Report<ThemeError>> {
     match name {
         None | Some("default") => match load_theme_from_dir("default", themes_dir) {
@@ -191,27 +216,33 @@ mod tests {
     #[rstest::rstest]
     fn discover_themes_returns_empty_for_missing_dir() {
         // Given a themes directory that doesn't exist.
-        let root = jinn_testutil::tempdir().expect("temp dir");
-        let dir = root.path().join("nonexistent").join("path").join("themes");
+        let root = jinn_testutil::tempdir();
+        let dir = root
+            .path
+            .join_all(["nonexistent", "path", "themes"])
+            .expect("name joins keep the base absolute");
 
         // When discovering themes.
-        let result = discover_themes(&dir);
+        let result = discover_themes(&dir.as_marked_path());
 
         // Then it returns Ok with an empty list.
         assert!(result.is_ok());
         assert_eq!(
             result.unwrap(),
-            [] as [(std::string::String, std::path::PathBuf); 0]
+            [] as [(
+                std::string::String,
+                marked_path::MarkedPathBuf<marked_path::Absolute>
+            ); 0]
         );
     }
 
     #[rstest::rstest]
     fn load_theme_returns_not_found_for_missing_file() {
         // Given a themes directory with no such theme file.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
 
         // When loading a theme name that doesn't exist.
-        let result = load_theme_from_dir("nonexistent_theme_xyz", dir.path());
+        let result = load_theme_from_dir("nonexistent_theme_xyz", &dir.path.as_marked_path());
 
         // Then it returns NotFound error.
         assert!(result.is_err());
@@ -227,12 +258,15 @@ mod tests {
     #[rstest::rstest]
     fn load_theme_from_file_parses_valid_toml() {
         // Given a valid theme TOML file.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("test.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("test.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, "focus_accent = \"red\"\nprimary_text = \"#FFFFFF\"").expect("write");
 
         // When loading.
-        let theme = load_theme_from_file(&path).expect("load");
+        let theme = load_theme_from_file(&path.as_marked_path()).expect("load");
 
         // Then the specified fields are set.
         assert_eq!(theme.focus_accent, ratatui::style::Color::Red);
@@ -247,12 +281,15 @@ mod tests {
     #[rstest::rstest]
     fn load_theme_from_file_rejects_invalid_toml() {
         // Given an invalid TOML file.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("bad.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("bad.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, "this is not valid toml {{{{").expect("write");
 
         // When loading.
-        let result = load_theme_from_file(&path);
+        let result = load_theme_from_file(&path.as_marked_path());
 
         // Then it returns a Parse error.
         assert!(result.is_err());
@@ -268,12 +305,15 @@ mod tests {
     #[rstest::rstest]
     fn load_theme_from_file_rejects_invalid_color() {
         // Given a TOML file with an invalid color value.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("bad-color.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("bad-color.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, "focus_accent = \"not_a_color\"").expect("write");
 
         // When loading.
-        let result = load_theme_from_file(&path);
+        let result = load_theme_from_file(&path.as_marked_path());
 
         // Then it returns a Parse error.
         assert!(result.is_err());
@@ -289,10 +329,10 @@ mod tests {
     #[rstest::rstest]
     fn resolve_theme_none_returns_default_when_no_file() {
         // Given an empty themes directory.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
 
         // When resolving with None.
-        let theme = resolve_theme_from_dir(None, dir.path()).expect("resolve");
+        let theme = resolve_theme_from_dir(None, &dir.path.as_marked_path()).expect("resolve");
 
         // Then it returns the embedded default theme.
         assert_eq!(theme.focus_accent, default_theme().focus_accent);
@@ -301,10 +341,11 @@ mod tests {
     #[rstest::rstest]
     fn resolve_theme_default_string_returns_default_when_no_file() {
         // Given an empty themes directory.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
 
         // When resolving with "default".
-        let theme = resolve_theme_from_dir(Some("default"), dir.path()).expect("resolve");
+        let theme =
+            resolve_theme_from_dir(Some("default"), &dir.path.as_marked_path()).expect("resolve");
 
         // Then it returns the embedded default theme.
         assert_eq!(theme.focus_accent, default_theme().focus_accent);
@@ -313,12 +354,16 @@ mod tests {
     #[rstest::rstest]
     fn resolve_theme_default_loads_from_filesystem() {
         // Given a themes directory with a custom default.toml.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("default.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("default.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, "focus_accent = \"red\"").expect("write");
 
         // When resolving with "default".
-        let theme = resolve_theme_from_dir(Some("default"), dir.path()).expect("resolve");
+        let theme =
+            resolve_theme_from_dir(Some("default"), &dir.path.as_marked_path()).expect("resolve");
 
         // Then it loads from the filesystem (focus_accent overridden).
         assert_eq!(theme.focus_accent, ratatui::style::Color::Red);
@@ -329,13 +374,31 @@ mod tests {
     #[rstest::rstest]
     fn discover_themes_finds_toml_files() {
         // Given a temp directory with theme files.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        std::fs::write(dir.path().join("ocean.toml"), "focus_accent = \"blue\"").expect("write");
-        std::fs::write(dir.path().join("forest.toml"), "focus_accent = \"green\"").expect("write");
-        std::fs::write(dir.path().join("readme.txt"), "not a theme").expect("write");
+        let dir = jinn_testutil::tempdir();
+        std::fs::write(
+            dir.path
+                .join("ocean.toml")
+                .expect("temp root joins a bare name"),
+            "focus_accent = \"blue\"",
+        )
+        .expect("write");
+        std::fs::write(
+            dir.path
+                .join("forest.toml")
+                .expect("temp root joins a bare name"),
+            "focus_accent = \"green\"",
+        )
+        .expect("write");
+        std::fs::write(
+            dir.path
+                .join("readme.txt")
+                .expect("temp root joins a bare name"),
+            "not a theme",
+        )
+        .expect("write");
 
         // When discovering themes.
-        let themes = discover_themes(dir.path()).expect("discover");
+        let themes = discover_themes(&dir.path.as_marked_path()).expect("discover");
 
         // Then only .toml files are found, sorted by name.
         assert_eq!(themes.len(), 2);
@@ -346,16 +409,24 @@ mod tests {
     #[rstest::rstest]
     fn load_theme_searches_user_then_system() {
         // Given a user dir without the theme and a system dir with it.
-        let user_dir = jinn_testutil::tempdir().expect("temp dir");
-        let system_dir = jinn_testutil::tempdir().expect("temp dir");
+        let user_dir = jinn_testutil::tempdir();
+        let system_dir = jinn_testutil::tempdir();
         std::fs::write(
-            system_dir.path().join("ocean.toml"),
+            system_dir
+                .path
+                .join("ocean.toml")
+                .expect("temp root joins a bare name"),
             "focus_accent = \"blue\"",
         )
         .expect("write");
 
         // When loading from both dirs.
-        let theme = load_theme("ocean", user_dir.path(), system_dir.path()).expect("load");
+        let theme = load_theme(
+            "ocean",
+            &user_dir.path.as_marked_path(),
+            &system_dir.path.as_marked_path(),
+        )
+        .expect("load");
 
         // Then the system theme is loaded.
         assert_eq!(theme.focus_accent, ratatui::style::Color::Blue);
@@ -364,21 +435,32 @@ mod tests {
     #[rstest::rstest]
     fn load_theme_user_overrides_system() {
         // Given user dir with "ocean" (blue) and system dir with "ocean" (red).
-        let user_dir = jinn_testutil::tempdir().expect("temp dir");
-        let system_dir = jinn_testutil::tempdir().expect("temp dir");
+        let user_dir = jinn_testutil::tempdir();
+        let system_dir = jinn_testutil::tempdir();
         std::fs::write(
-            user_dir.path().join("ocean.toml"),
+            user_dir
+                .path
+                .join("ocean.toml")
+                .expect("temp root joins a bare name"),
             "focus_accent = \"blue\"",
         )
         .expect("write");
         std::fs::write(
-            system_dir.path().join("ocean.toml"),
+            system_dir
+                .path
+                .join("ocean.toml")
+                .expect("temp root joins a bare name"),
             "focus_accent = \"red\"",
         )
         .expect("write");
 
         // When loading from both dirs.
-        let theme = load_theme("ocean", user_dir.path(), system_dir.path()).expect("load");
+        let theme = load_theme(
+            "ocean",
+            &user_dir.path.as_marked_path(),
+            &system_dir.path.as_marked_path(),
+        )
+        .expect("load");
 
         // Then the user version wins.
         assert_eq!(theme.focus_accent, ratatui::style::Color::Blue);
@@ -387,22 +469,32 @@ mod tests {
     #[rstest::rstest]
     fn resolve_theme_searches_both_dirs() {
         // Given user dir with "ocean" and system dir with "forest".
-        let user_dir = jinn_testutil::tempdir().expect("temp dir");
-        let system_dir = jinn_testutil::tempdir().expect("temp dir");
+        let user_dir = jinn_testutil::tempdir();
+        let system_dir = jinn_testutil::tempdir();
         std::fs::write(
-            user_dir.path().join("ocean.toml"),
+            user_dir
+                .path
+                .join("ocean.toml")
+                .expect("temp root joins a bare name"),
             "focus_accent = \"blue\"",
         )
         .expect("write");
         std::fs::write(
-            system_dir.path().join("forest.toml"),
+            system_dir
+                .path
+                .join("forest.toml")
+                .expect("temp root joins a bare name"),
             "focus_accent = \"green\"",
         )
         .expect("write");
 
         // When resolving "forest" (only in system).
-        let theme =
-            resolve_theme(Some("forest"), user_dir.path(), system_dir.path()).expect("resolve");
+        let theme = resolve_theme(
+            Some("forest"),
+            &user_dir.path.as_marked_path(),
+            &system_dir.path.as_marked_path(),
+        )
+        .expect("resolve");
 
         // Then the system theme is found.
         assert_eq!(theme.focus_accent, ratatui::style::Color::Green);

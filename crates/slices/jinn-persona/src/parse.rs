@@ -6,9 +6,8 @@
 //! domain `Persona` carries an empty string when the frontmatter omits
 //! the field, matching what the coordinator's translation produced.
 
-use std::path::Path;
-
 use jinn_slices::Persona;
+use marked_path::{Absolute, MarkedPathBuf};
 use wherror::Error;
 
 /// Persona-file parse failures (carried between parse helpers).
@@ -38,10 +37,12 @@ struct Frontmatter {
 /// # Errors
 ///
 /// Returns an error if the file cannot be read or the frontmatter is malformed.
-pub fn parse_persona_file(path: &Path) -> Result<Persona, error_stack::Report<PersonaParseError>> {
+pub fn parse_persona_file(
+    path: &MarkedPathBuf<Absolute>,
+) -> Result<Persona, error_stack::Report<PersonaParseError>> {
     let content = std::fs::read_to_string(path).map_err(|error| {
         error_stack::Report::new(PersonaParseError::Io)
-            .attach(format!("failed to read {}", path.display()))
+            .attach(format!("failed to read {path}"))
             .attach(format!("{error}"))
     })?;
     parse_persona_content(&content)

@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+marked-path = { workspace = true }
 # Internal deps
 jinn-preferences-config = { workspace = true }
 jinn-provider = { workspace = true }

@@ -1458,7 +1458,7 @@ fn message_sequence_validator_accepts_complete_multi_call_batch_in_order() {
 #[test]
 fn message_sequence_validator_accepts_real_empty_assistant_tool_parent() {
     // Given a real empty assistant entry created by the streaming lifecycle.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let entries = vec![
         ChatEntry::user("run the command"),
         ChatEntry::assistant(""),
@@ -1466,7 +1466,10 @@ fn message_sequence_validator_accepts_real_empty_assistant_tool_parent() {
         ChatEntry::tool_result(
             "call-1",
             "bash",
-            dir.path().join("tmp").to_string_lossy().into_owned(),
+            dir.path
+                .join("tmp")
+                .expect("temp root joins a bare name")
+                .to_string(),
             ToolResultStatus::Success,
         ),
     ];

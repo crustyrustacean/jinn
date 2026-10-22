@@ -7,6 +7,7 @@ use jinn_common::shorten_path;
 use jinn_picker::picker_style::{active_marker, selected_style};
 use jinn_preferences_config::schemas::ProjectConfig;
 use jinn_theme::Theme;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// A curated project directory shown in the project picker.
 ///
@@ -16,7 +17,7 @@ use jinn_theme::Theme;
 #[derive(Debug, Clone)]
 pub struct ProjectEntry {
     /// The canonical directory path (what the new session's CWD is set to).
-    pub path: std::path::PathBuf,
+    pub path: MarkedPathBuf<Absolute>,
     /// The tilde-compressed display string (precomputed from `path`).
     pub display: String,
     /// Path as a string, cached for the `TreeItem` identity contract.
@@ -28,10 +29,10 @@ pub struct ProjectEntry {
 impl ProjectEntry {
     /// Build an entry from a directory path, precomputing the display string.
     #[must_use]
-    pub fn new(path: std::path::PathBuf, theme: Theme) -> Self {
+    pub fn new(path: MarkedPathBuf<Absolute>, theme: Theme) -> Self {
         let display = shorten_path(&path);
         Self {
-            id_string: path.to_string_lossy().into_owned(),
+            id_string: path.to_string(),
             path,
             display,
             theme,
@@ -88,7 +89,19 @@ pub fn render_project_row(
 pub fn project_entries(projects: &[ProjectConfig], theme: &Theme) -> Vec<ProjectEntry> {
     let mut entries: Vec<_> = projects
         .iter()
-        .map(|p| ProjectEntry::new(p.path.clone(), theme.clone()))
+        .filter_map(|p| {
+            // `~`-prefixed entries expand against the process home; the
+            // schema field is the user-editable TOML form (std::path).
+            let expanded = if let Ok(rest) = p.path.strip_prefix("~") {
+                let home = dirs::home_dir()?;
+                Some(home.join(rest))
+            } else {
+                Some(p.path.clone())
+            };
+            let raw = expanded?;
+            MarkedPathBuf::<Absolute>::new(raw).ok()
+        })
+        .map(|path| ProjectEntry::new(path, theme.clone()))
         .collect();
     entries.sort_by(|a, b| a.display.cmp(&b.display));
     entries
@@ -137,7 +150,11 @@ mod tests {
     fn display_label_is_tilde_compressed_path() {
         // Given a project entry whose path sits under the home directory.
         let home = dirs::home_dir().expect("home dir available in test");
-        let entry = ProjectEntry::new(home.join("code").join("jinn"), default_theme());
+        let entry = ProjectEntry::new(
+            MarkedPathBuf::<Absolute>::new(home.join("code").join("jinn"))
+                .expect("home-joined path is absolute"),
+            default_theme(),
+        );
 
         // When reading its display label.
         // Then the display label is tilde-compressed with native separators
@@ -153,8 +170,8 @@ mod tests {
     #[rstest::rstest]
     fn render_row_unselected_has_leading_spaces() {
         // Given a project entry.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("proj");
+        let dir = jinn_testutil::tempdir();
+        let path = dir.path.join("proj").expect("temp root joins a bare name");
         let entry = ProjectEntry::new(path.clone(), default_theme());
 
         // When rendering unselected.
@@ -170,8 +187,8 @@ mod tests {
     #[rstest::rstest]
     fn render_row_selected_has_arrow() {
         // Given a project entry.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("proj");
+        let dir = jinn_testutil::tempdir();
+        let path = dir.path.join("proj").expect("temp root joins a bare name");
         let entry = ProjectEntry::new(path.clone(), default_theme());
 
         // When rendering selected.

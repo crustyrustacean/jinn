@@ -25,10 +25,9 @@
 //! whitespace, so `@my file.png` attaches only `@my` (which fails) and leaves
 //! `file.png` as plain text.
 
-use std::path::{Path, PathBuf};
-
 use std::sync::LazyLock;
 
+use marked_path::{Absolute, MarkedPath, MarkedPathBuf, PathError};
 use regex::Regex;
 
 /// Resolver context for turning raw `@path` tokens into absolute paths.
@@ -38,15 +37,15 @@ use regex::Regex;
 #[derive(Debug, Clone, Copy)]
 pub struct PathResolveContext<'a> {
     /// The session's working directory — base for relative `@rel/path` tokens.
-    pub cwd: &'a Path,
+    pub cwd: &'a MarkedPath<'a, Absolute>,
     /// The user's home directory — base for `@~/path` (tilde) tokens.
-    pub home: &'a Path,
+    pub home: &'a MarkedPath<'a, Absolute>,
 }
 
 impl<'a> PathResolveContext<'a> {
     /// Builds a resolver from a cwd and home directory.
     #[must_use]
-    pub fn new(cwd: &'a Path, home: &'a Path) -> Self {
+    pub fn new(cwd: &'a MarkedPath<'a, Absolute>, home: &'a MarkedPath<'a, Absolute>) -> Self {
         Self { cwd, home }
     }
 
@@ -56,14 +55,20 @@ impl<'a> PathResolveContext<'a> {
     /// - `~` or `~/...` → joined against `home`.
     /// - `/...` → used as-is (absolute).
     /// - anything else → joined against `cwd` (relative).
-    #[must_use]
-    pub fn resolve(&self, raw: &str) -> PathBuf {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PathError`] when the raw token names a path that cannot
+    /// resolve to an absolute location against the context (an absolute
+    /// token on a platform whose roots differ, or a join escaping the
+    /// base's marker).
+    pub fn resolve(&self, raw: &str) -> Result<MarkedPathBuf<Absolute>, PathError> {
         if raw == "~" {
-            self.home.to_path_buf()
+            Ok(self.home.to_owned())
         } else if let Some(rest) = raw.strip_prefix("~/") {
             self.home.join(rest)
         } else if raw.starts_with('/') {
-            PathBuf::from(raw)
+            MarkedPathBuf::<Absolute>::new(raw)
         } else {
             self.cwd.join(raw)
         }
@@ -92,7 +97,7 @@ pub struct PendingPath {
     /// The literal token body as it appears in the display text (after the `@`).
     pub raw: String,
     /// The absolute path the token resolved to against the session cwd/home.
-    pub abs: PathBuf,
+    pub abs: MarkedPathBuf<Absolute>,
 }
 
 /// Result of scanning text for `@path` references.
@@ -145,18 +150,19 @@ pub fn scan_at_paths_with_degraded(
             let boundary = &caps[1];
             let raw_path = &caps[2];
             let resolved = ctx.resolve(raw_path);
-            if degraded_raw.iter().any(|r| r == raw_path) {
-                // Degraded: leave the token as the original literal text.
-                format!("{boundary}@{raw_path}")
-            } else {
-                // Use the resolved absolute path so terminals link to the real file.
-                let rewrite = format!("{boundary}(file://{})", resolved.display());
-                // Collect the resolved path for the actor's byte-reading phase.
-                pending_paths.push(PendingPath {
-                    raw: raw_path.to_owned(),
-                    abs: resolved,
-                });
-                rewrite
+            match resolved {
+                Ok(abs) if !degraded_raw.iter().any(|r| r == raw_path) => {
+                    // Use the resolved absolute path so terminals link to the real file.
+                    let rewrite = format!("{boundary}(file://{abs})");
+                    // Collect the resolved path for the actor's byte-reading phase.
+                    pending_paths.push(PendingPath {
+                        raw: raw_path.to_owned(),
+                        abs,
+                    });
+                    rewrite
+                }
+                // Degraded tokens stay literal, as does one that cannot resolve.
+                _ => format!("{boundary}@{raw_path}"),
             }
         })
         .into_owned();
@@ -268,7 +274,7 @@ mod tests {
     /// Absolute tokens ignore both, and a relative token needs only the cwd
     /// while a `~` token needs only the home, so one directory serves as
     /// both.
-    fn ctx_at(base: &Path) -> PathResolveContext<'_> {
+    fn ctx_at<'a>(base: &'a MarkedPath<'a, Absolute>) -> PathResolveContext<'a> {
         PathResolveContext::new(base, base)
     }
 
@@ -276,19 +282,19 @@ mod tests {
     ///
     /// The path is built from a typed temp root, so it is absolute on every
     /// platform, and the file under it is never created.
-    fn missing_absolute_path(name: &str) -> PathBuf {
-        let root = jinn_testutil::paths::TestRoot::new().expect("test root");
-        root.join_str(name).expect("relative path").into_inner()
+    fn missing_absolute_path(name: &str) -> MarkedPathBuf<Absolute> {
+        let root = jinn_testutil::paths::TestRoot::new();
+        root.join_str(name).expect("relative path")
     }
 
     #[rstest::rstest]
     fn scan_collects_resolved_path_from_at_path() {
         // Given text referencing an absolute path (no file on disk — scan is I/O-free).
         let abs = missing_absolute_path("abs/img.png");
-        let text = format!("describe @{}", abs.display());
+        let text = format!("describe @{abs}");
 
         // When scanning.
-        let result = scan_at_paths(&text, &ctx_at(&abs));
+        let result = scan_at_paths(&text, &ctx_at(&abs.as_marked_path()));
 
         // Then exactly one resolved path was collected.
         assert_eq!(result.pending_paths.len(), 1);
@@ -299,23 +305,19 @@ mod tests {
     fn scan_rewrites_at_path_to_file_uri() {
         // Given text referencing an absolute path.
         let abs = missing_absolute_path("abs/img.png");
-        let text = format!("describe @{}", abs.display());
+        let text = format!("describe @{abs}");
 
         // When scanning.
-        let result = scan_at_paths(&text, &ctx_at(&abs));
+        let result = scan_at_paths(&text, &ctx_at(&abs.as_marked_path()));
 
         // Then the @path was rewritten to the file:// URI form.
         assert!(
-            result
-                .rewritten_text
-                .contains(&format!("(file://{})", abs.display())),
+            result.rewritten_text.contains(&format!("(file://{abs})")),
             "rewritten text should contain the file:// URI, got: {}",
             result.rewritten_text
         );
         assert!(
-            !result
-                .rewritten_text
-                .contains(&format!("@{}", abs.display())),
+            !result.rewritten_text.contains(&format!("@{abs}")),
             "original @path token should be gone"
         );
     }
@@ -323,11 +325,11 @@ mod tests {
     #[rstest::rstest]
     fn scan_does_not_match_email_at() {
         // Given text containing an email-style @ not followed by a path.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let text = "contact foo@bar.com please";
 
         // When scanning.
-        let result = scan_at_paths(text, &ctx_at(dir.path()));
+        let result = scan_at_paths(text, &ctx_at(&dir.path.as_marked_path()));
 
         // Then no paths were collected and text is unchanged.
         assert_eq!(result.pending_paths, [] as [PendingPath; 0]);
@@ -339,17 +341,15 @@ mod tests {
         // Given a reference to a nonexistent path — scan is pure-text, so the
         // path is still collected (existence is checked later by the actor).
         let abs = missing_absolute_path("nonexistent/path.png");
-        let text = format!("see @{} here", abs.display());
+        let text = format!("see @{abs} here");
 
         // When scanning.
-        let result = scan_at_paths(&text, &ctx_at(&abs));
+        let result = scan_at_paths(&text, &ctx_at(&abs.as_marked_path()));
 
         // Then the path was collected and the token was rewritten.
         assert_eq!(result.pending_paths.len(), 1);
         assert!(
-            result
-                .rewritten_text
-                .contains(&format!("(file://{})", abs.display())),
+            result.rewritten_text.contains(&format!("(file://{abs})")),
             "token should still be rewritten even for missing files"
         );
     }
@@ -358,10 +358,10 @@ mod tests {
     fn scan_at_path_at_start_of_string() {
         // Given a path referenced at the very start of the text.
         let abs = missing_absolute_path("abs/img.png");
-        let text = format!("@{} what is this", abs.display());
+        let text = format!("@{abs} what is this");
 
         // When scanning.
-        let result = scan_at_paths(&text, &ctx_at(&abs));
+        let result = scan_at_paths(&text, &ctx_at(&abs.as_marked_path()));
 
         // Then the path was collected and rewrite happens at string start.
         assert_eq!(result.pending_paths.len(), 1);
@@ -371,46 +371,64 @@ mod tests {
     #[rstest::rstest]
     fn scan_resolves_relative_path_against_cwd() {
         // Given a cwd-rooted temp dir and a relative path token.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let text = "describe @img.png here";
 
         // When scanning with a context rooted at the temp dir.
-        let ctx = ctx_at(dir.path());
+        let view = dir.path.as_marked_path();
+        let ctx = ctx_at(&view);
         let result = scan_at_paths(text, &ctx);
 
         // Then the resolved path is under the cwd.
         assert_eq!(result.pending_paths.len(), 1);
-        assert_eq!(result.pending_paths[0].abs, dir.path().join("img.png"));
+        assert_eq!(
+            result.pending_paths[0].abs,
+            dir.path
+                .join("img.png")
+                .expect("temp root joins a bare name")
+        );
     }
 
     #[rstest::rstest]
     fn scan_resolves_tilde_path_against_home() {
         // Given a home-rooted temp dir and a tilde path token.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let text = "describe @~/photo.png here";
 
         // When scanning with home pointing at the temp dir.
-        let ctx = ctx_at(dir.path());
+        let view = dir.path.as_marked_path();
+        let ctx = ctx_at(&view);
         let result = scan_at_paths(text, &ctx);
 
         // Then the resolved path is under home.
         assert_eq!(result.pending_paths.len(), 1);
-        assert_eq!(result.pending_paths[0].abs, dir.path().join("photo.png"));
+        assert_eq!(
+            result.pending_paths[0].abs,
+            dir.path
+                .join("photo.png")
+                .expect("temp root joins a bare name")
+        );
     }
 
     #[rstest::rstest]
     fn scan_tilde_alone_resolves_to_home() {
         // Given a tilde token with no subpath.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let text = "@~/bare.png";
 
         // When scanning with home at the temp dir.
-        let ctx = ctx_at(dir.path());
+        let view = dir.path.as_marked_path();
+        let ctx = ctx_at(&view);
         let result = scan_at_paths(text, &ctx);
 
         // Then the resolved path is home/bare.png.
         assert_eq!(result.pending_paths.len(), 1);
-        assert_eq!(result.pending_paths[0].abs, dir.path().join("bare.png"));
+        assert_eq!(
+            result.pending_paths[0].abs,
+            dir.path
+                .join("bare.png")
+                .expect("temp root joins a bare name")
+        );
     }
 
     #[rstest::rstest]
@@ -420,30 +438,35 @@ mod tests {
         let text = "describe @my file.png here";
 
         // When scanning with cwd at a temp dir.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let ctx = ctx_at(dir.path());
+        let dir = jinn_testutil::tempdir();
+        let view = dir.path.as_marked_path();
+        let ctx = ctx_at(&view);
         let result = scan_at_paths(text, &ctx);
 
         // Then only `@my` was collected (the space terminated the token).
         assert_eq!(result.pending_paths.len(), 1);
-        assert_eq!(result.pending_paths[0].abs, dir.path().join("my"));
+        assert_eq!(
+            result.pending_paths[0].abs,
+            dir.path.join("my").expect("temp root joins a bare name")
+        );
     }
 
     #[rstest::rstest]
     fn scan_relative_path_descends_into_subdirectory() {
         // Given a relative path into a subdirectory.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let text = "see @sub/img.png";
 
         // When scanning with cwd at the temp dir root.
-        let ctx = ctx_at(dir.path());
+        let view = dir.path.as_marked_path();
+        let ctx = ctx_at(&view);
         let result = scan_at_paths(text, &ctx);
 
         // Then the resolved path descends into the subdirectory.
         assert_eq!(result.pending_paths.len(), 1);
         assert_eq!(
             result.pending_paths[0].abs,
-            dir.path().join("sub").join("img.png")
+            dir.path.join("sub").expect("a").join("img.png").expect("b")
         );
     }
 
@@ -451,10 +474,10 @@ mod tests {
     fn scan_makes_no_filesystem_calls() {
         // Given a path that definitely does not exist.
         let abs = missing_absolute_path("this/does/not/exist.png");
-        let text = format!("see @{}", abs.display());
+        let text = format!("see @{abs}");
 
         // When scanning.
-        let result = scan_at_paths(&text, &ctx_at(&abs));
+        let result = scan_at_paths(&text, &ctx_at(&abs.as_marked_path()));
 
         // Then the path is still collected — proving scan did not touch the
         // filesystem to check existence.
@@ -542,13 +565,14 @@ mod tests {
     #[rstest::rstest]
     fn degraded_set_leaves_token_literal_and_excludes_from_pending() {
         // Given text with a boundary @path and a degraded set naming its raw token.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let raw = "/abs/whatever";
         let text = format!("describe @{raw}");
         let degraded = vec![raw.to_owned()];
 
         // When scanning with the degraded set.
-        let result = scan_at_paths_with_degraded(&text, &ctx_at(dir.path()), &degraded);
+        let result =
+            scan_at_paths_with_degraded(&text, &ctx_at(&dir.path.as_marked_path()), &degraded);
 
         // Then the token stays literal (no file:// rewrite) and is not collected.
         assert!(
@@ -569,15 +593,19 @@ mod tests {
     #[rstest::rstest]
     fn degraded_re_scan_is_idempotent() {
         // Given text whose degraded token was reverted to literal on a first pass.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let raw = "/abs/whatever";
         let text = format!("describe @{raw}");
         let degraded = vec![raw.to_owned()];
-        let first = scan_at_paths_with_degraded(&text, &ctx_at(dir.path()), &degraded);
+        let first =
+            scan_at_paths_with_degraded(&text, &ctx_at(&dir.path.as_marked_path()), &degraded);
 
         // When scanning the already-reverted text again with the same degraded set.
-        let second =
-            scan_at_paths_with_degraded(&first.rewritten_text, &ctx_at(dir.path()), &degraded);
+        let second = scan_at_paths_with_degraded(
+            &first.rewritten_text,
+            &ctx_at(&dir.path.as_marked_path()),
+            &degraded,
+        );
 
         // Then the literal token survives unchanged (no further rewrite).
         assert_eq!(
@@ -590,14 +618,15 @@ mod tests {
     #[rstest::rstest]
     fn mixed_degraded_and_attachable_tokens_split_correctly() {
         // Given text with one attachable @path and one degraded @path.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let attachable = "/abs/real.png";
         let degraded_raw = "/abs/whatever";
         let text = format!("see @{attachable} and @{degraded_raw}");
         let degraded = vec![degraded_raw.to_owned()];
 
         // When scanning with the degraded set.
-        let result = scan_at_paths_with_degraded(&text, &ctx_at(dir.path()), &degraded);
+        let result =
+            scan_at_paths_with_degraded(&text, &ctx_at(&dir.path.as_marked_path()), &degraded);
 
         // Then only the attachable token is rewritten and collected.
         assert!(
@@ -618,19 +647,20 @@ mod tests {
                 .iter()
                 .map(|p| p.abs.clone())
                 .collect::<Vec<_>>(),
-            vec![PathBuf::from(attachable)]
+            vec![MarkedPathBuf::<Absolute>::new(attachable).expect("absolute literal")]
         );
     }
 
     #[rstest::rstest]
     fn degraded_set_does_not_reenable_email_matching() {
         // Given email-style text (no boundary before @) and a non-empty degraded set.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let text = "contact foo@bar.com";
         let degraded = vec!["bar.com".to_owned()];
 
         // When scanning with the degraded set.
-        let result = scan_at_paths_with_degraded(text, &ctx_at(dir.path()), &degraded);
+        let result =
+            scan_at_paths_with_degraded(text, &ctx_at(&dir.path.as_marked_path()), &degraded);
 
         // Then the email is still not matched (text unchanged, nothing collected).
         assert_eq!(result.rewritten_text, text);

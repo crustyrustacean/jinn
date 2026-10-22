@@ -7,9 +7,8 @@
 //! the session's cwd: the worker scans that directory, not whatever
 //! shared state happens to hold.
 
-use std::path::PathBuf;
-
 use jinn_core_types::SessionId;
+use marked_path::{Absolute, MarkedPathBuf};
 use serde::{Deserialize, Serialize};
 
 /// Scan all three resources for a session (skills, prompt templates,
@@ -21,7 +20,7 @@ pub struct RunDiscovery {
     #[schema(ty = "uuid", shard_key)]
     pub session_id: SessionId,
     /// The working directory driving the scans.
-    pub cwd: PathBuf,
+    pub cwd: MarkedPathBuf<Absolute>,
 }
 
 /// Re-run only the skills scan for a session.
@@ -32,7 +31,7 @@ pub struct RescanSkills {
     #[schema(ty = "uuid", shard_key)]
     pub session_id: SessionId,
     /// The working directory driving the scan.
-    pub cwd: PathBuf,
+    pub cwd: MarkedPathBuf<Absolute>,
 }
 
 /// Re-run only the prompt-templates scan for a session.
@@ -43,7 +42,7 @@ pub struct RescanPrompts {
     #[schema(ty = "uuid", shard_key)]
     pub session_id: SessionId,
     /// The working directory driving the scan.
-    pub cwd: PathBuf,
+    pub cwd: MarkedPathBuf<Absolute>,
 }
 
 /// Re-run only the context-files scan for a session.
@@ -54,7 +53,7 @@ pub struct RescanContext {
     #[schema(ty = "uuid", shard_key)]
     pub session_id: SessionId,
     /// The working directory driving the scan.
-    pub cwd: PathBuf,
+    pub cwd: MarkedPathBuf<Absolute>,
 }
 
 /// Re-run only the workflows scan for a session.
@@ -70,7 +69,7 @@ pub struct RescanWorkflows {
     pub session_id: SessionId,
     /// The working directory driving the scan (unused by the workflows
     /// resource; carried for shape parity with the other rescans).
-    pub cwd: PathBuf,
+    pub cwd: MarkedPathBuf<Absolute>,
 }
 
 impl jinn_slices::BusMessage for RunDiscovery {}
@@ -113,10 +112,10 @@ mod tests {
     fn run_discovery_shard_key_roundtrips_as_uuid_string() {
         // Given a RunDiscovery command with a real session id.
         let id = SessionId::new();
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let command = RunDiscovery {
             session_id: id.clone(),
-            cwd: dir.path().to_path_buf(),
+            cwd: dir.path.clone(),
         };
         let payload = trouper::json::Json::of(&command);
 

@@ -36,6 +36,9 @@ async-trait = { workspace = true }
 
 [dev-dependencies]
 jinn-testutil = { workspace = true }
+# The cwd tests stamp typed paths into a live session state; the typed
+# session-cwd field carries marked-path, so the tests do too.
+marked-path = { workspace = true }
 # Tests build a real compiled rule set to drive the stream loop with. The
 # production path resolves the matcher from the cell and never names this
 # crate — only the tests that need a concrete implementation do.

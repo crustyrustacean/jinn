@@ -5,6 +5,7 @@ edition.workspace = true
 description = "The stream-rule disable picker: list the rules, toggle a rule off or on, confirm the set."
 
 [dependencies]
+marked-path = { workspace = true }
 wherror = { workspace = true }
 jinn-config = { workspace = true }
 jinn-core-types = { workspace = true }

@@ -6,6 +6,7 @@ use jinn_session_lifecycle_msg::arg_input_slot;
 use jinn_slices::SliceHost;
 use jinn_slices::route::EditIntent;
 use jinn_slices::view::Viewport;
+use marked_path::MarkedPathAccess;
 
 #[rstest::rstest]
 #[tokio::test]
@@ -142,7 +143,7 @@ impl CrossSlice {
     /// Activates the project and lifecycle pickers side by side, with the
     /// project picker already open and a row highlighted.
     async fn new() -> Self {
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let slices = jinn_slices::Slices::new();
         // Production boot seeds every slice cell here, before any activation.
         jinn_cell_catalog::register_all_cells(&slices);
@@ -150,7 +151,9 @@ impl CrossSlice {
         let overlay_views = jinn_slices::OverlayViews::new();
         let routes = jinn_slices::KeyRoutes::new();
         let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
-        let config = jinn_config::testutil::config_layer(&cross_slice_document(dir.path()));
+        let config = jinn_config::testutil::config_layer(&cross_slice_document(
+            dir.path.as_marked_path().as_path(),
+        ));
         // `default_with_scope_focus`, not `default`: a scope push is a no-op
         // without the shared scope cell, and `<c-enter>` only acts on a
         // highlighted row.
@@ -168,7 +171,7 @@ impl CrossSlice {
             jinn_session_lifecycle::activate_picker(&mut host);
         }
         let mut this = Self {
-            _dir: dir,
+            _dir: dir.dir,
             slices,
             routes,
             config,

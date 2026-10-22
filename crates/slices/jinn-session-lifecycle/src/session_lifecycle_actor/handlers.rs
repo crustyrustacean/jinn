@@ -5,9 +5,8 @@ mod cwd;
 mod setup;
 mod teardown;
 
-use std::path::Path;
-
 use jinn_core_types::ChatEntry;
+use marked_path::{Absolute, MarkedPathBuf};
 use strip_ansi_escapes::strip_str;
 
 /// Removes ANSI escape sequences from command output.
@@ -18,20 +17,16 @@ pub(super) fn strip_ansi(value: &str) -> String {
 
 /// Builds the informational entry shown when setup returns no path.
 #[must_use]
-pub(super) fn no_output_info(default_cwd: &Path) -> ChatEntry {
+pub(super) fn no_output_info(default_cwd: &MarkedPathBuf<Absolute>) -> ChatEntry {
     ChatEntry::system(format!(
-        "No path returned by setup command. Using {} as cwd",
-        default_cwd.display()
+        "No path returned by setup command. Using {default_cwd} as cwd"
     ))
 }
 
 /// Builds the successful setup entry.
 #[must_use]
-pub(super) fn setup_complete_msg(cwd: &Path) -> ChatEntry {
-    ChatEntry::system(format!(
-        "✅ Setup complete - Using {} as cwd",
-        cwd.display()
-    ))
+pub(super) fn setup_complete_msg(cwd: &MarkedPathBuf<Absolute>) -> ChatEntry {
+    ChatEntry::system(format!("✅ Setup complete - Using {cwd} as cwd"))
 }
 
 /// Builds the entry shown while teardown is running.

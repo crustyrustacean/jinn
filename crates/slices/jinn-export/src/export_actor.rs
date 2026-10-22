@@ -18,9 +18,6 @@
 //! naming the reason. Nothing is written when the export fails, and nothing is
 //! reported from inside the blocking closure.
 
-use std::path::Path;
-use std::path::PathBuf;
-
 use error_stack::{IntoReport as _, Report};
 use jinn_core_types::SessionId;
 use jinn_core_types::chat_entry::ChatEntry;
@@ -43,6 +40,7 @@ use crate::document::project_document;
 use crate::format::format_for_path;
 use crate::format::unsupported_extension_error;
 use crate::path::resolve_export_path;
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
 /// The export actor's static trouper path.
 pub const EXPORT_PATH: &str = "export";
@@ -189,10 +187,10 @@ impl ExportActor {
         &self,
         msg: &ExportSessionToFile,
         snapshot: SessionSnapshot,
-    ) -> Result<PathBuf, Report<ExportWriteError>> {
+    ) -> Result<MarkedPathBuf<Absolute>, Report<ExportWriteError>> {
         let requested = msg.path.clone();
         let job = RenderJob {
-            argument: requested.to_string_lossy().to_string(),
+            argument: requested.to_string(),
             cwd: snapshot.metadata.cwd.clone(),
             document: project_document(&snapshot),
         };
@@ -212,7 +210,11 @@ impl ExportActor {
     /// never part of the conversation. A `System` entry would be persisted
     /// with the session and re-read on every load, and a second export of
     /// the same session would accumulate one more each time.
-    fn report_written(session_id: &SessionId, path: &Path, ctx: &mut MsgCtx<'_>) {
+    fn report_written(
+        session_id: &SessionId,
+        path: &MarkedPathBuf<Absolute>,
+        ctx: &mut MsgCtx<'_>,
+    ) {
         ctx.publish(PushChatEntry {
             session_id: session_id.clone(),
             entry: ChatEntry::transient(written_notice(path)),
@@ -238,7 +240,7 @@ struct RenderJob {
     argument: String,
     /// The session's working directory, used to resolve a relative or
     /// default destination.
-    cwd: PathBuf,
+    cwd: MarkedPathBuf<Absolute>,
     /// The projected document.
     document: crate::document::ExportDocument,
 }
@@ -249,7 +251,7 @@ struct RenderJob {
 /// session the user is already looking at, so the directory is redundant and
 /// would wrap badly in a narrow terminal. The fallback covers a destination
 /// that is a bare directory.
-fn written_notice(path: &Path) -> String {
+fn written_notice(path: &MarkedPathBuf<Absolute>) -> String {
     let name = path
         .file_name()
         .unwrap_or(path.as_os_str())
@@ -263,7 +265,9 @@ fn written_notice(path: &Path) -> String {
 ///
 /// Returns [`ExportWriteError`] naming the failed stage: path resolution,
 /// an unwritable extension, or the write itself.
-fn render_and_write_blocking(job: &RenderJob) -> Result<PathBuf, Report<ExportWriteError>> {
+fn render_and_write_blocking(
+    job: &RenderJob,
+) -> Result<MarkedPathBuf<Absolute>, Report<ExportWriteError>> {
     let path = resolve_export_path(&job.argument, &job.cwd)
         .map_err(|e| Report::new(ExportWriteError::ResolvePath { reason: e.reason }))?;
     let Some(format) = format_for_path(&path) else {
@@ -274,9 +278,9 @@ fn render_and_write_blocking(job: &RenderJob) -> Result<PathBuf, Report<ExportWr
         }));
     };
     let rendered = format.render(&job.document);
-    std::fs::write(&path, rendered).map_err(|e| {
+    std::fs::write(path.as_path(), rendered).map_err(|e| {
         ExportWriteError::Write {
-            path: path.display().to_string(),
+            path: path.to_string(),
             detail: e.to_string(),
         }
         .into_report()
@@ -304,14 +308,14 @@ mod tests {
     use crate::document::ExportEntry;
     use jiff::Timestamp;
 
-    fn job(argument: &str, cwd: &std::path::Path) -> RenderJob {
+    fn job(argument: &str, cwd: &MarkedPathBuf<Absolute>) -> RenderJob {
         RenderJob {
             argument: argument.to_owned(),
-            cwd: cwd.to_path_buf(),
+            cwd: cwd.clone(),
             document: ExportDocument {
                 title: "Smoke".to_owned(),
                 model: "m".to_owned(),
-                cwd: cwd.to_path_buf(),
+                cwd: cwd.clone(),
                 created_at: Timestamp::UNIX_EPOCH,
                 updated_at: Timestamp::UNIX_EPOCH,
                 session_id: "s".to_owned(),
@@ -333,13 +337,18 @@ mod tests {
     #[rstest::rstest]
     fn writes_an_html_file_to_the_typed_path() {
         // Given a job targeting a markdown-ineligible html path in a temp dir.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
 
         // When running the blocking write.
-        let path = render_and_write_blocking(&job("out.html", dir.path())).expect("write succeeds");
+        let path = render_and_write_blocking(&job("out.html", &dir.path)).expect("write succeeds");
 
         // Then the file exists at that path and holds rendered HTML.
-        assert_eq!(path, dir.path().join("out.html"));
+        assert_eq!(
+            path,
+            dir.path
+                .join("out.html")
+                .expect("temp root joins a bare name")
+        );
         let written = std::fs::read_to_string(&path).expect("read back");
         assert!(written.starts_with("<!DOCTYPE html>"));
         assert!(written.contains("<h2>Heading</h2>"));
@@ -348,10 +357,10 @@ mod tests {
     #[rstest::rstest]
     fn writes_a_markdown_file_when_the_extension_says_so() {
         // Given a job targeting a `.md` path.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
 
         // When running the blocking write.
-        let path = render_and_write_blocking(&job("out.md", dir.path())).expect("write succeeds");
+        let path = render_and_write_blocking(&job("out.md", &dir.path)).expect("write succeeds");
 
         // Then markdown is written, not HTML.
         let written = std::fs::read_to_string(&path).expect("read back");
@@ -362,24 +371,32 @@ mod tests {
     #[rstest::rstest]
     fn unsupported_extension_writes_no_file() {
         // Given a job targeting a `.pdf` path.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
 
         // When running the blocking write.
-        let result = render_and_write_blocking(&job("out.pdf", dir.path()));
+        let result = render_and_write_blocking(&job("out.pdf", &dir.path));
 
         // Then it is refused with the exporter wording, and nothing is written.
         let reason = result
             .expect_err("pdf is not a supported export format")
             .to_string();
         assert!(reason.starts_with("no exporter for .pdf"), "was: {reason}");
-        assert!(!dir.path().join("out.pdf").exists());
+        assert!(
+            !dir.path
+                .join("out.pdf")
+                .expect("temp root joins a bare name")
+                .exists()
+        );
     }
 
     #[rstest::rstest]
     fn the_success_notice_names_the_written_file() {
         // Given a written path inside a session directory.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("dev/project/chat-export.html");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("dev/project/chat-export.html")
+            .expect("temp root joins a bare name");
 
         // When building the chat notice.
         let notice = written_notice(&path);
@@ -391,8 +408,11 @@ mod tests {
     #[rstest::rstest]
     fn the_success_notice_survives_a_directory_destination() {
         // Given a destination that names a directory.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("dev/project");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("dev/project")
+            .expect("temp root joins a bare name");
 
         // When building the chat notice.
         let notice = written_notice(&path);
@@ -404,39 +424,52 @@ mod tests {
     #[rstest::rstest]
     fn a_text_file_is_refused_with_the_exporter_wording() {
         // Given a job targeting a `.txt` path.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
 
         // When running the blocking write.
-        let result = render_and_write_blocking(&job("chat.txt", dir.path()));
+        let result = render_and_write_blocking(&job("chat.txt", &dir.path));
 
         // Then the user is told there is no exporter for it.
         let reason = result.expect_err("txt has no exporter").to_string();
         assert!(reason.starts_with("no exporter for .txt"), "was: {reason}");
-        assert!(!dir.path().join("chat.txt").exists());
+        assert!(
+            !dir.path
+                .join("chat.txt")
+                .expect("temp root joins a bare name")
+                .exists()
+        );
     }
 
     #[rstest::rstest]
     fn empty_argument_writes_the_default_filename() {
         // Given a job with no typed path.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
 
         // When running the blocking write.
-        let path = render_and_write_blocking(&job("", dir.path())).expect("write succeeds");
+        let path = render_and_write_blocking(&job("", &dir.path)).expect("write succeeds");
 
         // Then the default filename is used.
-        assert_eq!(path, dir.path().join("chat-export.html"));
+        assert_eq!(
+            path,
+            dir.path
+                .join("chat-export.html")
+                .expect("temp root joins a bare name")
+        );
         assert!(path.exists());
     }
 
     #[rstest::rstest]
     fn unwritable_destination_reports_the_reason() {
         // Given a job targeting a path inside a file, not a directory.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let blocker = dir.path().join("blocker");
+        let dir = jinn_testutil::tempdir();
+        let blocker = dir
+            .path
+            .join("blocker")
+            .expect("temp root joins a bare name");
         std::fs::write(&blocker, "i am a file").expect("write");
 
         // When running the blocking write.
-        let result = render_and_write_blocking(&job("blocker/out.html", dir.path()));
+        let result = render_and_write_blocking(&job("blocker/out.html", &dir.path));
 
         // Then the failure names the path that could not be written.
         let reason = result
@@ -461,10 +494,10 @@ mod bus_tests {
 
     /// Spawns an actor over a session whose cwd is `dir`, and returns the
     /// harness plus that session's id.
-    async fn actor_over(dir: &std::path::Path) -> (TestHarness, SessionId) {
+    async fn actor_over(dir: &MarkedPathBuf<Absolute>) -> (TestHarness, SessionId) {
         let mut app = AppState::default();
         let mut session = jinn_session_state::ChatSessionState::new();
-        session.set_cwd(dir.to_path_buf());
+        session.set_cwd(dir.clone());
         // The map keys by the session's own id, so the request must name
         // that id — exactly what the chat-input slice sends.
         let session_id = session.session_id().clone();
@@ -485,14 +518,17 @@ mod bus_tests {
     async fn a_published_export_command_writes_a_file() {
         // Given a spawned export actor over a real bus, and a session whose
         // working directory is a temp dir.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let (harness, session_id) = actor_over(dir.path()).await;
+        let dir = jinn_testutil::tempdir();
+        let (harness, session_id) = actor_over(&dir.path).await;
         let rec = harness.spawn_recorder::<PushChatEntry>().await;
 
         // When publishing an export request for that directory.
         let msg = ExportSessionToFile {
             session_id,
-            path: dir.path().join("out.html"),
+            path: dir
+                .path
+                .join("out.html")
+                .expect("temp root joins a bare name"),
         };
         harness.publish(msg).await;
 
@@ -508,7 +544,10 @@ mod bus_tests {
         assert_eq!(pushed, vec!["Exported to out.html".to_owned()]);
 
         // Then the file appears (eventually) on disk.
-        let target = dir.path().join("out.html");
+        let target = dir
+            .path
+            .join("out.html")
+            .expect("temp root joins a bare name");
         for _ in 0..200 {
             if target.exists() {
                 break;
@@ -522,15 +561,18 @@ mod bus_tests {
     #[tokio::test]
     async fn an_unsupported_extension_reports_an_error_in_the_chat() {
         // Given a spawned actor over a temp-dir session.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let (harness, session_id) = actor_over(dir.path()).await;
+        let dir = jinn_testutil::tempdir();
+        let (harness, session_id) = actor_over(&dir.path).await;
         let rec = harness.spawn_recorder::<PushChatEntry>().await;
 
         // When publishing a request for an extension with no exporter.
         harness
             .publish(ExportSessionToFile {
                 session_id,
-                path: dir.path().join("chat.txt"),
+                path: dir
+                    .path
+                    .join("chat.txt")
+                    .expect("temp root joins a bare name"),
             })
             .await;
 
@@ -552,22 +594,30 @@ mod bus_tests {
             "was: {pushed:?}"
         );
         // And no file was created.
-        assert!(!dir.path().join("chat.txt").exists());
+        assert!(
+            !dir.path
+                .join("chat.txt")
+                .expect("temp root joins a bare name")
+                .exists()
+        );
     }
 
     #[rstest::rstest]
     #[tokio::test]
     async fn an_unknown_session_reports_an_error_in_the_chat() {
         // Given a spawned actor over a temp-dir session.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let (harness, _) = actor_over(dir.path()).await;
+        let dir = jinn_testutil::tempdir();
+        let (harness, _) = actor_over(&dir.path).await;
         let rec = harness.spawn_recorder::<PushChatEntry>().await;
 
         // When publishing a request naming a session that is not loaded.
         harness
             .publish(ExportSessionToFile {
                 session_id: SessionId::new(),
-                path: dir.path().join("out.html"),
+                path: dir
+                    .path
+                    .join("out.html")
+                    .expect("temp root joins a bare name"),
             })
             .await;
 

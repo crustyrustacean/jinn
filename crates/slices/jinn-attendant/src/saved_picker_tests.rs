@@ -12,6 +12,7 @@
     reason = "test code"
 )]
 
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 use std::sync::Arc;
 
 use jinn_app_state::AppState;
@@ -546,7 +547,7 @@ fn a_created_attendant_inherits_the_parents_cwd() {
         .session
         .get_mut(&fx.parent_id)
         .expect("parent")
-        .set_cwd(std::path::PathBuf::from("/srv/the-project"));
+        .set_cwd(MarkedPathBuf::<Absolute>::new("/srv/the-project").expect("rooted test path"));
     fx.open();
 
     // When confirming.
@@ -554,7 +555,10 @@ fn a_created_attendant_inherits_the_parents_cwd() {
 
     // Then the attendant works there, because cwd is environment and the
     // entry cannot carry it.
-    assert_eq!(fx.created().cwd(), std::path::Path::new("/srv/the-project"));
+    assert_eq!(
+        fx.created().cwd().as_path(),
+        std::path::Path::new("/srv/the-project")
+    );
 }
 
 #[rstest::rstest]

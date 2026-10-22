@@ -11,6 +11,7 @@ use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use super::BoxedToolFuture;
 use super::input_bounds;
 use crate::tool_paths::resolve_path;
+use marked_path::MarkedPathAccess;
 
 /// Returns the tool definition for the `write` built-in tool.
 pub fn definition() -> ToolDefinition {
@@ -85,7 +86,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 &call,
                 format!(
                     "failed to create parent directories for '{}': {e}",
-                    resolved.display()
+                    resolved
                 ),
             );
         }
@@ -94,17 +95,16 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             Ok(()) => ToolResult {
                 tool_call_id: call.id,
                 name: call.name,
-                content: format!("wrote {} bytes to {}", content.len(), resolved.display()),
+                content: format!("wrote {} bytes to {}", content.len(), resolved),
                 success: true,
                 full_content: None,
                 truncation: None,
                 pin_position: None,
                 attachments: Vec::new(),
             },
-            Err(e) => unprefixed_failure(
-                &call,
-                format!("failed to write file '{}': {e}", resolved.display()),
-            ),
+            Err(e) => {
+                unprefixed_failure(&call, format!("failed to write file '{}': {e}", resolved))
+            }
         }
     })
 }
@@ -135,13 +135,13 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use std::path::Path;
+    use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
     /// A context whose cwd is a real, existing scratch directory owned by the
     /// calling test.
-    fn test_ctx(cwd: &Path) -> ToolContext {
+    fn test_ctx(cwd: &MarkedPathBuf<Absolute>) -> ToolContext {
         ToolContext {
-            cwd: cwd.to_owned(),
+            cwd: cwd.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
             timeout: None,
@@ -166,21 +166,24 @@ mod tests {
     #[tokio::test]
     async fn execute_writes_file_content() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("output.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("output.txt")
+            .expect("temp root joins a bare name");
 
         let call = ToolCall {
             id: "call_1".into(),
             name: "write".into(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": "hello from write"
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result indicates success.
         assert_eq!(result.tool_call_id.as_str(), "call_1");
@@ -192,21 +195,24 @@ mod tests {
     #[tokio::test]
     async fn execute_creates_file_with_content() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("output.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("output.txt")
+            .expect("temp root joins a bare name");
 
         let call = ToolCall {
             id: "call_1".into(),
             name: "write".into(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": "hello from write"
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let _result = execute(call, test_ctx(dir.path())).await;
+        let _result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the file contains the written content.
         let content = std::fs::read_to_string(&file_path).expect("read written file");
@@ -217,21 +223,24 @@ mod tests {
     #[tokio::test]
     async fn execute_creates_parent_dirs() {
         // Given a temp directory with a nested path.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("nested").join("deep").join("file.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join_all(["nested", "deep", "file.txt"])
+            .expect("temp root joins a bare name");
 
         let call = ToolCall {
             id: "call_2".into(),
             name: "write".into(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": "nested content"
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result indicates success.
         assert!(result.success, "expected success, got: {}", result.content);
@@ -245,22 +254,25 @@ mod tests {
     #[tokio::test]
     async fn execute_overwrites_existing_file() {
         // Given a temp file with existing content.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("existing.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("existing.txt")
+            .expect("temp root joins a bare name");
         std::fs::write(&file_path, "old content").expect("write existing file");
 
         let call = ToolCall {
             id: "call_3".into(),
             name: "write".into(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": "new content"
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result indicates success.
         assert!(result.success);
@@ -274,7 +286,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_bad_json() {
         // Given a write call with invalid JSON.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let call = ToolCall {
             id: "call_4".into(),
             name: "write".to_owned(),
@@ -282,7 +294,7 @@ mod tests {
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result indicates failure.
         assert!(!result.success);
@@ -293,9 +305,9 @@ mod tests {
     #[tokio::test]
     async fn execute_resolves_relative_path() {
         // Given a temp directory as CWD.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let ctx = ToolContext {
-            cwd: dir.path().to_owned(),
+            cwd: dir.path.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
             timeout: None,
@@ -330,7 +342,10 @@ mod tests {
 
         // Then the file is created via CWD resolution.
         assert!(result.success);
-        let file_path = dir.path().join("relative.txt");
+        let file_path = dir
+            .path
+            .join("relative.txt")
+            .expect("temp root joins a bare name");
         let content = std::fs::read_to_string(&file_path).expect("read written file");
         assert_eq!(content, "relative content");
     }
@@ -431,21 +446,24 @@ mod tests {
     #[tokio::test]
     async fn execute_writes_empty_string() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("empty.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("empty.txt")
+            .expect("temp root joins a bare name");
 
         let call = ToolCall {
             id: "call_e1".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": ""
             })
             .to_string(),
         };
 
         // When executing the write tool with empty content.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result indicates success.
         assert!(result.success, "expected success, got: {}", result.content);
@@ -459,22 +477,25 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_newlines_and_tabs() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("whitespace.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("whitespace.txt")
+            .expect("temp root joins a bare name");
         let original = "line1\nline2\ttab";
 
         let call = ToolCall {
             id: "call_e2".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": original
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -486,22 +507,25 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_embedded_quotes() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("quotes.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("quotes.txt")
+            .expect("temp root joins a bare name");
         let original = r#"he said "hello\""#;
 
         let call = ToolCall {
             id: "call_e3".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": original
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -513,22 +537,25 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_angle_brackets() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("angles.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("angles.txt")
+            .expect("temp root joins a bare name");
         let original = "HashMap<String, Vec<usize>>";
 
         let call = ToolCall {
             id: "call_e4".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": original
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -540,22 +567,25 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_ampersands() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("ampersands.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("ampersands.txt")
+            .expect("temp root joins a bare name");
         let original = "foo & bar < baz";
 
         let call = ToolCall {
             id: "call_e5".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": original
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -567,22 +597,25 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_backslashes() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("backslashes.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("backslashes.txt")
+            .expect("temp root joins a bare name");
         let original = r"C:\Users\test\file.txt";
 
         let call = ToolCall {
             id: "call_e6".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": original
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -594,22 +627,25 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_mixed_line_endings() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("endings.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("endings.txt")
+            .expect("temp root joins a bare name");
         let original = "line1\r\nline2\nline3";
 
         let call = ToolCall {
             id: "call_e7".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": original
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -621,22 +657,25 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_null_bytes() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("nulls.bin");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("nulls.bin")
+            .expect("temp root joins a bare name");
         let original = "before\0after";
 
         let call = ToolCall {
             id: "call_e8".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": original
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the content round-trips exactly (byte comparison).
         assert!(result.success);
@@ -648,22 +687,25 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_unicode_emoji() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("emoji.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("emoji.txt")
+            .expect("temp root joins a bare name");
         let original = "Hello \u{1F30D}\u{1F980}\u{1F389}";
 
         let call = ToolCall {
             id: "call_e9".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": original
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -675,22 +717,25 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_cjk() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("cjk.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("cjk.txt")
+            .expect("temp root joins a bare name");
         let original = "\u{4F60}\u{597D}\u{4E16}\u{754C}";
 
         let call = ToolCall {
             id: "call_e10".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": original
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -702,22 +747,25 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_combining_characters() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("combining.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("combining.txt")
+            .expect("temp root joins a bare name");
         let original = "e\u{0301}";
 
         let call = ToolCall {
             id: "call_e11".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": original
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -729,22 +777,25 @@ mod tests {
     #[tokio::test]
     async fn execute_roundtrips_large_payload() {
         // Given a temp directory and a 1MB payload.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("large.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("large.txt")
+            .expect("temp root joins a bare name");
         let original = "x".repeat(1_000_000);
 
         let call = ToolCall {
             id: "call_e12".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": original
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the content round-trips exactly.
         assert!(result.success);
@@ -759,21 +810,24 @@ mod tests {
     #[tokio::test]
     async fn execute_writes_file_with_spaces_in_name() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("my file.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("my file.txt")
+            .expect("temp root joins a bare name");
 
         let call = ToolCall {
             id: "call_p1".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": "spaces in name"
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the file is created with the spaced name.
         assert!(result.success, "expected success, got: {}", result.content);
@@ -785,21 +839,24 @@ mod tests {
     #[tokio::test]
     async fn execute_writes_file_with_unicode_name() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("\u{30D5}\u{30A1}\u{30A4}\u{30EB}.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("\u{30D5}\u{30A1}\u{30A4}\u{30EB}.txt")
+            .expect("temp root joins a bare name");
 
         let call = ToolCall {
             id: "call_p2".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": "unicode name"
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the file is created with the Unicode name.
         assert!(result.success, "expected success, got: {}", result.content);
@@ -811,28 +868,24 @@ mod tests {
     #[tokio::test]
     async fn execute_writes_deeply_nested_path() {
         // Given a temp directory with a 6-level deep path.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let file_path = dir
-            .path()
-            .join("a")
-            .join("b")
-            .join("c")
-            .join("d")
-            .join("e")
-            .join("f.txt");
+            .path
+            .join_all(["a", "b", "c", "d", "e", "f.txt"])
+            .expect("temp root joins a bare name");
 
         let call = ToolCall {
             id: "call_p3".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": "deeply nested"
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then all parent directories are created and the file is written.
         assert!(result.success, "expected success, got: {}", result.content);
@@ -844,9 +897,9 @@ mod tests {
     #[tokio::test]
     async fn execute_resolves_dot_slash_relative_path() {
         // Given a temp directory as CWD.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let ctx = ToolContext {
-            cwd: dir.path().to_owned(),
+            cwd: dir.path.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
             timeout: None,
@@ -881,7 +934,10 @@ mod tests {
 
         // Then the file is created via CWD resolution.
         assert!(result.success, "expected success, got: {}", result.content);
-        let file_path = dir.path().join("local.txt");
+        let file_path = dir
+            .path
+            .join("local.txt")
+            .expect("temp root joins a bare name");
         let content = std::fs::read_to_string(&file_path).expect("read written file");
         assert_eq!(content, "dot slash");
     }
@@ -891,12 +947,15 @@ mod tests {
     async fn execute_writes_absolute_path() {
         // Given a temp directory with an absolute path, and a different
         // directory as the CWD.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("absolute.txt");
-        let other = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("absolute.txt")
+            .expect("temp root joins a bare name");
+        let other = jinn_testutil::tempdir();
 
         let ctx = ToolContext {
-            cwd: other.path().to_path_buf(),
+            cwd: other.path.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
             timeout: None,
@@ -920,7 +979,7 @@ mod tests {
             id: "call_p5".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": "absolute path"
             })
             .to_string(),
@@ -941,22 +1000,25 @@ mod tests {
     #[tokio::test]
     async fn execute_reports_correct_byte_count_for_ascii() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("ascii.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("ascii.txt")
+            .expect("temp root joins a bare name");
         let content = "hello";
 
         let call = ToolCall {
             id: "call_b1".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": content
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the success message reports the correct ASCII byte count.
         assert!(result.success);
@@ -972,22 +1034,25 @@ mod tests {
     #[tokio::test]
     async fn execute_reports_correct_byte_count_for_multibyte() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("multibyte.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("multibyte.txt")
+            .expect("temp root joins a bare name");
         let content = "\u{1F389}"; // 🎉 - 4 bytes in UTF-8
 
         let call = ToolCall {
             id: "call_b2".into(),
             name: "write".to_owned(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": content
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the success message reports byte count (4), not character count (1).
         assert!(result.success);
@@ -1003,22 +1068,25 @@ mod tests {
     #[tokio::test]
     async fn execute_reports_correct_byte_count_for_mixed() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("mixed.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("mixed.txt")
+            .expect("temp root joins a bare name");
         let content = "Hello \u{1F30D}"; // Hello + space + 🌍 = 5 + 1 + 4 = 10 bytes
 
         let call = ToolCall {
             id: "call_b3".into(),
             name: "write".into(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": content
             })
             .to_string(),
         };
 
         // When executing the write tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the success message reports the correct mixed byte count.
         assert!(result.success);
@@ -1034,8 +1102,11 @@ mod tests {
     #[tokio::test]
     async fn execute_rejects_content_with_long_repetition() {
         // Given a temp dir that does not yet contain the target file.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("out.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("out.txt")
+            .expect("temp root joins a bare name");
 
         // `content` with 50 identical consecutive lines — degenerate.
         let content = std::iter::once("header\n")
@@ -1045,14 +1116,14 @@ mod tests {
             id: "rep_50".into(),
             name: "write".into(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": content,
             })
             .to_string(),
         };
 
         // When executing.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then it is rejected as degenerate.
         assert!(!result.success);
@@ -1065,8 +1136,11 @@ mod tests {
     #[tokio::test]
     async fn execute_accepts_content_with_49_repetition() {
         // Given a temp dir.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("out.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("out.txt")
+            .expect("temp root joins a bare name");
 
         // `content` with 49 identical consecutive lines — below threshold.
         let content = std::iter::once("header\n")
@@ -1076,14 +1150,14 @@ mod tests {
             id: "rep_49".into(),
             name: "write".into(),
             arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
+                "path": file_path.to_string(),
                 "content": content,
             })
             .to_string(),
         };
 
         // When executing.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the write succeeds (49 lines, under the threshold).
         assert!(result.success, "expected success, got: {}", result.content);

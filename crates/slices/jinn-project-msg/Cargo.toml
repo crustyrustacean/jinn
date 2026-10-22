@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+dirs = { workspace = true }
+marked-path = { workspace = true }
 jinn-common = { workspace = true }
 jinn-cwd-msg = { workspace = true }
 jinn-picker = { workspace = true }

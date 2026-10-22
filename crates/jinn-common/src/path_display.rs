@@ -5,7 +5,7 @@
 //! and has no slice-specific meaning, so it lives here rather than in whichever
 //! slice happened to need it first.
 
-use std::path::{Path, PathBuf};
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
 /// Shorten a path for display: replace the home directory prefix with `~`.
 ///
@@ -21,30 +21,38 @@ use std::path::{Path, PathBuf};
 /// `~` back when resolving user input (both `~/` and the native-separator
 /// form), so shortened paths round-trip.
 #[must_use]
-pub fn shorten_path(path: &Path) -> String {
+pub fn shorten_path(path: &MarkedPathBuf<Absolute>) -> String {
     if let Some(home) = dirs::home_dir()
-        && let Ok(relative) = path.strip_prefix(&home)
+        && let Ok(typed_home) = MarkedPathBuf::<Absolute>::new(&home)
+        && let Ok(relative) = path.as_marked_path().strip_prefix(&typed_home)
     {
-        if relative.as_os_str().is_empty() {
+        if relative.as_path().as_os_str().is_empty() {
             return "~".to_owned();
         }
         // Join component-wise: the `~` marker and every remaining component
         // are appended with the platform separator, normalizing any mixed
         // separators carried in the remainder.
-        let label = relative
+        let sep = std::path::MAIN_SEPARATOR.to_string();
+        let rest = relative
             .components()
-            .fold(PathBuf::from("~"), |mut acc, component| {
-                acc.push(component.as_os_str());
-                acc
-            });
-        return label.display().to_string();
+            .map(|component| component.as_os_str().to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join(&sep);
+        return format!("~{sep}{rest}");
     }
-    path.display().to_string()
+    path.to_string()
 }
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        reason = "test code asserts with expect for clear failures"
+    )]
+
     use super::shorten_path;
+    use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
     use std::path::{Path, PathBuf};
 
     #[rstest::rstest]
@@ -54,16 +62,19 @@ mod tests {
         // home directory on every platform — the platform temp directory
         // hangs off the user profile on Windows, so a temp root would be
         // tilde-compressed there.
-        let path = Path::new(std::path::MAIN_SEPARATOR_STR)
-            .join("opt")
-            .join("jinn")
-            .join("config.toml");
+        let path = MarkedPathBuf::<Absolute>::new(
+            Path::new(std::path::MAIN_SEPARATOR_STR)
+                .join("opt")
+                .join("jinn")
+                .join("config.toml"),
+        )
+        .expect("rooted path is absolute");
 
         // When shortening it.
         let display = shorten_path(&path);
 
         // Then the full path is shown.
-        assert_eq!(display, path.to_string_lossy());
+        assert_eq!(display, path.as_path().to_string_lossy());
     }
 
     #[rstest::rstest]
@@ -74,7 +85,10 @@ mod tests {
         };
 
         // And a path beneath it.
-        let path = home.join("projects").join("jinn");
+        let home = MarkedPathBuf::<Absolute>::new(&home).expect("home is absolute");
+        let path = home
+            .join_all(["projects", "jinn"])
+            .expect("name joins keep the base absolute");
 
         // When shortening it.
         let display = shorten_path(&path);
@@ -96,6 +110,7 @@ mod tests {
         let Some(home) = dirs::home_dir() else {
             return;
         };
+        let home = MarkedPathBuf::<Absolute>::new(&home).expect("home is absolute");
 
         // When shortening it.
         let display = shorten_path(&home);
@@ -111,10 +126,13 @@ mod tests {
         let Some(home) = dirs::home_dir() else {
             return;
         };
+        let home = MarkedPathBuf::<Absolute>::new(&home).expect("home is absolute");
 
         // And a path beneath it carrying a forward slash after the first
         // native component.
-        let path = home.join("code").join("sub/dir");
+        let path = home
+            .join_all(["code", "sub/dir"])
+            .expect("name joins keep the base absolute");
 
         // When shortening it.
         let display = shorten_path(&path);

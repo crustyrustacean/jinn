@@ -15,7 +15,7 @@
 //! extension is HTML because the default export is meant to be opened in a
 //! browser; other formats are opt-in by typing their extension.
 
-use std::path::{Path, PathBuf};
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
 use wherror::Error;
 
@@ -42,11 +42,11 @@ pub struct ResolvePathError {
 ///
 /// Returns an error if the home directory cannot be determined, which
 /// happens only when `~` is typed and no home directory is set.
-fn home_dir() -> Result<PathBuf, ResolvePathError> {
+fn home_dir() -> Result<MarkedPathBuf<Absolute>, ResolvePathError> {
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .filter(|h| !h.is_empty())
-        .map(PathBuf::from)
+        .and_then(|h| MarkedPathBuf::<Absolute>::new(h).ok())
         .ok_or_else(|| ResolvePathError {
             reason: "cannot expand `~`: no home directory is set".to_owned(),
         })
@@ -83,7 +83,10 @@ pub fn split_command_and_argument(input: &str) -> (&str, &str) {
 ///
 /// Returns an error if the argument starts with `~` and no home directory is
 /// available to expand it.
-pub fn resolve_export_path(argument: &str, cwd: &Path) -> Result<PathBuf, ResolvePathError> {
+pub fn resolve_export_path(
+    argument: &str,
+    cwd: &MarkedPathBuf<Absolute>,
+) -> Result<MarkedPathBuf<Absolute>, ResolvePathError> {
     if argument.is_empty() {
         return Ok(default_export_path(cwd));
     }
@@ -92,13 +95,16 @@ pub fn resolve_export_path(argument: &str, cwd: &Path) -> Result<PathBuf, Resolv
     }
     if let Some(rest) = argument.strip_prefix("~/") {
         let home = home_dir()?;
-        return Ok(home.join(rest));
+        return home.join(rest).map_err(|error| ResolvePathError {
+            reason: format!("cannot join the home expansion: {error}"),
+        });
     }
-    let candidate = PathBuf::from(argument);
-    if candidate.is_absolute() {
-        return Ok(candidate);
+    if let Ok(typed) = MarkedPathBuf::<Absolute>::new(argument) {
+        return Ok(typed);
     }
-    Ok(cwd.join(candidate))
+    cwd.join(argument).map_err(|error| ResolvePathError {
+        reason: format!("cannot resolve the argument against the session cwd: {error}"),
+    })
 }
 
 /// Picks the first free `chat-export*.html` name in `cwd`.
@@ -107,9 +113,21 @@ pub fn resolve_export_path(argument: &str, cwd: &Path) -> Result<PathBuf, Resolv
 /// while the candidate exists. There is no upper bound: if the directory is
 /// full of exports, this returns a name that does not exist yet, and the
 /// subsequent write is what will fail if the directory is genuinely full.
+///
+/// # Panics
+///
+/// Panics if the joined candidate is not absolute, which cannot happen: the
+/// default filename is a bare name joined onto a cwd already typed
+/// `Absolute`.
+#[expect(
+    clippy::expect_used,
+    reason = "bare-name joins onto a typed-absolute cwd are infallible by construction"
+)]
 #[must_use]
-pub fn default_export_path(cwd: &Path) -> PathBuf {
-    let first = cwd.join(format!("{DEFAULT_STEM}.{DEFAULT_EXTENSION}"));
+pub fn default_export_path(cwd: &MarkedPathBuf<Absolute>) -> MarkedPathBuf<Absolute> {
+    let first = cwd
+        .join(format!("{DEFAULT_STEM}.{DEFAULT_EXTENSION}"))
+        .expect("joining a default name keeps the cwd absolute");
     if !first.exists() {
         return first;
     }
@@ -120,7 +138,10 @@ pub fn default_export_path(cwd: &Path) -> PathBuf {
         reason = "the ladder has no upper bound by design; it stops at the first free name"
     )]
     let free = (2_u32..)
-        .map(|n| cwd.join(format!("{DEFAULT_STEM}-{n}.{DEFAULT_EXTENSION}")))
+        .filter_map(|n| {
+            cwd.join(format!("{DEFAULT_STEM}-{n}.{DEFAULT_EXTENSION}"))
+                .ok()
+        })
         .find(|candidate| !candidate.exists());
     free.unwrap_or(first)
 }
@@ -139,52 +160,88 @@ mod tests {
     #[rstest::rstest]
     fn bare_argument_yields_default_filename() {
         // Given a session cwd.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
 
         // When resolving an empty argument.
-        let path = resolve_export_path("", dir.path()).expect("resolve");
+        let path = resolve_export_path("", &dir.path).expect("resolve");
 
         // Then the default filename in that cwd is chosen.
-        assert_eq!(path, dir.path().join("chat-export.html"));
+        assert_eq!(
+            path,
+            dir.path
+                .join("chat-export.html")
+                .expect("temp root joins a bare name")
+        );
     }
 
     #[rstest::rstest]
     fn taken_default_name_yields_numbered_filename() {
         // Given a cwd where the default filename already exists.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        std::fs::write(dir.path().join("chat-export.html"), "old").expect("write");
+        let dir = jinn_testutil::tempdir();
+        std::fs::write(
+            dir.path
+                .join("chat-export.html")
+                .expect("temp root joins a bare name"),
+            "old",
+        )
+        .expect("write");
 
         // When resolving an empty argument.
-        let path = resolve_export_path("", dir.path()).expect("resolve");
+        let path = resolve_export_path("", &dir.path).expect("resolve");
 
         // Then the next free numbered name is chosen.
-        assert_eq!(path, dir.path().join("chat-export-2.html"));
+        assert_eq!(
+            path,
+            dir.path
+                .join("chat-export-2.html")
+                .expect("temp root joins a bare name")
+        );
     }
 
     #[rstest::rstest]
     fn two_taken_default_names_yields_third() {
         // Given a cwd where the first two ladder names are taken.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        std::fs::write(dir.path().join("chat-export.html"), "a").expect("write");
-        std::fs::write(dir.path().join("chat-export-2.html"), "b").expect("write");
+        let dir = jinn_testutil::tempdir();
+        std::fs::write(
+            dir.path
+                .join("chat-export.html")
+                .expect("temp root joins a bare name"),
+            "a",
+        )
+        .expect("write");
+        std::fs::write(
+            dir.path
+                .join("chat-export-2.html")
+                .expect("temp root joins a bare name"),
+            "b",
+        )
+        .expect("write");
 
         // When resolving an empty argument.
-        let path = resolve_export_path("", dir.path()).expect("resolve");
+        let path = resolve_export_path("", &dir.path).expect("resolve");
 
         // Then the ladder climbs to the third name.
-        assert_eq!(path, dir.path().join("chat-export-3.html"));
+        assert_eq!(
+            path,
+            dir.path
+                .join("chat-export-3.html")
+                .expect("temp root joins a bare name")
+        );
     }
 
     #[rstest::rstest]
     fn absolute_argument_is_unchanged() {
         // Given an absolute destination.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let target = dir.path().join("elsewhere").join("out.html");
+        let dir = jinn_testutil::tempdir();
+        let target = dir
+            .path
+            .join_all(["elsewhere", "out.html"])
+            .expect("name joins keep the base absolute");
 
         // When resolving it against a different tempdir cwd — unused, since
         // the absolute destination wins.
-        let other = jinn_testutil::tempdir().expect("temp dir");
-        let path = resolve_export_path(target.to_str().expect("utf-8 path"), other.path())
+        let other = jinn_testutil::tempdir();
+        let path = resolve_export_path(target.to_str().expect("utf-8 path"), &other.path)
             .expect("resolve");
 
         // Then it is used exactly as given.
@@ -194,13 +251,18 @@ mod tests {
     #[rstest::rstest]
     fn relative_argument_joins_the_session_cwd() {
         // Given a relative destination.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
 
         // When resolving it against the session cwd.
-        let path = resolve_export_path("notes/session.md", dir.path()).expect("resolve");
+        let path = resolve_export_path("notes/session.md", &dir.path).expect("resolve");
 
         // Then it is joined onto the cwd.
-        assert_eq!(path, dir.path().join("notes").join("session.md"));
+        assert_eq!(
+            path,
+            dir.path
+                .join_all(["notes", "session.md"])
+                .expect("name joins keep the base absolute")
+        );
     }
 
     #[rstest::rstest]
@@ -209,22 +271,26 @@ mod tests {
         let home = home_dir().expect("home dir is set in the test env");
         // The cwd argument is unused for a tilde destination; it is a tempdir
         // root so no absolute path literal appears in test code.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
 
         // When resolving it.
-        let path = resolve_export_path("~/exports/out.md", dir.path()).expect("resolve");
+        let path = resolve_export_path("~/exports/out.md", &dir.path).expect("resolve");
 
         // Then it is rooted at the home directory.
-        assert_eq!(path, home.join("exports").join("out.md"));
+        assert_eq!(
+            path,
+            home.join_all(["exports", "out.md"])
+                .expect("name joins keep the base absolute")
+        );
     }
 
     #[rstest::rstest]
     fn default_path_carries_the_default_extension() {
         // Given a fresh cwd.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
 
         // When picking the default path.
-        let path = default_export_path(dir.path());
+        let path = default_export_path(&dir.path);
 
         // Then its extension is the default format's.
         assert_eq!(

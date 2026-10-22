@@ -5,6 +5,7 @@ edition.workspace = true
 description = "The persona slice: parses persona markdown into the personas cell at activation."
 
 [dependencies]
+marked-path = { workspace = true }
 jinn-persona-msg = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-picker = { workspace = true }

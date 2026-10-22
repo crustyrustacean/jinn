@@ -11,8 +11,9 @@
 //! reports `is_available() == false`; the actor then surfaces a
 //! `ChatEntryKind::Error` rather than silently dropping the attachment.
 
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
 use derive_more::Debug;
 use error_stack::{Report, ResultExt};
@@ -45,7 +46,10 @@ pub trait ImageConverter: Send + Sync {
     ///
     /// Returns `Report<ImageConversionError>` if the binary is unavailable,
     /// the process exits non-zero, or the captured stdout is not a valid PNG.
-    fn convert_to_png(&self, input: &Path) -> Result<Vec<u8>, Report<ImageConversionError>>;
+    fn convert_to_png(
+        &self,
+        input: &MarkedPathBuf<Absolute>,
+    ) -> Result<Vec<u8>, Report<ImageConversionError>>;
 }
 
 /// Production converter backed by the ImageMagick CLI.
@@ -54,7 +58,7 @@ pub trait ImageConverter: Send + Sync {
 /// locator). When `None`, `is_available()` is false and `convert_to_png`
 /// returns an error immediately without spawning a process.
 pub struct ImageMagickConverter {
-    binary: Option<PathBuf>,
+    binary: Option<std::path::PathBuf>,
 }
 
 impl ImageMagickConverter {
@@ -92,7 +96,10 @@ impl ImageConverter for ImageMagickConverter {
         self.binary.is_some()
     }
 
-    fn convert_to_png(&self, input: &Path) -> Result<Vec<u8>, Report<ImageConversionError>> {
+    fn convert_to_png(
+        &self,
+        input: &MarkedPathBuf<Absolute>,
+    ) -> Result<Vec<u8>, Report<ImageConversionError>> {
         let binary = self.binary.as_ref().ok_or_else(|| {
             Report::new(ImageConversionError)
                 .change_context(ImageConversionError)
@@ -100,20 +107,20 @@ impl ImageConverter for ImageMagickConverter {
         })?;
 
         let output = std::process::Command::new(binary)
-            .arg(input)
+            .arg(input.as_path())
             .arg("png:-") // write PNG to stdout
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .output()
             .change_context(ImageConversionError)
-            .attach(input.to_string_lossy().to_string())
+            .attach(input.to_string())
             .attach("failed to spawn ImageMagick")?;
 
         if !output.status.success() {
             return Err(Report::new(ImageConversionError)
                 .change_context(ImageConversionError)
-                .attach(input.to_string_lossy().to_string())
+                .attach(input.to_string())
                 .attach(format!(
                     "ImageMagick exited with code {:?}",
                     output.status.code()
@@ -123,7 +130,7 @@ impl ImageConverter for ImageMagickConverter {
         if !output.stdout.starts_with(PNG_MAGIC) {
             return Err(Report::new(ImageConversionError)
                 .change_context(ImageConversionError)
-                .attach(input.to_string_lossy().to_string())
+                .attach(input.to_string())
                 .attach("ImageMagick output is not a valid PNG"));
         }
 
@@ -174,7 +181,10 @@ impl ImageConverterService {
     /// # Errors
     ///
     /// Propagates the converter's error.
-    pub fn convert_to_png(&self, input: &Path) -> Result<Vec<u8>, Report<ImageConversionError>> {
+    pub fn convert_to_png(
+        &self,
+        input: &MarkedPathBuf<Absolute>,
+    ) -> Result<Vec<u8>, Report<ImageConversionError>> {
         self.backend.convert_to_png(input)
     }
 }
@@ -187,7 +197,10 @@ impl ImageConverter for UnavailableConverter {
     fn name(&self) -> &'static str {
         "Unavailable"
     }
-    fn convert_to_png(&self, _input: &Path) -> Result<Vec<u8>, Report<ImageConversionError>> {
+    fn convert_to_png(
+        &self,
+        _input: &MarkedPathBuf<Absolute>,
+    ) -> Result<Vec<u8>, Report<ImageConversionError>> {
         Err(Report::new(ImageConversionError))
     }
     fn is_available(&self) -> bool {

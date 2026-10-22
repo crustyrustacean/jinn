@@ -18,13 +18,13 @@ use std::{
     env, fmt,
     fs::{File, OpenOptions},
     io::Write,
-    path::PathBuf,
     sync::Arc,
 };
 
 use clap_verbosity_flag::{Verbosity, VerbosityFilter, WarnLevel};
 use error_stack::{Report, ResultExt};
 use jinn_kernel::common::app_info::APP_NAME;
+use marked_path::{Absolute, MarkedPath, MarkedPathAccess, MarkedPathBuf};
 use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::{
     EnvFilter, Layer,
@@ -52,24 +52,30 @@ pub enum TracingMode {
     /// TUI mode: file-only logging to avoid corrupting the terminal.
     Tui {
         /// Resolved path to the log file (e.g. `~/.local/state/jinn/jinn.log`).
-        log_path: PathBuf,
+        log_path: MarkedPathBuf<Absolute>,
     },
     /// Headless mode: writes to BOTH terminal and file.
     Headless {
         /// Resolved path to the log file (e.g. `~/.local/state/jinn/jinn.log`).
-        log_path: PathBuf,
+        log_path: MarkedPathBuf<Absolute>,
     },
 }
 
 /// Derives the dedicated panic-log path as a sibling of the main `log_path`.
 ///
-/// `jinn.log` -> `jinn-panic.log` in the same directory. If `log_path` has no
-/// parent directory, the panic log falls back to `jinn-panic.log` in the CWD.
+/// `jinn.log` -> `jinn-panic.log` in the same directory. The only absolute
+/// path with no parent is the filesystem root itself; the panic log then
+/// lands at the root beside it.
 #[must_use]
-fn panic_log_path(log_path: &std::path::Path) -> PathBuf {
+fn panic_log_path(log_path: &MarkedPathBuf<Absolute>) -> MarkedPathBuf<Absolute> {
     match log_path.parent() {
-        Some(dir) => dir.join("jinn-panic.log"),
-        None => PathBuf::from("jinn-panic.log"),
+        Some(dir) => dir
+            .join("jinn-panic.log")
+            .expect("absolute parent joins a bare filename"),
+        // `log_path` is the filesystem root; write beside it.
+        None => log_path
+            .join("jinn-panic.log")
+            .expect("the root joins a bare filename"),
     }
 }
 
@@ -78,7 +84,11 @@ fn panic_log_path(log_path: &std::path::Path) -> PathBuf {
 /// Each line is `RFC3339 UTC | panic at file:line:col | message`. Extracted as a
 /// free function so the append logic is unit-testable without installing a global
 /// hook.
-fn write_panic_record(path: &std::path::Path, message: &str, location: Option<(&str, u32, u32)>) {
+fn write_panic_record(
+    path: &MarkedPath<'_, Absolute>,
+    message: &str,
+    location: Option<(&str, u32, u32)>,
+) {
     let location_str = match location {
         Some((file, line, col)) => format!("{file}:{line}:{col}"),
         None => "<unknown>".to_owned(),
@@ -97,11 +107,11 @@ fn write_panic_record(path: &std::path::Path, message: &str, location: Option<(&
 /// `panic_path`, then chains to the previously-installed hook so default stderr
 /// output (or any earlier hook) is preserved. Extracted from `init` so the chaining
 /// behavior is unit-testable without standing up the full tracing subscriber.
-fn install_panic_hook(panic_path: PathBuf) {
+fn install_panic_hook(panic_path: MarkedPathBuf<Absolute>) {
     let previous_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info: &std::panic::PanicHookInfo<'_>| {
         let location = info.location().map(|l| (l.file(), l.line(), l.column()));
-        write_panic_record(&panic_path, &info.to_string(), location);
+        write_panic_record(&panic_path.as_marked_path(), &info.to_string(), location);
         previous_hook(info);
     }));
 }
@@ -382,7 +392,7 @@ pub fn init(
     // --log-file flag. (Headless mode already prints to the terminal.)
     if matches!(mode, TracingMode::Tui { .. }) && rust_log.is_some() {
         eprintln!("RUST_LOG is set, but TUI mode writes traces to a file, not the terminal.");
-        eprintln!("  run tail -f '{}' in another term", log_path.display());
+        eprintln!("  run tail -f '{log_path}' in another term");
         eprintln!("  or rerun with --log-file <path> to choose a different file.");
     }
 
@@ -432,11 +442,11 @@ pub fn init(
 }
 
 /// Creates the parent directory (if needed) and opens the log file for append.
-fn open_log_file(path: &std::path::Path) -> Result<File, Report<TracingInitError>> {
+fn open_log_file(path: &MarkedPathBuf<Absolute>) -> Result<File, Report<TracingInitError>> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .change_context(TracingInitError)
-            .attach_with(|| format!("failed to create log directory '{}'", parent.display()))?;
+            .attach_with(|| format!("failed to create log directory '{parent}'"))?;
     }
 
     File::options()
@@ -444,7 +454,7 @@ fn open_log_file(path: &std::path::Path) -> Result<File, Report<TracingInitError
         .append(true)
         .open(path)
         .change_context(TracingInitError)
-        .attach_with(|| format!("failed to open file '{}' for tracing", path.display()))
+        .attach_with(|| format!("failed to open file '{path}' for tracing"))
 }
 
 #[cfg(test)]
@@ -782,37 +792,63 @@ mod tests {
         // rooted at the platform's own filesystem root, so it is absolute on
         // every platform without naming a POSIX literal.
         let root = Path::new(std::path::MAIN_SEPARATOR_STR);
-        let log_path = root.join("x").join("jinn.log");
+        let log_path = MarkedPathBuf::<Absolute>::new(root.join("x").join("jinn.log"))
+            .expect("rooted path is absolute");
 
         // When deriving the panic-log path.
         let panic_path = panic_log_path(&log_path);
 
         // Then it is jinn-panic.log in the same directory.
-        assert_eq!(panic_path, root.join("x").join("jinn-panic.log"));
+        assert_eq!(panic_path.as_path(), root.join("x").join("jinn-panic.log"));
     }
 
     #[rstest::rstest]
     #[test]
-    fn panic_log_path_falls_back_to_cwd_when_no_parent() {
-        // Given a log path with no parent directory.
-        let log_path = Path::new("jinn.log");
+    #[cfg(windows)]
+    #[rstest::rstest]
+    #[test]
+    fn panic_log_path_falls_back_to_root_when_log_has_no_parent_windows() {
+        // Given the drive root as the log path (no parent on Windows).
+        let log_path = MarkedPathBuf::<Absolute>::new(r"C:\").expect("drive root types");
 
         // When deriving the panic-log path.
-        let panic_path = panic_log_path(log_path);
+        let panic_path = panic_log_path(&log_path);
 
-        // Then it falls back to jinn-panic.log in the CWD.
-        assert_eq!(panic_path, PathBuf::from("jinn-panic.log"));
+        // Then the panic log lands at the root.
+        assert_eq!(panic_path.to_string_lossy(), r"C:\jinn-panic.log");
+    }
+
+    #[cfg(not(windows))]
+    #[rstest::rstest]
+    #[test]
+    fn panic_log_path_falls_back_to_root_when_log_has_no_parent() {
+        // Given the filesystem root as the log path (the only absolute
+        // path with no parent).
+        let log_path = MarkedPathBuf::<Absolute>::new("/").expect("root types");
+
+        // When deriving the panic-log path.
+        let panic_path = panic_log_path(&log_path);
+
+        // Then the panic log lands at the root.
+        assert_eq!(panic_path.to_string_lossy(), "/jinn-panic.log");
     }
 
     #[rstest::rstest]
     #[test]
     fn write_panic_record_appends_message_and_location() {
         // Given a temp directory as the panic-log location.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let panic_path = dir.path().join("jinn-panic.log");
+        let dir = jinn_testutil::tempdir();
+        let panic_path = dir
+            .path
+            .join("jinn-panic.log")
+            .expect("temp root joins a bare name");
 
         // When writing a panic record.
-        write_panic_record(&panic_path, "boom in actor", Some(("src/llm.rs", 42, 7)));
+        write_panic_record(
+            &panic_path.as_marked_path(),
+            "boom in actor",
+            Some(("src/llm.rs", 42, 7)),
+        );
 
         // Then the file contains a line with the message and the location.
         let content = std::fs::read_to_string(&panic_path).expect("read panic log");
@@ -842,8 +878,11 @@ mod tests {
 
         // When installing our hook (which chains to the sentinel) and then
         // triggering a real panic in a child thread.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let panic_path = dir.path().join("jinn-panic.log");
+        let dir = jinn_testutil::tempdir();
+        let panic_path = dir
+            .path
+            .join("jinn-panic.log")
+            .expect("temp root joins a bare name");
         install_panic_hook(panic_path.clone());
         let _ = std::thread::spawn(|| panic!("chain test")).join();
 

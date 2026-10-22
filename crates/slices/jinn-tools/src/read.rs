@@ -69,7 +69,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             Err(e) => {
                 return unprefixed_failure(
                     &call,
-                    format!("failed to read file '{}': {e}", resolved.display()),
+                    format!("failed to read file '{}': {e}", resolved),
                 );
             }
         };
@@ -233,7 +233,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use std::path::Path;
+    use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
     #[rstest::rstest]
     fn apply_offset_limit_no_offset_no_limit() {
@@ -297,11 +297,11 @@ mod tests {
 
     /// A context whose cwd is a real, existing scratch directory owned by the
     /// calling test.
-    fn test_ctx(cwd: &Path) -> crate::tool_types::ToolContext {
+    fn test_ctx(cwd: &MarkedPathBuf<Absolute>) -> crate::tool_types::ToolContext {
         crate::tool_types::ToolContext {
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
-            cwd: cwd.to_owned(),
+            cwd: cwd.clone(),
             timeout: None,
             state: None,
             session_id: None,
@@ -324,8 +324,11 @@ mod tests {
     #[tokio::test]
     async fn execute_reads_file_content() {
         // Given a temp file with known content.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("test.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("test.txt")
+            .expect("temp root joins a bare name");
         std::fs::write(&file_path, "file contents here").expect("write temp file");
 
         let call = ToolCall {
@@ -338,7 +341,7 @@ mod tests {
         };
 
         // When executing the read tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result contains the file contents.
         assert_eq!(result.tool_call_id.as_str(), "call_1");
@@ -355,7 +358,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_missing_file() {
         // Given a read call for a nonexistent file.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let call = ToolCall {
             id: "call_2".into(),
             name: "read".into(),
@@ -366,7 +369,7 @@ mod tests {
         };
 
         // When executing the read tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result indicates failure.
         assert_eq!(result.tool_call_id.as_str(), "call_2");
@@ -378,7 +381,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_bad_json() {
         // Given a read call with invalid JSON.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let call = ToolCall {
             id: "call_3".into(),
             name: "read".into(),
@@ -386,7 +389,7 @@ mod tests {
         };
 
         // When executing the read tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result indicates failure.
         assert!(!result.success);
@@ -397,12 +400,15 @@ mod tests {
     #[tokio::test]
     async fn execute_resolves_relative_path() {
         // Given a temp directory with a file.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("test.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("test.txt")
+            .expect("temp root joins a bare name");
         std::fs::write(&file_path, "relative content").expect("write temp file");
 
         let ctx = crate::tool_types::ToolContext {
-            cwd: dir.path().to_owned(),
+            cwd: dir.path.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
             timeout: None,
@@ -448,8 +454,11 @@ mod tests {
     #[tokio::test]
     async fn execute_with_offset_and_limit() {
         // Given a temp file with 5 lines.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("lines.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("lines.txt")
+            .expect("temp root joins a bare name");
         std::fs::write(&file_path, "a\nb\nc\nd\ne").expect("write temp file");
 
         let call = ToolCall {
@@ -464,7 +473,7 @@ mod tests {
         };
 
         // When executing with offset=2, limit=2.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then only lines 2-3 are returned.
         assert!(result.success);
@@ -483,13 +492,16 @@ mod tests {
     #[tokio::test]
     async fn execute_truncated_file_shows_correct_line_numbers_in_notice() {
         // Given a file with 10 lines and a small max_lines limit.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("big.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("big.txt")
+            .expect("temp root joins a bare name");
         let content: String = (1..=10).map(|i| format!("line {i}\n")).collect();
         std::fs::write(&file_path, &content).expect("write temp file");
 
         let ctx = ToolContext {
-            cwd: dir.path().to_owned(),
+            cwd: dir.path.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
             timeout: None,
@@ -533,13 +545,16 @@ mod tests {
     #[tokio::test]
     async fn execute_truncated_with_offset_shows_correct_start_line() {
         // Given a file with 10 lines.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("big2.txt");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("big2.txt")
+            .expect("temp root joins a bare name");
         let content: String = (1..=10).map(|i| format!("line {i}\n")).collect();
         std::fs::write(&file_path, &content).expect("write temp file");
 
         let ctx = ToolContext {
-            cwd: dir.path().to_owned(),
+            cwd: dir.path.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
             timeout: None,

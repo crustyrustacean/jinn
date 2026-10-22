@@ -275,8 +275,8 @@ fn reset_run_seeds_through_the_template_with_the_prior_report() {
 #[test]
 fn attendant_created_from_parent_links_and_defaults() {
     // Given a parent with environment values.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let project = dir.path().join("p");
+    let dir = jinn_testutil::tempdir();
+    let project = dir.path.join("p").expect("temp root joins a bare name");
     let mut parent = ChatSessionState::new();
     parent.set_project(Some(project.clone()));
 
@@ -287,7 +287,7 @@ fn attendant_created_from_parent_links_and_defaults() {
     // hands the user an attendant they have not finished writing.
     assert_eq!(attendant.origin(), SessionOrigin::Attendant);
     assert!(attendant.attendant_is_prepping());
-    assert_eq!(attendant.project(), Some(project.as_path()));
+    assert_eq!(attendant.project(), Some(&project));
     assert!(attendant.is_empty());
 }
 
@@ -928,9 +928,15 @@ async fn harness_with_session_actor() -> (jinn_testutil::bus_harness::TestHarnes
         services: {
             let mut services =
                 jinn_kernel::common::services::test_services::TestServices::builder()
-                    .paths(jinn_kernel::common::app_paths::AppPaths::new_in(
-                        std::path::Path::new(""),
-                    ))
+                    .paths({
+                        // AppPaths::new_in only joins names onto the root
+                        // (no filesystem access), so a transient tempdir
+                        // root is fine here.
+                        let root = jinn_testutil::tempdir();
+                        jinn_kernel::common::app_paths::AppPaths::new_in(
+                            &root.path.as_marked_path(),
+                        )
+                    })
                     .build();
             services.bus = harness.bus();
             services.trouper_system = harness.system().clone();

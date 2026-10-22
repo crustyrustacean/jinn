@@ -12,7 +12,7 @@ use jinn_core_types::ToolResultStatus;
 use jinn_core_types::{ChatEntry, ChatEntryKind, EntryTiming, SessionId};
 use jinn_session_state::ChatSessionState;
 use jinn_session_state::SessionStore;
-use tempfile::TempDir;
+use marked_path::{Absolute, MarkedPathAccess as _, MarkedPathBuf};
 
 /// Creates a minimal `ChatSessionState` for testing.
 fn make_session(id: &SessionId, title: &str) -> ChatSessionState {
@@ -23,9 +23,9 @@ fn make_session(id: &SessionId, title: &str) -> ChatSessionState {
     session
 }
 
-async fn make_store() -> (TempDir, SqliteSessionStore) {
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
+async fn make_store() -> (jinn_testutil::JinnTempDir, SqliteSessionStore) {
+    let dir = jinn_testutil::tempdir();
+    let store = SqliteSessionStore::new_in(&dir.path).await.expect("store");
     (dir, store)
 }
 
@@ -83,7 +83,7 @@ async fn degraded_token_expanded_survives_save_and_reload() {
     if let jinn_core_types::ChatEntryKind::User { outcome, .. } = &mut entry.kind {
         outcome.degraded.push(jinn_core_types::ResolvedToken {
             raw: "/nonexistent/whatever".to_owned(),
-            abs: std::path::PathBuf::from("/nonexistent/whatever"),
+            abs: MarkedPathBuf::<Absolute>::new("/nonexistent/whatever").expect("absolute literal"),
         });
     }
     session.push_entry(entry);
@@ -128,11 +128,11 @@ async fn attachment_outcome_survives_save_and_reload() {
     if let ChatEntryKind::User { outcome, .. } = &mut entry.kind {
         outcome.attached.push(jinn_core_types::ResolvedToken {
             raw: "real.png".to_owned(),
-            abs: std::path::PathBuf::from("/abs/real.png"),
+            abs: MarkedPathBuf::<Absolute>::new("/abs/real.png").expect("absolute literal"),
         });
         outcome.degraded.push(jinn_core_types::ResolvedToken {
             raw: "whatever".to_owned(),
-            abs: std::path::PathBuf::from("/abs/whatever"),
+            abs: MarkedPathBuf::<Absolute>::new("/abs/whatever").expect("absolute literal"),
         });
     }
     session.push_entry(entry);
@@ -481,8 +481,11 @@ async fn load_summaries_returns_empty_when_no_sessions() {
 #[tokio::test]
 async fn save_creates_directory() {
     // Given a SqliteSessionStore pointed at a non-existent directory.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let nested = dir.path().join("does").join("not").join("exist");
+    let dir = jinn_testutil::tempdir();
+    let nested = dir
+        .path
+        .join_all(["does", "not", "exist"])
+        .expect("temp root joins bare names");
     let store = SqliteSessionStore::new_in(&nested).await.expect("store");
     let session = make_session(&SessionId::new(), "Mkdir Test");
 
@@ -870,7 +873,12 @@ async fn token_ledger_round_trips_prompt_and_cached_tokens() {
 }
 
 /// A store holding a source session and a fork of it, which share entries.
-async fn store_with_fork() -> (tempfile::TempDir, SqliteSessionStore, SessionId, SessionId) {
+async fn store_with_fork() -> (
+    jinn_testutil::JinnTempDir,
+    SqliteSessionStore,
+    SessionId,
+    SessionId,
+) {
     let (dir, store) = make_store().await;
     let source_id = SessionId::new();
     let mut source = ChatSessionState::new();
@@ -929,7 +937,10 @@ async fn cwd_round_trips_through_save_and_load() {
     session.set_session_id(session_id.clone());
     session.set_title("CWD Test".to_owned());
     session.push_entry(ChatEntry::user("hello"));
-    let expected = dir.path().join("my-project");
+    let expected = dir
+        .path
+        .join("my-project")
+        .expect("temp root joins a bare name");
     session.set_cwd(expected.clone());
 
     // When saving and loading.
@@ -941,7 +952,7 @@ async fn cwd_round_trips_through_save_and_load() {
         .expect("should exist");
 
     // Then the cwd is preserved.
-    assert_eq!(loaded.cwd(), expected.as_path());
+    assert_eq!(loaded.cwd(), &expected);
 }
 
 #[rstest::rstest]
@@ -954,7 +965,10 @@ async fn fork_inherits_cwd_from_source() {
     source.set_session_id(source_id.clone());
     source.set_title("Original".to_owned());
     source.push_entry(ChatEntry::user("hello"));
-    let expected = dir.path().join("user/project");
+    let expected = dir
+        .path
+        .join("user/project")
+        .expect("temp root joins a bare name");
     source.set_cwd(expected.clone());
     store
         .save(&source.capture_snapshot())
@@ -970,7 +984,7 @@ async fn fork_inherits_cwd_from_source() {
         .await
         .expect("load forked")
         .expect("should exist");
-    assert_eq!(forked.cwd(), expected.as_path());
+    assert_eq!(forked.cwd(), &expected);
 }
 
 #[rstest::rstest]
@@ -1070,7 +1084,10 @@ async fn project_round_trips_through_save_and_load() {
     session.set_session_id(session_id.clone());
     session.set_title("Project Test".to_owned());
     session.push_entry(ChatEntry::user("hello"));
-    let expected = dir.path().join("user/projects/jinn");
+    let expected = dir
+        .path
+        .join("user/projects/jinn")
+        .expect("temp root joins a bare name");
     session.set_project(Some(expected.clone()));
 
     // When saving and loading.
@@ -1082,7 +1099,7 @@ async fn project_round_trips_through_save_and_load() {
         .expect("should exist");
 
     // Then the project is preserved.
-    assert_eq!(loaded.project(), Some(expected.as_path()));
+    assert_eq!(loaded.project(), Some(&expected));
 }
 
 #[rstest::rstest]
@@ -1116,7 +1133,10 @@ async fn fork_inherits_project_from_source() {
     source.set_session_id(source_id.clone());
     source.set_title("Original".to_owned());
     source.push_entry(ChatEntry::user("hello"));
-    let expected = dir.path().join("user/projects/jinn");
+    let expected = dir
+        .path
+        .join("user/projects/jinn")
+        .expect("temp root joins a bare name");
     source.set_project(Some(expected.clone()));
     store
         .save(&source.capture_snapshot())
@@ -1132,24 +1152,30 @@ async fn fork_inherits_project_from_source() {
         .await
         .expect("load forked")
         .expect("should exist");
-    assert_eq!(forked.project(), Some(expected.as_path()));
+    assert_eq!(forked.project(), Some(&expected));
 }
 
 #[rstest::rstest]
 #[tokio::test]
 async fn set_cwd_does_not_alter_project() {
     // Given a session with a project stamp.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let project = dir.path().join("user/projects/jinn");
+    let dir = jinn_testutil::tempdir();
+    let project = dir
+        .path
+        .join("user/projects/jinn")
+        .expect("temp root joins a bare name");
     let mut session = ChatSessionState::new();
     session.set_project(Some(project.clone()));
 
     // When changing the session's cwd.
-    let elsewhere = dir.path().join("somewhere/else/entirely");
+    let elsewhere = dir
+        .path
+        .join("somewhere/else/entirely")
+        .expect("temp root joins a bare name");
     session.set_cwd(elsewhere);
 
     // Then the project stamp is unchanged.
-    assert_eq!(session.project(), Some(project.as_path()));
+    assert_eq!(session.project(), Some(&project));
 }
 
 #[rstest::rstest]
@@ -1162,7 +1188,10 @@ async fn summary_from_store_carries_project() {
     session.set_session_id(session_id.clone());
     session.set_title("Summary Project".to_owned());
     session.push_entry(ChatEntry::user("hello"));
-    let project = dir.path().join("user/projects/jinn");
+    let project = dir
+        .path
+        .join("user/projects/jinn")
+        .expect("temp root joins a bare name");
     session.set_project(Some(project.clone()));
     store.save(&session.capture_snapshot()).await.expect("save");
 
@@ -1184,14 +1213,14 @@ async fn save_updates_cwd_on_existing_session() {
     session.set_session_id(session_id.clone());
     session.set_title("CWD Update".to_owned());
     session.push_entry(ChatEntry::user("hello"));
-    session.set_cwd(std::path::PathBuf::from("/old/path"));
+    session.set_cwd(MarkedPathBuf::<Absolute>::new("/old/path").expect("absolute literal"));
     store
         .save(&session.capture_snapshot())
         .await
         .expect("save v1");
 
     // When saving with an updated cwd.
-    session.set_cwd(std::path::PathBuf::from("/new/path"));
+    session.set_cwd(MarkedPathBuf::<Absolute>::new("/new/path").expect("absolute literal"));
     store
         .save(&session.capture_snapshot())
         .await
@@ -1203,7 +1232,10 @@ async fn save_updates_cwd_on_existing_session() {
         .await
         .expect("load")
         .expect("should exist");
-    assert_eq!(loaded.cwd(), std::path::Path::new("/new/path"));
+    assert_eq!(
+        loaded.cwd(),
+        &MarkedPathBuf::<Absolute>::new("/new/path").expect("absolute literal")
+    );
 }
 
 #[rstest::rstest]
@@ -1677,8 +1709,11 @@ fn legacy_automated_blob() -> String {
 #[tokio::test]
 async fn legacy_automated_row_loads_as_normal_session() {
     // Given a database holding a session row flagged is_automated = 1.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let db_path = dir.path().join("sessions.db");
+    let dir = jinn_testutil::tempdir();
+    let db_path = dir
+        .path
+        .join("sessions.db")
+        .expect("temp root joins a bare name");
     seed_at_version(db_path.to_string_lossy().as_ref(), 18, |conn| {
         conn.execute(
             "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, \
@@ -1691,7 +1726,7 @@ async fn legacy_automated_row_loads_as_normal_session() {
     .await;
 
     // When loading the session through the store.
-    let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
+    let store = SqliteSessionStore::new_in(&dir.path).await.expect("store");
     let loaded = store
         .load_session(&SessionId::try_from_string("10000000-0000-0000-0000-000000000099").unwrap())
         .await
@@ -1715,8 +1750,11 @@ async fn legacy_automated_row_loads_as_normal_session() {
 async fn legacy_065_blob_loads_after_v19() {
     // Given a 0.65 database (recorded at v18) with a legacy-shape metadata blob.
     // v19 has not yet run, so profile.model is still a bare string.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let db_path = dir.path().join("sessions.db");
+    let dir = jinn_testutil::tempdir();
+    let db_path = dir
+        .path
+        .join("sessions.db")
+        .expect("temp root joins a bare name");
     seed_at_version(db_path.to_string_lossy().as_ref(), 18, |conn| {
         conn.execute(
             "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, \
@@ -1730,7 +1768,7 @@ async fn legacy_065_blob_loads_after_v19() {
 
     // When loading the session through the store.
     // (The store re-runs migrations on open; v19 repairs the blob, v20 drops zombies.)
-    let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
+    let store = SqliteSessionStore::new_in(&dir.path).await.expect("store");
     let loaded = store
         .load_session(&SessionId::try_from_string("10000000-0000-0000-0000-000000000065").unwrap())
         .await
@@ -1755,8 +1793,11 @@ const CURRENT_066_BLOB: &str = "{\"session_id\":\"10000000-0000-0000-0000-000000
 #[tokio::test]
 async fn current_066_blob_loads_unchanged() {
     // Given a fresh database with a 0.66-shape blob inserted directly.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let db_path = dir.path().join("sessions.db");
+    let dir = jinn_testutil::tempdir();
+    let db_path = dir
+        .path
+        .join("sessions.db")
+        .expect("temp root joins a bare name");
     seed_at_version(db_path.to_string_lossy().as_ref(), 18, |conn| {
         conn.execute(
             "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, \
@@ -1769,7 +1810,7 @@ async fn current_066_blob_loads_unchanged() {
     .await;
 
     // When loading the session through the store.
-    let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
+    let store = SqliteSessionStore::new_in(&dir.path).await.expect("store");
     let loaded = store
         .load_session(&SessionId::try_from_string("10000000-0000-0000-0000-000000000066").unwrap())
         .await
@@ -1795,9 +1836,14 @@ fn metadata_blob_is_unchanged_by_group_composition() {
     session.restore_updated_at(timestamp);
     session.restore_created_at(timestamp);
     session.set_title("Lifecycle title".to_owned());
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    session.set_cwd(std::path::PathBuf::from("/workspace/project"));
-    session.set_home(dir.path().join("home/developer"));
+    let dir = jinn_testutil::tempdir();
+    session
+        .set_cwd(MarkedPathBuf::<Absolute>::new("/workspace/project").expect("absolute literal"));
+    session.set_home(
+        dir.path
+            .join("home/developer")
+            .expect("temp root joins a bare name"),
+    );
     session.set_lifecycle_name(Some("dev".to_owned()));
     session.set_lifecycle_args(jinn_session_state::fields::LifecycleArgs::from_pairs([(
         "$1", "--fast",
@@ -1824,7 +1870,7 @@ fn metadata_blob_is_unchanged_by_group_composition() {
             r#""title":"Lifecycle title","updated_at":"2024-01-01T00:00:00Z","#,
             r#""created_at":"2024-01-01T00:00:00Z","profile":{"model":{"single":"__no_provider__"},"#,
             r#""persona_name":"coding-assistant","#,
-            r#""reasoning_effort":null},"cwd":"/workspace/project","#,
+            r#""reasoning_effort":null},"cwd":{"path":"/workspace/project","marker":"absolute"},"#,
             r#""parent_session":null,"fork_ordinal":null,"origin":"user","project":null,"#,
             r#""blobs":{},"lifecycle_name":"dev","lifecycle_args":[["$1","--fast"]],"#,
             r#""lifecycle_script_state":"setup_ran","task_list":{"phases":[]},"#,
@@ -1844,8 +1890,11 @@ fn metadata_blob_is_unchanged_by_group_composition() {
 async fn legacy_pre_v8_row_loads_after_v20_backfill() {
     // Given a fresh database at v18 with a session row whose metadata is NULL
     // (pre-v8 shape). The profile column carries the post-v17 form.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let db_path = dir.path().join("sessions.db");
+    let dir = jinn_testutil::tempdir();
+    let db_path = dir
+        .path
+        .join("sessions.db")
+        .expect("temp root joins a bare name");
     seed_at_version(db_path.to_string_lossy().as_ref(), 18, |conn| {
         conn.execute(
             "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, \
@@ -1858,7 +1907,7 @@ async fn legacy_pre_v8_row_loads_after_v20_backfill() {
     .await;
 
     // When loading the session through the store (which runs v19 + v20 on open).
-    let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
+    let store = SqliteSessionStore::new_in(&dir.path).await.expect("store");
     let loaded = store
         .load_session(&SessionId::try_from_string("10000000-0000-0000-0000-000000000008").unwrap())
         .await
@@ -1893,7 +1942,10 @@ async fn sessions_table_has_exactly_nine_columns() {
     store.save(&session.capture_snapshot()).await.expect("save");
 
     // When listing the sessions table columns.
-    let db_path = dir.path().join("sessions.db");
+    let db_path = dir
+        .path
+        .join("sessions.db")
+        .expect("temp root joins a bare name");
     let pool = daow::Pool::open(db_path.to_string_lossy().as_ref()).expect("open");
     let cols: Vec<ColumnRow> = pool
         .query_all::<ColumnRow>("PRAGMA table_info(sessions)", vec![])
@@ -1966,7 +2018,10 @@ async fn user_entry_with_image_attachment_roundtrips_through_sqlite() {
     // Given a session with a user entry referencing a PNG on disk via @path.
     let (dir, store) = make_store().await;
     let session_id = SessionId::new();
-    let png_path = dir.path().join("img.png");
+    let png_path = dir
+        .path
+        .join("img.png")
+        .expect("temp root joins a bare name");
     std::fs::write(&png_path, TINY_PNG).expect("write png");
     let display = format!("describe this @{}", png_path.to_string_lossy());
     let expanded = format!("describe this (file://{})", png_path.to_string_lossy());
@@ -2120,7 +2175,10 @@ fn legacy_flat_lifecycle_blob_loads_after_group_composition() {
 
     // Then every persisted lifecycle value is restored into snapshot metadata.
     assert_eq!(metadata.title.as_deref(), Some("Legacy lifecycle"));
-    assert_eq!(metadata.cwd, std::path::Path::new("/legacy/project"));
+    assert_eq!(
+        metadata.cwd,
+        MarkedPathBuf::<Absolute>::new("/legacy/project").expect("absolute literal")
+    );
     assert_eq!(metadata.lifecycle_name.as_deref(), Some("release"));
     assert_eq!(
         metadata.lifecycle_args.as_pairs(),
@@ -2166,9 +2224,13 @@ async fn legacy_blob_without_origin_loads_as_user() {
 #[tokio::test]
 async fn legacy_blob_without_project_defaults_to_none() {
     // Given a project-stamped session serialized to the persisted blob shape.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let mut session = ChatSessionState::new();
-    session.set_project(Some(dir.path().join("user/projects/jinn")));
+    session.set_project(Some(
+        dir.path
+            .join("user/projects/jinn")
+            .expect("temp root joins a bare name"),
+    ));
     let blob = serde_json::to_string(&crate::sqlite::PersistableCore::from(
         &session.capture_snapshot().metadata,
     ))
@@ -2471,25 +2533,31 @@ fn make_two_entry_session(id: &SessionId, title: &str) -> ChatSessionState {
 ///
 /// Store tests only exercise the store layer; batch isolation and progress
 /// reporting belong to the actor and are covered there.
-async fn drain(
-    store: &SqliteSessionStore,
-) -> Result<usize, error_stack::Report<jinn_session_state::SessionStoreError>> {
+async fn drain(store: &SqliteSessionStore) -> usize {
     // Oversized chunks: store tests exercise single-shot rebuilds; chunked
     // resume semantics belong to the actor tests. Repeats while partial
     // chunks remain, counting sessions that reached their final chunk.
+    // Test helper: failures abort the test immediately via expect.
     let mut reindexed = 0;
     for _ in 0..100 {
-        let ids = store.dirty_session_ids().await?;
+        let ids = store
+            .dirty_session_ids()
+            .await
+            .expect("dirty session ids read");
         if ids.is_empty() {
             break;
         }
         for id in &ids {
-            if store.reindex_session_chunk(id, 10_000).await? {
+            if store
+                .reindex_session_chunk(id, 10_000)
+                .await
+                .expect("reindex chunk")
+            {
                 reindexed += 1;
             }
         }
     }
-    Ok(reindexed)
+    reindexed
 }
 
 #[rstest::rstest]
@@ -2504,7 +2572,7 @@ async fn save_marks_session_dirty_and_reindex_indexes_it() {
         .expect("save");
 
     // When reindexing the dirty set and searching for the needle.
-    let reindexed = drain(&store).await.expect("reindex");
+    let reindexed = drain(&store).await;
     let outcome = store
         .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
@@ -2522,7 +2590,7 @@ async fn save_marks_session_dirty_and_reindex_indexes_it() {
     assert_eq!(outcome.total_matches, 2);
     assert_eq!(outcome.hits.len(), 2);
     // And the marker is cleared: a second drain finds nothing to do.
-    let second = drain(&store).await.expect("reindex 2");
+    let second = drain(&store).await;
     assert_eq!(second, 0);
 }
 
@@ -2540,7 +2608,7 @@ async fn reindex_honors_default_field_visibility_via_roles() {
         ToolResultStatus::Success,
     ));
     store.save(&session.capture_snapshot()).await.expect("save");
-    drain(&store).await.expect("reindex");
+    drain(&store).await;
 
     // When searching without a role filter.
     let all = store
@@ -2554,7 +2622,7 @@ async fn reindex_honors_default_field_visibility_via_roles() {
         })
         .await
         .expect("search");
-    drain(&store).await.expect("reindex");
+    drain(&store).await;
     let tool_only = store
         .search(crate::session_search::SearchParams {
             query: "needle".to_owned(),
@@ -2584,11 +2652,11 @@ async fn reindex_clears_rows_of_deleted_sessions() {
         .save(&make_two_entry_session(&session_id, "doomed").capture_snapshot())
         .await
         .expect("save");
-    drain(&store).await.expect("reindex");
+    drain(&store).await;
 
     // When deleting the session, marking it dirty, and reindexing.
     store.delete(&session_id).await.expect("delete");
-    let reindexed = drain(&store).await.expect("reindex");
+    let reindexed = drain(&store).await;
 
     // Then the deletion marked it dirty, and its rows are gone.
     assert_eq!(reindexed, 1);
@@ -2621,7 +2689,7 @@ async fn search_reports_per_session_rollup() {
         .save(&make_two_entry_session(&b, "beta").capture_snapshot())
         .await
         .expect("save b");
-    drain(&store).await.expect("reindex");
+    drain(&store).await;
 
     // When searching without scope restriction.
     let outcome = store
@@ -2655,7 +2723,7 @@ async fn search_limits_hits_but_reports_full_totals() {
         .save(&make_two_entry_session(&session_id, "capped").capture_snapshot())
         .await
         .expect("save");
-    drain(&store).await.expect("reindex");
+    drain(&store).await;
 
     // When searching with a limit of 1.
     let outcome = store
@@ -2691,7 +2759,7 @@ async fn search_filters_by_session_ids() {
         .save(&make_two_entry_session(&b, "beta").capture_snapshot())
         .await
         .expect("save b");
-    drain(&store).await.expect("reindex");
+    drain(&store).await;
 
     // When searching restricted to session b.
     let outcome = store
@@ -2721,7 +2789,7 @@ async fn search_surfaces_fts_syntax_errors_verbatim() {
         .save(&make_two_entry_session(&session_id, "syntax").capture_snapshot())
         .await
         .expect("save");
-    drain(&store).await.expect("reindex");
+    drain(&store).await;
 
     // When running a syntactically invalid MATCH query.
     let result = store
@@ -2754,7 +2822,7 @@ async fn search_dates_filter_on_entry_timestamps() {
         .save(&make_two_entry_session(&session_id, "dated").capture_snapshot())
         .await
         .expect("save");
-    drain(&store).await.expect("reindex");
+    drain(&store).await;
 
     let until_long_ago = jiff::Timestamp::now() - jiff::Span::new().hours(25);
 
@@ -2786,7 +2854,7 @@ async fn search_snippets_are_single_line_with_match_markers() {
     session.set_title("snippets".to_owned());
     session.push_entry(ChatEntry::assistant("first line\nneedle on its\nown line"));
     store.save(&session.capture_snapshot()).await.expect("save");
-    drain(&store).await.expect("reindex");
+    drain(&store).await;
 
     // When searching for the needle.
     let outcome = store
@@ -2829,7 +2897,7 @@ async fn search_flags_ignored_entries_as_excluded() {
             .with_context_override(jinn_core_types::ContextOverride::ForcedExclude),
     );
     store.save(&session.capture_snapshot()).await.expect("save");
-    drain(&store).await.expect("reindex");
+    drain(&store).await;
 
     // When searching.
     let outcome = store
@@ -2868,7 +2936,7 @@ async fn search_does_not_flag_pinned_entries_as_excluded() {
     session
         .push_entry(ChatEntry::user("pinned needle").with_pin(jinn_core_types::PinPosition::Top));
     store.save(&session.capture_snapshot()).await.expect("save");
-    drain(&store).await.expect("reindex");
+    drain(&store).await;
 
     // When searching.
     let outcome = store
@@ -3077,7 +3145,7 @@ async fn pending_dirty_count_tracks_markers() {
 
     // When reading the pending count before and after a drain.
     let before = store.pending_dirty_count().await.expect("count");
-    drain(&store).await.expect("drain");
+    drain(&store).await;
     let after = store.pending_dirty_count().await.expect("count");
 
     // Then the save left one pending session and the drain cleared it.
@@ -3134,7 +3202,8 @@ async fn pending_dirty_count_includes_unparseable_marker() {
     assert_eq!(count, 1);
 }
 /// A store holding a saved six-entry session, each entry mentioning "needle".
-async fn store_with_six_needle_entries() -> (tempfile::TempDir, SqliteSessionStore, SessionId) {
+async fn store_with_six_needle_entries()
+-> (jinn_testutil::JinnTempDir, SqliteSessionStore, SessionId) {
     let (dir, store) = make_store().await;
     let id = SessionId::new();
     let mut session = ChatSessionState::new();
@@ -3240,7 +3309,7 @@ async fn reindex_maps_every_fts_row_in_the_rowid_side_table() {
         .save(&make_two_entry_session(&session_id, "mapped").capture_snapshot())
         .await
         .expect("save");
-    drain(&store).await.expect("reindex");
+    drain(&store).await;
 
     // When counting FTS rows and map rows for the session.
     let (fts_count, map_count) = fts_and_map_counts(store.pool(), &session_id.to_string()).await;
@@ -3261,7 +3330,7 @@ async fn reindexed_rebuild_replaces_rows_via_rowid_map() {
     let session_id = SessionId::new();
     let session = make_two_entry_session(&session_id, "rebuild");
     store.save(&session.capture_snapshot()).await.expect("save");
-    drain(&store).await.expect("initial reindex");
+    drain(&store).await;
     let (initial_fts, initial_map) =
         fts_and_map_counts(store.pool(), &session_id.to_string()).await;
 
@@ -3271,7 +3340,7 @@ async fn reindexed_rebuild_replaces_rows_via_rowid_map() {
         .save(&session.capture_snapshot())
         .await
         .expect("save again");
-    drain(&store).await.expect("rebuild reindex");
+    drain(&store).await;
 
     // Then no old row survives the rebuild — every pre-rebuild FTS rowid was
     // deleted, not re-inserted on top of — and the map is consistent.
@@ -3322,7 +3391,7 @@ async fn reindex_of_never_indexed_session_skips_delete_with_empty_map() {
     // Save the session first so the marker exists with entries attached,
     // then clear its FTS presence to simulate a never-indexed session.
     store.save(&session.capture_snapshot()).await.expect("save");
-    drain(&store).await.expect("reindex");
+    drain(&store).await;
     store
         .pool()
         .with_conn({

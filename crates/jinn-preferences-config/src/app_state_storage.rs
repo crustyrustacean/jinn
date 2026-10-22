@@ -4,13 +4,13 @@
 //! application runtime state. [`FilesystemAppStateStorage`] is the production
 //! implementation; [`InMemoryAppStateStorage`] is for testing.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use error_stack::{Report, ResultExt as _};
 use parking_lot::RwLock;
 
 use crate::app_state_file::{AppStateFile, AppStateFileError};
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// Trait for app state I/O.
 ///
@@ -46,19 +46,19 @@ pub trait AppStateStorage: Send + Sync + 'static {
 /// Reads from and writes to `state.toml` at a configurable path.
 pub struct FilesystemAppStateStorage {
     /// Path to the state file.
-    path: PathBuf,
+    path: MarkedPathBuf<Absolute>,
 }
 
 impl FilesystemAppStateStorage {
     /// Creates a storage backed by an explicit path.
     #[must_use]
-    pub fn new(path: PathBuf) -> Self {
+    pub fn new(path: MarkedPathBuf<Absolute>) -> Self {
         Self { path }
     }
 
     /// Returns the filesystem path this storage reads from and writes to.
     #[must_use]
-    pub fn path(&self) -> &std::path::Path {
+    pub fn path(&self) -> &MarkedPathBuf<Absolute> {
         &self.path
     }
 }
@@ -224,6 +224,7 @@ mod tests {
     use super::*;
 
     use jinn_core_types::model_selection::ModelSelection;
+    use marked_path::MarkedPathAccess;
 
     #[rstest::rstest]
     fn in_memory_load_returns_default_when_empty() {
@@ -264,8 +265,11 @@ mod tests {
     #[rstest::rstest]
     fn filesystem_load_returns_default_when_missing() {
         // Given a temp directory with no file.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("state.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("state.toml")
+            .expect("temp root joins a bare name");
         let storage = FilesystemAppStateStorage::new(path.clone());
 
         assert!(!path.exists());
@@ -284,8 +288,11 @@ mod tests {
     #[rstest::rstest]
     fn filesystem_save_then_load_round_trips() {
         // Given a FilesystemAppStateStorage in a temp dir.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("state.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("state.toml")
+            .expect("temp root joins a bare name");
         let storage = FilesystemAppStateStorage::new(path);
 
         let state = AppStateFile {

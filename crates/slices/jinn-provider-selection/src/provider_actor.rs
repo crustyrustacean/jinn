@@ -658,6 +658,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+    use marked_path::MarkedPathAccess;
 
     use std::collections::BTreeMap;
 

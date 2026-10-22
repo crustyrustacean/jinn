@@ -362,7 +362,7 @@ async fn drain_loop(
                     Ok(Some(channel_id)) => {
                         let msg = match &error {
                             Some(e) => format!("❌ Setup failed: {e}"),
-                            None => format!("✅ Setup complete ({})", cwd.display()),
+                            None => format!("✅ Setup complete ({cwd})"),
                         };
                         if let Err(e) = post_message(&http, channel_id, &msg).await {
                             tracing::warn!(error = ?e, "failed to post setup result");

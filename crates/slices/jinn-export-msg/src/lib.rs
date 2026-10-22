@@ -12,8 +12,7 @@
 
 pub use jinn_core_types::SessionId;
 
-use std::path::PathBuf;
-
+use marked_path::{Absolute, MarkedPathBuf};
 use serde::{Deserialize, Serialize};
 
 /// Ask the export slice to write a session to a file.
@@ -34,7 +33,7 @@ pub struct ExportSessionToFile {
     /// The session to export.
     pub session_id: SessionId,
     /// Destination path, as typed. Empty means "pick a default filename".
-    pub path: PathBuf,
+    pub path: MarkedPathBuf<Absolute>,
 }
 
 impl jinn_slices::BusMessage for ExportSessionToFile {}
@@ -51,7 +50,7 @@ pub struct ExportCompleted {
     /// The session that was exported.
     pub session_id: SessionId,
     /// The path the document was written to.
-    pub path: PathBuf,
+    pub path: MarkedPathBuf<Absolute>,
 }
 
 impl jinn_slices::BusMessage for ExportCompleted {}
@@ -66,8 +65,11 @@ mod tests {
     #[test]
     fn roundtrips_through_json() {
         // Given a command naming a session and a destination path.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let expected = dir.path().join("out.html");
+        let dir = jinn_testutil::tempdir();
+        let expected = dir
+            .path
+            .join("out.html")
+            .expect("temp root joins a bare name");
         let session_id = SessionId::new();
         let cmd = ExportSessionToFile {
             session_id: session_id.clone(),
@@ -89,7 +91,7 @@ mod tests {
         // Given a JSON payload shaped like a bridge relay's deserialized body.
         let payload = serde_json::json!({
             "session_id": "01933dc5-2b14-7e21-8f52-3d1d8f4e7f9a",
-            "path": "notes/session.md"
+            "path": "/tmp/notes/session.md"
         });
 
         // When deserializing into the command.
@@ -100,7 +102,10 @@ mod tests {
             msg.session_id.to_string(),
             "01933dc5-2b14-7e21-8f52-3d1d8f4e7f9a"
         );
-        assert_eq!(msg.path, PathBuf::from("notes/session.md"));
+        assert_eq!(
+            msg.path,
+            MarkedPathBuf::<Absolute>::new("/tmp/notes/session.md").expect("absolute literal")
+        );
     }
 
     #[rstest::rstest]

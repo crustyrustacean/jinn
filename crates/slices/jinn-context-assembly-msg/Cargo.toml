@@ -5,6 +5,7 @@ edition.workspace = true
 description = "Context-assembly commands, events, and shared input vocabulary."
 
 [dependencies]
+marked-path = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-context = { workspace = true }
 jinn-skills-msg = { workspace = true }

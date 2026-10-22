@@ -8,8 +8,6 @@
     reason = "test code"
 )]
 
-use std::path::Path;
-
 use crate::sections::sessions::preview::{
     DEFAULT_TOOL_ENTRY_MAX_LINES, render_session_preview, render_session_preview_loading,
     session_preview_popup_rect,
@@ -23,6 +21,7 @@ use jinn_session_state::ChatSessionState;
 use jinn_testutil::{buffer_row, setup_term};
 use jinn_theme::default_theme;
 use jinn_tools_msg::{PhaseInput, TaskStatus};
+use marked_path::{Absolute, MarkedPathBuf};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::text::Line;
@@ -48,10 +47,11 @@ fn make_session_with_title(title: &str) -> ChatSessionState {
 /// outside home there — it is on Unix. A path rooted at the filesystem root
 /// is outside home everywhere. The directory need not exist: these tests
 /// render a path string, they do not touch the filesystem.
-fn path_outside_home(name: &str) -> std::path::PathBuf {
-    std::path::Path::new(std::path::MAIN_SEPARATOR_STR)
+fn path_outside_home(name: &str) -> MarkedPathBuf<Absolute> {
+    MarkedPathBuf::<Absolute>::new(std::path::MAIN_SEPARATOR_STR)
+        .expect("root separator is absolute")
         .join(name)
-        .to_path_buf()
+        .expect("root joins a bare name")
 }
 
 /// A session whose trailing entries render to more lines than the budget allows.
@@ -447,7 +447,7 @@ fn cwd_shows_on_its_own_row_above_the_info_row() {
 
     // Then the cwd sits on the row directly above the info row, and the info
     // row carries the model — two rows, not one combined line.
-    let cwd_label = cwd.display().to_string();
+    let cwd_label = cwd.to_string();
     let cwd_y = popup_area.y + popup_area.height - 3;
     let cwd_row = buffer_row(&buffer, cwd_y, popup_area.x + popup_area.width);
     assert!(
@@ -471,7 +471,11 @@ fn cwd_shortens_a_home_relative_path_with_a_tilde() {
     // Given a session whose cwd is under the user's home directory.
     let mut session = ChatSessionState::new();
     let home = dirs::home_dir().expect("home dir exists");
-    session.set_cwd(home.join("projects").join("my-app"));
+    let home = MarkedPathBuf::<Absolute>::new(home).expect("home dir is absolute");
+    session.set_cwd(
+        home.join_all(["projects", "my-app"])
+            .expect("home joins bare names"),
+    );
 
     // When rendering the preview.
     let (buffer, popup_area) = render_preview(&session, 80, 40);
@@ -482,7 +486,7 @@ fn cwd_shortens_a_home_relative_path_with_a_tilde() {
     // the expected label is built component-wise.
     let cwd_y = popup_area.y + popup_area.height - 3;
     let cwd_row = buffer_row(&buffer, cwd_y, popup_area.x + popup_area.width);
-    let expected = Path::new("~")
+    let expected = std::path::Path::new("~")
         .join("projects")
         .join("my-app")
         .display()
@@ -1263,7 +1267,7 @@ mod loading_state {
         // Then the loading footer already carries the shared status line — the
         // cwd row shows the session's own directory — because loading and ready
         // share one inner renderer, so the footer never flickers.
-        let cwd_label = cwd.display().to_string();
+        let cwd_label = cwd.to_string();
         let cwd_y = popup_area.y + popup_area.height - 3;
         let cwd_row = buffer_row(&buffer, cwd_y, popup_area.x + popup_area.width);
         assert!(

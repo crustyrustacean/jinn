@@ -112,10 +112,18 @@ pub async fn new(ctx: BotContext<'_>) -> Result<(), BotError> {
         // new session's starting CWD and project stamp (same convention as the
         // project picker). Without this the handler falls back to inheriting
         // the currently-active session's CWD, which is unrelated to the pick.
+        // The schema field is the user-editable TOML form; expand and
+        // validate it into the typed value the kernel state carries.
+        let expanded = match chosen.path.strip_prefix("~") {
+            Ok(rest) => dirs::home_dir().expect("home dir exists").join(rest),
+            Err(_) => chosen.path.clone(),
+        };
+        let typed = marked_path::MarkedPathBuf::<marked_path::Absolute>::new(expanded)
+            .expect("configured project path is absolute or ~-prefixed");
         state.frontend.pending_creation =
             Some(jinn_kernel::state::frontend_state::PendingSessionCreation {
-                project_dir: chosen.path.clone(),
-                starting_cwd: chosen.path.clone(),
+                project_dir: typed.clone(),
+                starting_cwd: typed,
             });
         let result = jinn_kernel::session_lifecycle::intent::handle_session_lifecycle_setup(
             &mut state,

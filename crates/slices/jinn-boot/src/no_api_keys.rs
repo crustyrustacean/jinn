@@ -8,9 +8,7 @@ use jinn_kernel::protocol::ChatEntry;
 /// whose comments document the available environment variables. Built as a
 /// transient entry so it is excluded from LLM context.
 pub fn no_api_keys_msg() -> ChatEntry {
-    let config_path = jinn_provider_config::config_path()
-        .to_string_lossy()
-        .into_owned();
+    let config_path = jinn_provider_config::config_path().to_string();
 
     let content = format!(
         "\

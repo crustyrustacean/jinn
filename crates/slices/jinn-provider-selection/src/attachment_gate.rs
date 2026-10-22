@@ -85,8 +85,8 @@ pub fn evaluate_attachment_gate(
     entry: &ChatEntry,
 ) -> Option<ChatEntry> {
     let models_dev = ModelsDevData::load(
-        services.paths.models_dev_user_path().as_path(),
-        services.paths.models_dev_system_path().as_path(),
+        &services.paths.models_dev_user_path(),
+        &services.paths.models_dev_system_path(),
     );
     let (model_id, model_cache) = {
         let guard = state.read();

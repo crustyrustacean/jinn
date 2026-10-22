@@ -66,7 +66,7 @@ pub fn handle_new_attendant(state: &mut AppState, config: &ConfigLayer) -> Inten
     };
 
     let attendant_id = attendant.session_id().clone();
-    let attendant_cwd = attendant.cwd().to_path_buf();
+    let attendant_cwd = attendant.cwd().clone();
     state.session.insert(attendant);
     state.session.set_active(attendant_id.clone());
     state.frontend.scope_clear_overlays();

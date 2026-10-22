@@ -32,6 +32,7 @@ use crate::app::AppError;
 use crate::app::seed_config_template;
 use crate::config_path::config_init_target;
 use crate::config_path::resolve_config_path;
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
 /// The services a run is constructed from, before any actor exists.
 ///
@@ -182,10 +183,10 @@ fn run_recovery_subcommand(cli: &jinn_cli::cli::Cli) -> Result<Option<Prepared>,
                 let force = *force;
                 match init_default_config_to(&path, force) {
                     Ok(InitOutcome::Created) => {
-                        println!("Created {}", path.display());
+                        println!("Created {path}");
                     }
                     Ok(InitOutcome::Overwritten) => {
-                        println!("Overwrote {}", path.display());
+                        println!("Overwrote {path}");
                     }
                     Err(report) => {
                         eprintln!("{report:?}");
@@ -199,19 +200,23 @@ fn run_recovery_subcommand(cli: &jinn_cli::cli::Cli) -> Result<Option<Prepared>,
                 // updated shipped set. Without `--force` an existing file is
                 // left alone and reported as skipped, not failed: the
                 // command's primary target (`jinn.toml`) already succeeded.
-                let rules_path = path
-                    .parent()
-                    .unwrap_or_else(|| std::path::Path::new("."))
-                    .join(jinn_preferences_config::STREAM_RULES_FILE_NAME);
+                let view = path.as_marked_path();
+                let rules_path = {
+                    // `parent()` is `None` only for the filesystem root,
+                    // which is then its own parent.
+                    let base = view.parent().unwrap_or(view);
+                    base.join(jinn_preferences_config::STREAM_RULES_FILE_NAME)
+                        .expect("absolute parent joins a bare filename")
+                };
                 match init_stream_rules_to(&rules_path, force) {
                     Ok(StreamRulesSeedOutcome::Created(p)) => {
-                        println!("Created {}", p.display());
+                        println!("Created {p}");
                     }
                     Ok(StreamRulesSeedOutcome::Overwritten(p)) => {
-                        println!("Overwrote {}", p.display());
+                        println!("Overwrote {p}");
                     }
                     Ok(StreamRulesSeedOutcome::Untouched(p)) => {
-                        println!("Already present, skipped {}", p.display());
+                        println!("Already present, skipped {p}");
                     }
                     Err(report) => {
                         eprintln!("{report:?}");
@@ -227,10 +232,10 @@ fn run_recovery_subcommand(cli: &jinn_cli::cli::Cli) -> Result<Option<Prepared>,
                 let force = *force;
                 match init_default_providers_to(&path, force) {
                     Ok(InitProvidersOutcome::Created) => {
-                        println!("Created {}", path.display());
+                        println!("Created {path}");
                     }
                     Ok(InitProvidersOutcome::Overwritten) => {
-                        println!("Overwrote {}", path.display());
+                        println!("Overwrote {path}");
                     }
                     Err(report) => {
                         eprintln!("{report:?}");
@@ -255,13 +260,13 @@ fn run_recovery_subcommand(cli: &jinn_cli::cli::Cli) -> Result<Option<Prepared>,
         let app_paths = AppPaths::default();
         let config_path = jinn_config::FilesystemConfigStorage::default_path()
             .path()
-            .to_path_buf();
+            .clone();
         let destinations = Destinations::new(
-            app_paths.themes_dir(),
-            app_paths.personas_dir(),
-            app_paths.prompts_dir(),
-            app_paths.workflows_dir(),
-            app_paths.skills_dir(),
+            app_paths.themes_dir().as_marked_path(),
+            app_paths.personas_dir().as_marked_path(),
+            app_paths.prompts_dir().as_marked_path(),
+            app_paths.workflows_dir().as_marked_path(),
+            app_paths.skills_dir().as_marked_path(),
         );
         match install_defaults_to(&destinations, *force, &config_path) {
             Ok(report) => {
@@ -273,33 +278,33 @@ fn run_recovery_subcommand(cli: &jinn_cli::cli::Cli) -> Result<Option<Prepared>,
                 for outcome in outcomes {
                     match &outcome {
                         InstallOutcome::Created(path) => {
-                            println!("Installed {}", path.display());
+                            println!("Installed {path}");
                         }
                         InstallOutcome::Skipped(path) => {
-                            println!("Already present, skipped {}", path.display());
+                            println!("Already present, skipped {path}");
                         }
                         InstallOutcome::Overwritten(path) => {
-                            println!("Overwrote {}", path.display());
+                            println!("Overwrote {path}");
                         }
                     }
                 }
                 match &jinn_toml {
                     JinnTomlOutcome::Created(path) => {
-                        println!("Created {}", path.display());
+                        println!("Created {path}");
                     }
                     JinnTomlOutcome::Untouched(path) => {
-                        println!("Already present, skipped {}", path.display());
+                        println!("Already present, skipped {path}");
                     }
                 }
                 match &stream_rules {
                     StreamRulesSeedOutcome::Created(path) => {
-                        println!("Created {}", path.display());
+                        println!("Created {path}");
                     }
                     // Install never modifies an existing rules file, so
                     // Untouched is the only other reachable variant here.
                     StreamRulesSeedOutcome::Untouched(path)
                     | StreamRulesSeedOutcome::Overwritten(path) => {
-                        println!("Already present, skipped {}", path.display());
+                        println!("Already present, skipped {path}");
                     }
                 }
                 return Ok(Some(Prepared::Handled));
@@ -369,10 +374,9 @@ fn run_recovery_subcommand(cli: &jinn_cli::cli::Cli) -> Result<Option<Prepared>,
 fn providers_load_error_report(storage: &ConfigStorageService) -> Result<(), Report<AppError>> {
     if let Err(report) = storage.load() {
         let path = jinn_kernel::config_path();
-        return Err(report.change_context(AppError).attach(format!(
-            "failed to load providers config at {}",
-            path.display()
-        )));
+        return Err(report
+            .change_context(AppError)
+            .attach(format!("failed to load providers config at {path}")));
     }
     Ok(())
 }
@@ -421,8 +425,8 @@ fn read_config(cli: &jinn_cli::cli::Cli) -> Result<ConfigTriple, Report<AppError
         match jinn_config::ConfigLayer::load(Arc::new(backend)) {
             Ok(layer) => layer,
             Err(report) => {
-                tracing::error!(path = %config_path.display(), "failed to load the jinn.toml configuration layer");
-                eprintln!("error: failed to parse {}:", config_path.display());
+                tracing::error!(path = %config_path, "failed to load the jinn.toml configuration layer");
+                eprintln!("error: failed to parse {config_path}:");
                 eprintln!("  {report:?}");
                 std::process::exit(1);
             }
@@ -469,6 +473,30 @@ fn read_config(cli: &jinn_cli::cli::Cli) -> Result<ConfigTriple, Report<AppError
     Ok((config_storage, config, app_state_storage))
 }
 
+/// Resolves a `--db-path` CLI value into a typed absolute path.
+///
+/// A relative argument is the user's cwd-relative shorthand: it resolves
+/// against the process cwd, the same rule every relative CLI path in jinn
+/// follows.
+///
+/// # Errors
+///
+/// Returns an error when the process cwd is unavailable (needed to resolve
+/// a relative argument) or when the value cannot be an absolute path.
+fn resolve_db_path(path: &std::path::Path) -> Result<MarkedPathBuf<Absolute>, Report<AppError>> {
+    let absolute = if path.is_absolute() {
+        path.to_owned()
+    } else {
+        std::env::current_dir()
+            .change_context(AppError)
+            .attach("cannot resolve a relative --db-path: process cwd is unavailable")?
+            .join(path)
+    };
+    MarkedPathBuf::<Absolute>::new(absolute)
+        .map_err(|_| AppError)
+        .attach("--db-path must not escape the filesystem root")
+}
+
 /// Opens the session database, honouring `--db-path`.
 fn open_session_store(
     cli: &jinn_cli::cli::Cli,
@@ -480,10 +508,14 @@ fn open_session_store(
     ),
     Report<AppError>,
 > {
+    let typed_db_path = cli
+        .db_path_opt()
+        .map(|path| resolve_db_path(path))
+        .transpose()?;
     let store = runtime.block_on(async {
-        match cli.db_path_opt() {
-            Some(path) => {
-                jinn_session_store::sqlite::SqliteSessionStore::open_or_create(path).await
+        match typed_db_path.as_ref() {
+            Some(typed) => {
+                jinn_session_store::sqlite::SqliteSessionStore::open_or_create(typed).await
             }
             None => jinn_session_store::sqlite::SqliteSessionStore::new().await,
         }
@@ -499,14 +531,20 @@ mod tests {
 
     use jinn_kernel::ConfigStorageService;
     use jinn_kernel::FilesystemConfigStorage;
+    use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
     use std::sync::Arc;
+
+    use super::resolve_db_path;
 
     use super::providers_load_error_report;
     #[rstest::rstest]
     fn providers_load_error_report_fails_with_parse_detail_on_malformed_file() {
         // Given a config storage backed by a malformed providers.toml.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(
             &path,
             "[providers.ollama]\nbackend = \"ollama\"\nmodels = [\"llama3\"\n",
@@ -528,10 +566,46 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn resolve_db_path_resolves_a_relative_argument_against_the_process_cwd() {
+        // Given a relative db path argument.
+        let arg = std::path::Path::new("jinn-sessions.db");
+
+        // When resolving it.
+        let resolved = resolve_db_path(arg).expect("relative arg resolves");
+
+        // Then it lands directly under the process cwd.
+        let expected =
+            MarkedPathBuf::<Absolute>::new(std::env::current_dir().expect("process cwd"))
+                .expect("process cwd is absolute")
+                .join("jinn-sessions.db")
+                .expect("cwd joins a bare filename");
+        assert_eq!(resolved, expected);
+    }
+
+    #[rstest::rstest]
+    fn resolve_db_path_keeps_an_absolute_argument_verbatim() {
+        // Given an absolute db path argument.
+        let dir = jinn_testutil::tempdir();
+        let arg = dir
+            .path
+            .join("sessions.db")
+            .expect("temp root joins a bare name");
+
+        // When resolving it.
+        let resolved = resolve_db_path(arg.as_path()).expect("absolute arg resolves");
+
+        // Then it round-trips unchanged.
+        assert_eq!(resolved, arg);
+    }
+
+    #[rstest::rstest]
     fn providers_load_error_report_ok_when_file_missing() {
         // Given a config storage backed by a directory with no providers.toml.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         let storage =
             ConfigStorageService::new(Arc::new(FilesystemConfigStorage::new(path.clone())));
 

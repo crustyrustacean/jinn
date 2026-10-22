@@ -96,7 +96,7 @@ impl PopulatedFakeStore {
                 created_at: *s.created_at(),
                 session_state: jinn_session_store_msg::SessionState::Loaded,
                 parent_session: s.parent_session().clone(),
-                project: s.project().map(std::path::Path::to_path_buf),
+                project: s.project().cloned(),
             })
             .collect();
         Self {

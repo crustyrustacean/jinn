@@ -9,11 +9,11 @@
 //! a `ModelInfo` with `context_length: None`.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 
 use error_stack::{Report, ResultExt as _};
 use jiff::Timestamp;
 use jinn_provider::{InputModalities, ModelInfo};
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 use serde::{Deserialize, Serialize};
 use wherror::Error;
 
@@ -108,7 +108,7 @@ impl ModelCache {
     /// # Errors
     ///
     /// Returns an error if the file exists but cannot be read or parsed.
-    pub fn load(path: &Path) -> Result<Option<Self>, Report<ModelCacheError>> {
+    pub fn load(path: &MarkedPathBuf<Absolute>) -> Result<Option<Self>, Report<ModelCacheError>> {
         if !path.exists() {
             return Ok(None);
         }
@@ -140,7 +140,7 @@ impl ModelCache {
     /// # Errors
     ///
     /// Returns an error if the file cannot be written.
-    pub fn save(&self, path: &Path) -> Result<(), Report<ModelCacheError>> {
+    pub fn save(&self, path: &MarkedPathBuf<Absolute>) -> Result<(), Report<ModelCacheError>> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .change_context(ModelCacheError)
@@ -170,7 +170,7 @@ impl Default for ModelCache {
 /// Derives from [`AppPaths`] (`~/.cache/jinn/model_cache.json`), so the
 /// `JINN_PATHS_ROOT` override is honored here too.
 #[must_use]
-pub fn cache_path() -> PathBuf {
+pub fn cache_path() -> MarkedPathBuf<Absolute> {
     jinn_common::app_paths::AppPaths::default().cache_path()
 }
 
@@ -184,6 +184,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+    use marked_path::MarkedPathAccess;
 
     #[rstest::rstest]
     fn new_cache_is_empty() {
@@ -217,8 +218,11 @@ mod tests {
         );
         cache.last_updated_at = Some(Timestamp::now());
 
-        let dir = jinn_testutil::tempdir().expect("tempdir");
-        let path = dir.path().join("model_cache.json");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("model_cache.json")
+            .expect("temp root joins a bare name");
 
         // When saving and loading.
         cache.save(&path).expect("save");
@@ -236,8 +240,11 @@ mod tests {
     #[rstest::rstest]
     fn load_accepts_legacy_string_array_format() {
         // Given a cache JSON file with old string-array format.
-        let dir = jinn_testutil::tempdir().expect("tempdir");
-        let path = dir.path().join("model_cache.json");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("model_cache.json")
+            .expect("temp root joins a bare name");
         let json = r#"{ "entries": { "ollama": ["llama3", "mistral"] } }"#;
         std::fs::write(&path, json).expect("write");
 
@@ -257,8 +264,11 @@ mod tests {
     #[rstest::rstest]
     fn legacy_string_array_format_defaults_to_text_only() {
         // Given a cache JSON file with old string-array format (no modality field).
-        let dir = jinn_testutil::tempdir().expect("tempdir");
-        let path = dir.path().join("model_cache.json");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("model_cache.json")
+            .expect("temp root joins a bare name");
         let json = r#"{ "entries": { "ollama": ["llama3", "mistral"] } }"#;
         std::fs::write(&path, json).expect("write");
 
@@ -282,8 +292,11 @@ mod tests {
     #[rstest::rstest]
     fn load_accepts_cache_without_timestamp() {
         // Given a cache JSON file without last_updated_at.
-        let dir = jinn_testutil::tempdir().expect("tempdir");
-        let path = dir.path().join("model_cache.json");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("model_cache.json")
+            .expect("temp root joins a bare name");
         let json = r#"{ "entries": { "ollama": [{"id": "llama3", "context_length": 8192}] } }"#;
         std::fs::write(&path, json).expect("write");
 
@@ -301,8 +314,11 @@ mod tests {
     #[rstest::rstest]
     fn cache_without_modality_field_defaults_to_text_only() {
         // Given a cache JSON file whose entries omit input_modalities.
-        let dir = jinn_testutil::tempdir().expect("tempdir");
-        let path = dir.path().join("model_cache.json");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("model_cache.json")
+            .expect("temp root joins a bare name");
         let json = r#"{ "entries": { "ollama": [{"id": "llama3", "context_length": 8192}] } }"#;
         std::fs::write(&path, json).expect("write");
 
@@ -325,8 +341,11 @@ mod tests {
     #[rstest::rstest]
     fn load_returns_none_when_file_missing() {
         // Given a path to a nonexistent file.
-        let dir = jinn_testutil::tempdir().expect("tempdir");
-        let path = dir.path().join("jinn_test_nonexistent_cache.json");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("jinn_test_nonexistent_cache.json")
+            .expect("temp root joins a bare name");
 
         // When loading.
         let result = ModelCache::load(&path);

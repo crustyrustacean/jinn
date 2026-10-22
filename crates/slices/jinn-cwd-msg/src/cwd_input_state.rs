@@ -5,9 +5,20 @@
 //! selector suspend in composition); the cwd slice owns the in-app popup.
 //! Both speak these types.
 
+// The `expect`s below are typed-path operations: re-typing the process home,
+// cwd, or temp-dir fallback (all absolute by platform contract), or joining a
+// relative remainder onto a base already typed `Absolute`. They guard
+// programmer error, not runtime state; the invariant is documented once here
+// for the family.
+#![allow(
+    clippy::expect_used,
+    clippy::missing_panics_doc,
+    reason = "typed-path re-typing and bare-name joins on absolute-by-construction bases"
+)]
+
 use jinn_slices::LineInput;
 use jinn_slices::SlotKey;
-use std::path::{Path, PathBuf};
+use marked_path::{Absolute, MarkedPath, MarkedPathAccess, MarkedPathBuf};
 
 /// The `cwd/state` slot: the in-app cwd popup's single edit state.
 #[must_use]
@@ -33,7 +44,7 @@ pub struct CwdInputState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CwdResolution {
     /// Resolved to an existing directory.
-    Ok(PathBuf),
+    Ok(MarkedPathBuf<Absolute>),
     /// Empty or whitespace-only input (nothing to resolve yet).
     Empty,
     /// Path does not exist or is not a directory.
@@ -53,8 +64,10 @@ pub enum CwdResolution {
 /// popup path works (the seeded text was itself just derived from a live
 /// `shorten_path` call).
 #[must_use]
-pub fn tilde_home() -> PathBuf {
-    dirs::home_dir().unwrap_or_default()
+pub fn tilde_home() -> MarkedPathBuf<Absolute> {
+    let home = dirs::home_dir()
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir()));
+    MarkedPathBuf::<Absolute>::new(home).expect("home and cwd are absolute")
 }
 
 /// Expands a leading `~` (or `~/`) into `home`.
@@ -63,13 +76,15 @@ pub fn tilde_home() -> PathBuf {
 /// the platform's native separator after the tilde (`~\` on Windows), since
 /// the popup seeds itself with the native-separator form
 /// [`jinn_common::shorten_path`] produces.
-fn expand_tilde(raw: &str, home: &Path) -> PathBuf {
+fn expand_tilde(raw: &str, home: &MarkedPathBuf<Absolute>) -> MarkedPathBuf<Absolute> {
     if raw == "~" {
-        home.to_path_buf()
+        home.clone()
     } else if let Some(rest) = strip_tilde_prefix(raw) {
         home.join(rest)
+            .expect("expanding a tilde keeps the home absolute")
     } else {
-        PathBuf::from(raw)
+        MarkedPathBuf::<Absolute>::new(raw)
+            .expect("a non-tilde raw input was joined against the cwd before this point")
     }
 }
 
@@ -96,27 +111,24 @@ fn strip_tilde_prefix(raw: &str) -> Option<&str> {
 /// whose `canonicalize` is strict about `..` traversal. `..` that would climb
 /// above a root is clamped at the root. Symlinks are still resolved by the
 /// subsequent `canonicalize`.
-fn normalize_lexically(path: &Path) -> PathBuf {
-    let mut stack: Vec<std::path::Component<'_>> = Vec::new();
-    for component in path.components() {
+fn normalize_lexically(path: &MarkedPathBuf<Absolute>) -> MarkedPathBuf<Absolute> {
+    use std::path::Component;
+    let mut components: Vec<Component<'_>> = Vec::new();
+    for component in path.as_path().components() {
         match component {
-            std::path::Component::CurDir => {
-                // `.` is a no-op - drop it.
-            }
-            std::path::Component::ParentDir => {
-                // Pop the last normal component if there is one; otherwise
-                // keep the `..` (clamped at root once absolute).
-                match stack.last() {
-                    Some(std::path::Component::Normal(_)) => {
-                        stack.pop();
-                    }
-                    _ => stack.push(component),
+            Component::CurDir => {}
+            Component::ParentDir => match components.last() {
+                Some(Component::Normal(_)) => {
+                    components.pop();
                 }
-            }
-            _ => stack.push(component),
+                Some(Component::RootDir | Component::Prefix(_)) => {}
+                _ => components.push(component),
+            },
+            _ => components.push(component),
         }
     }
-    stack.iter().map(|c| c.as_os_str()).collect()
+    let normalized: std::path::PathBuf = components.into_iter().map(Component::as_os_str).collect();
+    MarkedPathBuf::<Absolute>::new(normalized).expect("normalizing an absolute path stays absolute")
 }
 
 /// Resolves a raw cwd input string against the current session cwd.
@@ -138,8 +150,8 @@ fn normalize_lexically(path: &Path) -> PathBuf {
 /// matches the user's mental model: "anything that's not an existing dir is an
 /// error I can fix by typing more."
 #[must_use]
-pub fn resolve_cwd_input(raw: &str, current_cwd: &Path) -> CwdResolution {
-    resolve_cwd_input_with_home(raw, current_cwd, &tilde_home())
+pub fn resolve_cwd_input(raw: &str, current_cwd: &MarkedPathBuf<Absolute>) -> CwdResolution {
+    resolve_cwd_input_with_home(raw, &current_cwd.as_marked_path(), &tilde_home())
 }
 
 /// Resolves a raw cwd input string against `current_cwd`, expanding `~`
@@ -155,22 +167,28 @@ pub fn resolve_cwd_input(raw: &str, current_cwd: &Path) -> CwdResolution {
 /// Infallible by construction, like [`resolve_cwd_input`]: failures collapse
 /// to [`CwdResolution::NotADir`].
 #[must_use]
-pub fn resolve_cwd_input_with_home(raw: &str, current_cwd: &Path, home: &Path) -> CwdResolution {
+pub fn resolve_cwd_input_with_home(
+    raw: &str,
+    current_cwd: &MarkedPath<Absolute>,
+    home: &MarkedPathBuf<Absolute>,
+) -> CwdResolution {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return CwdResolution::Empty;
     }
 
     // Tilde expansion falls back to the literal path when the input does not
-    // start with `~` plus a separator (or a bare `~`).
-    let candidate = expand_tilde(trimmed, home);
-
-    // Relative paths resolve against the current session cwd; absolute paths
-    // and home-expanded paths pass through unchanged.
-    let absolute = if candidate.is_absolute() {
-        candidate
+    // start with `~` plus a separator (or a bare `~`). A literal that is not
+    // itself absolute resolves against the current session cwd.
+    let absolute = if trimmed.starts_with('~') {
+        expand_tilde(trimmed, home)
     } else {
-        current_cwd.join(&candidate)
+        match MarkedPathBuf::<Absolute>::new(trimmed) {
+            Ok(typed) => typed,
+            Err(_) => current_cwd
+                .join(trimmed)
+                .expect("joining a relative raw input keeps the cwd absolute"),
+        }
     };
 
     // Canonicalize resolves `..`, `.`, and symlinks, into jinn's plain path
@@ -178,14 +196,13 @@ pub fn resolve_cwd_input_with_home(raw: &str, current_cwd: &Path, home: &Path) -
     // storable, and displayable. A failure here means the path doesn't exist
     // - treat as NotADir so the footer shows the error.
     let normalized = normalize_lexically(&absolute);
-    let Ok(canonical) = jinn_common::canonicalize_display(&normalized) else {
-        return CwdResolution::NotADir(absolute.display().to_string());
-    };
+    let canonical =
+        jinn_common::canonicalize_display(&normalized).unwrap_or_else(|_| absolute.clone());
 
     if canonical.is_dir() {
         CwdResolution::Ok(canonical)
     } else {
-        CwdResolution::NotADir(canonical.display().to_string())
+        CwdResolution::NotADir(canonical.to_string())
     }
 }
 
@@ -207,22 +224,22 @@ mod tests {
     #[rstest]
     fn empty_input_is_empty() {
         // Given a temp dir to resolve against.
-        let dir = jinn_testutil::tempdir().unwrap();
+        let dir = jinn_testutil::tempdir();
 
         // When resolving an empty input.
         // Then the resolution is Empty.
-        assert_eq!(resolve_cwd_input("", dir.path()), CwdResolution::Empty);
+        assert_eq!(resolve_cwd_input("", &dir.path), CwdResolution::Empty);
     }
 
     #[rstest]
     fn whitespace_only_input_is_empty() {
         // Given a temp dir to resolve against.
-        let dir = jinn_testutil::tempdir().unwrap();
+        let dir = jinn_testutil::tempdir();
 
         // When resolving an input made only of whitespace.
         // Then the resolution is Empty.
         assert_eq!(
-            resolve_cwd_input("   \t  ", dir.path()),
+            resolve_cwd_input("   \t  ", &dir.path),
             CwdResolution::Empty
         );
     }
@@ -230,10 +247,10 @@ mod tests {
     #[rstest]
     fn nonexistent_path_is_not_a_dir() {
         // Given a temp dir as the cwd.
-        let dir = jinn_testutil::tempdir().unwrap();
+        let dir = jinn_testutil::tempdir();
 
         // When resolving a path that does not exist.
-        let res = resolve_cwd_input("nope/does/not/exist", dir.path());
+        let res = resolve_cwd_input("nope/does/not/exist", &dir.path);
 
         // Then the resolution is NotADir.
         assert!(matches!(res, CwdResolution::NotADir(_)), "{res:?}");
@@ -242,12 +259,15 @@ mod tests {
     #[rstest]
     fn regular_file_is_not_a_dir() {
         // Given a temp dir holding a regular file.
-        let dir = jinn_testutil::tempdir().unwrap();
-        let file = dir.path().join("a_file.txt");
+        let dir = jinn_testutil::tempdir();
+        let file = dir
+            .path
+            .join("a_file.txt")
+            .expect("temp root joins a bare name");
         fs::write(&file, "x").unwrap();
 
         // When resolving the file name as cwd input.
-        let res = resolve_cwd_input("a_file.txt", dir.path());
+        let res = resolve_cwd_input("a_file.txt", &dir.path);
 
         // Then the resolution is NotADir.
         assert!(matches!(res, CwdResolution::NotADir(_)), "{res:?}");
@@ -256,12 +276,12 @@ mod tests {
     #[rstest]
     fn relative_subdir_resolves_against_current_cwd() {
         // Given a temp dir containing a `sub` directory.
-        let dir = jinn_testutil::tempdir().unwrap();
-        let sub = dir.path().join("sub");
+        let dir = jinn_testutil::tempdir();
+        let sub = dir.path.join("sub").expect("temp root joins a bare name");
         fs::create_dir_all(&sub).unwrap();
 
         // When resolving `sub` relative to the temp dir.
-        let res = resolve_cwd_input("sub", dir.path());
+        let res = resolve_cwd_input("sub", &dir.path);
 
         // Then it resolves to the canonical sub directory.
         assert_eq!(res, CwdResolution::Ok(canonicalize(&sub)));
@@ -270,26 +290,30 @@ mod tests {
     #[rstest]
     fn dot_segments_collapse() {
         // Given a temp dir holding sibling/sub.
-        let dir = jinn_testutil::tempdir().unwrap();
-        let sub = dir.path().join("sibling").join("sub");
+        let dir = jinn_testutil::tempdir();
+        let sub = dir.path.join("sibling").expect("a").join("sub").expect("b");
         fs::create_dir_all(&sub).unwrap();
 
         // When resolving `sibling/sub/../.` from the temp dir.
-        let res = resolve_cwd_input("sibling/sub/../.", dir.path());
+        let res = resolve_cwd_input("sibling/sub/../.", &dir.path);
 
         // Then the dot segments collapse to `sibling`.
-        assert_eq!(
-            res,
-            CwdResolution::Ok(canonicalize(&dir.path().join("sibling")))
-        );
+        let expected = dir
+            .path
+            .join("sibling")
+            .expect("temp root joins a bare name");
+        assert_eq!(res, CwdResolution::Ok(canonicalize(&expected)));
     }
 
     #[rstest]
     fn parent_relative_resolves() {
         // Given a temp dir with parent/child, using child as the cwd.
-        let root = jinn_testutil::tempdir().unwrap();
-        let parent = root.path().join("parent");
-        let child = parent.join("child");
+        let root = jinn_testutil::tempdir();
+        let parent = root
+            .path
+            .join("parent")
+            .expect("temp root joins a bare name");
+        let child = parent.join("child").expect("parent joins a bare name");
         fs::create_dir_all(&child).unwrap();
 
         // When resolving `..` from the child directory.
@@ -302,14 +326,18 @@ mod tests {
     #[rstest]
     fn tilde_expands_to_home() {
         // Given a temp home containing the target directory.
-        let home = jinn_testutil::tempdir().unwrap();
+        let home = jinn_testutil::tempdir();
         let name = format!("jinn_cwd_test_{}", std::process::id());
-        let target = home.path().join(&name);
+        let target = home.path.join(&name).expect("temp root joins a bare name");
         fs::create_dir_all(&target).unwrap();
         let unrelated = unrelated_cwd();
 
         // When resolving `~/<name>` from an unrelated cwd against that home.
-        let res = resolve_cwd_input_with_home(&format!("~/{name}"), unrelated.path(), home.path());
+        let res = resolve_cwd_input_with_home(
+            &format!("~/{name}"),
+            &unrelated.path().as_marked_path(),
+            &home.path,
+        );
 
         // Then it expands to the directory under the temp home — never
         // touching the real home.
@@ -319,33 +347,34 @@ mod tests {
     #[rstest]
     fn bare_tilde_resolves_to_home() {
         // Given a temp home.
-        let home = jinn_testutil::tempdir().unwrap();
+        let home = jinn_testutil::tempdir();
         let unrelated = unrelated_cwd();
 
         // When resolving a bare `~` from an unrelated cwd against that home.
-        let res = resolve_cwd_input_with_home("~", unrelated.path(), home.path());
+        let unrelated_view = unrelated.path().as_marked_path();
+        let res = resolve_cwd_input_with_home("~", &unrelated_view, &home.path);
 
         // Then it resolves to the temp home itself.
-        assert_eq!(res, CwdResolution::Ok(canonicalize(home.path())));
+        assert_eq!(res, CwdResolution::Ok(canonicalize(&home.path)));
     }
 
     #[rstest]
     fn native_separator_tilde_input_resolves() {
         // Given a temp home containing the target directory.
-        let home = jinn_testutil::tempdir().unwrap();
+        let home = jinn_testutil::tempdir();
         let name = format!("jinn_cwd_test_{}", std::process::id());
-        let target = home.path().join(&name);
+        let target = home.path.join(&name).expect("temp root joins a bare name");
         fs::create_dir_all(&target).unwrap();
         let unrelated = unrelated_cwd();
 
         // When resolving the input the popup seeds — the native-separator
-        // form after `~` — from an unrelated cwd. `Path::join` emits the
-        // platform's own separator, so this is `~\name` on Windows (the
+        // form after `~` — from an unrelated cwd. The separator is spelled
+        // from `MAIN_SEPARATOR`, so this is `~\name` on Windows (the
         // reseeded native form) and `~/name` on Unix (the plain tilde
         // form); both must resolve to the directory under the temp home.
-        let input = Path::new("~").join(&name);
+        let input = format!("~{}{name}", std::path::MAIN_SEPARATOR);
         let res =
-            resolve_cwd_input_with_home(&input.to_string_lossy(), unrelated.path(), home.path());
+            resolve_cwd_input_with_home(&input, &unrelated.path().as_marked_path(), &home.path);
 
         // Then it expands to the directory under the temp home.
         assert_eq!(res, CwdResolution::Ok(canonicalize(&target)));
@@ -354,14 +383,14 @@ mod tests {
     #[rstest]
     fn absolute_path_passes_through() {
         // Given a temp dir to resolve against.
-        let dir = jinn_testutil::tempdir().unwrap();
+        let dir = jinn_testutil::tempdir();
         let unrelated = unrelated_cwd();
 
         // When resolving that absolute path from an unrelated cwd.
-        let res = resolve_cwd_input(&dir.path().to_string_lossy(), unrelated.path());
+        let res = resolve_cwd_input(&dir.path.to_string_lossy(), unrelated.path());
 
         // Then it passes through unchanged, canonicalized.
-        assert_eq!(res, CwdResolution::Ok(canonicalize(dir.path())));
+        assert_eq!(res, CwdResolution::Ok(canonicalize(&dir.path)));
     }
 
     /// A directory that plays the "unrelated cwd" role: it exists, but it
@@ -370,13 +399,13 @@ mod tests {
     /// Built under a temp root so the fixture names the same place on every
     /// platform.
     fn unrelated_cwd() -> jinn_testutil::paths::TestRoot {
-        jinn_testutil::paths::TestRoot::new().unwrap()
+        jinn_testutil::paths::TestRoot::new()
     }
 
     /// Helper: canonicalize without dragging the shared canonicalizer into
     /// every test. Uses the same plain-form helper the resolver uses, so
     /// expectations match the resolver's non-verbatim output on Windows.
-    fn canonicalize(p: &Path) -> PathBuf {
+    fn canonicalize(p: &MarkedPathBuf<Absolute>) -> MarkedPathBuf<Absolute> {
         jinn_common::canonicalize_display(p).expect("test fixture dir must canonicalize")
     }
 }

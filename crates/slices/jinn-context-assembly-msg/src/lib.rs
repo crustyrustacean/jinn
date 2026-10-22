@@ -4,13 +4,13 @@
 //! the context-assembly boundary without depending on its implementation.
 
 use std::collections::HashSet;
-use std::path::PathBuf;
 
 use jinn_context::ContextFile;
 use jinn_core_types::{ChatEntry, NameFilter, SessionId, ToolDefinition};
 use jinn_skills_msg::Skill;
 use jinn_slices::AssembledPrompt;
 use jinn_slices::Persona;
+use marked_path::{Absolute, MarkedPathBuf};
 use serde::{Deserialize, Serialize};
 
 /// Everything assembly needs, provided by the caller.
@@ -23,7 +23,7 @@ pub struct AssemblyInputs {
     /// The session being assembled for.
     pub session_id: SessionId,
     /// The session's working directory (rendered into the env block).
-    pub cwd: PathBuf,
+    pub cwd: MarkedPathBuf<Absolute>,
     /// The resolved persona payload (`None` renders no persona section).
     pub persona: Option<Persona>,
     /// The session's full history (pins included; partitioned here).

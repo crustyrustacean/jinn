@@ -13,7 +13,8 @@
 //! normalization instead of hand-rolling prefix surgery at call sites.
 
 use std::io;
-use std::path::{Path, PathBuf};
+
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
 /// The classic Win32 path limit, in UTF-16 code units, including the
 /// terminating NUL. Plain (non-verbatim) paths of 260 or more units cannot be
@@ -44,80 +45,13 @@ const UNC_MARKER: &str = r"UNC\";
 /// for example [`io::ErrorKind::NotFound`] when `path` does not exist. The
 /// Windows prefix stripping never fails; when it cannot produce a usable
 /// plain form the verbatim form is returned instead.
-pub fn canonicalize_display(path: &Path) -> io::Result<PathBuf> {
-    let canonical = std::fs::canonicalize(path)?;
-    Ok(strip_verbatim_prefix(canonical))
+pub fn canonicalize_display(path: &MarkedPathBuf<Absolute>) -> io::Result<MarkedPathBuf<Absolute>> {
+    let canonical = std::fs::canonicalize(path.as_path())?;
+    MarkedPathBuf::<Absolute>::new(strip_verbatim_prefix(canonical))
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
 
-/// Strips the Windows `\\?\` verbatim prefix from a canonicalized path.
-///
-/// Transforms the two verbatim forms [`std::fs::canonicalize`] produces on
-/// Windows into their classic equivalents:
-///
-/// - `\\?\C:\users\jeff` → `C:\users\jeff` (drive form)
-/// - `\\?\UNC\server\share\file` → `\\server\share\file` (network form)
-///
-/// Three kinds of input are returned **unchanged**, because no safe plain
-/// form exists:
-///
-/// - Paths whose plain form would be at or beyond the classic `MAX_PATH`
-///   limit — only the verbatim prefix lets APIs address those, so stripping
-///   would produce a path nothing can reopen.
-/// - Verbatim *device* paths (`\\?\COM1`, `\\?\PIPE\…`): there is no drive or
-///   share to expose, and stripping would fabricate a bogus relative path.
-/// - Non-UTF-8-representable paths, which cannot be rebuilt safely here.
-///
-/// On non-Windows platforms this is the identity function, so callers can
-/// apply it unconditionally to the result of any canonicalize (including
-/// `tokio::fs::canonicalize`).
-#[must_use]
-pub fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
-    #[cfg(windows)]
-    {
-        strip_verbatim_windows(path)
-    }
-    #[cfg(not(windows))]
-    {
-        path
-    }
-}
-
-/// Windows implementation of [`strip_verbatim_prefix`].
-#[cfg(windows)]
-fn strip_verbatim_windows(path: PathBuf) -> PathBuf {
-    // Not representable as UTF-8: rebuilding the path would be guesswork, and
-    // the verbatim form is accepted everywhere a plain path is.
-    let Some(text) = path.to_str() else {
-        return path;
-    };
-    let Some(rest) = text.strip_prefix(VERBATIM_PREFIX) else {
-        return path;
-    };
-
-    let plain = match rest.strip_prefix(UNC_MARKER) {
-        Some(share) => format!(r"\\{share}"),
-        None if is_drive_path(rest) => rest.to_owned(),
-        None => return path,
-    };
-
-    // A plain path at or beyond the classic limit is un-addressable without
-    // the prefix; keep the verbatim form rather than emitting a broken path.
-    if plain.chars().map(char::len_utf16).sum::<usize>() >= MAX_CLASSIC_PATH {
-        return path;
-    }
-    PathBuf::from(plain)
-}
-
-/// Whether `rest` (a verbatim path minus its `\\?\` prefix) names a drive
-/// root or something under one — `C:\`, `C:\users\…`. Anything else after the
-/// prefix is a device path.
-#[cfg(windows)]
-fn is_drive_path(rest: &str) -> bool {
-    matches!(
-        rest.as_bytes(),
-        [drive, b':', _sep @ (b'\\' | b'/'), ..] if drive.is_ascii_alphabetic()
-    )
-}
+pub use marked_path::strip_verbatim_prefix;
 
 #[cfg(test)]
 mod tests {
@@ -128,8 +62,11 @@ mod tests {
     #[test]
     fn canonicalize_display_errors_for_nonexistent_path() {
         // Given an existing temp directory and a path inside it that does not exist.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let missing = dir.path().join("does-not-exist.txt");
+        let dir = jinn_testutil::tempdir();
+        let missing = dir
+            .path
+            .join("does-not-exist.txt")
+            .expect("temp root joins a bare name");
 
         // When canonicalizing the missing path.
         let result = canonicalize_display(&missing);
@@ -145,8 +82,11 @@ mod tests {
     #[test]
     fn canonicalize_display_output_recanonicalizes_to_the_same_file() {
         // Given a real file in a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file = dir.path().join("marker.txt");
+        let dir = jinn_testutil::tempdir();
+        let file = dir
+            .path
+            .join("marker.txt")
+            .expect("temp root joins a bare name");
         std::fs::write(&file, b"x").expect("write marker file");
 
         // When canonicalizing it through the helper.
@@ -160,7 +100,6 @@ mod tests {
 
     #[cfg(windows)]
     mod windows {
-        use std::path::PathBuf;
 
         use super::super::{canonicalize_display, strip_verbatim_prefix};
 
@@ -168,10 +107,10 @@ mod tests {
         #[test]
         fn canonicalize_display_returns_a_plain_path() {
             // Given a real temp directory.
-            let dir = jinn_testutil::tempdir().expect("create temp dir");
+            let dir = jinn_testutil::tempdir();
 
             // When canonicalizing it through the helper.
-            let out = canonicalize_display(dir.path()).expect("canonicalize temp dir");
+            let out = canonicalize_display(&dir.path).expect("canonicalize temp dir");
 
             // Then the result carries no verbatim prefix.
             assert!(
@@ -254,19 +193,22 @@ mod tests {
 
     #[cfg(unix)]
     mod unix {
-        use super::super::canonicalize_display;
+        use super::super::{canonicalize_display, strip_verbatim_prefix};
+        use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
         #[rstest::rstest]
         #[test]
         fn canonicalize_display_is_a_passthrough_of_std_canonicalize() {
             // Given a real temp directory.
-            let dir = jinn_testutil::tempdir().expect("create temp dir");
+            let dir = jinn_testutil::tempdir();
 
             // When canonicalizing it through the helper.
-            let out = canonicalize_display(dir.path()).expect("canonicalize temp dir");
+            let out = canonicalize_display(&dir.path).expect("canonicalize temp dir");
 
             // Then the result is identical to std's canonicalization.
-            let direct = std::fs::canonicalize(dir.path()).expect("canonicalize directly");
+            let direct = std::fs::canonicalize(dir.path.as_path()).expect("canonicalize directly");
+            let direct = MarkedPathBuf::<Absolute>::new(strip_verbatim_prefix(direct))
+                .expect("canonicalized temp dir is absolute");
             assert_eq!(out, direct);
         }
     }

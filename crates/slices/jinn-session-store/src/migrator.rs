@@ -88,13 +88,16 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+    use marked_path::MarkedPathAccess as _;
     use rusqlite::params;
-    use tempfile::TempDir;
 
-    fn make_pool() -> (Pool, TempDir) {
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("test.db");
-        // Return the TempDir alongside the Pool so the caller holds it
+    fn make_pool() -> (Pool, jinn_testutil::JinnTempDir) {
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("test.db")
+            .expect("temp root joins a bare name");
+        // Return the temp dir alongside the Pool so the caller holds it
         // for the test's lifetime. Dropping it would delete `test.db`, but
         // by returning it the caller keeps the file alive until test end.
         let pool = Pool::open(path.to_string_lossy().to_string().as_str()).expect("open pool");
@@ -104,7 +107,7 @@ mod tests {
     /// Synchronously applies migrations up to (and including) `target`.
     ///
     /// Runs inside a `with_conn` closure with FK=OFF (matching `run_migrations`).
-    async fn apply_migrations_up_to(target: i32) -> (Pool, TempDir) {
+    async fn apply_migrations_up_to(target: i32) -> (Pool, jinn_testutil::JinnTempDir) {
         let (pool, dir) = make_pool();
         pool.with_conn(move |conn| {
             bootstrap_tracking_table(conn).expect("bootstrap");

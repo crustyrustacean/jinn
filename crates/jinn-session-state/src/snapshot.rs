@@ -1,7 +1,6 @@
 //! Coherent durable session snapshot exchanged between state and storage.
 
 use std::collections::{BTreeSet, HashMap};
-use std::path::PathBuf;
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
@@ -20,6 +19,7 @@ use jinn_tools_msg::TaskList;
 
 use crate::core::SessionCore;
 use crate::fields::{LifecycleArgs, default_prep_mode};
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// Monotonic in-process revision for one authoritative session capture.
 #[derive(
@@ -73,7 +73,7 @@ pub struct SessionSnapshotMetadata {
     /// Provider and prompt policy for this session.
     pub profile: SessionProfile,
     /// Working directory captured at this revision.
-    pub cwd: PathBuf,
+    pub cwd: MarkedPathBuf<Absolute>,
     /// Parent session for forks and subagents.
     #[serde(default)]
     pub parent_session: Option<SessionId>,
@@ -85,7 +85,7 @@ pub struct SessionSnapshotMetadata {
     pub origin: SessionOrigin,
     /// Project association stamped at session creation.
     #[serde(default)]
-    pub project: Option<PathBuf>,
+    pub project: Option<MarkedPathBuf<Absolute>>,
     /// Compatibility storage for existing serialized extensions.
     #[serde(default)]
     pub blobs: HashMap<String, JsonValue>,
@@ -298,7 +298,7 @@ impl SessionSnapshot {
 
     /// Returns the snapshot working directory.
     #[must_use]
-    pub fn cwd(&self) -> &std::path::Path {
+    pub fn cwd(&self) -> &MarkedPathBuf<Absolute> {
         &self.metadata.cwd
     }
 
@@ -334,8 +334,8 @@ impl SessionSnapshot {
 
     /// Returns the project association.
     #[must_use]
-    pub fn project(&self) -> Option<&std::path::Path> {
-        self.metadata.project.as_deref()
+    pub fn project(&self) -> Option<&MarkedPathBuf<Absolute>> {
+        self.metadata.project.as_ref()
     }
 
     /// Returns the selected persona.

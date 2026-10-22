@@ -141,7 +141,7 @@ impl<'a> RenderCtx<'a> {
             },
             AppFact {
                 key: "session.cwd",
-                value: session.cwd().display().to_string(),
+                value: session.cwd().to_string(),
             },
             AppFact {
                 key: "session.lifecycle",

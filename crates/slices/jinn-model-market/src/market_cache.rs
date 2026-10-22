@@ -10,11 +10,11 @@
 //! `ModelCache`/`model_cache.json` pair is a different cache with a
 //! different owner and must never be read or written here.
 
-use std::path::Path;
 use std::time::Duration;
 
 use error_stack::{Report, ResultExt};
 use jiff::Timestamp;
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 use serde::{Deserialize, Serialize};
 use wherror::Error;
 
@@ -76,7 +76,7 @@ where
 /// stamp. A corrupt cache must degrade to a refetch, never block the
 /// popup for a disk bug.
 #[must_use]
-pub fn load<T>(path: &Path, ttl: Duration, now: Timestamp) -> Option<T>
+pub fn load<T>(path: &MarkedPathBuf<Absolute>, ttl: Duration, now: Timestamp) -> Option<T>
 where
     T: serde::de::DeserializeOwned,
 {
@@ -96,7 +96,7 @@ where
 ///
 /// Refresh diagnostics only; not used on the serve path.
 #[must_use]
-pub fn loaded_at(path: &Path) -> Option<Timestamp> {
+pub fn loaded_at(path: &MarkedPathBuf<Absolute>) -> Option<Timestamp> {
     let raw = std::fs::read(path).ok()?;
     let stamped: Stamped<serde_json::Value> = serde_json::from_slice(&raw).ok()?;
     Some(stamped.fetched_at)
@@ -111,21 +111,27 @@ pub fn loaded_at(path: &Path) -> Option<Timestamp> {
 /// [`MarketCacheError::SerializeFailed`] when the value cannot
 /// serialize — the caller logs and moves on; a failed cache write must
 /// not fail a refresh that already has its data in memory.
-pub fn store<T>(path: &Path, stamped: &Stamped<T>) -> Result<(), Report<MarketCacheError>>
+pub fn store<T>(
+    path: &MarkedPathBuf<Absolute>,
+    stamped: &Stamped<T>,
+) -> Result<(), Report<MarketCacheError>>
 where
     T: serde::Serialize + serde::de::DeserializeOwned,
 {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .change_context(MarketCacheError::WriteFailed)
-            .attach(format!("failed to create cache dir {}", parent.display()))?;
+            .attach(format!(
+                "failed to create cache dir {}",
+                parent.as_path().display()
+            ))?;
     }
     let raw = serde_json::to_vec_pretty(stamped)
         .change_context(MarketCacheError::SerializeFailed)
         .attach("failed to serialize the cache payload")?;
     std::fs::write(path, raw)
         .change_context(MarketCacheError::WriteFailed)
-        .attach(format!("failed to write {}", path.display()))?;
+        .attach(format!("failed to write {path}"))?;
     Ok(())
 }
 
@@ -134,7 +140,7 @@ where
 /// Best-effort: a missing file is already dropped; a failed unlink on a
 /// refresh is logged by the caller. Returns whether anything was
 /// removed.
-pub fn drop_file(path: &Path) -> bool {
+pub fn drop_file(path: &MarkedPathBuf<Absolute>) -> bool {
     std::fs::remove_file(path).is_ok()
 }
 
@@ -162,8 +168,11 @@ mod market_cache_tests {
     #[rstest::rstest]
     fn load_returns_a_fresh_payload() {
         // Given a stored payload stamped now.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("probe.json");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("probe.json")
+            .expect("temp root joins a bare name");
         let now = jiff::Timestamp::now();
         store(&path, &stamped(Probe::First(7), now)).expect("store");
 
@@ -177,8 +186,11 @@ mod market_cache_tests {
     #[rstest::rstest]
     fn load_returns_none_once_the_ttl_has_passed() {
         // Given a payload stamped 8 days ago — one day past MODELS_TTL.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("probe.json");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("probe.json")
+            .expect("temp root joins a bare name");
         let now = jiff::Timestamp::now();
         let fetched_at = now - jiff::SignedDuration::from_hours(8 * 24);
         store(
@@ -197,8 +209,11 @@ mod market_cache_tests {
     #[rstest::rstest]
     fn load_serves_a_payload_exactly_at_the_ttl_boundary() {
         // Given a payload stamped exactly MODELS_TTL ago.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("probe.json");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("probe.json")
+            .expect("temp root joins a bare name");
         let now = jiff::Timestamp::now();
         let fetched_at = now - jiff::SignedDuration::from_hours(7 * 24);
         store(&path, &stamped(Probe::First(9), fetched_at)).expect("store");
@@ -213,8 +228,11 @@ mod market_cache_tests {
     #[rstest::rstest]
     fn load_treats_a_corrupt_file_as_a_miss() {
         // Given a cache file that is not a market cache payload.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("probe.json");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("probe.json")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, b"not json at all").expect("write junk");
 
         // When loading it.
@@ -227,8 +245,11 @@ mod market_cache_tests {
     #[rstest::rstest]
     fn load_treats_an_absent_file_as_a_miss() {
         // Given a path that was never written.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("never.json");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("never.json")
+            .expect("temp root joins a bare name");
 
         // When loading it.
         let loaded = load::<Probe>(&path, MODELS_TTL, jiff::Timestamp::now());
@@ -240,8 +261,11 @@ mod market_cache_tests {
     #[rstest::rstest]
     fn load_rejects_a_type_mismatch_even_within_the_ttl() {
         // Given a fresh file stamped with a different payload type.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("probe.json");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("probe.json")
+            .expect("temp root joins a bare name");
         let now = jiff::Timestamp::now();
         store(&path, &stamped(Probe::First(1), now)).expect("store");
 
@@ -256,8 +280,11 @@ mod market_cache_tests {
     #[rstest::rstest]
     fn loaded_at_reads_the_stamp_back() {
         // Given a stored payload stamped at a known time.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("probe.json");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("probe.json")
+            .expect("temp root joins a bare name");
         let now = jiff::Timestamp::now();
         store(&path, &stamped(Probe::First(3), now)).expect("store");
 
@@ -271,9 +298,15 @@ mod market_cache_tests {
     #[rstest::rstest]
     fn drop_file_removes_only_an_existing_file() {
         // Given a stored payload and a path that was never written.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("probe.json");
-        let absent = dir.path().join("absent.json");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("probe.json")
+            .expect("temp root joins a bare name");
+        let absent = dir
+            .path
+            .join("absent.json")
+            .expect("temp root joins a bare name");
         store(&path, &stamped(Probe::First(0), jiff::Timestamp::now())).expect("store");
 
         // When dropping both.

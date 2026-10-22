@@ -47,6 +47,7 @@ use jinn_session_msg::phase_command::PhaseCommand;
 use jinn_session_store_msg::PersistSession;
 use jinn_turn_dispatch_msg::DispatchTurn;
 use jinn_turn_dispatch_msg::QueueItem;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// The model the endpoint-pin tests configure, as a full provider id.
 const PINNED_MODEL: &str = "openrouter/anthropic/claude-sonnet-4";
@@ -558,7 +559,7 @@ async fn dispatch_user_message_keeps_degraded_token_literal_through_re_expand() 
     if let jinn_kernel::protocol::ChatEntryKind::User { outcome, .. } = &mut entry.kind {
         outcome.degraded.push(jinn_kernel::protocol::ResolvedToken {
             raw: "/nonexistent/whatever".to_owned(),
-            abs: std::path::PathBuf::from("/nonexistent/whatever"),
+            abs: MarkedPathBuf::<Absolute>::new("/nonexistent/whatever").expect("test path"),
         });
     }
 

@@ -9,6 +9,7 @@
 use jinn_cwd_msg::{CwdInputState, CwdResolution, resolve_cwd_input};
 use jinn_slices::RenderFacts;
 use jinn_slices::cell::TypedCell;
+use marked_path::{Absolute, MarkedPathBuf};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -70,10 +71,7 @@ fn validation_footer<'a>(resolution: &'a CwdResolution, theme: &jinn_theme::Them
     match resolution {
         CwdResolution::Ok(path) => Line::from(vec![
             Span::styled("✓ ", Style::default().fg(theme.success)),
-            Span::styled(
-                path.to_string_lossy().into_owned(),
-                Style::default().fg(theme.success),
-            ),
+            Span::styled(path.to_string(), Style::default().fg(theme.success)),
         ]),
         CwdResolution::NotADir(path) => Line::from(vec![
             Span::styled("✗ ", Style::default().fg(theme.error_text)),
@@ -95,7 +93,7 @@ fn draw(
     popup_area: Rect,
     input_state: &CwdInputState,
     theme: &jinn_theme::Theme,
-    current_cwd: &std::path::Path,
+    current_cwd: &MarkedPathBuf<Absolute>,
 ) {
     let title = Line::from(Span::styled(
         " Change Cwd ",
@@ -170,6 +168,8 @@ pub fn render_cwd_input(frame: &mut Frame<'_>, area: Rect, ctx: &RenderFacts) {
         .reader(&jinn_cwd_msg::cwds_slot())
         .expect("cwd overlay renders only when its cell is registered");
     let state = cell.read();
-    let current_cwd = std::path::PathBuf::from(ctx.fact(SESSION_CWD_FACT).unwrap_or_default());
+    let current_cwd =
+        MarkedPathBuf::<Absolute>::new(ctx.fact(SESSION_CWD_FACT).unwrap_or_default())
+            .expect("the session.cwd fact is an absolute path");
     draw(frame, area, &state, &ctx.theme, &current_cwd);
 }

@@ -12,6 +12,7 @@ use crate::command_runner::{LifecycleCommandError, spawn_setup_command};
 use crate::session_lifecycle_actor::SessionLifecycleActor;
 
 use super::{no_output_info, setup_complete_msg, strip_ansi};
+use marked_path::{Absolute, MarkedPathBuf};
 
 impl SessionLifecycleActor {
     pub(in crate::session_lifecycle_actor) async fn handle_run_session_setup(
@@ -72,7 +73,7 @@ impl SessionLifecycleActor {
 
         match (&payload.cwd, &payload.error) {
             (Some(cwd), None) => {
-                let home = self.services.paths.home_dir().to_path_buf();
+                let home = self.services.paths.home_dir().clone();
                 {
                     self.state.with_session(|view| {
                         if let Some(session) = view.session.map().get_mut(&payload.session_id) {
@@ -120,7 +121,7 @@ impl SessionLifecycleActor {
                         }
                         map.get(&payload.session_id).map_or_else(
                             || map.default_cwd().clone(),
-                            |session| session.cwd().to_path_buf(),
+                            |session| session.cwd().clone(),
                         )
                     })
                 };
@@ -209,7 +210,7 @@ impl SessionLifecycleActor {
 
         match handler.setup(session_id, args) {
             Ok(cwd) => {
-                let home = self.services.paths.home_dir().to_path_buf();
+                let home = self.services.paths.home_dir().clone();
                 self.state.with_session(|view| {
                     if let Some(session) = view.session.map().get_mut(session_id) {
                         session.set_cwd(cwd.clone());
@@ -273,11 +274,11 @@ impl SessionLifecycleActor {
     pub(super) fn existing_cwd(
         &self,
         session_id: &jinn_core_types::SessionId,
-    ) -> std::path::PathBuf {
+    ) -> MarkedPathBuf<Absolute> {
         let state = self.state.read();
         state.session.get(session_id).map_or_else(
             || state.session.default_cwd().clone(),
-            |session| session.cwd().to_path_buf(),
+            |session| session.cwd().clone(),
         )
     }
 }
@@ -305,14 +306,11 @@ pub(super) fn format_known_lifecycle_error(
                 }
                 parts.join("\n\n")
             }
-            LifecycleCommandError::InvalidPath { path } => {
-                format!(
-                    "Path does not exist or cannot be resolved: {}",
-                    path.display()
-                )
+            LifecycleCommandError::InvalidPath { raw } => {
+                format!("Path does not exist or cannot be resolved: {raw}")
             }
-            LifecycleCommandError::NotADirectory { path } => {
-                format!("Path is not a directory: {}", path.display())
+            LifecycleCommandError::NotADirectory { raw } => {
+                format!("Path is not a directory: {raw}")
             }
             LifecycleCommandError::ExecutionFailed => "Failed to execute command".to_owned(),
         }

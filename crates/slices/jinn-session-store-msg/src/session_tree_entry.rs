@@ -10,6 +10,7 @@ use jinn_picker::picker_style::selected_style;
 use jinn_selection_widget::TreeItem;
 use jinn_selection_widget::highlight_text_with_bg;
 use jinn_theme::Theme;
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
@@ -39,7 +40,7 @@ pub struct SessionTreeEntry {
     pub parent_id_str: Option<String>,
     /// Project directory association, if the session was created from the
     /// projects UI.
-    pub project: Option<std::path::PathBuf>,
+    pub project: Option<MarkedPathBuf<Absolute>>,
     /// Pre-computed project column text: the leaf directory name (e.g.
     /// `~/code/jinn` → `jinn`), or empty when the session has no project.
     pub project_display: String,
@@ -57,11 +58,11 @@ impl SessionTreeEntry {
         theme: Theme,
         session_state: SessionState,
         parent_id: Option<SessionId>,
-        project: Option<std::path::PathBuf>,
+        project: Option<MarkedPathBuf<Absolute>>,
     ) -> Self {
         let id_str = session_id.to_string();
         let parent_id_str = parent_id.as_ref().map(std::string::ToString::to_string);
-        let project_display = project_display_name(project.as_deref());
+        let project_display = project_display_name(project.as_ref());
         Self {
             session_id,
             id_str,
@@ -81,13 +82,12 @@ impl SessionTreeEntry {
 /// Returns the project column text for a project path: the leaf directory
 /// name, falling back to the full path display when `file_name()` is `None`
 /// (e.g. a bare root path).
-fn project_display_name(project: Option<&std::path::Path>) -> String {
+fn project_display_name(project: Option<&MarkedPathBuf<Absolute>>) -> String {
     match project {
         None => String::new(),
-        Some(path) => path.file_name().map_or_else(
-            || path.display().to_string(),
-            |n| n.to_string_lossy().into_owned(),
-        ),
+        Some(path) => path
+            .file_name()
+            .map_or_else(|| path.to_string(), |n| n.to_string_lossy().into_owned()),
     }
 }
 
@@ -232,27 +232,28 @@ mod tests {
     )]
     use super::*;
     use jinn_theme::default_theme;
+    use marked_path::{Absolute, MarkedPathBuf};
 
     /// Returns an absolute path under a typed temp root.
     ///
     /// The path's leaf name is the subject of the column tests, so it is
     /// built from a relative tail rather than a platform-specific literal.
-    fn project_path(tail: &str) -> std::path::PathBuf {
-        let root = jinn_testutil::paths::TestRoot::new().expect("test root");
-        root.join_str(tail).expect("relative path").into_inner()
+    fn project_path(tail: &str) -> MarkedPathBuf<Absolute> {
+        let root = jinn_testutil::paths::TestRoot::new();
+        root.join_str(tail).expect("relative path")
     }
 
     /// Returns the filesystem root of the running platform.
     ///
     /// Derived from a typed absolute path, so it names the drive root on
     /// Windows and `/` on Unix without either spelling being hardcoded.
-    fn filesystem_root() -> std::path::PathBuf {
-        let root = jinn_testutil::paths::TestRoot::new().expect("test root");
-        root.to_path_buf()
+    fn filesystem_root() -> MarkedPathBuf<Absolute> {
+        let root = jinn_testutil::paths::TestRoot::new();
+        root.path()
             .ancestors()
             .last()
             .expect("a filesystem root")
-            .to_path_buf()
+            .to_owned()
     }
 
     #[rstest::rstest]
@@ -388,8 +389,11 @@ mod tests {
     #[rstest::rstest]
     fn entry_with_project_renders_leaf_directory_name() {
         // Given a session tree entry with a project path.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let project = dir.path().join("user/code/jinn");
+        let dir = jinn_testutil::tempdir();
+        let project = dir
+            .path
+            .join("user/code/jinn")
+            .expect("temp root joins a bare name");
         let entry = SessionTreeEntry::new(
             SessionId::new(),
             "Deep Chat".to_owned(),
@@ -423,7 +427,7 @@ mod tests {
 
         // When computing the project display.
         // Then it falls back to the full path display string.
-        assert_eq!(entry.project_display, root.display().to_string());
+        assert_eq!(entry.project_display, root.to_string());
     }
 
     #[rstest::rstest]

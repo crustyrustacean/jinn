@@ -6,12 +6,12 @@
 //! `active_session_mut()` infallible - no `Option`, no `expect`.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 use jinn_core_types::SessionId;
 use jinn_session_store_msg::FrozenTreeNode;
 
 use crate::chat_session::ChatSessionState;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// Tracks an in-progress session load.
 ///
@@ -51,7 +51,7 @@ pub struct SessionMap {
     active_session: SessionId,
     session_load_guard: Option<SessionLoadGuard>,
     startup_hydration_active: bool,
-    default_cwd: PathBuf,
+    default_cwd: MarkedPathBuf<Absolute>,
     /// Late-attached handle to the slice registry, carrying the
     /// slice cells (chat-log-view, chat-input, ...). Attached once at wiring; every
     /// session looked
@@ -64,6 +64,13 @@ pub struct SessionMap {
 }
 
 impl Default for SessionMap {
+    // The cwd fallback is absolute by platform contract (the current dir, or
+    // the temp dir when even that cannot be read); the expect guards
+    // programmer error, not runtime state.
+    #![allow(
+        clippy::expect_used,
+        reason = "cwd and temp-dir fallback are absolute on supported platforms"
+    )]
     fn default() -> Self {
         let session = ChatSessionState::new();
         let id = session.session_id().clone();
@@ -75,7 +82,10 @@ impl Default for SessionMap {
             active_session: id,
             session_load_guard: None,
             startup_hydration_active: false,
-            default_cwd: PathBuf::from("/"),
+            default_cwd: {
+                let cwd = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
+                MarkedPathBuf::<Absolute>::new(cwd).expect("cwd and temp dir are absolute")
+            },
             slices: std::sync::OnceLock::new(),
         }
     }
@@ -83,7 +93,7 @@ impl Default for SessionMap {
 
 impl SessionMap {
     /// Create with an initial session. The map is never empty.
-    pub fn new(session: ChatSessionState, default_cwd: PathBuf) -> Self {
+    pub fn new(session: ChatSessionState, default_cwd: MarkedPathBuf<Absolute>) -> Self {
         let id = session.session_id().clone();
         let mut sessions = HashMap::new();
         sessions.insert(id.clone(), session);
@@ -442,12 +452,12 @@ impl SessionMap {
     }
 
     /// The default CWD for new sessions.
-    pub fn default_cwd(&self) -> &PathBuf {
+    pub fn default_cwd(&self) -> &MarkedPathBuf<Absolute> {
         &self.default_cwd
     }
 
     /// Set the default CWD.
-    pub fn set_default_cwd(&mut self, cwd: PathBuf) {
+    pub fn set_default_cwd(&mut self, cwd: MarkedPathBuf<Absolute>) {
         self.default_cwd = cwd;
     }
 }
@@ -467,7 +477,10 @@ mod tests {
         // The default cwd is a token the tests never touch on disk, so it is
         // rooted at the platform's own filesystem root rather than named as a
         // POSIX literal.
-        let default_cwd = std::path::Path::new(std::path::MAIN_SEPARATOR_STR).to_path_buf();
+        let default_cwd = marked_path::MarkedPathBuf::<marked_path::Absolute>::new(
+            std::path::Path::new(std::path::MAIN_SEPARATOR_STR),
+        )
+        .expect("the filesystem root is absolute");
         SessionMap::new(session, default_cwd)
     }
 

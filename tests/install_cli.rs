@@ -13,6 +13,7 @@
 //! path covers every platform. On Windows `dirs` ignores `XDG_*` entirely,
 //! which is exactly why the root override exists.
 
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 use std::path::PathBuf;
 
 /// Resolves the built `jinn` binary for integration tests.
@@ -55,11 +56,11 @@ fn install_seeds_all_resource_kinds_and_creates_jinn_toml() {
     // Given no existing jinn state in the temp environment.
     let bin = jinn_bin();
     let (home, _guard) = temp_env();
-    let config = home.join("config");
-    let data = home.join("data");
+    let config = home.join("config").expect("typed home joins a bare name");
+    let data = home.join("data").expect("typed home joins a bare name");
 
     // When running `jinn install`.
-    let output = run_jinn(&bin, &config, &data, &["install"]);
+    let output = run_jinn(&bin, config.as_path(), data.as_path(), &["install"]);
 
     // Then it succeeds.
     assert!(
@@ -90,14 +91,14 @@ fn install_second_run_lists_jinn_toml_as_skipped() {
     // Given a completed first install.
     let bin = jinn_bin();
     let (home, _guard) = temp_env();
-    let config = home.join("config");
-    let data = home.join("data");
+    let config = home.join("config").expect("typed home joins a bare name");
+    let data = home.join("data").expect("typed home joins a bare name");
 
-    let first = run_jinn(&bin, &config, &data, &["install"]);
+    let first = run_jinn(&bin, config.as_path(), data.as_path(), &["install"]);
     assert!(first.status.success());
 
     // When running `jinn install` again without --force.
-    let second = run_jinn(&bin, &config, &data, &["install"]);
+    let second = run_jinn(&bin, config.as_path(), data.as_path(), &["install"]);
 
     // Then it succeeds.
     assert!(second.status.success());
@@ -120,14 +121,16 @@ fn install_force_preserves_edited_jinn_toml() {
     // (a compaction knob + a comment).
     let bin = jinn_bin();
     let (home, _guard) = temp_env();
-    let config = home.join("config");
-    let data = home.join("data");
+    let config = home.join("config").expect("typed home joins a bare name");
+    let data = home.join("data").expect("typed home joins a bare name");
 
-    let first = run_jinn(&bin, &config, &data, &["install"]);
+    let first = run_jinn(&bin, config.as_path(), data.as_path(), &["install"]);
     assert!(first.status.success());
 
-    let toml_path = config.join("jinn/jinn.toml");
-    let original = std::fs::read_to_string(&toml_path).expect("read jinn.toml");
+    let toml_path = config
+        .join("jinn/jinn.toml")
+        .expect("typed parent joins a bare name");
+    let original = std::fs::read_to_string(toml_path.as_path()).expect("read jinn.toml");
     let edited = format!(
         "# user was here\n{}",
         original.replace(
@@ -138,7 +141,12 @@ fn install_force_preserves_edited_jinn_toml() {
     std::fs::write(&toml_path, &edited).expect("write edited jinn.toml");
 
     // When running `jinn install --force`.
-    let forced = run_jinn(&bin, &config, &data, &["install", "--force"]);
+    let forced = run_jinn(
+        &bin,
+        config.as_path(),
+        data.as_path(),
+        &["install", "--force"],
+    );
 
     // Then it succeeds and jinn.toml is byte-identical.
     assert!(forced.status.success());
@@ -157,15 +165,22 @@ fn install_succeeds_with_malformed_jinn_toml() {
     // Given a malformed jinn.toml from a prior broken edit.
     let bin = jinn_bin();
     let (home, _guard) = temp_env();
-    let config = home.join("config");
-    let data = home.join("data");
+    let config = home.join("config").expect("typed home joins a bare name");
+    let data = home.join("data").expect("typed home joins a bare name");
 
-    let toml_dir = config.join("jinn");
+    let toml_dir = config.join("jinn").expect("typed parent joins a bare name");
     std::fs::create_dir_all(&toml_dir).expect("create config dir");
-    std::fs::write(toml_dir.join("jinn.toml"), "NOT [valid toml").expect("write jinn.toml");
+    std::fs::write(
+        toml_dir
+            .join("jinn.toml")
+            .expect("typed parent joins a bare name")
+            .as_path(),
+        "NOT [valid toml",
+    )
+    .expect("write jinn.toml");
 
     // When running `jinn install`.
-    let output = run_jinn(&bin, &config, &data, &["install"]);
+    let output = run_jinn(&bin, config.as_path(), data.as_path(), &["install"]);
 
     // Then it succeeds.
     assert!(
@@ -174,7 +189,13 @@ fn install_succeeds_with_malformed_jinn_toml() {
         String::from_utf8_lossy(&output.stderr)
     );
     // And the malformed file is left untouched.
-    let on_disk = std::fs::read_to_string(toml_dir.join("jinn.toml")).expect("read jinn.toml");
+    let on_disk = std::fs::read_to_string(
+        toml_dir
+            .join("jinn.toml")
+            .expect("typed parent joins a bare name")
+            .as_path(),
+    )
+    .expect("read jinn.toml");
     assert_eq!(
         on_disk, "NOT [valid toml",
         "install must not touch the file"
@@ -187,11 +208,11 @@ fn config_init_creates_the_stream_rules_file_beside_jinn_toml() {
     // Given a fresh temp environment with no config at all.
     let bin = jinn_bin();
     let (home, _guard) = temp_env();
-    let config = home.join("config");
-    let data = home.join("data");
+    let config = home.join("config").expect("typed home joins a bare name");
+    let data = home.join("data").expect("typed home joins a bare name");
 
     // When running `jinn config init`.
-    let output = run_jinn(&bin, &config, &data, &["config", "init"]);
+    let output = run_jinn(&bin, config.as_path(), data.as_path(), &["config", "init"]);
 
     // Then it succeeds and reports both files created.
     assert!(
@@ -209,10 +230,15 @@ fn config_init_creates_the_stream_rules_file_beside_jinn_toml() {
         "fresh init must create the rules file, got: {rules_line}"
     );
     // And the rules file exists beside jinn.toml with the embedded template.
-    let rules_path = config.join("jinn/stream_rules.toml");
-    assert!(rules_path.is_file(), "rules file must be beside jinn.toml");
+    let rules_path = config
+        .join("jinn/stream_rules.toml")
+        .expect("typed parent joins a bare name");
+    assert!(
+        rules_path.as_path().is_file(),
+        "rules file must be beside jinn.toml"
+    );
     assert_eq!(
-        std::fs::read_to_string(&rules_path).expect("read rules file"),
+        std::fs::read_to_string(rules_path.as_path()).expect("read rules file"),
         jinn_preferences_config::STREAM_RULES_TEMPLATE,
         "the created rules file is the embedded template, verbatim"
     );
@@ -224,16 +250,23 @@ fn config_init_force_overwrites_the_stream_rules_file() {
     // Given a completed init whose rules file the user replaced with edits.
     let bin = jinn_bin();
     let (home, _guard) = temp_env();
-    let config = home.join("config");
-    let data = home.join("data");
+    let config = home.join("config").expect("typed home joins a bare name");
+    let data = home.join("data").expect("typed home joins a bare name");
 
-    let first = run_jinn(&bin, &config, &data, &["config", "init"]);
+    let first = run_jinn(&bin, config.as_path(), data.as_path(), &["config", "init"]);
     assert!(first.status.success());
-    let rules_path = config.join("jinn/stream_rules.toml");
-    std::fs::write(&rules_path, "# only mine\n").expect("write edited rules");
+    let rules_path = config
+        .join("jinn/stream_rules.toml")
+        .expect("typed parent joins a bare name");
+    std::fs::write(rules_path.as_path(), "# only mine\n").expect("write edited rules");
 
     // When running `jinn config init --force`.
-    let forced = run_jinn(&bin, &config, &data, &["config", "init", "--force"]);
+    let forced = run_jinn(
+        &bin,
+        config.as_path(),
+        data.as_path(),
+        &["config", "init", "--force"],
+    );
 
     // Then it succeeds and the rules file is back to the shipped template:
     // --force is the supported path for pulling in an updated shipped set.
@@ -248,7 +281,7 @@ fn config_init_force_overwrites_the_stream_rules_file() {
         "--force must overwrite the rules file, got: {rules_line}"
     );
     assert_eq!(
-        std::fs::read_to_string(&rules_path).expect("read rules file"),
+        std::fs::read_to_string(rules_path.as_path()).expect("read rules file"),
         jinn_preferences_config::STREAM_RULES_TEMPLATE
     );
 }
@@ -260,14 +293,21 @@ fn config_init_without_force_skips_an_existing_stream_rules_file() {
     // jinn.toml beside it.
     let bin = jinn_bin();
     let (home, _guard) = temp_env();
-    let config = home.join("config");
-    let data = home.join("data");
-    let toml_dir = config.join("jinn");
+    let config = home.join("config").expect("typed home joins a bare name");
+    let data = home.join("data").expect("typed home joins a bare name");
+    let toml_dir = config.join("jinn").expect("typed parent joins a bare name");
     std::fs::create_dir_all(&toml_dir).expect("create config dir");
-    std::fs::write(toml_dir.join("stream_rules.toml"), "# only mine\n").expect("write rules");
+    std::fs::write(
+        toml_dir
+            .join("stream_rules.toml")
+            .expect("typed parent joins a bare name")
+            .as_path(),
+        "# only mine\n",
+    )
+    .expect("write rules");
 
     // When running `jinn config init` without --force.
-    let output = run_jinn(&bin, &config, &data, &["config", "init"]);
+    let output = run_jinn(&bin, config.as_path(), data.as_path(), &["config", "init"]);
 
     // Then it succeeds — jinn.toml is created — and the rules file is
     // listed as skipped, content intact.
@@ -286,7 +326,13 @@ fn config_init_without_force_skips_an_existing_stream_rules_file() {
         "plain init must not touch an existing rules file, got: {rules_line}"
     );
     assert_eq!(
-        std::fs::read_to_string(toml_dir.join("stream_rules.toml")).expect("read rules file"),
+        std::fs::read_to_string(
+            toml_dir
+                .join("stream_rules.toml")
+                .expect("typed parent joins a bare name")
+                .as_path()
+        )
+        .expect("read rules file"),
         "# only mine\n"
     );
 }
@@ -296,7 +342,7 @@ fn config_init_without_force_skips_an_existing_stream_rules_file() {
 // test. `run_jinn` points `JINN_PATHS_ROOT` at the root itself, so every
 // jinn path base — including home, and therefore `.agents/skills` —
 // rebinds inside this tree and the run touches nothing real.
-fn temp_env() -> (PathBuf, tempfile::TempDir) {
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    (dir.path().to_path_buf(), dir)
+fn temp_env() -> (MarkedPathBuf<Absolute>, jinn_testutil::JinnTempDir) {
+    let dir = jinn_testutil::tempdir();
+    (dir.path.clone(), dir)
 }

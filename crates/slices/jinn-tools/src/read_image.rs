@@ -92,7 +92,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         };
 
         let resolved = resolve_path(&file_path, &ctx.cwd);
-        let display = resolved.display().to_string();
+        let display = resolved.to_string();
 
         // The converter shells out to ImageMagick; keep the blocking work off
         // the async runtime.
@@ -172,8 +172,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             tool_call_id: call.id,
             name: call.name,
             content: {
-                let file_name = resolved
-                    .file_name()
+                let file_name = marked_path::MarkedPathAccess::file_name(&resolved)
                     .map_or_else(|| display.clone(), |n| n.to_string_lossy().into_owned());
                 format!(
                     "{} ({}, {})",
@@ -298,7 +297,7 @@ mod tests {
     use super::*;
     use crate::tool_types::ToolContext;
     use jinn_llm_support::image_convert::{ImageConversionError, ImageConverter, ResolvedImage};
-    use std::path::Path;
+    use marked_path::{Absolute, MarkedPathBuf};
     use std::sync::Arc;
 
     /// PNG magic bytes followed by a payload — enough for the classifier.
@@ -326,7 +325,7 @@ mod tests {
         }
         fn convert_to_png(
             &self,
-            _input: &Path,
+            _input: &MarkedPathBuf<Absolute>,
         ) -> Result<Vec<u8>, error_stack::Report<ImageConversionError>> {
             if self.available {
                 Ok(b"\x89PNG\r\n\x1a\nconverted".to_vec())
@@ -347,11 +346,11 @@ mod tests {
         }))
     }
 
-    fn test_ctx(cwd: &Path) -> ToolContext {
+    fn test_ctx(cwd: &MarkedPathBuf<Absolute>) -> ToolContext {
         crate::tool_types::ToolContext {
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
-            cwd: cwd.to_owned(),
+            cwd: cwd.clone(),
             timeout: None,
             state: None,
             session_id: None,
@@ -369,11 +368,11 @@ mod tests {
         }
     }
 
-    fn call_for(path: &Path) -> ToolCall {
+    fn call_for(path: &MarkedPathBuf<Absolute>) -> ToolCall {
         ToolCall {
             id: "call_1".into(),
             name: "read_image".into(),
-            arguments: serde_json::json!({ "file_path": path.to_string_lossy() }).to_string(),
+            arguments: serde_json::json!({ "file_path": path.to_string() }).to_string(),
         }
     }
 
@@ -381,12 +380,15 @@ mod tests {
     #[tokio::test]
     async fn execute_attaches_native_png() {
         // Given a file holding PNG bytes.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("shot.png");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("shot.png")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, png_bytes()).expect("write png");
 
         // When executing read_image on it.
-        let result = execute(call_for(&path), test_ctx(dir.path())).await;
+        let result = execute(call_for(&path), test_ctx(&dir.path)).await;
 
         // Then the result succeeds and carries the image attachment.
         assert!(result.success, "content: {}", result.content);
@@ -410,11 +412,14 @@ mod tests {
     #[tokio::test]
     async fn execute_fails_on_missing_file_with_its_resolved_path() {
         // Given a call naming a file that does not exist.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("nope.png");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("nope.png")
+            .expect("temp root joins a bare name");
 
         // When executing.
-        let result = execute(call_for(&path), test_ctx(dir.path())).await;
+        let result = execute(call_for(&path), test_ctx(&dir.path)).await;
 
         // Then the result fails naming the file-not-found reason.
         assert!(!result.success);
@@ -434,12 +439,15 @@ mod tests {
     #[tokio::test]
     async fn execute_fails_distinctly_on_non_image_file() {
         // Given a file holding text.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("notes.txt");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("notes.txt")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, b"just words").expect("write text");
 
         // When executing.
-        let result = execute(call_for(&path), test_ctx(dir.path())).await;
+        let result = execute(call_for(&path), test_ctx(&dir.path)).await;
 
         // Then the failure names it a non-image, not a missing file.
         assert!(!result.success);
@@ -458,8 +466,11 @@ mod tests {
         // test exercises the resolver directly, since the tool builds its own
         // converter — see the resolver tests in jinn-llm-support for the
         // fake-backed coverage of this branch.)
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("photo.heic");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("photo.heic")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, heic_bytes()).expect("write heic");
         let converter = with_fake_converter(false);
 
@@ -474,8 +485,11 @@ mod tests {
     #[tokio::test]
     async fn execute_transcodes_heic_through_a_working_converter() {
         // Given a HEIC file and an available fake converter.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("photo.heic");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("photo.heic")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, heic_bytes()).expect("write heic");
         let converter = with_fake_converter(true);
 
@@ -507,8 +521,11 @@ mod tests {
     #[tokio::test]
     async fn execute_fails_with_resize_guidance_on_oversized_image() {
         // Given a PNG file larger than the size cap.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("big.png");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("big.png")
+            .expect("temp root joins a bare name");
         let big = {
             let mut v = png_bytes();
             v.extend(std::iter::repeat_n(0u8, MAX_IMAGE_BYTES + 1));
@@ -517,7 +534,7 @@ mod tests {
         std::fs::write(&path, &big).expect("write big png");
 
         // When executing.
-        let result = execute(call_for(&path), test_ctx(dir.path())).await;
+        let result = execute(call_for(&path), test_ctx(&dir.path)).await;
 
         // Then the failure names the size and the resize remedy.
         assert!(!result.success);
@@ -539,7 +556,7 @@ mod tests {
     #[tokio::test]
     async fn execute_fails_on_missing_file_path_argument() {
         // Given a call without the file_path argument.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let call = ToolCall {
             id: "call_2".into(),
             name: "read_image".into(),
@@ -547,7 +564,7 @@ mod tests {
         };
 
         // When executing.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the failure names the missing slot.
         assert!(!result.success);
@@ -577,8 +594,11 @@ mod tests {
     #[tokio::test]
     async fn execute_resolves_relative_path_against_cwd() {
         // Given a file in the session's cwd and a relative path argument.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("rel.png");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("rel.png")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, png_bytes()).expect("write png");
         let call = ToolCall {
             id: "call_3".into(),
@@ -587,7 +607,7 @@ mod tests {
         };
 
         // When executing.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the file is found and attached.
         assert!(result.success, "content: {}", result.content);
@@ -707,10 +727,17 @@ mod tests {
                 "text-model": { "modalities": { "input": ["text"] } }
             }}
         });
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let user_path = dir.path().join("models.dev.json");
+        let dir = jinn_testutil::tempdir();
+        let user_path = dir
+            .path
+            .join("models.dev.json")
+            .expect("temp root joins a bare name");
         std::fs::write(&user_path, json.to_string()).expect("write fixture");
-        let models_dev = ModelsDevData::load(&user_path, dir.path().join("none.json").as_path());
+        let none_path = dir
+            .path
+            .join("none.json")
+            .expect("temp root joins a bare name");
+        let models_dev = ModelsDevData::load(&user_path, &none_path);
 
         // When asking models.dev about both.
         // Then only the image-capable one is positively confirmed.

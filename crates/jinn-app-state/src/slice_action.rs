@@ -6,7 +6,7 @@
 //! requires the impl to sit with the type, which is why it moved out of the
 //! kernel along with [`AppState`] itself.
 
-use std::path::PathBuf;
+use marked_path::{Absolute, MarkedPathBuf};
 
 use jinn_core_types::ChatEntry;
 use jinn_core_types::SessionId;
@@ -31,11 +31,15 @@ impl SliceActionState for AppState {
             .push_entry(ChatEntry::error(message));
     }
 
-    fn active_session_cwd(&self) -> PathBuf {
-        self.active_session().cwd().to_owned()
+    fn active_session_cwd(&self) -> MarkedPathBuf<Absolute> {
+        self.active_session().cwd().clone()
     }
 
-    fn publish_session_cwd(&self, session_id: SessionId, cwd: PathBuf) -> PublishClosure {
+    fn publish_session_cwd(
+        &self,
+        session_id: SessionId,
+        cwd: MarkedPathBuf<Absolute>,
+    ) -> PublishClosure {
         publish_message(jinn_session_lifecycle_msg::SetSessionCwd { session_id, cwd })
     }
 

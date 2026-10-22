@@ -17,11 +17,12 @@
 use jinn_common::app_info::PREFS_FILE_NAME;
 use jinn_config::{ConfigLayer, FilesystemConfigStorage};
 use jinn_preferences_config::schemas::SessionLifecycle;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// A layer over the temp `jinn.toml` the test just wrote.
-fn layer_for(path: &std::path::Path) -> ConfigLayer {
+fn layer_for(path: &MarkedPathBuf<Absolute>) -> ConfigLayer {
     ConfigLayer::load(std::sync::Arc::new(FilesystemConfigStorage::new(
-        path.to_path_buf(),
+        path.clone(),
     )))
     .expect("layer loads")
 }
@@ -30,8 +31,11 @@ fn layer_for(path: &std::path::Path) -> ConfigLayer {
 fn load_parses_table_array_session_lifecycle() {
     // Given a jinn.toml using the [[session_lifecycle.script]]
     // table array syntax.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let path = dir.path().join(PREFS_FILE_NAME);
+    let dir = jinn_testutil::tempdir();
+    let path = dir
+        .path
+        .join(PREFS_FILE_NAME)
+        .expect("temp root joins a bare name");
     std::fs::write(
         &path,
         r#"last_model = "ollama/llama3"
@@ -64,8 +68,11 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
 fn put_lifecycle_list_preserves_session_lifecycle_block_and_comments() {
     // Given a jinn.toml with a session_lifecycle block.
     let original = "# my custom lifecycle\n[[session_lifecycle.script]]\nname = \"fossil-branch\"\ndescription = \"open a branch\"\n";
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let path = dir.path().join(PREFS_FILE_NAME);
+    let dir = jinn_testutil::tempdir();
+    let path = dir
+        .path
+        .join(PREFS_FILE_NAME)
+        .expect("temp root joins a bare name");
     std::fs::write(&path, original).expect("write");
     let config = layer_for(&path);
 
@@ -87,8 +94,11 @@ fn put_lifecycle_list_preserves_session_lifecycle_block_and_comments() {
 fn put_lifecycle_list_deletes_session_lifecycle_block_on_entry_removal() {
     // Given a jinn.toml with two lifecycle blocks.
     let original = "# keep\n[[session_lifecycle.script]]\nname = \"alpha\"\n\n# delete\n[[session_lifecycle.script]]\nname = \"beta\"\n";
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let path = dir.path().join(PREFS_FILE_NAME);
+    let dir = jinn_testutil::tempdir();
+    let path = dir
+        .path
+        .join(PREFS_FILE_NAME)
+        .expect("temp root joins a bare name");
     std::fs::write(&path, original).expect("write");
     let config = layer_for(&path);
 
@@ -113,8 +123,11 @@ fn put_lifecycle_list_deletes_session_lifecycle_block_on_entry_removal() {
 fn put_lifecycle_list_appends_new_session_lifecycle_at_end() {
     // Given a jinn.toml with one lifecycle block.
     let original = "# existing\n[[session_lifecycle.script]]\nname = \"alpha\"\n";
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let path = dir.path().join(PREFS_FILE_NAME);
+    let dir = jinn_testutil::tempdir();
+    let path = dir
+        .path
+        .join(PREFS_FILE_NAME)
+        .expect("temp root joins a bare name");
     std::fs::write(&path, original).expect("write");
     let config = layer_for(&path);
 

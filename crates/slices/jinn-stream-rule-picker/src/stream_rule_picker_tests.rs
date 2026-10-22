@@ -23,6 +23,7 @@ use jinn_stream_rule_picker_msg::PersistStreamRuleDisabled;
 use jinn_stream_rule_picker_msg::{
     StreamRulePickerState, stream_rule_picker_scope, stream_rule_picker_slot,
 };
+use marked_path::{Absolute, MarkedPathBuf};
 use std::fmt::Write as _;
 use std::sync::Arc;
 
@@ -49,7 +50,7 @@ const THREE_RULES: &str = "[[stream_rules.entry]]\nname = \"no-todos\"\nconditio
 ///
 /// Returns the owned dir so the caller keeps it alive as long as the path
 /// is in use.
-fn temp_prefs() -> (tempfile::TempDir, std::path::PathBuf) {
+fn temp_prefs() -> (jinn_testutil::JinnTempDir, MarkedPathBuf<Absolute>) {
     temp_prefs_with_sibling(SIBLING_RULES)
 }
 
@@ -58,12 +59,16 @@ fn temp_prefs() -> (tempfile::TempDir, std::path::PathBuf) {
 ///
 /// Returns the owned dir so the caller keeps it alive as long as the path
 /// is in use.
-fn temp_prefs_with_sibling(body: &str) -> (tempfile::TempDir, std::path::PathBuf) {
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let path = dir.path().join("jinn.toml");
+fn temp_prefs_with_sibling(body: &str) -> (jinn_testutil::JinnTempDir, MarkedPathBuf<Absolute>) {
+    let dir = jinn_testutil::tempdir();
+    let path = dir
+        .path
+        .join("jinn.toml")
+        .expect("temp root joins a bare name");
     let sibling = dir
-        .path()
-        .join(jinn_preferences_config::STREAM_RULES_FILE_NAME);
+        .path
+        .join(jinn_preferences_config::STREAM_RULES_FILE_NAME)
+        .expect("temp root joins a bare name");
     std::fs::write(&sibling, body).expect("write sibling rules file");
     (dir, path)
 }
@@ -79,8 +84,8 @@ fn wired() -> (
     TypedCell<StreamRulePickerState>,
     KeyRoutes,
     ConfigLayer,
-    tempfile::TempDir,
-    std::path::PathBuf,
+    jinn_testutil::JinnTempDir,
+    MarkedPathBuf<Absolute>,
 ) {
     let routes = KeyRoutes::new();
     let cell = jinn_slices::Slices::new()
@@ -104,8 +109,8 @@ async fn activated() -> (
     jinn_slices::Slices,
     KeyRoutes,
     ConfigLayer,
-    tempfile::TempDir,
-    std::path::PathBuf,
+    jinn_testutil::JinnTempDir,
+    MarkedPathBuf<Absolute>,
 ) {
     let (prefs_dir, prefs) = temp_prefs();
     activated_with(prefs_dir, prefs).await
@@ -117,8 +122,8 @@ async fn activated_with_three_rules() -> (
     jinn_slices::Slices,
     KeyRoutes,
     ConfigLayer,
-    tempfile::TempDir,
-    std::path::PathBuf,
+    jinn_testutil::JinnTempDir,
+    MarkedPathBuf<Absolute>,
 ) {
     let (prefs_dir, prefs) = temp_prefs();
     activated_doc(THREE_RULES, prefs_dir, prefs).await
@@ -128,14 +133,14 @@ async fn activated_with_three_rules() -> (
 /// path — the fully parameterized variant both helpers above delegate to.
 async fn activated_doc(
     doc: &str,
-    prefs_dir: tempfile::TempDir,
-    prefs: std::path::PathBuf,
+    prefs_dir: jinn_testutil::JinnTempDir,
+    prefs: MarkedPathBuf<Absolute>,
 ) -> (
     jinn_slices::Slices,
     KeyRoutes,
     ConfigLayer,
-    tempfile::TempDir,
-    std::path::PathBuf,
+    jinn_testutil::JinnTempDir,
+    MarkedPathBuf<Absolute>,
 ) {
     activated_layer(config_layer(doc), prefs_dir, prefs).await
 }
@@ -145,14 +150,14 @@ async fn activated_doc(
 /// wrap a backend the test owns.
 async fn activated_layer(
     layer: ConfigLayer,
-    prefs_dir: tempfile::TempDir,
-    prefs: std::path::PathBuf,
+    prefs_dir: jinn_testutil::JinnTempDir,
+    prefs: MarkedPathBuf<Absolute>,
 ) -> (
     jinn_slices::Slices,
     KeyRoutes,
     ConfigLayer,
-    tempfile::TempDir,
-    std::path::PathBuf,
+    jinn_testutil::JinnTempDir,
+    MarkedPathBuf<Absolute>,
 ) {
     let slices = jinn_slices::Slices::new();
     // Production boot seeds every slice cell before any slice activates;
@@ -179,14 +184,14 @@ async fn activated_layer(
 /// The real [`activate`] over a specific preferences path — the variant the
 /// merged-list tests need, since the sibling rules file lives beside it.
 async fn activated_with(
-    prefs_dir: tempfile::TempDir,
-    prefs: std::path::PathBuf,
+    prefs_dir: jinn_testutil::JinnTempDir,
+    prefs: MarkedPathBuf<Absolute>,
 ) -> (
     jinn_slices::Slices,
     KeyRoutes,
     ConfigLayer,
-    tempfile::TempDir,
-    std::path::PathBuf,
+    jinn_testutil::JinnTempDir,
+    MarkedPathBuf<Absolute>,
 ) {
     activated_doc(TWO_RULES, prefs_dir, prefs).await
 }

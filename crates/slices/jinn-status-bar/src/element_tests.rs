@@ -629,7 +629,10 @@ fn render_shows_absolute_path_for_non_home_cwd() {
     // filesystem root so it lies outside the user's home directory on every
     // platform — the platform temp directory is under the user profile on
     // Windows, so a temp root would be tilde-compressed there.
-    let cwd = std::path::Path::new(std::path::MAIN_SEPARATOR_STR).join("test-project");
+    let cwd = marked_path::MarkedPathBuf::<marked_path::Absolute>::new(
+        std::path::Path::new(std::path::MAIN_SEPARATOR_STR).join("test-project"),
+    )
+    .expect("rooted test path");
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state
@@ -642,7 +645,7 @@ fn render_shows_absolute_path_for_non_home_cwd() {
     let buffer = terminal.backend().buffer().clone();
 
     // Then the cwd line (row 0) shows the full absolute path, with no tilde.
-    let cwd_label = cwd.display().to_string();
+    let cwd_label = cwd.to_string();
     let row0 = buffer_row(&buffer, 0, 80);
     assert!(
         row0.contains(cwd_label.as_str()),
@@ -658,7 +661,10 @@ fn render_shows_tilde_for_home_cwd() {
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
-    let home = dirs::home_dir().expect("home dir exists");
+    let home = marked_path::MarkedPathBuf::<marked_path::Absolute>::new(
+        dirs::home_dir().expect("home dir exists"),
+    )
+    .expect("home is absolute");
     state.active_session_mut().set_cwd(home);
 
     // When rendering.
@@ -681,10 +687,14 @@ fn render_shows_tilde_substitution_for_path_under_home() {
     state
         .active_session_mut()
         .set_model(ModelSelection::Single("ollama/llama3".to_owned()));
-    let home = dirs::home_dir().expect("home dir exists");
-    state
-        .active_session_mut()
-        .set_cwd(home.join("projects/my-app"));
+    let home = marked_path::MarkedPathBuf::<marked_path::Absolute>::new(
+        dirs::home_dir().expect("home dir exists"),
+    )
+    .expect("home is absolute");
+    state.active_session_mut().set_cwd(
+        home.join("projects/my-app")
+            .expect("typed home joins a bare name"),
+    );
 
     // When rendering.
     let terminal = render_element(&mut element, &state, 80, 2);

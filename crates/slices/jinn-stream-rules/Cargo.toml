@@ -5,6 +5,7 @@ edition.workspace = true
 description = "The stream-rules slice: regex rules tested against the live assistant stream."
 
 [dependencies]
+marked-path = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-preferences-config = { workspace = true }

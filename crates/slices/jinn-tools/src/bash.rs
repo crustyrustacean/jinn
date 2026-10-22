@@ -25,6 +25,7 @@ use jinn_tools_msg::truncation::{
 };
 
 use super::BoxedToolFuture;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// RAII guard that kills the entire process group when dropped.
 ///
@@ -423,7 +424,7 @@ async fn read_child_output_and_wait(
 /// group (child + all descendants) on cancel.
 fn spawn_shell_command(
     command: &str,
-    cwd: &std::path::Path,
+    cwd: &MarkedPathBuf<Absolute>,
     shell: &str,
 ) -> std::io::Result<KillOnDrop> {
     // The shell was resolved at launch: Git Bash over the WSL `bash.exe`
@@ -560,15 +561,15 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use std::path::Path;
+    use marked_path::MarkedPathAccess;
 
     /// A context whose cwd is a real, existing scratch directory owned by the
     /// calling test. Windows CreateProcess rejects a current_dir that does not
     /// exist, so a hardcoded fallback directory would fail the spawn before
     /// bash ever runs.
-    fn test_ctx(cwd: &Path) -> ToolContext {
+    fn test_ctx(cwd: &MarkedPathBuf<Absolute>) -> ToolContext {
         ToolContext {
-            cwd: cwd.to_owned(),
+            cwd: cwd.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
             timeout: None,
@@ -603,7 +604,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_stdout() {
         // Given a bash tool call that echoes text.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let call = ToolCall {
             id: "call_1".into(),
             name: "bash".into(),
@@ -614,7 +615,7 @@ mod tests {
         };
 
         // When executing the bash tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result contains the echoed output.
         assert_eq!(result.tool_call_id.as_str(), "call_1");
@@ -626,7 +627,7 @@ mod tests {
     #[tokio::test]
     async fn execute_runs_through_bash_not_fish_or_dash() {
         // Given a bash tool call using brace expansion (rejected by fish and dash).
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let call = ToolCall {
             id: "call_bash".into(),
             name: "bash".into(),
@@ -637,7 +638,7 @@ mod tests {
         };
 
         // When executing the bash tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the output shows bash's brace expansion (1 2 3),
         // proving the executor is bash, not fish or dash.
@@ -649,7 +650,7 @@ mod tests {
     #[tokio::test]
     async fn execute_captures_stderr() {
         // Given a bash tool call that writes to stderr.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let call = ToolCall {
             id: ToolCallId::from("call_2"),
             name: "bash".to_owned(),
@@ -660,7 +661,7 @@ mod tests {
         };
 
         // When executing the bash tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result contains the stderr output.
         assert!(result.success);
@@ -671,7 +672,7 @@ mod tests {
     #[tokio::test]
     async fn execute_reports_nonzero_exit() {
         // Given a bash tool call that exits with code 1.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let call = ToolCall {
             id: ToolCallId::from("call_3"),
             name: "bash".to_owned(),
@@ -682,7 +683,7 @@ mod tests {
         };
 
         // When executing the bash tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result indicates failure with exit code.
         assert!(!result.success);
@@ -706,8 +707,8 @@ mod tests {
         // Without the canonical form the two spellings differ and the
         // assertion fails on every macOS host.
         let (ctx, call, expected_cwd, _dir) = {
-            let dir = jinn_testutil::tempdir().expect("create temp dir");
-            let canonical = jinn_common::fs_paths::canonicalize_display(dir.path())
+            let dir = jinn_testutil::tempdir();
+            let canonical = jinn_common::fs_paths::canonicalize_display(&dir.path)
                 .expect("canonicalize temp dir")
                 .to_string_lossy()
                 .into_owned();
@@ -716,7 +717,7 @@ mod tests {
             #[cfg(not(windows))]
             let (pwd_command, expected_cwd) = ("pwd", canonical);
             let ctx = ToolContext {
-                cwd: dir.path().to_owned(),
+                cwd: dir.path.clone(),
                 config: jinn_config::testutil::config_layer(""),
                 shells: Default::default(),
                 timeout: None,
@@ -764,7 +765,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_empty_command() {
         // Given a bash tool call with an empty command.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let call = ToolCall {
             id: ToolCallId::from("call_5"),
             name: "bash".to_owned(),
@@ -775,7 +776,7 @@ mod tests {
         };
 
         // When executing the bash tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result indicates failure.
         assert!(!result.success);
@@ -786,7 +787,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_bad_json() {
         // Given a bash tool call with invalid JSON.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let call = ToolCall {
             id: "call_6".into(),
             name: "bash".into(),
@@ -794,7 +795,7 @@ mod tests {
         };
 
         // When executing the bash tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result indicates failure.
         assert!(!result.success);
@@ -806,7 +807,7 @@ mod tests {
     #[tokio::test]
     async fn execute_child_has_no_controlling_tty() {
         // Given a bash tool call that tries to open the controlling tty.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let call = ToolCall {
             id: "call_tty".into(),
             name: "bash".into(),
@@ -817,7 +818,7 @@ mod tests {
         };
 
         // When executing the bash tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the child failed to open /dev/tty: it has no controlling
         // terminal, so tty-writers cannot print over the TUI.
@@ -833,7 +834,8 @@ mod tests {
     async fn spawned_shell_runs_in_new_session() {
         // Given a shell spawned through the tool's own spawn path, kept
         // alive long enough to inspect.
-        let child = spawn_shell_command("sleep 5", std::path::Path::new("."), &shell_for_tests())
+        let dir = jinn_testutil::tempdir();
+        let child = spawn_shell_command("sleep 5", &dir.path, &shell_for_tests())
             .expect("spawn should succeed");
 
         // When reading the session ids of the test process and the shell
@@ -856,8 +858,8 @@ mod tests {
     #[tokio::test]
     async fn execute_no_timeout_when_default_is_none_and_no_per_call() {
         // Given no timeout in the context.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let ctx = test_ctx(dir.path()); // timeout: None
+        let dir = jinn_testutil::tempdir();
+        let ctx = test_ctx(&dir.path); // timeout: None
         let call = ToolCall {
             id: "call_no_to".into(),
             name: "bash".to_owned(),
@@ -939,8 +941,8 @@ mod tests {
         // Given a continuously-emitting command under a tight per-call timeout.
         const ITERATIONS: u32 = 6;
         const TIGHT: Duration = Duration::from_millis(200);
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let ctx = test_ctx(dir.path());
+        let dir = jinn_testutil::tempdir();
+        let ctx = test_ctx(&dir.path);
 
         // When repeatedly dropping the bash future mid-stream via timeout.
         for i in 0..ITERATIONS {

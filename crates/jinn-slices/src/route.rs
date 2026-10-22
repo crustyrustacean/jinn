@@ -215,7 +215,7 @@ pub trait SliceActionState {
     /// Pushes an error line into the active session's chat history.
     fn push_session_error(&mut self, message: &str);
     /// The active session's working directory (the cwd popup's seeding base).
-    fn active_session_cwd(&self) -> std::path::PathBuf;
+    fn active_session_cwd(&self) -> marked_path::MarkedPathBuf<marked_path::Absolute>;
     /// Mints the publish closure for the kernel's `SetSessionCwd` command.
     ///
     /// The kernel impl wraps its own command type; the cwd slice stays
@@ -223,7 +223,7 @@ pub trait SliceActionState {
     fn publish_session_cwd(
         &self,
         session_id: jinn_core_types::SessionId,
-        cwd: std::path::PathBuf,
+        cwd: marked_path::MarkedPathBuf<marked_path::Absolute>,
     ) -> PublishClosure;
 
     /// Downcast hook: slices that must drive concrete kernel behavior
@@ -787,6 +787,7 @@ mod tests {
     use super::SliceActionState;
     use crate::SliceScopeId;
     use crate::slices::Slices;
+    use marked_path::{Absolute, MarkedPathBuf};
 
     fn scope() -> SliceScopeId {
         SliceScopeId::new("test-slice", "main")
@@ -844,19 +845,20 @@ mod tests {
             self.errors.push(message.to_owned());
         }
 
-        fn active_session_cwd(&self) -> std::path::PathBuf {
+        fn active_session_cwd(&self) -> marked_path::MarkedPathBuf<marked_path::Absolute> {
             // Rooted at the platform's own filesystem root, so the double
             // hands out an absolute path on every platform without naming a
             // POSIX literal.
-            std::path::PathBuf::from(std::path::MAIN_SEPARATOR_STR)
-                .join("test")
-                .join("cwd")
+            marked_path::MarkedPathBuf::<marked_path::Absolute>::new(std::path::MAIN_SEPARATOR_STR)
+                .expect("root separator is absolute")
+                .join_all(["test", "cwd"])
+                .expect("name joins keep the base absolute")
         }
 
         fn publish_session_cwd(
             &self,
             _session_id: jinn_core_types::SessionId,
-            _cwd: std::path::PathBuf,
+            _cwd: MarkedPathBuf<Absolute>,
         ) -> PublishClosure {
             Box::new(|_bus| {})
         }
@@ -876,14 +878,14 @@ mod tests {
 
         fn push_session_error(&mut self, _message: &str) {}
 
-        fn active_session_cwd(&self) -> std::path::PathBuf {
-            std::path::PathBuf::new()
+        fn active_session_cwd(&self) -> MarkedPathBuf<Absolute> {
+            MarkedPathBuf::<Absolute>::new("/").expect("test cwd")
         }
 
         fn publish_session_cwd(
             &self,
             _session_id: jinn_core_types::SessionId,
-            _cwd: std::path::PathBuf,
+            _cwd: MarkedPathBuf<Absolute>,
         ) -> PublishClosure {
             Box::new(|_bus| {})
         }

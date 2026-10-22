@@ -225,13 +225,18 @@ mod tests {
     #![allow(clippy::expect_used, reason = "test code")]
     use super::*;
     use clap::Parser;
+    use marked_path::MarkedPathAccess;
 
     #[rstest::rstest]
     #[test]
     fn log_file_flag_defaults_to_none() {
         // Given a temp-rooted --db-path and no --log-file argument.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let db_path = dir.path().join("test.db").to_string_lossy().to_string();
+        let dir = jinn_testutil::tempdir();
+        let db_path = dir
+            .path
+            .join("test.db")
+            .expect("temp root joins a bare name")
+            .to_string();
 
         // When parsing.
         let cli = Cli::parse_from(["jinn", "--db-path", db_path.as_str()]);
@@ -244,10 +249,14 @@ mod tests {
     #[test]
     fn log_file_flag_global_overrides() {
         // Given a global --log-file argument before a subcommand.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let expected = dir.path().join("x.log");
+        let dir = jinn_testutil::tempdir();
+        let expected = dir.path.join("x.log").expect("temp root joins a bare name");
         let log_file = expected.to_string_lossy().to_string();
-        let db_path = dir.path().join("test.db").to_string_lossy().to_string();
+        let db_path = dir
+            .path
+            .join("test.db")
+            .expect("temp root joins a bare name")
+            .to_string();
 
         // When parsing.
         let cli = Cli::parse_from([
@@ -268,9 +277,17 @@ mod tests {
     fn log_dir_flag_removed() {
         // Given the old --log-dir argument (and a dummy --db-path, so a
         // missing --db-path cannot trigger first in debug mode).
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let db_path = dir.path().join("test.db").to_string_lossy().to_string();
-        let log_dir = dir.path().join("logs").to_string_lossy().to_string();
+        let dir = jinn_testutil::tempdir();
+        let db_path = dir
+            .path
+            .join("test.db")
+            .expect("temp root joins a bare name")
+            .to_string();
+        let log_dir = dir
+            .path
+            .join("logs")
+            .expect("temp root joins a bare name")
+            .to_string();
 
         // When parsing.
         let result = Cli::try_parse_from([
@@ -289,9 +306,17 @@ mod tests {
     #[test]
     fn headless_scoped_log_file_removed() {
         // Given --log-file scoped to the headless subcommand (old shape).
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let db_path = dir.path().join("test.db").to_string_lossy().to_string();
-        let log_file = dir.path().join("x.log").to_string_lossy().to_string();
+        let dir = jinn_testutil::tempdir();
+        let db_path = dir
+            .path
+            .join("test.db")
+            .expect("temp root joins a bare name")
+            .to_string();
+        let log_file = dir
+            .path
+            .join("x.log")
+            .expect("temp root joins a bare name")
+            .to_string();
 
         // When parsing.
         let result = Cli::try_parse_from([
@@ -313,10 +338,14 @@ mod tests {
     #[test]
     fn log_file_flag_works_with_headless() {
         // Given a global --log-file alongside a headless subcommand.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let expected = dir.path().join("x.log");
+        let dir = jinn_testutil::tempdir();
+        let expected = dir.path.join("x.log").expect("temp root joins a bare name");
         let log_file = expected.to_string_lossy().to_string();
-        let db_path = dir.path().join("test.db").to_string_lossy().to_string();
+        let db_path = dir
+            .path
+            .join("test.db")
+            .expect("temp root joins a bare name")
+            .to_string();
 
         // When parsing.
         let cli = Cli::parse_from([
@@ -338,8 +367,12 @@ mod tests {
     #[test]
     fn config_flag_defaults_to_none() {
         // Given a temp-rooted --db-path and no --config argument.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let db_path = dir.path().join("test.db").to_string_lossy().to_string();
+        let dir = jinn_testutil::tempdir();
+        let db_path = dir
+            .path
+            .join("test.db")
+            .expect("temp root joins a bare name")
+            .to_string();
 
         // When parsing.
         let cli = Cli::parse_from(["jinn", "--db-path", db_path.as_str()]);
@@ -352,10 +385,17 @@ mod tests {
     #[test]
     fn config_flag_before_subcommand_captures_override() {
         // Given a --config argument before a subcommand.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let expected = dir.path().join("alt.toml");
+        let dir = jinn_testutil::tempdir();
+        let expected = dir
+            .path
+            .join("alt.toml")
+            .expect("temp root joins a bare name");
         let config = expected.to_string_lossy().to_string();
-        let db_path = dir.path().join("test.db").to_string_lossy().to_string();
+        let db_path = dir
+            .path
+            .join("test.db")
+            .expect("temp root joins a bare name")
+            .to_string();
 
         // When parsing.
         let cli = Cli::parse_from([
@@ -377,10 +417,17 @@ mod tests {
     #[test]
     fn config_flag_after_subcommand_captures_override() {
         // Given a --config argument after a subcommand.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let expected = dir.path().join("alt.toml");
+        let dir = jinn_testutil::tempdir();
+        let expected = dir
+            .path
+            .join("alt.toml")
+            .expect("temp root joins a bare name");
         let config = expected.to_string_lossy().to_string();
-        let db_path = dir.path().join("test.db").to_string_lossy().to_string();
+        let db_path = dir
+            .path
+            .join("test.db")
+            .expect("temp root joins a bare name")
+            .to_string();
 
         // When parsing.
         let cli = Cli::parse_from([
@@ -441,8 +488,11 @@ mod tests {
     #[test]
     fn db_path_opt_returns_some_when_provided() {
         // Given a temp-rooted --db-path.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let expected = dir.path().join("test.db");
+        let dir = jinn_testutil::tempdir();
+        let expected = dir
+            .path
+            .join("test.db")
+            .expect("temp root joins a bare name");
         let expected_str = expected.to_string_lossy().to_string();
 
         // When parsing.

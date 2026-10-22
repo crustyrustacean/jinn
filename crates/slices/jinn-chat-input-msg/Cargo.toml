@@ -3,6 +3,7 @@ name = "jinn-chat-input-msg"
 version.workspace = true
 edition.workspace = true
 [dependencies]
+marked-path = { workspace = true }
 unicode-segmentation = { workspace = true }
 unicode-width = { workspace = true }
 jinn-core-types = { workspace = true }

@@ -15,6 +15,7 @@ use crate::actor_wiring;
 #[cfg(debug_assertions)]
 use crate::headless::HeadlessApp;
 use crate::runner::Runner;
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
 /// Error type for top-level application initialization.
 #[derive(Debug, Error)]
@@ -172,9 +173,10 @@ impl App {
                     // variant remains for argv-shape compatibility; the real
                     // bundled servers were intercepted in `prepare`.
                     Commands::Tui | Commands::Mcp { .. } => {
+                        let app_paths = jinn_kernel::AppPaths::default();
                         let compaction_prompt = jinn_tui::load_compaction_prompt(
-                            &jinn_kernel::AppPaths::default().prompts_dir(),
-                            &jinn_kernel::AppPaths::default().system_prompts_dir(),
+                            &app_paths.prompts_dir().as_marked_path(),
+                            &app_paths.system_prompts_dir().as_marked_path(),
                         )
                         .change_context(AppError)?;
                         let (core, services, discord_activated) = self
@@ -192,7 +194,12 @@ impl App {
                                         app_state_storage: app_state_storage.clone(),
                                         shells: shells.clone(),
                                         paths: jinn_kernel::AppPaths::default(),
-                                        dump_requests: cli.dump_requests.clone(),
+                                        dump_requests: cli
+                                            .dump_requests
+                                            .clone()
+                                            .map(MarkedPathBuf::<Absolute>::new)
+                                            .transpose()
+                                            .expect("cli dump dir is a valid path"),
                                         compaction_prompt,
                                     },
                                 )
@@ -221,9 +228,10 @@ impl App {
                     #[cfg(debug_assertions)]
                     Commands::Headless { command, .. } => {
                         let store_for_shutdown = session_store.clone();
+                        let app_paths = jinn_kernel::AppPaths::default();
                         let compaction_prompt = jinn_tui::load_compaction_prompt(
-                            &jinn_kernel::AppPaths::default().prompts_dir(),
-                            &jinn_kernel::AppPaths::default().system_prompts_dir(),
+                            &app_paths.prompts_dir().as_marked_path(),
+                            &app_paths.system_prompts_dir().as_marked_path(),
                         )
                         .change_context(AppError)?;
                         let (core, services, _discord_activated) = self
@@ -241,7 +249,12 @@ impl App {
                                         app_state_storage,
                                         shells,
                                         paths: jinn_kernel::AppPaths::default(),
-                                        dump_requests: cli.dump_requests.clone(),
+                                        dump_requests: cli
+                                            .dump_requests
+                                            .clone()
+                                            .map(MarkedPathBuf::<Absolute>::new)
+                                            .transpose()
+                                            .expect("cli dump dir is a valid path"),
                                         compaction_prompt,
                                     },
                                 )
@@ -253,8 +266,8 @@ impl App {
 
                         jinn_tui::load_theme(
                             &core.state,
-                            &services.paths.themes_dir(),
-                            &services.paths.system_themes_dir(),
+                            &services.paths.themes_dir().as_marked_path(),
+                            &services.paths.system_themes_dir().as_marked_path(),
                         );
                         let mut headless = HeadlessApp::new(core, services);
                         match command {
@@ -308,18 +321,12 @@ impl Default for App {
 /// with. Aborts the process on failure — a config file that cannot be
 /// written leaves the run with no coherent source of truth, which is not
 /// a state worth launching into.
-pub(crate) fn seed_config_template(path: &std::path::Path) {
+pub(crate) fn seed_config_template(path: &MarkedPathBuf<Absolute>) {
     use jinn_preferences_config::create_default_preferences_to;
 
     if let Err(report) = create_default_preferences_to(path) {
-        tracing::error!(
-            path = %path.display(),
-            "failed to seed jinn.toml from the template"
-        );
-        eprintln!(
-            "error: failed to create {} from the default template:",
-            path.display()
-        );
+        tracing::error!(path = %path, "failed to seed jinn.toml from the template");
+        eprintln!("error: failed to create {path} from the default template:");
         eprintln!("  {report:?}");
         std::process::exit(1);
     }
@@ -345,7 +352,7 @@ async fn fetch_models() -> Result<(), Report<AppError>> {
 /// pass a mockito URL.
 async fn fetch_models_from_url(
     url: &str,
-    output_path: std::path::PathBuf,
+    output_path: MarkedPathBuf<Absolute>,
 ) -> Result<(), Report<AppError>> {
     tracing::info!(url = url, "fetching model metadata");
 
@@ -386,7 +393,7 @@ async fn fetch_models_from_url(
     };
 
     // Write to the provided output path.
-    if let Some(parent) = output_path.parent() {
+    if let Some(parent) = output_path.as_path().parent() {
         std::fs::create_dir_all(parent)
             .change_context(AppError)
             .attach("failed to create cache directory")?;
@@ -396,10 +403,7 @@ async fn fetch_models_from_url(
         .change_context(AppError)
         .attach("failed to write models.dev.json")?;
 
-    println!(
-        "Fetched {model_count} models from {provider_count} providers to {}",
-        output_path.display()
-    );
+    println!("Fetched {model_count} models from {provider_count} providers to {output_path}");
 
     Ok(())
 }
@@ -431,14 +435,21 @@ mod tests {
     fn load_compaction_prompt_populates_state() {
         // Given a user dir with a compaction prompt file, and an empty
         // system dir.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        std::fs::write(dir.path().join("_compaction.md"), "test compaction prompt")
-            .expect("write compaction prompt");
+        let dir = jinn_testutil::tempdir();
+        std::fs::write(
+            dir.path
+                .join("_compaction.md")
+                .expect("temp root joins a bare name"),
+            "test compaction prompt",
+        )
+        .expect("write compaction prompt");
 
-        let empty = jinn_testutil::tempdir().expect("temp dir");
+        let empty = jinn_testutil::tempdir();
 
         // When loading the compaction prompt.
-        let prompt = load_compaction_prompt(dir.path(), empty.path()).expect("load");
+        let prompt =
+            load_compaction_prompt(&dir.path.as_marked_path(), &empty.path.as_marked_path())
+                .expect("load");
 
         // Then the loader returns the prompt text.
         assert_eq!(prompt, "test compaction prompt");
@@ -447,11 +458,14 @@ mod tests {
     #[rstest::rstest]
     fn load_compaction_prompt_returns_err_when_missing() {
         // Given empty user and system dirs.
-        let user_dir = jinn_testutil::tempdir().expect("temp dir");
-        let system_dir = jinn_testutil::tempdir().expect("temp dir");
+        let user_dir = jinn_testutil::tempdir();
+        let system_dir = jinn_testutil::tempdir();
 
         // When loading the compaction prompt with no file present.
-        let result = load_compaction_prompt(user_dir.path(), system_dir.path());
+        let result = load_compaction_prompt(
+            &user_dir.path.as_marked_path(),
+            &system_dir.path.as_marked_path(),
+        );
 
         // Then an error is returned (hard-fail semantics).
         assert!(
@@ -466,9 +480,15 @@ mod tests {
     #[rstest::rstest]
     fn load_theme_updates_state_from_file() {
         // Given a temp directory with a custom theme file.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let theme_content = "focus_accent = \"magenta\"\nborder_unfocused = \"blue\"";
-        std::fs::write(dir.path().join("custom.toml"), theme_content).expect("write theme");
+        std::fs::write(
+            dir.path
+                .join("custom.toml")
+                .expect("temp root joins a bare name"),
+            theme_content,
+        )
+        .expect("write theme");
 
         let state = State::new(AppState::default());
 
@@ -479,8 +499,12 @@ mod tests {
         let initial_focus = state.read().frontend.theme.focus_accent;
 
         // When loading the theme.
-        let empty = jinn_testutil::tempdir().expect("temp dir");
-        load_theme(&state, dir.path(), empty.path());
+        let empty = jinn_testutil::tempdir();
+        load_theme(
+            &state,
+            &dir.path.as_marked_path(),
+            &empty.path.as_marked_path(),
+        );
 
         // Then the theme in state was updated (focus_accent changed to magenta).
         // This kills: replace load_theme with ().
@@ -498,12 +522,16 @@ mod tests {
         let state = State::new(AppState::default());
         state.write().frontend.app_state.theme_name = Some("nonexistent".to_owned());
 
-        let user = jinn_testutil::tempdir().expect("temp dir");
-        let system = jinn_testutil::tempdir().expect("temp dir");
+        let user = jinn_testutil::tempdir();
+        let system = jinn_testutil::tempdir();
 
         // When loading the theme (no matching file).
         // Then it should not panic - the function logs a warning and returns.
-        load_theme(&state, user.path(), system.path());
+        load_theme(
+            &state,
+            &user.path.as_marked_path(),
+            &system.path.as_marked_path(),
+        );
     }
 
     #[rstest::rstest]
@@ -533,8 +561,11 @@ mod tests {
             .await;
 
         let url = format!("{}/api.json", server.url());
-        let temp_dir = jinn_testutil::tempdir().expect("temp dir");
-        let output_path = temp_dir.path().join("models.dev.json");
+        let temp_dir = jinn_testutil::tempdir();
+        let output_path = temp_dir
+            .path
+            .join("models.dev.json")
+            .expect("temp root joins a bare name");
 
         // When fetching models.
         let result = fetch_models_from_url(&url, output_path.clone()).await;
@@ -562,8 +593,11 @@ mod tests {
             .await;
 
         let url = format!("{}/api.json", server.url());
-        let temp_dir = jinn_testutil::tempdir().expect("temp dir");
-        let output_path = temp_dir.path().join("models.dev.json");
+        let temp_dir = jinn_testutil::tempdir();
+        let output_path = temp_dir
+            .path
+            .join("models.dev.json")
+            .expect("temp root joins a bare name");
 
         // When fetching models.
         let result = fetch_models_from_url(&url, output_path).await;
@@ -601,8 +635,11 @@ mod tests {
             .await;
 
         let url = format!("{}/api.json", server.url());
-        let temp_dir = jinn_testutil::tempdir().expect("temp dir");
-        let output_path = temp_dir.path().join("models.dev.json");
+        let temp_dir = jinn_testutil::tempdir();
+        let output_path = temp_dir
+            .path
+            .join("models.dev.json")
+            .expect("temp root joins a bare name");
 
         // When fetching models.
         let result = fetch_models_from_url(&url, output_path).await;
@@ -618,8 +655,8 @@ mod tests {
     #[rstest::rstest]
     fn seed_config_template_preserves_template_comments() {
         // Given a config path inside a directory that does not exist yet.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("nested").join("jinn.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir.path.join_all(["nested", "jinn.toml"]).expect("a");
 
         // When seeding the template.
         seed_config_template(&path);
@@ -640,12 +677,12 @@ mod tests {
     fn config_init_honors_the_config_override() {
         // Given a --config path that does not exist yet, and a default
         // location built from a temp root.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let override_path = dir.path().join("nested").join("alt.toml");
-        let default = dir.path().join("default").join("jinn.toml");
+        let dir = jinn_testutil::tempdir();
+        let override_path = dir.path.join_all(["nested", "alt.toml"]).expect("a");
+        let default = dir.path.join_all(["default", "jinn.toml"]).expect("a");
 
         // When `jinn config init` picks its target.
-        let target = config_init_target(Some(&override_path), &default);
+        let target = config_init_target(Some(override_path.as_path()), &default);
 
         // Then it targets the override, not the default location.
         assert_eq!(target, override_path);
@@ -654,8 +691,8 @@ mod tests {
     #[rstest::rstest]
     fn config_init_without_override_targets_the_default_location() {
         // Given no --config, and a default location built from a temp root.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let default = dir.path().join("default").join("jinn.toml");
+        let dir = jinn_testutil::tempdir();
+        let default = dir.path.join_all(["default", "jinn.toml"]).expect("a");
 
         // When `jinn config init` picks its target.
         let target = config_init_target(None, &default);
@@ -668,13 +705,16 @@ mod tests {
     fn config_init_override_is_accepted_though_runtime_resolver_rejects_it() {
         // Given a --config path that does not exist, and a default location
         // built from a temp root.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let override_path = dir.path().join("alt.toml");
-        let default = dir.path().join("default").join("jinn.toml");
+        let dir = jinn_testutil::tempdir();
+        let override_path = dir
+            .path
+            .join("alt.toml")
+            .expect("temp root joins a bare name");
+        let default = dir.path.join_all(["default", "jinn.toml"]).expect("a");
 
         // When the two choosers are consulted.
-        let init_target = config_init_target(Some(&override_path), &default);
-        let runtime = resolve_config_path(Some(&override_path), &default);
+        let init_target = config_init_target(Some(override_path.as_path()), &default);
+        let runtime = resolve_config_path(Some(override_path.as_path()), &default);
 
         // Then `config init` still targets the override, since creating the
         // file is its whole job.
@@ -686,8 +726,11 @@ mod tests {
     #[rstest::rstest]
     fn malformed_config_under_an_override_fails_naming_the_override() {
         // Given an override path holding invalid TOML.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let override_path = dir.path().join("alt.toml");
+        let dir = jinn_testutil::tempdir();
+        let override_path = dir
+            .path
+            .join("alt.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(&override_path, "[section\nkey = ").expect("write");
 
         // When the config layer is loaded over the resolved path, exactly
@@ -699,7 +742,7 @@ mod tests {
         let report = result.expect_err("malformed override must fail");
         let rendered = format!("{report:?}");
         assert!(
-            rendered.contains(&override_path.display().to_string()),
+            rendered.contains(override_path.to_string().as_str()),
             "fail-fast report should name the override path: {rendered}"
         );
     }

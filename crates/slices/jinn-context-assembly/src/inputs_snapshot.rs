@@ -34,7 +34,7 @@ pub fn build_assembly_inputs(state: &AppState, session_id: &SessionId) -> Assemb
 
     AssemblyInputs {
         session_id: session_id.clone(),
-        cwd: session.cwd().to_path_buf(),
+        cwd: session.cwd().clone(),
         persona,
         history: session.history().to_vec(),
         tools,

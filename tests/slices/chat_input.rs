@@ -25,6 +25,7 @@ use jinn_kernel::protocol::ChatEntry;
 use jinn_slices::FocusScope;
 use jinn_theme::default_theme;
 use jinn_turn_dispatch_msg::QueueItem;
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
 use jinn_kernel::IntentHandler;
 use jinn_kernel::protocol::KernelIntent;
@@ -1576,8 +1577,11 @@ fn enter_normal_mode_returns_to_normal_scope() {
 #[rstest::rstest]
 fn enter_normal_mode_clears_pending_creation() {
     // Given a state with a stale pending session creation stash.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let stale = dir.path().join("stale");
+    let dir = jinn_testutil::tempdir();
+    let stale = dir
+        .path
+        .join("stale")
+        .expect("typed parent joins a bare name");
     let mut state = AppState::default_with_scope_focus();
     state.frontend.pending_creation =
         Some(jinn_kernel::state::frontend_state::PendingSessionCreation {
@@ -2299,11 +2303,15 @@ fn submit_export_with_argument_carries_that_path() {
         jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
-    // Then the request carries the typed path, not an empty one.
-    assert_eq!(
-        export_request(result).path,
-        std::path::PathBuf::from("notes/session.md")
-    );
+    // Then the request carries the relative argument resolved onto the
+    // active session's cwd.
+    let expected = state
+        .session
+        .active_session()
+        .cwd()
+        .join("notes/session.md")
+        .expect("joining a bare name keeps the cwd absolute");
+    assert_eq!(export_request(result).path, expected);
 }
 
 #[rstest::rstest]
@@ -2318,11 +2326,15 @@ fn submit_export_argument_keeps_spaces_inside_it() {
         jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
-    // Then the whole remainder is the path, spaces intact.
-    assert_eq!(
-        export_request(result).path,
-        std::path::PathBuf::from("my notes/session.md")
-    );
+    // Then the whole remainder is the path, spaces intact, resolved
+    // onto the active session's cwd.
+    let expected = state
+        .session
+        .active_session()
+        .cwd()
+        .join("my notes/session.md")
+        .expect("joining a bare name keeps the cwd absolute");
+    assert_eq!(export_request(result).path, expected);
 }
 
 #[rstest::rstest]
@@ -2337,8 +2349,10 @@ fn submit_export_without_argument_carries_an_empty_path() {
         jinn_kernel::common::render_ctx::empty_config_layer(),
     );
 
-    // Then the path is empty, which is how the actor picks a default name.
-    assert_eq!(export_request(result).path, std::path::PathBuf::new());
+    // Then the path is the session cwd, which the actor treats as the
+    // "no argument" default-name case.
+    let expected = state.session.active_session().cwd().clone();
+    assert_eq!(export_request(result).path, expected);
 }
 
 #[rstest::rstest]
@@ -4509,8 +4523,6 @@ fn render_autocomplete_popup_clears_background() {
     );
 }
 
-use std::path::PathBuf;
-
 use jinn_chat_input_msg::ListDirectory;
 use jinn_core_types::SessionId;
 use jinn_kernel::common::actor_deps::ActorDeps;
@@ -4531,8 +4543,9 @@ async fn create_harness() -> (TestHarness, State, ActorDeps) {
     // actor's write would reach nothing and the popup would stay empty
     // while every assertion around it stayed green.
     let state = State::new(AppState::default_with_scope_focus());
+    let paths_root = jinn_testutil::tempdir();
     let mut services = TestServices::builder()
-        .paths(AppPaths::new_in(std::path::Path::new("")))
+        .paths(AppPaths::new_in(&paths_root.path.as_marked_path()))
         .build();
     services.bus = harness.bus();
     services.trouper_system = harness.system().clone();
@@ -4540,16 +4553,16 @@ async fn create_harness() -> (TestHarness, State, ActorDeps) {
     (harness, state, deps)
 }
 
-fn make_temp_dir(entries: &[(&str, bool)]) -> tempfile::TempDir {
+fn make_temp_dir(entries: &[(&str, bool)]) -> jinn_testutil::JinnTempDir {
     // The `TempDir` binding is the cleanup: it removes the whole tree on
     // drop, at the end of whichever test owns it.
-    let dir = jinn_testutil::tempdir_with_prefix("jinn-test-file-lister-").expect("temp dir");
+    let dir = jinn_testutil::tempdir_with_prefix("jinn-test-file-lister-");
     for (name, is_dir) in entries {
-        let path = dir.path().join(name);
+        let path = dir.path.join(name).expect("typed parent joins a bare name");
         if *is_dir {
-            std::fs::create_dir_all(&path).expect("create subdir");
+            std::fs::create_dir_all(path.as_path()).expect("create subdir");
         } else {
-            std::fs::write(&path, b"x").expect("create file");
+            std::fs::write(path.as_path(), b"x").expect("create file");
         }
     }
     dir
@@ -4604,7 +4617,7 @@ async fn actor_reads_directory_entries_into_file_picker() {
     harness
         .publish(ListDirectory {
             session_id: SessionId::new(),
-            path: dir.path().to_path_buf(),
+            path: dir.path.clone(),
             request_id: 1,
         })
         .await;
@@ -4650,7 +4663,7 @@ async fn actor_drops_stale_reply_when_request_id_mismatches() {
     harness
         .publish(ListDirectory {
             session_id: SessionId::new(),
-            path: dir.path().to_path_buf(),
+            path: dir.path.clone(),
             request_id: 1, // stale
         })
         .await;
@@ -4688,13 +4701,13 @@ async fn actor_returns_empty_for_nonexistent_directory() {
         picker.expected_request_id = 1;
         picker.loading = true;
     });
-    let bogus = PathBuf::from("/this/path/does/not/exist/jinn-test");
+    let bogus = "/this/path/does/not/exist/jinn-test";
 
     // When the actor lists the nonexistent directory.
     harness
         .publish(ListDirectory {
             session_id: SessionId::new(),
-            path: bogus,
+            path: MarkedPathBuf::<Absolute>::new(bogus).expect("test path"),
             request_id: 1,
         })
         .await;
@@ -4728,7 +4741,7 @@ async fn actor_lists_hidden_files() {
     harness
         .publish(ListDirectory {
             session_id: SessionId::new(),
-            path: dir.path().to_path_buf(),
+            path: dir.path.clone(),
             request_id: 1,
         })
         .await;
@@ -4752,10 +4765,13 @@ async fn actor_lists_hidden_files() {
 fn enter_normal_mode_clears_pending_session_creation() {
     // Given a state with a pending session creation stashed from a
     // project-picker confirm (midway through the lifecycle/args chain).
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let project_a = dir.path().join("project-a");
+    let dir = jinn_testutil::tempdir();
+    let project_a = dir
+        .path
+        .join("project-a")
+        .expect("typed parent joins a bare name");
     let mut state = AppState::default_with_scope_focus();
-    let active_cwd = state.active_session().cwd().to_path_buf();
+    let active_cwd = state.active_session().cwd().clone();
     state.frontend.pending_creation = Some(PendingSessionCreation {
         project_dir: project_a.clone(),
         starting_cwd: project_a,
@@ -4770,7 +4786,7 @@ fn enter_normal_mode_clears_pending_session_creation() {
     // Then the stash is cleared so it never leaks into a future `n`/`N`.
     assert!(state.frontend.pending_creation.is_none());
     // And the active session's CWD is unchanged (no side-channel mutation).
-    assert_eq!(state.active_session().cwd(), active_cwd);
+    assert_eq!(state.active_session().cwd(), &active_cwd);
 }
 
 /// Pasting while the box is focused inserts the text verbatim.

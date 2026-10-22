@@ -1,6 +1,6 @@
 //! Portable agent-skill values shared by skill messages and implementations.
 
-use std::path::PathBuf;
+use marked_path::{Absolute, MarkedPathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -17,7 +17,7 @@ pub enum SkillSource {
     Project {
         /// The walked directory containing `.agents/`, rather than the
         /// `.agents/skills` subdirectory itself.
-        dir: PathBuf,
+        dir: MarkedPathBuf<Absolute>,
     },
 }
 
@@ -36,9 +36,9 @@ pub struct Skill {
     #[serde(skip)]
     pub body: String,
     /// Absolute path to the `SKILL.md` file.
-    pub file_path: PathBuf,
+    pub file_path: MarkedPathBuf<Absolute>,
     /// Absolute path to the directory containing `SKILL.md`.
-    pub base_dir: PathBuf,
+    pub base_dir: MarkedPathBuf<Absolute>,
     /// Where this skill was discovered from.
     #[serde(default)]
     pub source: SkillSource,

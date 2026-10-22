@@ -15,7 +15,9 @@
 //! silent skip: silently skipping is the failure this module exists to
 //! eliminate.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+
+use marked_path::{Absolute, MarkedPath, MarkedPathBuf, PathError, Relative};
 
 use error_stack::{Report, ResultExt};
 use include_dir::{Dir, DirEntry, File, include_dir};
@@ -60,7 +62,7 @@ impl Kind {
     }
 
     /// Resolves this kind to its destination root within `destinations`.
-    pub(crate) fn root(self, destinations: &Destinations) -> &Path {
+    pub(crate) fn root(self, destinations: &Destinations) -> MarkedPath<'_, Absolute> {
         match self {
             Kind::Theme => destinations.themes(),
             Kind::Persona => destinations.personas(),
@@ -92,7 +94,7 @@ pub(crate) struct Bundled {
     /// Path relative to the destination root, with any nesting beneath the
     /// kind directory preserved (e.g. `default.toml`,
     /// `jinn-usage/references/keybindings.md`).
-    relative: PathBuf,
+    relative: MarkedPathBuf<Relative>,
     /// The embedded payload, written verbatim.
     contents: &'static [u8],
 }
@@ -100,7 +102,10 @@ pub(crate) struct Bundled {
 impl Bundled {
     /// Where this resource installs: its kind's destination root joined with
     /// its path relative to that root.
-    pub(crate) fn destination(&self, destinations: &Destinations) -> PathBuf {
+    pub(crate) fn destination(
+        &self,
+        destinations: &Destinations,
+    ) -> Result<MarkedPathBuf<Absolute>, PathError> {
         self.kind.root(destinations).join(&self.relative)
     }
 
@@ -167,9 +172,14 @@ fn resource(file: &'static File<'static>) -> Result<Bundled, Report<InstallError
         .attach("bundled resource has no destination")
         .attach(format!("path: {}", embedded.display()))?;
 
+    let relative = MarkedPathBuf::<Relative>::new(relative)
+        .change_context(InstallError)
+        .attach("bundled resource path is not a valid relative path")
+        .attach(format!("path: {}", embedded.display()))?;
+
     Ok(Bundled {
         kind,
-        relative: relative.to_path_buf(),
+        relative,
         contents: file.contents(),
     })
 }
@@ -209,6 +219,8 @@ mod tests {
     )]
 
     use super::*;
+    // `as_path()` on the catalogue's typed relative paths is test-only.
+    use marked_path::MarkedPathAccess;
 
     #[rstest::rstest]
     #[test]
@@ -262,7 +274,7 @@ mod tests {
         let second = bundled_catalogue().expect("derive catalogue");
 
         // Then both derivations agree, entry for entry.
-        let order = |catalogue: &[Bundled]| -> Vec<(Kind, PathBuf)> {
+        let order = |catalogue: &[Bundled]| -> Vec<(Kind, MarkedPathBuf<Relative>)> {
             catalogue
                 .iter()
                 .map(|b| (b.kind, b.relative.clone()))
@@ -319,7 +331,7 @@ mod tests {
         let catalogue = bundled_catalogue().expect("derive catalogue");
         let skills = catalogue
             .iter()
-            .filter(|b| b.kind == Kind::Skill && b.relative.ends_with("mcp-servers.md"))
+            .filter(|b| b.kind == Kind::Skill && b.relative.as_path().ends_with("mcp-servers.md"))
             .collect::<Vec<_>>();
 
         // When reading the shipped reference text.
@@ -327,7 +339,7 @@ mod tests {
             .iter()
             .find_map(|b| {
                 RESOURCES
-                    .get_file(format!("skills/{}", b.relative.display()))
+                    .get_file(format!("skills/{}", b.relative))
                     .map(|f| String::from_utf8_lossy(f.contents()).into_owned())
             })
             .expect("mcp-servers.md ships as a bundled skill reference");

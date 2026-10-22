@@ -77,14 +77,17 @@ mod tests {
     use jinn_selection_widget::PreviewContent;
     use jinn_selection_widget::TreeItem;
     use jinn_theme::default_theme;
+    use marked_path::{Absolute, MarkedPathBuf};
 
-    fn skill(root: &std::path::Path, name: &str, description: &str, body: &str) -> Skill {
+    fn skill(root: &MarkedPathBuf<Absolute>, name: &str, description: &str, body: &str) -> Skill {
         Skill {
             name: name.to_owned(),
             description: description.to_owned(),
             body: body.to_owned(),
-            file_path: root.join(name).join("SKILL.md"),
-            base_dir: root.join(name),
+            file_path: root
+                .join_all([name, "SKILL.md"])
+                .expect("typed parent joins bare names"),
+            base_dir: root.join(name).expect("typed parent joins a bare name"),
             source: jinn_skills_msg::SkillSource::Global,
         }
     }
@@ -92,9 +95,9 @@ mod tests {
     #[rstest::rstest]
     fn reload_keeps_the_spec_row_renderer() {
         // Given a skill picker cell and one discovered skill.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let mut state = SkillPickerState::default();
-        let skills = vec![skill(dir.path(), "alpha", "does things", "# body")];
+        let skills = vec![skill(&dir.path, "alpha", "does things", "# body")];
 
         // When reloading the skill picker.
         reload_skill_picker(&mut state, &skills, None, &default_theme());
@@ -109,9 +112,9 @@ mod tests {
     #[rstest::rstest]
     fn reload_keeps_the_spec_preview_renderer() {
         // Given a skill picker cell and one discovered skill with a markdown body.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let mut state = SkillPickerState::default();
-        let skills = vec![skill(dir.path(), "alpha", "does things", "# Title")];
+        let skills = vec![skill(&dir.path, "alpha", "does things", "# Title")];
 
         // When reloading the skill picker.
         reload_skill_picker(&mut state, &skills, None, &default_theme());
@@ -128,8 +131,8 @@ mod tests {
     #[rstest::rstest]
     fn reload_sorts_entries_case_insensitively_by_name() {
         // Given discovered skills in non-alphabetical order.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let root = dir.path();
+        let dir = jinn_testutil::tempdir();
+        let root = &dir.path;
         let skills = vec![
             skill(root, "zeta", "last", ""),
             skill(root, "Alpha", "first", ""),

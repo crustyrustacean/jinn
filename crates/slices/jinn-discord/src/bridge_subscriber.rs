@@ -574,8 +574,8 @@ mod tests {
             },
         );
         let sid = SessionId::new();
-        let cwd_root = jinn_testutil::tempdir().expect("temp dir");
-        let expected_cwd = cwd_root.path().to_path_buf();
+        let cwd_root = jinn_testutil::tempdir();
+        let expected_cwd = cwd_root.path.clone();
         let cwd = expected_cwd.clone();
 
         // When a failed setup completion is published on the session topic.

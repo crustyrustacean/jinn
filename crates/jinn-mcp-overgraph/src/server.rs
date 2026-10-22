@@ -29,6 +29,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 use overgraph::types::{GqlExecutionOptions, GqlParams, UpsertEdgeOptions, UpsertNodeOptions};
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
@@ -716,7 +717,13 @@ impl OvergraphMcpServer {
             ));
         }
 
-        let batch = match ingest::load_batch_file(std::path::Path::new(path)) {
+        let Ok(typed_path) = MarkedPathBuf::<Absolute>::new(path) else {
+            return Err(ErrorData::invalid_params(
+                "graph_ingest_file path must be absolute".to_owned(),
+                None,
+            ));
+        };
+        let batch = match ingest::load_batch_file(&typed_path) {
             Ok(batch) => batch,
             Err(err) => {
                 let message = format!("graph_ingest_file failed: {}", err.message());
@@ -739,7 +746,7 @@ impl OvergraphMcpServer {
             ));
         }
 
-        let file_name = std::path::Path::new(path).file_name().map_or_else(
+        let file_name = typed_path.file_name().map_or_else(
             || path.to_owned(),
             |name| name.to_string_lossy().into_owned(),
         );

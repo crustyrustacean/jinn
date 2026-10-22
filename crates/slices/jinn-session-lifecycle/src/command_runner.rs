@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 
 use error_stack::Report;
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 use wherror::Error;
 
 /// Canonicalizes through the shared verbatim-prefix-stripping helper, so the
@@ -35,16 +36,16 @@ pub enum LifecycleCommandError {
     },
 
     /// The path returned by the command could not be resolved on the filesystem.
-    #[error("path does not exist or cannot be resolved: {path}")]
+    #[error("path does not exist or cannot be resolved: {raw}")]
     InvalidPath {
-        /// The path that was returned by the command.
-        path: PathBuf,
+        /// The raw stdout line the command printed as its path.
+        raw: String,
     },
     /// The path returned by the command is not a directory.
-    #[error("path is not a directory: {path}")]
+    #[error("path is not a directory: {raw}")]
     NotADirectory {
-        /// The path that was returned by the command.
-        path: PathBuf,
+        /// The raw stdout line the command printed as its path.
+        raw: String,
     },
     /// Failed to spawn the command.
     #[error("failed to execute command")]
@@ -99,36 +100,33 @@ async fn run_command(
 pub async fn run_setup_command(
     command: &str,
     shell: &str,
-) -> Result<Option<PathBuf>, Report<LifecycleCommandError>> {
+) -> Result<Option<MarkedPathBuf<Absolute>>, Report<LifecycleCommandError>> {
+    use error_stack::ResultExt as _;
+
     let (_output, stdout, _stderr) = run_command(command, shell).await?;
 
     let last_line = stdout.lines().map(str::trim).rfind(|line| !line.is_empty());
 
-    let canonical = match last_line {
-        Some(last_line) => {
-            let raw_path = PathBuf::from(last_line);
-
-            let canonical =
-                strip_verbatim(tokio::fs::canonicalize(&raw_path).await).map_err(|e| {
-                    Report::new(e)
-                        .change_context(LifecycleCommandError::InvalidPath {
-                            path: raw_path.clone(),
-                        })
-                        .attach("setup command output is not a valid path")
-                })?;
-
-            if !canonical.is_dir() {
-                return Err(Report::new(LifecycleCommandError::NotADirectory {
-                    path: canonical,
-                }));
-            }
-
-            canonical
-        }
-        None => return Ok(None),
+    let Some(last_line) = last_line else {
+        return Ok(None);
     };
+    let raw = last_line.to_owned();
 
-    Ok(Some(canonical))
+    let canonical = strip_verbatim(tokio::fs::canonicalize(&raw).await).map_err(|e| {
+        Report::new(e)
+            .change_context(LifecycleCommandError::InvalidPath { raw: raw.clone() })
+            .attach("setup command output is not a valid path")
+    })?;
+
+    let typed = MarkedPathBuf::<Absolute>::new(canonical)
+        .change_context(LifecycleCommandError::InvalidPath { raw: raw.clone() })
+        .attach("canonicalized setup path is not absolute")?;
+
+    if !typed.is_dir() {
+        return Err(Report::new(LifecycleCommandError::NotADirectory { raw }));
+    }
+
+    Ok(Some(typed))
 }
 
 /// Runs a teardown command. Only checks the exit code - output is ignored.
@@ -176,7 +174,9 @@ pub struct LifecycleCancelHandle {
 pub type SpawnSetupResult = Result<
     (
         LifecycleCancelHandle,
-        tokio::task::JoinHandle<Result<Option<PathBuf>, Report<LifecycleCommandError>>>,
+        tokio::task::JoinHandle<
+            Result<Option<MarkedPathBuf<Absolute>>, Report<LifecycleCommandError>>,
+        >,
     ),
     Report<LifecycleCommandError>,
 >;
@@ -210,7 +210,11 @@ pub type SpawnTeardownResult = Result<
 /// - joining fails
 /// - the returned path cannot be canonicalized
 #[expect(clippy::expect_used, reason = "infallible")]
-pub fn spawn_setup_command(command: &str, shell: &str, cwd: &std::path::Path) -> SpawnSetupResult {
+pub fn spawn_setup_command(
+    command: &str,
+    shell: &str,
+    cwd: &MarkedPathBuf<Absolute>,
+) -> SpawnSetupResult {
     use error_stack::ResultExt as _;
 
     let mut child = {
@@ -218,7 +222,7 @@ pub fn spawn_setup_command(command: &str, shell: &str, cwd: &std::path::Path) ->
         std_cmd
             .arg("-c")
             .arg(command)
-            .current_dir(cwd)
+            .current_dir(cwd.as_path())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
 
@@ -249,7 +253,7 @@ pub fn spawn_setup_command(command: &str, shell: &str, cwd: &std::path::Path) ->
     // emitted by the script. The script's process CWD is gone by the time
     // we canonicalize, so without this a relative `./foo` resolves against
     // jinn's process dir instead of the session dir.
-    let cwd = cwd.to_path_buf();
+    let cwd = cwd.clone();
     let handle = tokio::spawn(async move {
         use tokio::io::AsyncReadExt;
 
@@ -298,34 +302,39 @@ pub fn spawn_setup_command(command: &str, shell: &str, cwd: &std::path::Path) ->
 
         let canonical = match last_line {
             Some(last_line) => {
-                let raw_path = PathBuf::from(last_line);
+                let raw = last_line.to_owned();
 
                 // The script ran with `cwd` as its working directory, but by
                 // the time we canonicalize that process is gone. Resolve
                 // relative paths against `cwd` so `./foo` doesn't silently
                 // resolve against jinn's process dir. Absolute paths pass through.
-                let resolved_path = if raw_path.is_absolute() {
-                    raw_path.clone()
+                let resolved_path = if std::path::Path::new(&raw).is_absolute() {
+                    MarkedPathBuf::<Absolute>::new(raw.clone())
+                        .change_context(LifecycleCommandError::InvalidPath { raw: raw.clone() })?
                 } else {
-                    cwd.join(&raw_path)
+                    cwd.join(&raw)
+                        .change_context(LifecycleCommandError::InvalidPath { raw: raw.clone() })?
                 };
 
-                let canonical = strip_verbatim(tokio::fs::canonicalize(&resolved_path).await)
-                    .map_err(|e| {
-                        Report::new(e)
-                            .change_context(LifecycleCommandError::InvalidPath {
-                                path: resolved_path.clone(),
-                            })
-                            .attach("setup command output is not a valid path")
-                    })?;
+                let canonical =
+                    strip_verbatim(tokio::fs::canonicalize(resolved_path.as_path()).await)
+                        .map_err(|e| {
+                            Report::new(e)
+                                .change_context(LifecycleCommandError::InvalidPath {
+                                    raw: raw.clone(),
+                                })
+                                .attach("setup command output is not a valid path")
+                        })?;
 
-                if !canonical.is_dir() {
-                    return Err(Report::new(LifecycleCommandError::NotADirectory {
-                        path: canonical,
-                    }));
+                let typed = MarkedPathBuf::<Absolute>::new(canonical)
+                    .change_context(LifecycleCommandError::InvalidPath { raw: raw.clone() })
+                    .attach("canonicalized setup path is not absolute")?;
+
+                if !typed.is_dir() {
+                    return Err(Report::new(LifecycleCommandError::NotADirectory { raw }));
                 }
 
-                canonical
+                typed
             }
             None => return Ok(None),
         };
@@ -356,7 +365,7 @@ pub fn spawn_setup_command(command: &str, shell: &str, cwd: &std::path::Path) ->
 pub fn spawn_teardown_command(
     command: &str,
     shell: &str,
-    cwd: &std::path::Path,
+    cwd: &MarkedPathBuf<Absolute>,
 ) -> SpawnTeardownResult {
     use error_stack::ResultExt as _;
 
@@ -365,7 +374,7 @@ pub fn spawn_teardown_command(
         std_cmd
             .arg("-c")
             .arg(command)
-            .current_dir(cwd)
+            .current_dir(cwd.as_path())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
 
@@ -495,9 +504,9 @@ mod tests {
             return;
         };
         // Given a command that echoes a directory path.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().to_string_lossy().to_string();
-        let expected = canonicalize_display(dir.path()).expect("canonicalize");
+        let dir = jinn_testutil::tempdir();
+        let path = dir.path.to_string();
+        let expected = canonicalize_display(&dir.path).expect("canonicalize");
 
         // When running the setup command.
         let result = run_setup_command(&format!("echo '{path}'"), &shell).await;
@@ -514,9 +523,9 @@ mod tests {
             return;
         };
         // Given a command that outputs multiple lines.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().to_string_lossy().to_string();
-        let expected = canonicalize_display(dir.path()).expect("canonicalize");
+        let dir = jinn_testutil::tempdir();
+        let path = dir.path.to_string();
+        let expected = canonicalize_display(&dir.path).expect("canonicalize");
 
         // When running the setup command with leading output.
         let result =
@@ -534,9 +543,9 @@ mod tests {
             return;
         };
         // Given a command that echoes with trailing whitespace.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().to_string_lossy().to_string();
-        let expected = canonicalize_display(dir.path()).expect("canonicalize");
+        let dir = jinn_testutil::tempdir();
+        let path = dir.path.to_string();
+        let expected = canonicalize_display(&dir.path).expect("canonicalize");
 
         // When running the setup command.
         let result = run_setup_command(&format!("echo '{path}  '"), &shell).await;
@@ -621,14 +630,15 @@ mod tests {
             return;
         };
         // Given a real subdirectory of the current working directory.
-        let dir = jinn_testutil::tempdir_in(".").expect("temp dir in cwd");
+        let dir = jinn_testutil::tempdir_in(".");
         let dir_name = dir
-            .path()
+            .path
+            .as_path()
             .file_name()
             .expect("dir name")
             .to_string_lossy()
             .to_string();
-        let expected = canonicalize_display(dir.path()).expect("canonicalize");
+        let expected = canonicalize_display(&dir.path).expect("canonicalize");
 
         // When running the setup command with a relative path.
         let result = run_setup_command(&format!("echo './{dir_name}'"), &shell).await;
@@ -650,8 +660,11 @@ mod tests {
         };
         // Given a setup command that outputs a path under a temp root which
         // does not exist.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let missing = dir.path().join("nonexistent").join("path").join("xyzzy");
+        let dir = jinn_testutil::tempdir();
+        let missing = dir
+            .path
+            .join_all(["nonexistent", "path", "xyzzy"])
+            .expect("root joins bare names");
         let missing_text = missing.to_string_lossy().to_string();
 
         // When running it.
@@ -664,8 +677,8 @@ mod tests {
             .downcast_ref::<LifecycleCommandError>()
             .expect("downcast");
         match err {
-            LifecycleCommandError::InvalidPath { path } => {
-                assert_eq!(path, &missing);
+            LifecycleCommandError::InvalidPath { raw, .. } => {
+                assert_eq!(raw.as_str(), missing.to_string());
             }
             other => panic!("expected InvalidPath, got {other:?}"),
         }
@@ -678,12 +691,15 @@ mod tests {
             return;
         };
         // Given a setup command that outputs a file path (not a directory).
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let file_path = dir.path().join("some-file.txt");
-        std::fs::write(&file_path, b"contents").expect("write file");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("some-file.txt")
+            .expect("typed parent joins a bare name");
+        std::fs::write(file_path.as_path(), b"contents").expect("write file");
 
         // When running the setup command.
-        let result = run_setup_command(&format!("echo '{}'", file_path.display()), &shell).await;
+        let result = run_setup_command(&format!("echo '{file_path}'"), &shell).await;
 
         // Then the result is a NotADirectory error.
         assert!(result.is_err());
@@ -692,14 +708,23 @@ mod tests {
             .downcast_ref::<LifecycleCommandError>()
             .expect("downcast");
         match err {
-            LifecycleCommandError::NotADirectory { path } => {
+            LifecycleCommandError::NotADirectory { raw, .. } => {
                 assert_eq!(
-                    path,
-                    &canonicalize_display(&file_path).expect("canonicalize")
+                    raw.as_str(),
+                    canonicalize_display(&file_path)
+                        .expect("canonicalize")
+                        .to_string()
                 );
             }
             other => panic!("expected NotADirectory, got {other:?}"),
         }
+    }
+
+    /// The typed process cwd, for fixtures that used to carry the `.`
+    /// string literal (unrepresentable as `Absolute`).
+    fn process_cwd() -> MarkedPathBuf<Absolute> {
+        let cwd = std::env::current_dir().expect("process cwd is readable");
+        MarkedPathBuf::<Absolute>::new(cwd).expect("process cwd is absolute")
     }
 
     #[rstest::rstest]
@@ -709,7 +734,9 @@ mod tests {
             return;
         };
         // Given a setup command that outputs ".".
-        let expected = canonicalize_display(std::path::Path::new(".")).expect("canonicalize cwd");
+        let process_cwd = std::env::current_dir().expect("process cwd is readable");
+        let cwd = MarkedPathBuf::<Absolute>::new(process_cwd).expect("process cwd is absolute");
+        let expected = canonicalize_display(&cwd).expect("canonicalize cwd");
 
         // When running the setup command.
         let result = run_setup_command("echo .", &shell).await;
@@ -726,18 +753,27 @@ mod tests {
             return;
         };
         // Given a teardown command that removes a marker file (no stdout).
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let marker = dir.path().join("teardown-marker");
-        std::fs::write(&marker, b"present").expect("write marker");
-        assert!(marker.exists(), "marker should exist before teardown");
+        let dir = jinn_testutil::tempdir();
+        let marker = dir
+            .path
+            .join("teardown-marker")
+            .expect("typed parent joins a bare name");
+        std::fs::write(marker.as_path(), b"present").expect("write marker");
+        assert!(
+            marker.as_path().exists(),
+            "marker should exist before teardown"
+        );
 
         // When running the teardown command.
-        let result = run_teardown_command(&format!("rm -f '{}'", marker.display()), &shell).await;
+        let result = run_teardown_command(&format!("rm -f '{marker}'"), &shell).await;
 
         // Then the command succeeds (teardown doesn't require stdout).
         assert!(result.is_ok(), "teardown should succeed without stdout");
         // And the marker file is gone.
-        assert!(!marker.exists(), "teardown should have removed the marker");
+        assert!(
+            !marker.as_path().exists(),
+            "teardown should have removed the marker"
+        );
     }
 
     #[rstest::rstest]
@@ -767,21 +803,27 @@ mod tests {
             return;
         };
         // Given two marker files.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let marker_a = dir.path().join("a");
-        let marker_b = dir.path().join("b");
-        std::fs::write(&marker_a, b"a").expect("write a");
-        std::fs::write(&marker_b, b"b").expect("write b");
+        let dir = jinn_testutil::tempdir();
+        let marker_a = dir.path.join("a").expect("typed parent joins a bare name");
+        let marker_b = dir.path.join("b").expect("typed parent joins a bare name");
+        std::fs::write(marker_a.as_path(), b"a").expect("write a");
+        std::fs::write(marker_b.as_path(), b"b").expect("write b");
 
         // When running two teardown commands sequentially (as shutdown does).
-        let cmd_a = format!("rm -f '{}'", marker_a.display());
-        let cmd_b = format!("rm -f '{}'", marker_b.display());
+        let cmd_a = format!("rm -f '{marker_a}'");
+        let cmd_b = format!("rm -f '{marker_b}'");
         let _ = run_teardown_command(&cmd_a, &shell).await;
         let _ = run_teardown_command(&cmd_b, &shell).await;
 
         // Then both files are removed.
-        assert!(!marker_a.exists(), "first teardown should remove marker a");
-        assert!(!marker_b.exists(), "second teardown should remove marker b");
+        assert!(
+            !marker_a.as_path().exists(),
+            "first teardown should remove marker a"
+        );
+        assert!(
+            !marker_b.as_path().exists(),
+            "second teardown should remove marker b"
+        );
     }
 
     #[rstest::rstest]
@@ -814,8 +856,8 @@ mod tests {
         // We observe the spawned shell's *own* working dir (printed by the
         // script itself), so the assertion is independent of where the jinn
         // test process or its reader task runs.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let expected = canonicalize_display(dir.path()).expect("canonicalize dir");
+        let dir = jinn_testutil::tempdir();
+        let expected = canonicalize_display(&dir.path).expect("canonicalize dir");
 
         // When spawning a setup that echoes its own working directory.
         // git-bash reports `pwd` in MSYS mount form (/c/...), which is not
@@ -825,8 +867,7 @@ mod tests {
         let script = "pwd -W";
         #[cfg(not(windows))]
         let script = "echo $PWD";
-        let (_handle, join_handle) =
-            spawn_setup_command(script, &shell, dir.path()).expect("spawn");
+        let (_handle, join_handle) = spawn_setup_command(script, &shell, &dir.path).expect("spawn");
         let result = join_handle.await.expect("join").expect("setup ok");
 
         // Then the resolved canonical path equals the session CWD, proving the
@@ -842,20 +883,26 @@ mod tests {
             return;
         };
         // Given a tempdir as the session CWD.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let out_file = dir.path().join("out.txt");
-        assert!(!out_file.exists(), "out.txt should not exist before setup");
+        let dir = jinn_testutil::tempdir();
+        let out_file = dir
+            .path
+            .join("out.txt")
+            .expect("typed parent joins a bare name");
+        assert!(
+            !out_file.as_path().exists(),
+            "out.txt should not exist before setup"
+        );
 
         // When spawning a setup that writes a relative file and prints nothing
         // (side-effect-only, no stdout CWD).
         let (_handle, join_handle) =
-            spawn_setup_command("touch out.txt", &shell, dir.path()).expect("spawn");
+            spawn_setup_command("touch out.txt", &shell, &dir.path).expect("spawn");
         let result = join_handle.await.expect("join").expect("setup ok");
 
         // Then out.txt exists *in the session CWD* (not jinn's process dir), and
         // the command returns Ok(None) since it printed no path.
         assert!(
-            out_file.exists(),
+            out_file.as_path().exists(),
             "out.txt should be created in session CWD"
         );
         assert_eq!(result, None);
@@ -871,15 +918,18 @@ mod tests {
         // Using tempdir() rather than tempdir_in(".") guarantees the session
         // cwd differs from jinn's process cwd, so a relative echo can only
         // resolve if canonicalize uses the session cwd as the base.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let subdir = dir.path().join("workspace");
-        std::fs::create_dir_all(&subdir).expect("create subdir");
+        let dir = jinn_testutil::tempdir();
+        let subdir = dir
+            .path
+            .join("workspace")
+            .expect("typed parent joins a bare name");
+        std::fs::create_dir_all(subdir.as_path()).expect("create subdir");
         let expected = canonicalize_display(&subdir).expect("canonicalize subdir");
 
         // When the setup script echoes a RELATIVE path and the spawn cwd is
         // the session cwd.
         let (_handle, join_handle) =
-            spawn_setup_command("echo ./workspace", &shell, dir.path()).expect("spawn");
+            spawn_setup_command("echo ./workspace", &shell, &dir.path).expect("spawn");
         let result = join_handle.await.expect("join").expect("setup ok");
 
         // Then the resolved canonical path is the session cwd's child, not a
@@ -898,21 +948,24 @@ mod tests {
             return;
         };
         // Given a tempdir as the session CWD.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let marker = dir.path().join("cleanup.log");
+        let dir = jinn_testutil::tempdir();
+        let marker = dir
+            .path
+            .join("cleanup.log")
+            .expect("typed parent joins a bare name");
         assert!(
-            !marker.exists(),
+            !marker.as_path().exists(),
             "cleanup.log should not exist before teardown"
         );
 
         // When spawning a teardown that writes a relative file.
         let (_handle, join_handle) =
-            spawn_teardown_command("printf x > cleanup.log", &shell, dir.path()).expect("spawn");
+            spawn_teardown_command("printf x > cleanup.log", &shell, &dir.path).expect("spawn");
         let result = join_handle.await.expect("join");
 
         // Then cleanup.log exists *in the session CWD*, and the teardown succeeded.
         assert!(
-            marker.exists(),
+            marker.as_path().exists(),
             "cleanup.log should be created in session CWD"
         );
         assert!(result.is_ok(), "teardown should succeed");
@@ -925,7 +978,7 @@ mod tests {
         };
         // Given a setup command that sleeps indefinitely.
         let (handle, join_handle) =
-            spawn_setup_command("sleep 30", &shell, std::path::Path::new(".")).expect("spawn");
+            spawn_setup_command("sleep 30", &shell, &process_cwd()).expect("spawn");
 
         // When killing the process group then aborting the inner reader task.
         jinn_kernel::common::process_kill::kill_process_group_by_pid(handle.pid);
@@ -961,7 +1014,7 @@ mod tests {
         let handle_cl = rt.handle().clone();
         rt.block_on(async move {
             let (handle, _join_handle) =
-                spawn_setup_command("sleep 30", &shell, std::path::Path::new(".")).expect("spawn");
+                spawn_setup_command("sleep 30", &shell, &process_cwd()).expect("spawn");
 
             // Cancel from a runtime worker thread, exactly as the session actor
             // does. The whole point of this test is that this does NOT panic.

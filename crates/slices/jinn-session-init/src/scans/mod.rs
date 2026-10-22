@@ -24,6 +24,7 @@ pub use workflows::scan_workflows;
 
 use jinn_context::PromptTemplateStore;
 use jinn_context::env_context::ContextFile;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// Relative location of project skills under a project root, as path
 /// segments joined natively by [`walk::project_skills_dirs`].
@@ -59,7 +60,10 @@ pub struct ScanOutputs {
 /// order (least-local → cwd), then read each file. Files that vanish
 /// between resolution and read are skipped silently.
 #[must_use]
-pub fn read_context_files(cwd: &std::path::Path, home: &std::path::Path) -> Vec<ContextFile> {
+pub fn read_context_files(
+    cwd: &MarkedPathBuf<Absolute>,
+    home: &MarkedPathBuf<Absolute>,
+) -> Vec<ContextFile> {
     project_context_files(cwd, home)
         .into_iter()
         .filter_map(|path| read_one_context_file(&path))
@@ -68,10 +72,10 @@ pub fn read_context_files(cwd: &std::path::Path, home: &std::path::Path) -> Vec<
 
 /// Reads a single context file, returning `None` if it can no longer
 /// be read.
-fn read_one_context_file(path: &std::path::Path) -> Option<ContextFile> {
+fn read_one_context_file(path: &MarkedPathBuf<Absolute>) -> Option<ContextFile> {
     let content = std::fs::read_to_string(path).ok()?;
     Some(ContextFile {
-        path: path.to_path_buf(),
+        path: path.clone(),
         content,
     })
 }
@@ -83,9 +87,9 @@ fn read_one_context_file(path: &std::path::Path) -> Option<ContextFile> {
 /// Returns the store's own error, so the worker's event carries a
 /// description identical to the published summary.
 pub fn load_prompts(
-    user_dir: &std::path::Path,
-    system_dir: &std::path::Path,
-    project_dirs: &[std::path::PathBuf],
+    user_dir: &MarkedPathBuf<Absolute>,
+    system_dir: &MarkedPathBuf<Absolute>,
+    project_dirs: &[MarkedPathBuf<Absolute>],
 ) -> Result<PromptTemplateStore, error_stack::Report<jinn_context::PromptTemplateStoreError>> {
     PromptTemplateStore::load_from_dirs_ordered(user_dir, system_dir, project_dirs)
 }

@@ -313,6 +313,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+
     use super::*;
     use jinn_context::env_context::ContextFile;
     use jinn_core_types::ServerToolType;
@@ -327,6 +328,7 @@ mod tests {
     use jinn_llm_support::token_estimator::TiktokenCounter;
     use jinn_skills_msg::Skill;
     use jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME;
+    use marked_path::{Absolute, MarkedPathBuf};
 
     /// Test bridge: build inputs from an AppState the way production
     /// callers do (via the kernel snapshot builder) and run the pure
@@ -350,8 +352,10 @@ mod tests {
             name: name.to_owned(),
             description: format!("{name} skill"),
             body: String::new(),
-            file_path: std::path::PathBuf::from(format!("/skills/{name}/SKILL.md")),
-            base_dir: std::path::PathBuf::from(format!("/skills/{name}")),
+            file_path: MarkedPathBuf::<Absolute>::new(format!("/skills/{name}/SKILL.md"))
+                .expect("rooted test path"),
+            base_dir: MarkedPathBuf::<Absolute>::new(format!("/skills/{name}"))
+                .expect("rooted test path"),
             source: jinn_skills_msg::SkillSource::Global,
         }
     }
@@ -1070,8 +1074,11 @@ mod tests {
     fn assemble_prompt_includes_context_files_in_system_message() {
         // Given a state with cached context files.
         let (state, session_id) = state_with_history(vec![]);
-        let context_dir = jinn_testutil::tempdir().expect("temp dir");
-        let context_file = context_dir.path().join("AGENTS.md");
+        let context_dir = jinn_testutil::tempdir();
+        let context_file = context_dir
+            .path
+            .join("AGENTS.md")
+            .expect("temp root joins a bare name");
         {
             let mut guard = state.write();
             guard
@@ -1525,7 +1532,7 @@ mod tests {
     /// A state populated so every system-prompt section carries its marker.
     fn state_with_every_system_section() -> (State, SessionId) {
         let (state, session_id) = state_with_history(vec![]);
-        let context_dir = jinn_testutil::tempdir().expect("temp dir");
+        let context_dir = jinn_testutil::tempdir();
         let cell = state
             .read()
             .persona_selection()
@@ -1546,7 +1553,10 @@ mod tests {
         guard
             .active_session_mut()
             .set_discovered_context_files(vec![ContextFile {
-                path: context_dir.path().join("AGENTS.md"),
+                path: context_dir
+                    .path
+                    .join("AGENTS.md")
+                    .expect("temp root joins a bare name"),
                 content: "ORDER-MARK-FILES".to_owned(),
             }]);
         guard

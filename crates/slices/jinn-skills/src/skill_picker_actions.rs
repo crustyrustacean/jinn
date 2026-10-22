@@ -84,21 +84,24 @@ mod tests {
         reason = "test module, panics are acceptable"
     )]
     use super::*;
+    use marked_path::{Absolute, MarkedPathBuf};
 
-    fn skill(root: &std::path::Path, name: &str) -> Skill {
+    fn skill(root: &MarkedPathBuf<Absolute>, name: &str) -> Skill {
         Skill {
             name: name.to_owned(),
             description: format!("{name} description"),
             body: String::new(),
-            file_path: root.join(name).join("SKILL.md"),
-            base_dir: root.join(name),
+            file_path: root
+                .join_all([name, "SKILL.md"])
+                .expect("typed parent joins bare names"),
+            base_dir: root.join(name).expect("typed parent joins a bare name"),
             source: jinn_skills_msg::SkillSource::Global,
         }
     }
 
     /// A picker over two skills rooted in `root`, holding the given disabled
     /// list.
-    fn opened(root: &std::path::Path, disabled: &[&str]) -> SkillPickerState {
+    fn opened(root: &MarkedPathBuf<Absolute>, disabled: &[&str]) -> SkillPickerState {
         let mut state = SkillPickerState::default();
         open(
             &mut state,
@@ -110,7 +113,7 @@ mod tests {
     }
 
     /// A picker over two skills rooted in `root`, holding the given filter.
-    fn opened_with(root: &std::path::Path, filter: &NameFilter) -> SkillPickerState {
+    fn opened_with(root: &MarkedPathBuf<Absolute>, filter: &NameFilter) -> SkillPickerState {
         let mut state = SkillPickerState::default();
         open(
             &mut state,
@@ -124,11 +127,11 @@ mod tests {
     #[rstest::rstest]
     fn open_snapshots_the_filter_for_revert() {
         // Given a session withholding one skill.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let filter = NameFilter::deny(["beta".to_owned()]);
 
         // When opening the picker.
-        let state = opened_with(dir.path(), &filter);
+        let state = opened_with(&dir.path, &filter);
 
         // Then the snapshot holds that filter, so ESC can restore it.
         assert_eq!(state.snapshot, Some(Some(filter)));
@@ -137,14 +140,14 @@ mod tests {
     #[rstest::rstest]
     fn open_seeds_a_row_from_an_allow_filter_that_omits_it() {
         // Given an allow filter naming only one of the two skills.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let filter = NameFilter {
             mode: jinn_core_types::FilterMode::Allow,
             names: ["alpha".to_owned()].into_iter().collect(),
         };
 
         // When opening the picker over both.
-        let state = opened_with(dir.path(), &filter);
+        let state = opened_with(&dir.path, &filter);
 
         // Then the omitted skill's row opens already off, so committing
         // without touching it withholds the same skill the filter did.
@@ -160,12 +163,12 @@ mod tests {
     #[rstest::rstest]
     fn cancel_restores_the_snapshot_verbatim() {
         // Given a picker opened with an allow filter, then toggled.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let filter = NameFilter {
             mode: jinn_core_types::FilterMode::Allow,
             names: ["alpha".to_owned()].into_iter().collect(),
         };
-        let mut state = opened_with(dir.path(), &filter);
+        let mut state = opened_with(&dir.path, &filter);
         toggle_highlighted(&mut state);
 
         // When cancelling.
@@ -180,8 +183,8 @@ mod tests {
     #[rstest::rstest]
     fn toggle_flips_the_highlighted_row_and_keeps_the_picker_open() {
         // Given a freshly opened picker with the first row highlighted.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let mut state = opened(dir.path(), &[]);
+        let dir = jinn_testutil::tempdir();
+        let mut state = opened(&dir.path, &[]);
 
         // When toggling.
         toggle_highlighted(&mut state);
@@ -200,8 +203,8 @@ mod tests {
     #[rstest::rstest]
     fn confirm_returns_the_toggled_disabled_set_and_clears_the_snapshot() {
         // Given a picker whose first row was toggled off.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let mut state = opened(dir.path(), &[]);
+        let dir = jinn_testutil::tempdir();
+        let mut state = opened(&dir.path, &[]);
         toggle_highlighted(&mut state);
 
         // When confirming.

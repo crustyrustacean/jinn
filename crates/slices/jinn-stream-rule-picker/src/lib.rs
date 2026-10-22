@@ -46,6 +46,8 @@ pub use stream_rule_picker_routes::{
 // workflows slice's `workflow_picker_scope`.
 pub use jinn_stream_rule_picker_msg::stream_rule_picker_scope;
 
+use marked_path::{Absolute, MarkedPathBuf};
+
 /// Activates the slice: registers the picker's overlay, attaches its route
 /// rows, and spawns the persist actor.
 ///
@@ -75,7 +77,7 @@ pub use jinn_stream_rule_picker_msg::stream_rule_picker_scope;
 )]
 pub fn activate(
     host: &mut jinn_slices::SliceHost<'_, jinn_slices::RenderFacts>,
-    preferences_path: &std::path::Path,
+    preferences_path: &MarkedPathBuf<Absolute>,
     config: jinn_config::ConfigLayer,
 ) {
     let cell = host

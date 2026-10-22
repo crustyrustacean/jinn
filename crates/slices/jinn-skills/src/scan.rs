@@ -1,9 +1,18 @@
 //! Skill scanning - discovers SKILL.md files in a directory tree.
 
-use std::path::Path;
+// The `expect`s below are typed-path operations: re-typing a scanned entry's
+// path (read out of a directory already typed `Absolute`) or taking an
+// ancestor of an absolute path. They guard programmer error, not runtime
+// state; the invariant is documented once here for the family.
+#![allow(
+    clippy::expect_used,
+    clippy::missing_panics_doc,
+    reason = "re-typing paths scanned from typed-absolute roots is infallible by construction"
+)]
 
 use crate::frontmatter::{parse_frontmatter, strip_frontmatter};
 use jinn_skills_msg::{Skill, SkillSource};
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
 /// Scans a directory for agent skills.
 ///
@@ -11,7 +20,7 @@ use jinn_skills_msg::{Skill, SkillSource};
 /// Parses YAML frontmatter for name and description.
 /// Skips entries without valid frontmatter or description.
 /// Returns an empty vector if the directory does not exist.
-pub fn scan_skills(dir: &Path) -> Vec<Skill> {
+pub fn scan_skills(dir: &MarkedPathBuf<Absolute>) -> Vec<Skill> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
@@ -50,8 +59,10 @@ pub fn scan_skills(dir: &Path) -> Vec<Skill> {
             name,
             description,
             body,
-            file_path: skill_md,
-            base_dir: entry.path(),
+            file_path: MarkedPathBuf::<Absolute>::new(&skill_md)
+                .expect("skill file under a scanned dir types cleanly"),
+            base_dir: MarkedPathBuf::<Absolute>::new(entry.path())
+                .expect("skill dir under a scanned root types cleanly"),
             source: super::skill::SkillSource::default(),
         });
     }
@@ -79,9 +90,9 @@ pub fn scan_skills(dir: &Path) -> Vec<Skill> {
 /// `dir` is the walked ancestor (the project root, not the
 /// `.agents/skills` subdirectory).
 pub fn scan_skills_merged(
-    system: &Path,
-    global: &Path,
-    project_dirs: &[std::path::PathBuf],
+    system: &MarkedPathBuf<Absolute>,
+    global: &MarkedPathBuf<Absolute>,
+    project_dirs: &[MarkedPathBuf<Absolute>],
 ) -> Vec<Skill> {
     let mut by_name: std::collections::HashMap<String, Skill> = std::collections::HashMap::new();
 
@@ -99,10 +110,14 @@ pub fn scan_skills_merged(
         // Each `dir` is already the `<root>/.agents/skills` directory (as
         // returned by [`project_skills_dirs`]); scan it directly rather than
         // re-appending the suffix.
-        let project_root = dir
-            .ancestors()
-            .nth(2)
-            .map_or_else(|| dir.clone(), std::path::Path::to_path_buf);
+        let view = dir.as_marked_path();
+        let project_root = view.as_path().ancestors().nth(2).map_or_else(
+            || dir.clone(),
+            |root| {
+                MarkedPathBuf::<Absolute>::new(root)
+                    .expect("ancestor of an absolute path is absolute")
+            },
+        );
         for skill in scan_skills(dir) {
             let tagged = Skill {
                 source: SkillSource::Project {
@@ -135,49 +150,66 @@ mod tests {
     ///
     /// The path is built under a fresh temp root and the name is never
     /// created, so it names nothing on disk on any platform.
-    fn missing_dir(name: &str) -> std::path::PathBuf {
-        let root = jinn_testutil::paths::TestRoot::new().expect("test root");
-        root.join_str(name).expect("relative path").into_inner()
+    fn missing_dir(name: &str) -> MarkedPathBuf<Absolute> {
+        let root = jinn_testutil::paths::TestRoot::new();
+        root.join_str(name).expect("relative path")
     }
 
     #[rstest::rstest]
     fn scan_skills_finds_valid_skill() {
         // Given a temp directory with a valid skill.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let skill_dir = dir.path().join("my-skill");
+        let dir = jinn_testutil::tempdir();
+        let skill_dir = dir
+            .path
+            .join("my-skill")
+            .expect("temp root joins a bare name");
         fs::create_dir_all(&skill_dir).expect("create skill dir");
         fs::write(
-            skill_dir.join("SKILL.md"),
+            skill_dir
+                .join("SKILL.md")
+                .expect("typed parent joins a bare name")
+                .as_path(),
             "---\nname: my-skill\ndescription: A test skill\n---\n\n# Content",
         )
         .expect("write SKILL.md");
 
         // When scanning for skills.
-        let skills = scan_skills(dir.path());
+        let skills = scan_skills(&dir.path);
 
         // Then one skill is found.
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "my-skill");
         assert_eq!(skills[0].description, "A test skill");
         assert_eq!(skills[0].body, "# Content");
-        assert_eq!(skills[0].file_path, skill_dir.join("SKILL.md"));
+        assert_eq!(
+            skills[0].file_path,
+            skill_dir
+                .join("SKILL.md")
+                .expect("typed parent joins a bare name")
+        );
         assert_eq!(skills[0].base_dir, skill_dir);
     }
 
     #[rstest::rstest]
     fn scan_skills_uses_dir_name_when_no_frontmatter_name() {
         // Given a skill without name in frontmatter.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let skill_dir = dir.path().join("fallback-name");
+        let dir = jinn_testutil::tempdir();
+        let skill_dir = dir
+            .path
+            .join("fallback-name")
+            .expect("temp root joins a bare name");
         fs::create_dir_all(&skill_dir).expect("create skill dir");
         fs::write(
-            skill_dir.join("SKILL.md"),
+            skill_dir
+                .join("SKILL.md")
+                .expect("typed parent joins a bare name")
+                .as_path(),
             "---\ndescription: Has desc but no name\n---\n\n# Content",
         )
         .expect("write SKILL.md");
 
         // When scanning for skills.
-        let skills = scan_skills(dir.path());
+        let skills = scan_skills(&dir.path);
 
         // Then the directory name is used.
         assert_eq!(skills.len(), 1);
@@ -187,17 +219,23 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_skips_empty_description() {
         // Given a skill with an empty description.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let skill_dir = dir.path().join("empty-desc");
+        let dir = jinn_testutil::tempdir();
+        let skill_dir = dir
+            .path
+            .join("empty-desc")
+            .expect("temp root joins a bare name");
         fs::create_dir_all(&skill_dir).expect("create skill dir");
         fs::write(
-            skill_dir.join("SKILL.md"),
+            skill_dir
+                .join("SKILL.md")
+                .expect("typed parent joins a bare name")
+                .as_path(),
             "---\nname: empty-desc\ndescription: \n---\n\n# Content",
         )
         .expect("write SKILL.md");
 
         // When scanning for skills.
-        let skills = scan_skills(dir.path());
+        let skills = scan_skills(&dir.path);
 
         // Then no skills are found.
         assert_eq!(skills, [] as [jinn_skills_msg::Skill; 0]);
@@ -206,17 +244,23 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_skips_missing_description() {
         // Given a skill without description.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let skill_dir = dir.path().join("no-desc");
+        let dir = jinn_testutil::tempdir();
+        let skill_dir = dir
+            .path
+            .join("no-desc")
+            .expect("temp root joins a bare name");
         fs::create_dir_all(&skill_dir).expect("create skill dir");
         fs::write(
-            skill_dir.join("SKILL.md"),
+            skill_dir
+                .join("SKILL.md")
+                .expect("typed parent joins a bare name")
+                .as_path(),
             "---\nname: no-desc\n---\n\n# Content",
         )
         .expect("write SKILL.md");
 
         // When scanning for skills.
-        let skills = scan_skills(dir.path());
+        let skills = scan_skills(&dir.path);
 
         // Then no skills are found.
         assert_eq!(skills, [] as [jinn_skills_msg::Skill; 0]);
@@ -225,12 +269,15 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_skips_dirs_without_skill_md() {
         // Given a directory with a subdirectory but no SKILL.md.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let sub = dir.path().join("no-skill-here");
+        let dir = jinn_testutil::tempdir();
+        let sub = dir
+            .path
+            .join("no-skill-here")
+            .expect("temp root joins a bare name");
         fs::create_dir_all(&sub).expect("create sub dir");
 
         // When scanning for skills.
-        let skills = scan_skills(dir.path());
+        let skills = scan_skills(&dir.path);
 
         // Then no skills are found.
         assert_eq!(skills, [] as [jinn_skills_msg::Skill; 0]);
@@ -251,17 +298,23 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_skips_invalid_frontmatter() {
         // Given a skill dir with SKILL.md but no frontmatter.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let skill_dir = dir.path().join("no-frontmatter");
+        let dir = jinn_testutil::tempdir();
+        let skill_dir = dir
+            .path
+            .join("no-frontmatter")
+            .expect("temp root joins a bare name");
         fs::create_dir_all(&skill_dir).expect("create skill dir");
         fs::write(
-            skill_dir.join("SKILL.md"),
+            skill_dir
+                .join("SKILL.md")
+                .expect("typed parent joins a bare name")
+                .as_path(),
             "# Just markdown\n\nNo frontmatter.",
         )
         .expect("write SKILL.md");
 
         // When scanning for skills.
-        let skills = scan_skills(dir.path());
+        let skills = scan_skills(&dir.path);
 
         // Then no skills are found.
         assert_eq!(skills, [] as [jinn_skills_msg::Skill; 0]);
@@ -270,20 +323,22 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_finds_multiple_skills() {
         // Given a directory with multiple skills.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
 
         for name in ["skill-a", "skill-b", "skill-c"] {
-            let skill_dir = dir.path().join(name);
+            let skill_dir = dir.path.join(name).expect("temp root joins a bare name");
             fs::create_dir_all(&skill_dir).expect("create skill dir");
             fs::write(
-                skill_dir.join("SKILL.md"),
+                skill_dir
+                    .join("SKILL.md")
+                    .expect("typed parent joins a bare name"),
                 format!("---\nname: {name}\ndescription: Skill {name}\n---\n\n# {name}"),
             )
             .expect("write SKILL.md");
         }
 
         // When scanning for skills.
-        let skills = scan_skills(dir.path());
+        let skills = scan_skills(&dir.path);
 
         // Then three skills are found.
         assert_eq!(skills.len(), 3);
@@ -296,17 +351,23 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_body_is_empty_for_frontmatter_only_file() {
         // Given a skill with frontmatter but no body content.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let skill_dir = dir.path().join("no-body");
+        let dir = jinn_testutil::tempdir();
+        let skill_dir = dir
+            .path
+            .join("no-body")
+            .expect("temp root joins a bare name");
         fs::create_dir_all(&skill_dir).expect("create skill dir");
         fs::write(
-            skill_dir.join("SKILL.md"),
+            skill_dir
+                .join("SKILL.md")
+                .expect("typed parent joins a bare name")
+                .as_path(),
             "---\nname: no-body\ndescription: Has desc\n---",
         )
         .expect("write SKILL.md");
 
         // When scanning for skills.
-        let skills = scan_skills(dir.path());
+        let skills = scan_skills(&dir.path);
 
         // Then one skill is found with an empty body.
         assert_eq!(skills.len(), 1);
@@ -316,17 +377,23 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_merged_global_only() {
         // Given a global dir with one skill and no project dirs.
-        let global = jinn_testutil::tempdir().expect("create global dir");
-        let skill_dir = global.path().join("g-skill");
+        let global = jinn_testutil::tempdir();
+        let skill_dir = global
+            .path
+            .join("g-skill")
+            .expect("temp root joins a bare name");
         fs::create_dir_all(&skill_dir).expect("create skill dir");
         fs::write(
-            skill_dir.join("SKILL.md"),
+            skill_dir
+                .join("SKILL.md")
+                .expect("typed parent joins a bare name")
+                .as_path(),
             "---\nname: g-skill\ndescription: Global\n---\n\n# G",
         )
         .expect("write SKILL.md");
 
         // When merging with no project dirs.
-        let skills = scan_skills_merged(&missing_dir("system"), global.path(), &[]);
+        let skills = scan_skills_merged(&missing_dir("system"), &global.path, &[]);
 
         // Then the global skill is present with Global source.
         assert_eq!(skills.len(), 1);
@@ -338,20 +405,30 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_merged_project_overrides_global() {
         // Given a global skill and a project skill with the same name.
-        let global = jinn_testutil::tempdir().expect("create global dir");
-        let g_skill = global.path().join("shared");
+        let global = jinn_testutil::tempdir();
+        let g_skill = global
+            .path
+            .join("shared")
+            .expect("temp root joins a bare name");
         fs::create_dir_all(&g_skill).expect("create g skill");
         fs::write(
-            g_skill.join("SKILL.md"),
+            g_skill
+                .join("SKILL.md")
+                .expect("typed parent joins a bare name"),
             "---\nname: shared\ndescription: Global version\n---\n\n# Global",
         )
         .expect("write SKILL.md");
 
-        let project = jinn_testutil::tempdir().expect("create project dir");
-        let p_skill = project.path().join(".agents").join("skills").join("shared");
+        let project = jinn_testutil::tempdir();
+        let p_skill = project
+            .path
+            .join_all([".agents", "skills", "shared"])
+            .expect("temp root joins bare names");
         fs::create_dir_all(&p_skill).expect("create p skill");
         fs::write(
-            p_skill.join("SKILL.md"),
+            p_skill
+                .join("SKILL.md")
+                .expect("typed parent joins a bare name"),
             "---\nname: shared\ndescription: Project version\n---\n\n# Project",
         )
         .expect("write SKILL.md");
@@ -359,8 +436,11 @@ mod tests {
         // When merging with the project dir.
         let skills = scan_skills_merged(
             &missing_dir("system"),
-            global.path(),
-            &[project.path().join(".agents").join("skills")],
+            &global.path,
+            &[project
+                .path
+                .join_all([".agents", "skills"])
+                .expect("temp root joins bare names")],
         );
 
         // Then the project skill overrides the global one.
@@ -369,7 +449,7 @@ mod tests {
         assert_eq!(
             skills[0].source,
             SkillSource::Project {
-                dir: project.path().to_path_buf()
+                dir: project.path.clone()
             }
         );
     }
@@ -377,20 +457,30 @@ mod tests {
     #[rstest::rstest]
     fn scan_skills_merged_most_local_ancestor_wins() {
         // Given two project ancestors each with a skill of the same name.
-        let ancestor = jinn_testutil::tempdir().expect("create ancestor dir");
-        let a_skill = ancestor.path().join(".agents").join("skills").join("dup");
+        let ancestor = jinn_testutil::tempdir();
+        let a_skill = ancestor
+            .path
+            .join_all([".agents", "skills", "dup"])
+            .expect("temp root joins bare names");
         fs::create_dir_all(&a_skill).expect("create a skill");
         fs::write(
-            a_skill.join("SKILL.md"),
+            a_skill
+                .join("SKILL.md")
+                .expect("typed parent joins a bare name"),
             "---\nname: dup\ndescription: Ancestor version\n---\n\n# Ancestor",
         )
         .expect("write SKILL.md");
 
-        let local = jinn_testutil::tempdir().expect("create local dir");
-        let l_skill = local.path().join(".agents").join("skills").join("dup");
+        let local = jinn_testutil::tempdir();
+        let l_skill = local
+            .path
+            .join_all([".agents", "skills", "dup"])
+            .expect("temp root joins bare names");
         fs::create_dir_all(&l_skill).expect("create l skill");
         fs::write(
-            l_skill.join("SKILL.md"),
+            l_skill
+                .join("SKILL.md")
+                .expect("typed parent joins a bare name"),
             "---\nname: dup\ndescription: Local version\n---\n\n# Local",
         )
         .expect("write SKILL.md");
@@ -400,8 +490,14 @@ mod tests {
             &missing_dir("system"),
             &missing_dir("global"),
             &[
-                ancestor.path().join(".agents").join("skills"),
-                local.path().join(".agents").join("skills"),
+                ancestor
+                    .path
+                    .join_all([".agents", "skills"])
+                    .expect("temp root joins bare names"),
+                local
+                    .path
+                    .join_all([".agents", "skills"])
+                    .expect("temp root joins bare names"),
             ],
         );
 
@@ -411,7 +507,7 @@ mod tests {
         assert_eq!(
             skills[0].source,
             SkillSource::Project {
-                dir: local.path().to_path_buf()
+                dir: local.path.clone()
             }
         );
     }
@@ -420,17 +516,22 @@ mod tests {
     #[test]
     fn scan_skills_merged_system_only() {
         // Given a system dir with one skill, no global, no project dirs.
-        let system = jinn_testutil::tempdir().expect("temp dir");
-        let skill_dir = system.path().join("sys-skill");
+        let system = jinn_testutil::tempdir();
+        let skill_dir = system
+            .path
+            .join("sys-skill")
+            .expect("temp root joins a bare name");
         std::fs::create_dir_all(&skill_dir).expect("create skill dir");
         std::fs::write(
-            skill_dir.join("SKILL.md"),
+            skill_dir
+                .join("SKILL.md")
+                .expect("typed parent joins a bare name"),
             "---\nname: sys-skill\ndescription: A system skill\n---\n\n# System",
         )
         .expect("write SKILL.md");
 
         // When merging with nonexistent global and no project dirs.
-        let skills = scan_skills_merged(system.path(), &missing_dir("global"), &[]);
+        let skills = scan_skills_merged(&system.path, &missing_dir("global"), &[]);
 
         // Then the system skill is found with Global source.
         assert_eq!(skills.len(), 1);
@@ -443,26 +544,36 @@ mod tests {
     #[test]
     fn scan_skills_merged_global_overrides_system() {
         // Given a system dir and a global dir with same-named skill.
-        let system = jinn_testutil::tempdir().expect("temp dir");
-        let sys_skill = system.path().join("shared");
+        let system = jinn_testutil::tempdir();
+        let sys_skill = system
+            .path
+            .join("shared")
+            .expect("temp root joins a bare name");
         std::fs::create_dir_all(&sys_skill).expect("create sys skill dir");
         std::fs::write(
-            sys_skill.join("SKILL.md"),
+            sys_skill
+                .join("SKILL.md")
+                .expect("typed parent joins a bare name"),
             "---\nname: shared\ndescription: System version\n---\n\n# System body",
         )
         .expect("write system SKILL.md");
 
-        let global = jinn_testutil::tempdir().expect("temp dir");
-        let g_skill = global.path().join("shared");
+        let global = jinn_testutil::tempdir();
+        let g_skill = global
+            .path
+            .join("shared")
+            .expect("temp root joins a bare name");
         std::fs::create_dir_all(&g_skill).expect("create global skill dir");
         std::fs::write(
-            g_skill.join("SKILL.md"),
+            g_skill
+                .join("SKILL.md")
+                .expect("typed parent joins a bare name"),
             "---\nname: shared\ndescription: Global version\n---\n\n# Global body",
         )
         .expect("write global SKILL.md");
 
         // When merging with no project dirs.
-        let skills = scan_skills_merged(system.path(), global.path(), &[]);
+        let skills = scan_skills_merged(&system.path, &global.path, &[]);
 
         // Then the global version wins (overrides system).
         assert_eq!(skills.len(), 1);

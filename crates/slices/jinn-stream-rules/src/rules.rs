@@ -18,11 +18,10 @@
 //! membership) and name validation accepts the unfiltered set (a disabled
 //! rule can be re-armed).
 
-use std::path::Path;
-
 use jinn_config::ConfigLayer;
 use jinn_preferences_config::assemble_stream_rules;
 use jinn_preferences_config::schemas::{StreamRuleConfig, StreamRulesConfig};
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// Reads the configured stream rules that will fire for a run.
 ///
@@ -33,7 +32,10 @@ use jinn_preferences_config::schemas::{StreamRuleConfig, StreamRulesConfig};
 /// existing user file (malformed → warn and keep the embedded set), then
 /// everything `jinn.toml` and the legacy sections contribute appended
 /// after, deduped by name — minus every rule `disabled_rules` names.
-pub fn read_rules(config: &ConfigLayer, preferences_path: &Path) -> Vec<StreamRuleConfig> {
+pub fn read_rules(
+    config: &ConfigLayer,
+    preferences_path: &MarkedPathBuf<Absolute>,
+) -> Vec<StreamRuleConfig> {
     let mut rules = assemble_stream_rules(config, preferences_path);
 
     let disabled = config
@@ -55,6 +57,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+    use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
     use super::read_rules;
     use crate::matcher::CompiledSet;
@@ -78,30 +81,35 @@ mod tests {
     ///
     /// Returns the owned dir so the caller keeps it alive as long as the
     /// path is in use.
-    fn temp_prefs() -> (tempfile::TempDir, std::path::PathBuf) {
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("jinn.toml");
-        (dir, path)
+    fn temp_prefs() -> (tempfile::TempDir, MarkedPathBuf<Absolute>) {
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("jinn.toml")
+            .expect("temp root joins a bare filename");
+        (dir.dir, path)
     }
 
     /// A `jinn.toml` path inside `dir`, so the sibling rules file resolves
     /// inside the same temp directory.
-    fn prefs_path_in(dir: &std::path::Path) -> std::path::PathBuf {
+    fn prefs_path_in(dir: &MarkedPathBuf<Absolute>) -> MarkedPathBuf<Absolute> {
         dir.join("jinn.toml")
+            .expect("temp root joins a bare filename")
     }
 
     /// Writes a user `stream_rules.toml` beside `prefs`, returning its path.
-    fn write_user_rules(prefs: &std::path::Path, body: &str) -> std::path::PathBuf {
+    fn write_user_rules(prefs: &MarkedPathBuf<Absolute>, body: &str) -> MarkedPathBuf<Absolute> {
         let path = prefs
             .parent()
-            .unwrap_or_else(|| std::path::Path::new("."))
-            .join(STREAM_RULES_FILE_NAME);
+            .expect("prefs path is absolute, so it has a parent")
+            .join(STREAM_RULES_FILE_NAME)
+            .expect("absolute parent joins a bare filename");
         std::fs::write(&path, body).expect("write user rules file");
         path
     }
 
     /// The names of the rules a read assembles, in order.
-    fn assembled_names(config: &ConfigLayer, prefs: &std::path::Path) -> Vec<String> {
+    fn assembled_names(config: &ConfigLayer, prefs: &MarkedPathBuf<Absolute>) -> Vec<String> {
         read_rules(config, prefs)
             .into_iter()
             .map(|r| r.name)
@@ -163,11 +171,13 @@ mod tests {
     fn a_global_rule_merged_with_a_project_rule_keeps_both_blocks() {
         // Given the same two rules, compiled for the scoped project. The
         // session cwd sits in a tempdir root shared with nothing else.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let myapp_cwd = dir.path().join("dev/code/myapp");
+        let dir = jinn_testutil::tempdir();
+        let myapp_cwd = dir
+            .path
+            .join("dev/code/myapp")
+            .expect("temp root joins a bare name");
         let (_prefs_dir, prefs) = temp_prefs();
-        let set = compiled(&read_rules(&mixed_project_config(), &prefs))
-            .for_cwd(Some(myapp_cwd.as_path()));
+        let set = compiled(&read_rules(&mixed_project_config(), &prefs)).for_cwd(Some(&myapp_cwd));
 
         // When each command's arguments stream in that project.
         let global = {
@@ -200,11 +210,13 @@ mod tests {
     fn a_project_rule_merged_with_a_global_rule_is_silent_outside_its_project() {
         // Given the same two rules, resolved for a project that is not myapp:
         // a sibling directory under the same tempdir root.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let other_cwd = dir.path().join("dev/code/other");
+        let dir = jinn_testutil::tempdir();
+        let other_cwd = dir
+            .path
+            .join("dev/code/other")
+            .expect("temp root joins a bare name");
         let (_prefs_dir, prefs) = temp_prefs();
-        let set = compiled(&read_rules(&mixed_project_config(), &prefs))
-            .for_cwd(Some(other_cwd.as_path()));
+        let set = compiled(&read_rules(&mixed_project_config(), &prefs)).for_cwd(Some(&other_cwd));
 
         // When the global rule's command's arguments stream there.
         let global = {
@@ -270,8 +282,11 @@ mod tests {
         // forward slashes before globbing, so a backslash pattern would
         // never match on Windows — and `toml_edit::Value` interpolates it as
         // a properly escaped TOML string.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let myapp_cwd = dir.path().join("dev/code/myapp");
+        let dir = jinn_testutil::tempdir();
+        let myapp_cwd = dir
+            .path
+            .join("dev/code/myapp")
+            .expect("temp root joins a bare name");
         let config = {
             let project_glob = myapp_cwd.to_string_lossy().replace('\\', "/");
             let project = toml_edit::Value::from(project_glob);
@@ -292,7 +307,7 @@ mod tests {
 
         // When the rules are read and compiled for that project.
         let (_prefs_dir, prefs) = temp_prefs();
-        let set = compiled(&read_rules(&config, &prefs)).for_cwd(Some(myapp_cwd.as_path()));
+        let set = compiled(&read_rules(&config, &prefs)).for_cwd(Some(&myapp_cwd));
 
         // Then both fire: the project rule adds its block beside the global.
         let mut session = set.new_session(&jinn_core_types::SessionId::new());
@@ -343,8 +358,8 @@ mod tests {
     #[test]
     fn a_disabled_name_disarms_a_user_file_rule() {
         // Given a user rules file and an array naming its rule.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let prefs = prefs_path_in(dir.path());
+        let dir = jinn_testutil::tempdir();
+        let prefs = prefs_path_in(&dir.path);
         write_user_rules(
             &prefs,
             r#"

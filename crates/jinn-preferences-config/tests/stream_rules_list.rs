@@ -21,21 +21,30 @@
 use jinn_common::app_info::PREFS_FILE_NAME;
 use jinn_config::{ConfigLayer, FilesystemConfigStorage};
 use jinn_preferences_config::schemas::StreamRuleConfig;
-use tempfile::TempDir;
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
 /// A layer over the temp `jinn.toml` the test just wrote.
-fn layer_for(path: &std::path::Path) -> ConfigLayer {
+fn layer_for(path: &MarkedPathBuf<Absolute>) -> ConfigLayer {
     ConfigLayer::load(std::sync::Arc::new(FilesystemConfigStorage::new(
-        path.to_path_buf(),
+        path.clone(),
     )))
     .expect("layer loads")
 }
 
 /// A layer over a document the test just wrote, plus the path to re-read.
-fn layer_over(body: &str) -> (ConfigLayer, std::path::PathBuf, TempDir) {
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let path = dir.path().join(PREFS_FILE_NAME);
-    std::fs::write(&path, body).expect("write");
+fn layer_over(
+    body: &str,
+) -> (
+    ConfigLayer,
+    MarkedPathBuf<Absolute>,
+    jinn_testutil::JinnTempDir,
+) {
+    let dir = jinn_testutil::tempdir();
+    let path = dir
+        .path
+        .join(PREFS_FILE_NAME)
+        .expect("temp root joins a bare name");
+    std::fs::write(path.as_path(), body).expect("write");
     (layer_for(&path), path, dir)
 }
 

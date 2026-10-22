@@ -27,6 +27,7 @@ error-stack = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
+marked-path.workspace = true
 jinn-testutil = { workspace = true }
 rstest = { workspace = true }
 

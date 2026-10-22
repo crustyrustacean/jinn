@@ -8,17 +8,24 @@
 
 use crate::PromptTemplate;
 use crate::prompt_template::store::{MAX_FUZZY_RESULTS, PromptTemplateStore};
-use std::path::Path;
+use marked_path::Absolute;
 
-fn write_template(dir: &Path, filename: &str, content: &str) {
-    std::fs::write(dir.join(filename), content).expect("write template file");
+fn write_template(dir: &marked_path::MarkedPathBuf<Absolute>, filename: &str, content: &str) {
+    std::fs::write(
+        dir.join(filename).expect("temp root joins a bare filename"),
+        content,
+    )
+    .expect("write template file");
 }
 
 #[rstest::rstest]
 fn load_from_dir_returns_empty_when_missing() {
     // Given a path that does not exist.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let path = dir.path().join("jinn-nonexistent-test-dir");
+    let dir = jinn_testutil::tempdir();
+    let path = dir
+        .path
+        .join("jinn-nonexistent-test-dir")
+        .expect("temp root joins a bare name");
 
     // When loading from that path.
     let store = PromptTemplateStore::load_from_dir(&path).expect("load");
@@ -30,20 +37,20 @@ fn load_from_dir_returns_empty_when_missing() {
 #[rstest::rstest]
 fn load_from_dir_parses_templates() {
     // Given a directory with two template files.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     write_template(
-        dir.path(),
+        &dir.path,
         "hello.md",
         "+++\nname = \"hello\"\ndescription = \"Say hello\"\n+++\nHello, world!",
     );
     write_template(
-        dir.path(),
+        &dir.path,
         "review.md",
         "+++\nname = \"review\"\ndescription = \"Code review\"\n+++\nReview this code.",
     );
 
     // When loading from that directory.
-    let store = PromptTemplateStore::load_from_dir(dir.path()).expect("load");
+    let store = PromptTemplateStore::load_from_dir(&dir.path).expect("load");
 
     // Then both templates are loaded.
     assert_eq!(store.len(), 2);
@@ -54,8 +61,11 @@ fn load_from_dir_parses_templates() {
 #[rstest::rstest]
 fn load_from_dir_scans_subdirectories() {
     // Given a directory with a subdirectory containing a template.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let sub = dir.path().join("subdir");
+    let dir = jinn_testutil::tempdir();
+    let sub = dir
+        .path
+        .join("subdir")
+        .expect("temp root joins a bare name");
     std::fs::create_dir_all(&sub).expect("create subdir");
     write_template(
         &sub,
@@ -64,7 +74,7 @@ fn load_from_dir_scans_subdirectories() {
     );
 
     // When loading from the root directory.
-    let store = PromptTemplateStore::load_from_dir(dir.path()).expect("load");
+    let store = PromptTemplateStore::load_from_dir(&dir.path).expect("load");
 
     // Then the nested template is found.
     assert_eq!(store.len(), 1);
@@ -74,11 +84,11 @@ fn load_from_dir_scans_subdirectories() {
 #[rstest::rstest]
 fn load_from_dir_skips_non_md_files() {
     // Given a directory with a non-markdown file.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    write_template(dir.path(), "ignore.txt", "this is not a template");
+    let dir = jinn_testutil::tempdir();
+    write_template(&dir.path, "ignore.txt", "this is not a template");
 
     // When loading.
-    let store = PromptTemplateStore::load_from_dir(dir.path()).expect("load");
+    let store = PromptTemplateStore::load_from_dir(&dir.path).expect("load");
 
     // Then the store is empty.
     assert!(store.is_empty());
@@ -87,20 +97,20 @@ fn load_from_dir_skips_non_md_files() {
 #[rstest::rstest]
 fn load_from_dir_handles_duplicate_names() {
     // Given two files with the same name in their frontmatter.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     write_template(
-        dir.path(),
+        &dir.path,
         "a.md",
         "+++\nname = \"dup\"\ndescription = \"First\"\n+++\nFirst.",
     );
     write_template(
-        dir.path(),
+        &dir.path,
         "b.md",
         "+++\nname = \"dup\"\ndescription = \"Second\"\n+++\nSecond.",
     );
 
     // When loading.
-    let store = PromptTemplateStore::load_from_dir(dir.path()).expect("load");
+    let store = PromptTemplateStore::load_from_dir(&dir.path).expect("load");
 
     // Then only one occurrence is kept (first found).
     assert_eq!(store.len(), 1);
@@ -224,20 +234,20 @@ fn fuzzy_search_caps_at_max_results() {
 #[rstest::rstest]
 fn scan_dir_skips_underscore_prefixed_files() {
     // Given a directory with both a normal template and an underscore-prefixed file.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     write_template(
-        dir.path(),
+        &dir.path,
         "normal.md",
         "+++\nname = \"normal\"\ndescription = \"Normal template\"\n+++\nBody.",
     );
     write_template(
-        dir.path(),
+        &dir.path,
         "_system.md",
         "+++\nname = \"system\"\ndescription = \"System template\"\n+++\nBody.",
     );
 
     // When loading from that directory.
-    let store = PromptTemplateStore::load_from_dir(dir.path()).expect("load");
+    let store = PromptTemplateStore::load_from_dir(&dir.path).expect("load");
 
     // Then only the normal template is loaded; _system is skipped.
     assert_eq!(store.len(), 1);
@@ -248,22 +258,22 @@ fn scan_dir_skips_underscore_prefixed_files() {
 #[rstest::rstest]
 fn load_from_dirs_user_override_skips_underscore_prefixed() {
     // Given a user dir with an underscore-prefixed file and a system dir with a normal template.
-    let user_dir = jinn_testutil::tempdir().expect("temp dir");
-    let system_dir = jinn_testutil::tempdir().expect("temp dir");
+    let user_dir = jinn_testutil::tempdir();
+    let system_dir = jinn_testutil::tempdir();
     write_template(
-        user_dir.path(),
+        &user_dir.path,
         "_compaction.md",
         "+++\nname = \"_compaction\"\ndescription = \"Compaction\"\n+++\nBody.",
     );
     write_template(
-        system_dir.path(),
+        &system_dir.path,
         "review.md",
         "+++\nname = \"review\"\ndescription = \"Review\"\n+++\nBody.",
     );
 
     // When loading from both dirs.
     let store =
-        PromptTemplateStore::load_from_dirs(user_dir.path(), system_dir.path()).expect("load");
+        PromptTemplateStore::load_from_dirs(&user_dir.path, &system_dir.path).expect("load");
 
     // Then only the non-prefixed template is loaded.
     assert_eq!(store.len(), 1);
@@ -293,25 +303,25 @@ fn fuzzy_search_never_returns_underscore_prefixed_templates() {
 #[rstest::rstest]
 fn load_from_dirs_ordered_project_adds_net_new_template() {
     // Given a user dir with one template and a project dir with a different one.
-    let user_dir = jinn_testutil::tempdir().expect("user dir");
+    let user_dir = jinn_testutil::tempdir();
     write_template(
-        user_dir.path(),
+        &user_dir.path,
         "hello.md",
         "+++\nname = \"hello\"\ndescription = \"User hello\"\n+++\nBody hello",
     );
-    let system_dir = jinn_testutil::tempdir().expect("system dir");
-    let project_dir = jinn_testutil::tempdir().expect("project dir");
+    let system_dir = jinn_testutil::tempdir();
+    let project_dir = jinn_testutil::tempdir();
     write_template(
-        project_dir.path(),
+        &project_dir.path,
         "extra.md",
         "+++\nname = \"extra\"\ndescription = \"Project extra\"\n+++\nBody extra",
     );
 
     // When loading with the project dir.
     let store = PromptTemplateStore::load_from_dirs_ordered(
-        user_dir.path(),
-        system_dir.path(),
-        &[project_dir.path().to_path_buf()],
+        &user_dir.path,
+        &system_dir.path,
+        std::slice::from_ref(&project_dir.path),
     )
     .expect("load");
 
@@ -324,25 +334,25 @@ fn load_from_dirs_ordered_project_adds_net_new_template() {
 #[rstest::rstest]
 fn load_from_dirs_ordered_project_overrides_user() {
     // Given a user template and a project template with the same name.
-    let user_dir = jinn_testutil::tempdir().expect("user dir");
+    let user_dir = jinn_testutil::tempdir();
     write_template(
-        user_dir.path(),
+        &user_dir.path,
         "shared.md",
         "+++\nname = \"shared\"\ndescription = \"User version\"\n+++\nUser body",
     );
-    let system_dir = jinn_testutil::tempdir().expect("system dir");
-    let project_dir = jinn_testutil::tempdir().expect("project dir");
+    let system_dir = jinn_testutil::tempdir();
+    let project_dir = jinn_testutil::tempdir();
     write_template(
-        project_dir.path(),
+        &project_dir.path,
         "shared.md",
         "+++\nname = \"shared\"\ndescription = \"Project version\"\n+++\nProject body",
     );
 
     // When loading with the project dir as the highest-priority layer.
     let store = PromptTemplateStore::load_from_dirs_ordered(
-        user_dir.path(),
-        system_dir.path(),
-        &[project_dir.path().to_path_buf()],
+        &user_dir.path,
+        &system_dir.path,
+        std::slice::from_ref(&project_dir.path),
     )
     .expect("load");
 
@@ -356,26 +366,26 @@ fn load_from_dirs_ordered_project_overrides_user() {
 #[rstest::rstest]
 fn load_from_dirs_ordered_most_local_ancestor_wins() {
     // Given two project ancestors each with a template of the same name.
-    let user_dir = jinn_testutil::tempdir().expect("user dir");
-    let system_dir = jinn_testutil::tempdir().expect("system dir");
-    let ancestor = jinn_testutil::tempdir().expect("ancestor dir");
+    let user_dir = jinn_testutil::tempdir();
+    let system_dir = jinn_testutil::tempdir();
+    let ancestor = jinn_testutil::tempdir();
     write_template(
-        ancestor.path(),
+        &ancestor.path,
         "dup.md",
         "+++\nname = \"dup\"\ndescription = \"Ancestor version\"\n+++\nAncestor body",
     );
-    let local = jinn_testutil::tempdir().expect("local dir");
+    let local = jinn_testutil::tempdir();
     write_template(
-        local.path(),
+        &local.path,
         "dup.md",
         "+++\nname = \"dup\"\ndescription = \"Local version\"\n+++\nLocal body",
     );
 
     // When loading with ancestor first (least-local), local last (most-local).
     let store = PromptTemplateStore::load_from_dirs_ordered(
-        user_dir.path(),
-        system_dir.path(),
-        &[ancestor.path().to_path_buf(), local.path().to_path_buf()],
+        &user_dir.path,
+        &system_dir.path,
+        &[ancestor.path.clone(), local.path.clone()],
     )
     .expect("load");
 

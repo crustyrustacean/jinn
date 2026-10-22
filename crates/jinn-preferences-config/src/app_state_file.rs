@@ -6,13 +6,12 @@
 //! (last model, theme, persona, sidebar width) that changes
 //! frequently but is not user-editable configuration.
 
-use std::path::Path;
-
 use error_stack::{Report, ResultExt as _};
 use serde::{Deserialize, Serialize};
 use wherror::Error;
 
 use jinn_core_types::model_selection::{self, ModelSelection};
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 /// Errors that can occur during app state file I/O.
 #[derive(Debug, Error)]
 pub enum AppStateFileError {
@@ -67,12 +66,9 @@ pub struct AppStateFile {
 ///
 /// Returns [`AppStateFileError::Parse`] if the TOML is malformed.
 /// Returns [`AppStateFileError::Io`] if the file cannot be read.
-pub fn load_app_state_from<P>(path: P) -> Result<AppStateFile, Report<AppStateFileError>>
-where
-    P: AsRef<Path>,
-{
-    let path = path.as_ref();
-
+pub fn load_app_state_from(
+    path: &MarkedPathBuf<Absolute>,
+) -> Result<AppStateFile, Report<AppStateFileError>> {
     if !path.exists() {
         return Ok(AppStateFile::default());
     }
@@ -94,12 +90,10 @@ where
 ///
 /// Returns [`AppStateFileError::Parse`] if serialization fails.
 /// Returns [`AppStateFileError::Io`] if writing fails.
-pub fn save_app_state_to<P>(state: &AppStateFile, path: P) -> Result<(), Report<AppStateFileError>>
-where
-    P: AsRef<Path>,
-{
-    let path = path.as_ref();
-
+pub fn save_app_state_to(
+    state: &AppStateFile,
+    path: &MarkedPathBuf<Absolute>,
+) -> Result<(), Report<AppStateFileError>> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .change_context(AppStateFileError::Io)
@@ -153,8 +147,11 @@ mod tests {
         };
 
         // When serializing and deserializing.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("state.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("state.toml")
+            .expect("temp root joins a bare name");
         save_app_state_to(&state, &path).expect("save");
         let reloaded = load_app_state_from(&path).expect("load");
 
@@ -168,8 +165,11 @@ mod tests {
         let state = AppStateFile::default();
 
         // When serializing and deserializing.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("state.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("state.toml")
+            .expect("temp root joins a bare name");
         save_app_state_to(&state, &path).expect("save");
         let reloaded = load_app_state_from(&path).expect("load");
 
@@ -180,8 +180,11 @@ mod tests {
     #[rstest::rstest]
     fn load_returns_defaults_when_file_missing() {
         // Given a path that does not exist.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("nonexistent.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("nonexistent.toml")
+            .expect("temp root joins a bare name");
 
         // When loading.
         let state = load_app_state_from(&path).expect("load");
@@ -195,8 +198,11 @@ mod tests {
     #[rstest::rstest]
     fn save_creates_parent_directories() {
         // Given a nested path that doesn't exist.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("nested").join("dir").join("state.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join_all(["nested", "dir", "state.toml"])
+            .expect("name joins keep the base absolute");
 
         // When saving.
         let state = AppStateFile::default();
@@ -209,8 +215,11 @@ mod tests {
     #[rstest::rstest]
     fn load_legacy_bare_string_last_model() {
         // Given a state file with the old bare-string last_model format.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("state.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("state.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(
             &path,
             r##"last_model = "ollama/llama3"
@@ -236,8 +245,11 @@ theme_name = "gruvbox-dark"
     #[rstest::rstest]
     fn legacy_json_without_reasoning_effort_deserializes_to_none() {
         // Given a state file from an older version that lacks reasoning_effort.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("state.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("state.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(
             &path,
             r##"last_model = "ollama/llama3"

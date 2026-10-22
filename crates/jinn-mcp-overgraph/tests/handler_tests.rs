@@ -13,6 +13,8 @@
     reason = "test code asserts with expect/panic and indexes fixtures for clear failures"
 )]
 
+use marked_path::MarkedPathAccess;
+use marked_path::{Absolute, MarkedPathBuf};
 use rmcp::model::ContentBlock;
 use rmcp::service::{RoleClient, ServiceExt};
 use rmcp::transport::async_rw::AsyncRwTransport;
@@ -67,16 +69,16 @@ async fn connect_with_engine(
 
 /// Spawns the overgraph server with a fresh engine on `dir` and a fake
 /// embedder standing in for the local model.
-async fn connect_server(dir: &std::path::Path) -> McpClient {
-    let engine = overgraph::DatabaseEngine::open(dir, &server_db_options())
+async fn connect_server(dir: &MarkedPathBuf<Absolute>) -> McpClient {
+    let engine = overgraph::DatabaseEngine::open(dir.as_path(), &server_db_options())
         .expect("engine opens on a temp dir");
     connect_with_engine(engine, Arc::new(FakeEmbedder::available(384))).await
 }
 
 /// Spawns the overgraph server on an engine that has already been closed —
 /// the `graph_docs` arm never touches the engine, so it must still serve.
-async fn connect_server_with_closed_engine(dir: &std::path::Path) -> McpClient {
-    let engine = overgraph::DatabaseEngine::open(dir, &server_db_options())
+async fn connect_server_with_closed_engine(dir: &MarkedPathBuf<Absolute>) -> McpClient {
+    let engine = overgraph::DatabaseEngine::open(dir.as_path(), &server_db_options())
         .expect("engine opens on a temp dir");
     engine.close().expect("engine closes");
     connect_with_engine(engine, Arc::new(FakeEmbedder::available(384))).await
@@ -102,8 +104,8 @@ use std::sync::Arc;
 #[tokio::test]
 async fn list_tools_advertises_exactly_six_graph_tools() {
     // Given a client connected to the overgraph server.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
 
     // When listing tools.
     let tools = client.list_tools().await.expect("tools/list must succeed");
@@ -138,8 +140,8 @@ async fn list_tools_advertises_exactly_six_graph_tools() {
 #[tokio::test]
 async fn call_tool_rejects_unknown_tool_names() {
     // Given a client connected to the overgraph server.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
 
     // When calling a tool that does not exist.
     let result = client
@@ -160,8 +162,8 @@ async fn call_tool_rejects_unknown_tool_names() {
 #[tokio::test]
 async fn graph_upsert_node_creates_a_queryable_node() {
     // Given a client connected to the overgraph server.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
 
     // When upserting a node with properties.
     let result = client
@@ -208,8 +210,8 @@ async fn graph_upsert_node_creates_a_queryable_node() {
 #[tokio::test]
 async fn graph_upsert_node_is_idempotent_for_the_same_key() {
     // Given a node already upserted once.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
     let args = || {
         json!({"label": "Person", "key": "alice"})
             .as_object()
@@ -240,8 +242,8 @@ async fn graph_upsert_node_is_idempotent_for_the_same_key() {
 async fn graph_upsert_edge_traverses_through_gql() {
     // Given two upserted nodes.
     let (_dir, mut client) = {
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let client = connect_server(dir.path()).await;
+        let dir = jinn_testutil::tempdir();
+        let client = connect_server(&dir.path).await;
         for key in ["alice", "bob"] {
             client
                 .call_tool(
@@ -311,8 +313,8 @@ async fn graph_upsert_edge_traverses_through_gql() {
 #[tokio::test]
 async fn graph_upsert_edge_reports_missing_endpoints_as_tool_errors() {
     // Given a server whose graph has no nodes.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
 
     // When creating an edge to a nonexistent endpoint.
     let result = client
@@ -355,8 +357,8 @@ async fn graph_upsert_edge_reports_missing_endpoints_as_tool_errors() {
 #[tokio::test]
 async fn graph_query_surfaces_malformed_gql_as_tool_errors() {
     // Given a client connected to the overgraph server.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
 
     // When submitting GQL the engine cannot parse.
     let result = client
@@ -386,8 +388,8 @@ async fn graph_query_surfaces_malformed_gql_as_tool_errors() {
 #[tokio::test]
 async fn graph_query_binds_json_params_into_the_statement() {
     // Given a node whose key we know.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
     client
         .call_tool(
             "graph_upsert_node",
@@ -432,8 +434,8 @@ async fn graph_query_binds_json_params_into_the_statement() {
 #[tokio::test]
 async fn graph_docs_without_arguments_serves_the_whole_reference() {
     // Given a client connected to the overgraph server.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
 
     // When calling graph_docs with no arguments at all.
     let result = client
@@ -465,8 +467,8 @@ async fn graph_docs_without_arguments_serves_the_whole_reference() {
 #[tokio::test]
 async fn graph_docs_section_returns_that_section_verbatim() {
     // Given a client connected to the overgraph server.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
 
     // When calling graph_docs for one named section.
     let result = client
@@ -504,8 +506,8 @@ async fn graph_docs_section_returns_that_section_verbatim() {
 #[tokio::test]
 async fn graph_docs_unknown_section_errors_with_the_valid_names() {
     // Given a client connected to the overgraph server.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
 
     // When calling graph_docs with a section title nothing carries.
     let result = client
@@ -537,8 +539,8 @@ async fn graph_docs_unknown_section_errors_with_the_valid_names() {
 #[tokio::test]
 async fn graph_docs_schema_advertises_no_required_arguments() {
     // Given a client connected to the overgraph server.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
 
     // When listing tools and finding graph_docs.
     let tools = client.list_tools().await.expect("tools/list");
@@ -567,8 +569,8 @@ async fn graph_docs_schema_advertises_no_required_arguments() {
 #[tokio::test]
 async fn graph_docs_serves_with_a_closed_engine() {
     // Given a server whose engine has already been closed.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server_with_closed_engine(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server_with_closed_engine(&dir.path).await;
 
     // When calling graph_docs.
     let result = client
@@ -595,21 +597,29 @@ async fn graph_docs_serves_with_a_closed_engine() {
 #[test]
 fn resolve_db_dir_prefers_the_explicit_override() {
     // Given an explicit --db path.
-    let requested = std::path::PathBuf::from("/explicit/db");
+    let requested = MarkedPathBuf::<Absolute>::new(
+        std::path::Path::new(std::path::MAIN_SEPARATOR_STR).join("explicit/db"),
+    )
+    .expect("rooted override is absolute");
 
     // When resolving the database directory.
-    let resolved = jinn_mcp_overgraph::resolve_db_dir(Some(requested.clone()));
+    let resolved = jinn_mcp_overgraph::resolve_db_dir(Some(requested.to_path_buf()));
 
-    // Then the override wins.
-    assert_eq!(resolved, requested);
+    // Then the override is used — rooted under the requested path with the
+    // per-database `default` name, never the jinn-managed default location.
+    assert_eq!(
+        resolved.parent().map(|p| p.to_path_buf()),
+        Some(requested.to_path_buf())
+    );
+    assert_eq!(resolved.file_name(), Some(std::ffi::OsStr::new("default")));
 }
 
 #[rstest::rstest]
 #[tokio::test]
 async fn embed_text_upsert_then_vector_search_finds_node() {
     // Given a client connected to the overgraph server.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
 
     // When upserting a node with embed_text.
     let upsert = client
@@ -666,8 +676,8 @@ async fn embed_text_upsert_then_vector_search_finds_node() {
 #[tokio::test]
 async fn upsert_without_embed_text_stays_pure_graph() {
     // Given a client connected to the overgraph server.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
     client
         .call_tool(
             "graph_upsert_node",
@@ -724,8 +734,8 @@ async fn upsert_without_embed_text_stays_pure_graph() {
 async fn vector_search_respects_k_and_label_filter() {
     // Given three embedded nodes, two in one label and one in another.
     let (_dir, mut client) = {
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let client = connect_server(dir.path()).await;
+        let dir = jinn_testutil::tempdir();
+        let client = connect_server(&dir.path).await;
         for (label, key) in [("Doc", "alpha"), ("Doc", "beta"), ("Person", "gamma")] {
             client
                 .call_tool(
@@ -796,8 +806,8 @@ async fn vector_search_respects_k_and_label_filter() {
 #[tokio::test]
 async fn empty_embed_text_is_rejected_as_invalid_params() {
     // Given a client connected to the overgraph server.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
 
     // When upserting with an empty embed_text.
     let result = client
@@ -825,9 +835,9 @@ async fn empty_embed_text_is_rejected_as_invalid_params() {
 async fn missing_model_and_network_fails_as_tool_error() {
     // Given a client connected to a server whose embedder is unavailable
     // (cold cache, no network).
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let engine =
-        overgraph::DatabaseEngine::open(dir.path(), &server_db_options()).expect("engine opens");
+    let dir = jinn_testutil::tempdir();
+    let engine = overgraph::DatabaseEngine::open(dir.path.as_path(), &server_db_options())
+        .expect("engine opens");
     let mut client = connect_with_engine(engine, Arc::new(FakeEmbedder::unavailable())).await;
 
     // When upserting with embed_text.
@@ -879,11 +889,13 @@ async fn missing_model_and_network_fails_as_tool_error() {
 #[test]
 fn graph_only_db_upgrades_in_place_on_reopen_with_vectors() {
     // Given a database created without vector config, holding one node.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let (path, node_id) = {
-        let engine =
-            overgraph::DatabaseEngine::open(dir.path(), &overgraph::types::DbOptions::default())
-                .expect("graph-only engine opens");
+        let engine = overgraph::DatabaseEngine::open(
+            dir.path.as_path(),
+            &overgraph::types::DbOptions::default(),
+        )
+        .expect("graph-only engine opens");
         let id = engine
             .upsert_node(
                 "Doc",
@@ -892,11 +904,11 @@ fn graph_only_db_upgrades_in_place_on_reopen_with_vectors() {
             )
             .expect("node upserts");
         engine.close().expect("engine closes");
-        (dir.path().to_path_buf(), id)
+        (dir.path.clone(), id)
     };
 
     // When reopening it through the server's vector-aware options.
-    let engine = overgraph::DatabaseEngine::open(&path, &server_db_options())
+    let engine = overgraph::DatabaseEngine::open(path.as_path(), &server_db_options())
         .expect("reopen with vector config succeeds");
 
     // Then the old node is still there, and a vector write lands.
@@ -939,10 +951,11 @@ fn graph_only_db_upgrades_in_place_on_reopen_with_vectors() {
 #[test]
 fn dimension_mismatch_fails_open_naming_both() {
     // Given a database locked to the default model's dimension.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let path = dir.path().to_path_buf();
+    let dir = jinn_testutil::tempdir();
+    let path = dir.path.clone();
     {
-        let engine = overgraph::DatabaseEngine::open(&path, &server_db_options()).expect("opens");
+        let engine =
+            overgraph::DatabaseEngine::open(path.as_path(), &server_db_options()).expect("opens");
         engine.close().expect("closes");
     }
 
@@ -955,7 +968,7 @@ fn dimension_mismatch_fails_open_naming_both() {
         }),
         ..overgraph::types::DbOptions::default()
     };
-    let result = overgraph::DatabaseEngine::open(&path, &other);
+    let result = overgraph::DatabaseEngine::open(path.as_path(), &other);
 
     // Then the open fails, and the error names both configurations.
     // (`expect_err` needs `T: Debug`, which `DatabaseEngine` does not carry,
@@ -980,14 +993,18 @@ fn dimension_mismatch_fails_open_naming_both() {
 
 /// Writes `content` to a temp file and returns its path (the ingest tool
 /// reads from the filesystem, so fixtures go through `tempfile`).
-fn batch_file(dir: &tempfile::TempDir, name: &str, content: &str) -> std::path::PathBuf {
-    let path = dir.path().join(name);
+fn batch_file(
+    dir: &jinn_testutil::JinnTempDir,
+    name: &str,
+    content: &str,
+) -> MarkedPathBuf<Absolute> {
+    let path = dir.path.join(name).expect("temp root joins a bare name");
     std::fs::write(&path, content).expect("fixture file writes");
     path
 }
 
 /// Ingest arguments naming `path`.
-fn ingest_args(path: &std::path::Path) -> serde_json::Map<String, Value> {
+fn ingest_args(path: &MarkedPathBuf<Absolute>) -> serde_json::Map<String, Value> {
     json!({"path": path.to_string_lossy()})
         .as_object()
         .expect("obj")
@@ -1013,8 +1030,8 @@ async fn ingest_file_processes_mixed_nodes_and_edges_in_any_order() {
     // Given a batch file whose edge lines precede the node lines they
     // reference, plus a third node living only in the database.
     let (_dir, mut client, path) = {
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let client = connect_server(dir.path()).await;
+        let dir = jinn_testutil::tempdir();
+        let client = connect_server(&dir.path).await;
         client
             .call_tool(
                 "graph_upsert_node",
@@ -1089,8 +1106,8 @@ async fn ingest_file_processes_mixed_nodes_and_edges_in_any_order() {
 #[tokio::test]
 async fn ingest_file_aborts_when_an_edge_names_a_missing_node() {
     // Given a batch file whose only edge names a node declared nowhere.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
     let path = batch_file(
         &dir,
         "dangling.jsonl",
@@ -1137,8 +1154,8 @@ async fn ingest_file_aborts_when_an_edge_names_a_missing_node() {
 #[tokio::test]
 async fn ingest_file_embeds_embed_text_and_vector_search_finds_it() {
     // Given a batch file whose node carries embed_text.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
     let path = batch_file(
         &dir,
         "embedded.jsonl",
@@ -1186,8 +1203,8 @@ async fn ingest_file_embeds_embed_text_and_vector_search_finds_it() {
 #[tokio::test]
 async fn ingest_file_reports_counts_not_ids() {
     // Given a small batch file.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
     let path = batch_file(
         &dir,
         "counts.jsonl",
@@ -1231,8 +1248,8 @@ async fn ingest_file_reports_counts_not_ids() {
 #[tokio::test]
 async fn ingest_file_reports_the_offending_line_on_malformed_input() {
     // Given a batch file whose third line is not JSON.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
     let path = batch_file(
         &dir,
         "broken.jsonl",
@@ -1280,8 +1297,8 @@ async fn ingest_file_reports_the_offending_line_on_malformed_input() {
 #[tokio::test]
 async fn ingest_file_chunks_by_batch_size() {
     // Given a five-node file ingested with batch_size 2.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
     let lines: Vec<String> = ["a", "b", "c", "d", "e"]
         .iter()
         .map(|key| format!(r#"{{"node": {{"label": "Person", "key": "{key}"}}}}"#))
@@ -1313,8 +1330,8 @@ async fn ingest_file_chunks_by_batch_size() {
 #[tokio::test]
 async fn ingest_file_rejects_out_of_range_batch_sizes_as_invalid_params() {
     // Given a connected client and a valid batch file.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
     let path = batch_file(
         &dir,
         "ok.jsonl",
@@ -1343,9 +1360,12 @@ async fn ingest_file_rejects_out_of_range_batch_sizes_as_invalid_params() {
 #[tokio::test]
 async fn ingest_file_names_the_path_when_it_cannot_read_the_file() {
     // Given a connected client and a path no file exists at.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
-    let path = dir.path().join("nope.jsonl");
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
+    let path = dir
+        .path
+        .join("nope.jsonl")
+        .expect("temp root joins a bare name");
 
     // When ingesting it.
     let result = client
@@ -1372,8 +1392,8 @@ async fn ingest_file_names_the_path_when_it_cannot_read_the_file() {
 #[tokio::test]
 async fn ingest_file_is_idempotent_across_repeated_runs() {
     // Given a batch file ingested once.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect_server(dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let mut client = connect_server(&dir.path).await;
     let path = batch_file(
         &dir,
         "same.jsonl",

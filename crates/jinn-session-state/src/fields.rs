@@ -3,8 +3,8 @@
 //! Every group is flattened into `SessionCore`, preserving the established flat
 //! persisted schema while keeping the live values under one authoritative lock.
 
+use marked_path::{Absolute, MarkedPathBuf};
 use std::collections::{BTreeSet, HashMap};
-use std::path::PathBuf;
 
 use jiff::Timestamp;
 use jinn_attendant_msg::{
@@ -28,9 +28,44 @@ pub fn default_persist() -> bool {
 }
 
 /// Serde default for a working directory.
+///
+/// # Panics
+///
+/// Panics if the resolved directory is not absolute, which cannot happen on
+/// supported platforms: both `std::env::current_dir()` and the temp-dir
+/// fallback return absolute paths.
+#[expect(
+    clippy::expect_used,
+    reason = "cwd and temp-dir fallback are absolute on supported platforms"
+)]
 #[must_use]
-pub fn default_cwd() -> PathBuf {
-    PathBuf::from(".")
+pub fn default_cwd() -> MarkedPathBuf<Absolute> {
+    // `.` has always meant "the launch directory" — resolve it now so the
+    // field is absolute for the session's whole life.
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
+    MarkedPathBuf::<Absolute>::new(cwd).expect("cwd and temp dir are absolute")
+}
+
+/// Deserializes a session cwd that may predate the absolute-by-construction
+/// rule: a bare `.` (the pre-marker wire form of "the launch directory")
+/// resolves against the process launch directory instead of failing the
+/// load. Every other value is validated as [`Absolute`] normally.
+///
+/// # Errors
+///
+/// Returns the deserializer's error when the value is neither `.` nor an
+/// absolute path.
+pub fn deserialize_cwd_resolving_legacy_dot<'de, D>(
+    deserializer: D,
+) -> Result<MarkedPathBuf<Absolute>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = serde_json::Value::deserialize(deserializer)?;
+    match raw.as_str() {
+        Some(".") => Ok(default_cwd()),
+        _ => MarkedPathBuf::<Absolute>::deserialize(raw).map_err(serde::de::Error::custom),
+    }
 }
 
 /// A session's recorded lifecycle arguments: ordered name-value pairs.
@@ -151,7 +186,7 @@ pub struct SessionIdentityMetadataFields {
     pub origin: SessionOrigin,
     /// Project association stamped at creation.
     #[serde(default)]
-    pub project: Option<PathBuf>,
+    pub project: Option<MarkedPathBuf<Absolute>>,
     /// Runtime persistence eligibility.
     #[serde(default)]
     pub has_interacted: bool,
@@ -179,11 +214,14 @@ impl Default for SessionIdentityMetadataFields {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionLifecycleLocationFields {
     /// Working directory used by tools and scans.
-    #[serde(default = "default_cwd")]
-    pub cwd: PathBuf,
+    #[serde(
+        default = "default_cwd",
+        deserialize_with = "deserialize_cwd_resolving_legacy_dot"
+    )]
+    pub cwd: MarkedPathBuf<Absolute>,
     /// Runtime home directory for attachment resolution.
-    #[serde(skip)]
-    pub home: PathBuf,
+    #[serde(skip, default = "default_cwd")]
+    pub home: MarkedPathBuf<Absolute>,
     /// Lifecycle selected at creation.
     #[serde(default)]
     pub lifecycle_name: Option<String>,
@@ -214,7 +252,7 @@ impl Default for SessionLifecycleLocationFields {
     fn default() -> Self {
         Self {
             cwd: default_cwd(),
-            home: PathBuf::from("."),
+            home: default_cwd(),
             lifecycle_name: None,
             lifecycle_args: LifecycleArgs(Vec::new()),
             lifecycle_source: None,

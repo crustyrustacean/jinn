@@ -13,8 +13,6 @@
     reason = "test module, panics are acceptable"
 )]
 
-use std::path::PathBuf;
-
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::render_ctx::empty_config_layer;
 use jinn_slices::KeyRoutes;
@@ -76,7 +74,10 @@ fn workflow(name: &str) -> Workflow {
     Workflow {
         name: name.to_owned(),
         description: format!("the {name} workflow"),
-        dir: PathBuf::from(format!("/cfg/workflows/{name}")),
+        dir: marked_path::MarkedPathBuf::<marked_path::Absolute>::new(format!(
+            "/cfg/workflows/{name}"
+        ))
+        .expect("rooted test path"),
     }
 }
 

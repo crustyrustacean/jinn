@@ -1,6 +1,17 @@
 //! State and path resolution for the `@path` file popup.
 
-use std::path::PathBuf;
+// The `expect`s below are typed-path operations: re-typing `$HOME`, the cwd,
+// or the temp-dir fallback (all absolute by platform contract), or joining a
+// bare relative segment onto a base already typed `Absolute`. The panics
+// guard programmer error, not runtime state; the invariant is documented
+// once here for the family.
+#![allow(
+    clippy::expect_used,
+    clippy::missing_panics_doc,
+    reason = "typed-path re-typing and bare-name joins on absolute-by-construction bases"
+)]
+
+use marked_path::{Absolute, MarkedPathBuf};
 
 use jinn_slices::SlotKey;
 
@@ -110,28 +121,40 @@ impl FilePickerState {
 /// Falls back to the current directory when `$HOME` is unset, which keeps the
 /// popup usable rather than failing a `@` insertion over a missing variable.
 #[must_use]
-pub fn home_dir() -> PathBuf {
-    std::env::var_os("HOME").map_or_else(
-        || std::env::current_dir().unwrap_or_default(),
-        PathBuf::from,
-    )
+pub fn home_dir() -> MarkedPathBuf<Absolute> {
+    let home = std::env::var_os("HOME").map_or_else(
+        || std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir()),
+        std::path::PathBuf::from,
+    );
+    MarkedPathBuf::<Absolute>::new(home).expect("$HOME and cwd are absolute")
 }
 
+/// Resolves an autocomplete filter to the directory it names.
+///
+/// The filter is model/user text: `~`-expansion and absolute detection are
+/// the std-boundary string checks; every produced path is absolute.
 #[must_use]
-pub fn resolve_list_dir(filter: &str, cwd: &std::path::Path, home: &std::path::Path) -> PathBuf {
+pub fn resolve_list_dir(
+    filter: &str,
+    cwd: &MarkedPathBuf<Absolute>,
+    home: &MarkedPathBuf<Absolute>,
+) -> MarkedPathBuf<Absolute> {
     if filter.is_empty() {
-        return cwd.to_path_buf();
+        return cwd.clone();
     }
     if let Some(rest) = filter.strip_prefix("~/") {
-        return home.join(rest);
+        return home
+            .join(rest)
+            .expect("expanding a tilde keeps the home absolute");
     }
     if filter == "~" {
-        return home.to_path_buf();
+        return home.clone();
     }
     if filter.starts_with('/') {
-        return PathBuf::from(filter);
+        return MarkedPathBuf::<Absolute>::new(filter).expect("a `/`-prefixed filter is absolute");
     }
     cwd.join(filter)
+        .expect("joining a relative filter keeps the cwd absolute")
 }
 
 #[cfg(test)]
@@ -144,7 +167,7 @@ mod tests {
         reason = "test code"
     )]
 
-    use std::path::PathBuf;
+    use marked_path::{Absolute, MarkedPathBuf};
 
     use super::{FileEntry, FilePickerState, resolve_list_dir};
 
@@ -160,9 +183,9 @@ mod tests {
     #[test]
     fn resolve_empty_filter_returns_cwd() {
         // Given a cwd and home.
-        let root = jinn_testutil::tempdir().expect("temp dir");
-        let cwd = root.path().join("proj");
-        let home = root.path().join("u");
+        let root = jinn_testutil::tempdir();
+        let cwd = root.path.join("proj").expect("temp root joins a bare name");
+        let home = root.path.join("u").expect("temp root joins a bare name");
 
         // When resolving an empty filter.
         let dir = resolve_list_dir("", &cwd, &home);
@@ -183,24 +206,33 @@ mod tests {
     #[test]
     fn resolve_absolute_filter_returns_path_as_is() {
         // Given a cwd, home, and an absolute filter.
-        let home_root = jinn_testutil::tempdir().expect("temp dir");
-        let cwd = home_root.path().join("proj");
-        let home = home_root.path().join("u");
+        let home_root = jinn_testutil::tempdir();
+        let cwd = home_root
+            .path
+            .join("proj")
+            .expect("temp root joins a bare name");
+        let home = home_root
+            .path
+            .join("u")
+            .expect("temp root joins a bare name");
 
         // When resolving an absolute path.
         let dir = resolve_list_dir(ABSOLUTE_FILTER, &cwd, &home);
 
         // Then the result is the absolute path.
-        assert_eq!(dir, PathBuf::from(ABSOLUTE_FILTER));
+        assert_eq!(
+            dir,
+            MarkedPathBuf::<Absolute>::new(ABSOLUTE_FILTER).expect("absolute literal")
+        );
     }
 
     #[rstest::rstest]
     #[test]
     fn resolve_tilde_filter_returns_home() {
         // Given a cwd and home.
-        let root = jinn_testutil::tempdir().expect("temp dir");
-        let cwd = root.path().join("proj");
-        let home = root.path().join("u");
+        let root = jinn_testutil::tempdir();
+        let cwd = root.path.join("proj").expect("temp root joins a bare name");
+        let home = root.path.join("u").expect("temp root joins a bare name");
 
         // When resolving a bare tilde.
         let dir = resolve_list_dir("~", &cwd, &home);
@@ -213,30 +245,30 @@ mod tests {
     #[test]
     fn resolve_tilde_slash_filter_returns_home_subpath() {
         // Given a cwd and home.
-        let root = jinn_testutil::tempdir().expect("temp dir");
-        let cwd = root.path().join("proj");
-        let home = root.path().join("u");
+        let root = jinn_testutil::tempdir();
+        let cwd = root.path.join("proj").expect("temp root joins a bare name");
+        let home = root.path.join("u").expect("temp root joins a bare name");
 
         // When resolving ~/sub.
         let dir = resolve_list_dir("~/sub", &cwd, &home);
 
         // Then the result is home/sub.
-        assert_eq!(dir, home.join("sub"));
+        assert_eq!(dir, home.join("sub").expect("home joins a bare name"));
     }
 
     #[rstest::rstest]
     #[test]
     fn resolve_relative_filter_joins_cwd() {
         // Given a cwd and home.
-        let root = jinn_testutil::tempdir().expect("temp dir");
-        let cwd = root.path().join("proj");
-        let home = root.path().join("u");
+        let root = jinn_testutil::tempdir();
+        let cwd = root.path.join("proj").expect("temp root joins a bare name");
+        let home = root.path.join("u").expect("temp root joins a bare name");
 
         // When resolving a relative path `foo/bar`.
         let dir = resolve_list_dir("foo/bar", &cwd, &home);
 
         // Then the result is cwd/foo/bar.
-        assert_eq!(dir, cwd.join("foo/bar"));
+        assert_eq!(dir, cwd.join("foo/bar").expect("cwd joins a bare name"));
     }
 
     #[rstest::rstest]

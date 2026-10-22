@@ -25,7 +25,7 @@ pub use barrier::{Barrier, BarrierAck, DEFAULT_BARRIER_TIMEOUT};
 pub use paths::{TestRoot, canonicalize_display, strip_verbatim_prefix};
 pub use platform::{find_orphans, is_alive, shell_or_skip};
 pub use temp::{
-    TEST_PREFIX, TestTempBuilder, builder, retained_tempdir, tempdir, tempdir_in,
+    JinnTempDir, TEST_PREFIX, TestTempBuilder, builder, retained_tempdir, tempdir, tempdir_in,
     tempdir_with_prefix,
 };
 pub use wait::{await_completion_then_assert_absent, poll_until, read_normalized};

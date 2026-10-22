@@ -204,7 +204,7 @@ pub async fn activate_actors_with(services: &jinn_kernel::Services, endpoints: A
             data: data_cell,
             ui: ui_cell,
             base_url: endpoints.base_url,
-            cache_dir: std::path::PathBuf::new(),
+            cache_dir: None,
         },
     );
     // The boot kick. Published after both spawns return — the epoch

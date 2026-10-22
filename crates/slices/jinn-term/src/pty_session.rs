@@ -16,7 +16,6 @@
 //! tasks).
 
 use std::io::{Read, Write};
-use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -36,6 +35,7 @@ use wherror::Error;
 use crate::emulator::Emulator;
 use crate::screen_task::{ScreenHandle, ScreenWiring, SharedTerminal, spawn_screen_task};
 use jinn_kernel::common::process_kill::kill_process_group_by_pid;
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
 /// Sender half of a session's output channel.
 ///
@@ -208,7 +208,7 @@ impl PtySession {
     /// (e.g. the shell is missing).
     pub fn spawn(
         command: &str,
-        cwd: &Path,
+        cwd: &MarkedPathBuf<Absolute>,
         size: PtySize,
         wiring: ScreenWiring,
         shell: &str,
@@ -249,7 +249,7 @@ impl PtySession {
         let mut cmd = CommandBuilder::new(shell);
         cmd.arg("-c");
         cmd.arg(command);
-        cmd.cwd(cwd);
+        cmd.cwd(cwd.as_path());
         // Full-screen programs probe the terminal and pick render paths from
         // its identity. A conservative widely-supported identity plus
         // truecolor keeps nvim-class TUIs from hanging or degrading;
@@ -604,10 +604,10 @@ mod tests {
     #[tokio::test]
     async fn spawned_child_echoes_input_back_through_screen() {
         // Given a `cat` session in a pty (cat echoes pty line-discipline input).
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let (mut session, pump) = PtySession::spawn(
             "cat",
-            dir.path(),
+            &dir.path,
             default_size(),
             wiring().await,
             &shell_for_tests(),
@@ -648,10 +648,10 @@ mod tests {
     #[tokio::test]
     async fn kill_terminates_whole_group_leaving_no_orphans() {
         // Given a session running a long sleep (the whole group to kill).
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let (mut session, pump) = PtySession::spawn(
             "sleep 65",
-            dir.path(),
+            &dir.path,
             default_size(),
             wiring().await,
             &shell_for_tests(),
@@ -694,10 +694,10 @@ mod tests {
     #[tokio::test]
     async fn try_wait_reports_exit_code_after_natural_exit() {
         // Given a session whose command exits with a known code.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let (session, pump) = PtySession::spawn(
             "exit 7",
-            dir.path(),
+            &dir.path,
             default_size(),
             wiring().await,
             &shell_for_tests(),
@@ -730,10 +730,10 @@ mod tests {
     #[tokio::test]
     async fn dropping_session_kills_child() {
         // Given a session running a long sleep.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let (session, _pump) = PtySession::spawn(
             "sleep 66",
-            dir.path(),
+            &dir.path,
             default_size(),
             wiring().await,
             &shell_for_tests(),
@@ -765,10 +765,10 @@ mod tests {
     #[tokio::test]
     async fn resize_updates_pty_and_deduplicates_noop() {
         // Given a session at the default size.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let (mut session, pump) = PtySession::spawn(
             "cat",
-            dir.path(),
+            &dir.path,
             default_size(),
             wiring().await,
             &shell_for_tests(),
@@ -843,10 +843,10 @@ mod tests {
         // Given a session whose program exits on its own right away (`exec`
         // replaces bash, so the pty child IS the program — the reported btop
         // zombie).
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let (session, pump) = PtySession::spawn(
             "exec true",
-            dir.path(),
+            &dir.path,
             default_size(),
             wiring().await,
             &shell_for_tests(),
@@ -880,10 +880,10 @@ mod tests {
     #[tokio::test]
     async fn killed_session_is_reaped_immediately_on_drop() {
         // Given a session running a long sleep.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let (session, pump) = PtySession::spawn(
             "exec sleep 68",
-            dir.path(),
+            &dir.path,
             default_size(),
             wiring().await,
             &shell_for_tests(),

@@ -5,6 +5,7 @@ edition.workspace = true
 description = "The OpenRouter model-market popup: cost projection under adjustable mix presets, Epoch ECI quality join, per-endpoint detail, all fetched through actors with explicit TTL caches."
 
 [dependencies]
+marked-path = { workspace = true }
 error-stack = { workspace = true }
 wherror = { workspace = true }
 jinn-common = { workspace = true }

@@ -153,7 +153,10 @@ async fn actor_with_session_cwd(
 ) -> (InferenceActor, SessionId) {
     let mut app = jinn_kernel::AppState::default();
     let mut session = jinn_session_state::ChatSessionState::new();
-    session.set_cwd(std::path::PathBuf::from(cwd));
+    session.set_cwd(
+        marked_path::MarkedPathBuf::<marked_path::Absolute>::new(cwd)
+            .expect("test cwd literals are absolute"),
+    );
     let session_id = session.session_id().clone();
     app.session.insert(session);
     let services = actor_services_with_rule_set(set).await;
@@ -1661,11 +1664,14 @@ fn project_scoped_rule_set(
 async fn a_rule_scoped_to_a_project_fires_for_a_session_in_that_project() {
     // Given a rule whose `project` glob names one codebase, and a session
     // whose live working directory sits inside that codebase.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let cwd = dir.path().join("someone/code/myapp");
+    let dir = jinn_testutil::tempdir();
+    let cwd = dir
+        .path
+        .join("someone/code/myapp")
+        .expect("temp root joins a bare name");
     let (actor, session_id) = actor_with_session_cwd(
         project_scoped_rule_set("FORBIDDEN", Some("**/myapp")),
-        &cwd.to_string_lossy(),
+        &cwd.to_string(),
     )
     .await;
 
@@ -1723,11 +1729,15 @@ async fn a_rule_scoped_to_a_project_is_inactive_for_a_session_elsewhere() {
     // whose working directory is a different codebase — the shape a
     // project-scoped rule exists to prevent.
     let set = project_scoped_rule_set("FORBIDDEN", Some("**/myapp"));
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let sid = SessionId::new();
 
     // When the set is narrowed against another project's session.
-    let narrowed = set.for_cwd(Some(dir.path().join("someone/code/otherapp").as_path()));
+    let narrowed = set.for_cwd(Some(
+        &dir.path
+            .join("someone/code/otherapp")
+            .expect("temp root joins a bare name"),
+    ));
     let mut session = narrowed.new_session(&sid);
 
     // Then the rule does not fire: a project-scoped rule must not leak into

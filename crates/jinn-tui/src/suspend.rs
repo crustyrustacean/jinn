@@ -9,6 +9,7 @@
 //! consumes to initiate the suspend/restore cycle.
 
 use derive_more::Debug;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// An action requesting the TUI temporarily suspend itself.
 ///
@@ -31,7 +32,7 @@ pub enum SuspendAction {
     /// Run the CWD selection command, return the selected directory path.
     ChangeCwd {
         /// The directory to substitute as {path} in the command template.
-        search_root: std::path::PathBuf,
+        search_root: MarkedPathBuf<Absolute>,
     },
 }
 

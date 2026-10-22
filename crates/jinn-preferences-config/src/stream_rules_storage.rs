@@ -28,12 +28,11 @@
 //! with [`StreamRulesStorageError::UnknownRule`] precisely because the
 //! rule is disabled.
 
-use std::path::Path;
-
 use jinn_config::ConfigLayer;
 
 use crate::schemas::StreamRulesConfig;
 use crate::stream_rules_assembly::assemble_stream_rules;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// Why a rule's disabled state could not be persisted.
 #[derive(Debug, PartialEq, Eq, wherror::Error)]
@@ -94,7 +93,7 @@ pub trait StreamRulesStorage {
     /// when the patched document cannot be persisted.
     fn set_stream_rule_disabled(
         &self,
-        preferences_path: &Path,
+        preferences_path: &MarkedPathBuf<Absolute>,
         name: &str,
         disabled: bool,
     ) -> Result<(), error_stack::Report<StreamRulesStorageError>>;
@@ -103,7 +102,7 @@ pub trait StreamRulesStorage {
 impl StreamRulesStorage for ConfigLayer {
     fn set_stream_rule_disabled(
         &self,
-        preferences_path: &Path,
+        preferences_path: &MarkedPathBuf<Absolute>,
         name: &str,
         disabled: bool,
     ) -> Result<(), error_stack::Report<StreamRulesStorageError>> {
@@ -167,6 +166,7 @@ mod tests {
 
     use jinn_common::app_info::PREFS_FILE_NAME;
     use jinn_config::{ConfigLayer, FilesystemConfigStorage, InMemoryConfigStorage};
+    use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
     use super::{StreamRulesStorage, StreamRulesStorageError};
     use crate::STREAM_RULES_FILE_NAME;
@@ -177,9 +177,18 @@ mod tests {
     /// The path is what the storage call assembles the known-name set from —
     /// the sibling `stream_rules.toml` it names is part of that set — so
     /// every test passes its own path back in.
-    fn layer_over_file(body: &str) -> (ConfigLayer, std::path::PathBuf, tempfile::TempDir) {
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
+    type LayerOverFile = (
+        ConfigLayer,
+        MarkedPathBuf<Absolute>,
+        jinn_testutil::JinnTempDir,
+    );
+
+    fn layer_over_file(body: &str) -> LayerOverFile {
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join(PREFS_FILE_NAME)
+            .expect("temp root joins a bare filename");
         std::fs::write(&path, body).expect("write");
         let layer = ConfigLayer::load(Arc::new(FilesystemConfigStorage::new(path.clone())))
             .expect("layer loads");
@@ -188,11 +197,12 @@ mod tests {
 
     /// Writes a user `stream_rules.toml` beside `path`, the document's
     /// sibling the assembly reads.
-    fn write_sibling_rules(path: &std::path::Path, body: &str) {
+    fn write_sibling_rules(path: &MarkedPathBuf<Absolute>, body: &str) {
         let sibling = path
             .parent()
-            .unwrap_or_else(|| std::path::Path::new("."))
-            .join(STREAM_RULES_FILE_NAME);
+            .expect("prefs path is absolute, so it has a parent")
+            .join(STREAM_RULES_FILE_NAME)
+            .expect("absolute parent joins a bare filename");
         std::fs::write(sibling, body).expect("write sibling rules file");
     }
 
@@ -490,8 +500,11 @@ mod tests {
         // Given an in-memory layer — the shape a route action's `ActionCtx`
         // hands the picker — over a temp preferences path it can assemble
         // from.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join(PREFS_FILE_NAME);
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join(PREFS_FILE_NAME)
+            .expect("temp root joins a bare name");
         let storage = Arc::new(InMemoryConfigStorage::new(
             "[[stream_rules.entry]]\nname = \"alpha\"\nconditions = ['a']\nbody = \"A.\"\n"
                 .parse()

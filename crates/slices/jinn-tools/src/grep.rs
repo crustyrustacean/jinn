@@ -227,13 +227,13 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use std::path::{Path, PathBuf};
+    use marked_path::{Absolute, MarkedPathBuf};
 
     /// A context whose cwd is a real, existing scratch directory owned by the
     /// calling test.
-    fn test_ctx(cwd: &Path) -> ToolContext {
+    fn test_ctx(cwd: &MarkedPathBuf<Absolute>) -> ToolContext {
         ToolContext {
-            cwd: cwd.to_owned(),
+            cwd: cwd.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
             timeout: None,
@@ -253,7 +253,7 @@ mod tests {
         }
     }
 
-    fn test_ctx_with_cwd(cwd: PathBuf) -> ToolContext {
+    fn test_ctx_with_cwd(cwd: MarkedPathBuf<Absolute>) -> ToolContext {
         ToolContext {
             cwd,
             config: jinn_config::testutil::config_layer(""),
@@ -303,15 +303,17 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_matching_lines() {
         // Given a directory with a file containing known text.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         std::fs::write(
-            dir.path().join("sample.txt"),
+            dir.path
+                .join("sample.txt")
+                .expect("temp root joins a bare name"),
             "hello world\nfoo bar\nhello rust\n",
         )
         .expect("write file");
 
         let call = tool_call("hello");
-        let ctx = test_ctx_with_cwd(dir.path().to_owned());
+        let ctx = test_ctx_with_cwd(dir.path.clone());
 
         // When executing the grep tool.
         let result = execute(call, ctx).await;
@@ -326,16 +328,24 @@ mod tests {
     #[tokio::test]
     async fn execute_with_path_searches_specific_dir() {
         // Given two directories with different files.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let sub_a = dir.path().join("a");
-        let sub_b = dir.path().join("b");
+        let dir = jinn_testutil::tempdir();
+        let sub_a = dir.path.join("a").expect("temp root joins a bare name");
+        let sub_b = dir.path.join("b").expect("temp root joins a bare name");
         std::fs::create_dir_all(&sub_a).expect("create dir a");
         std::fs::create_dir_all(&sub_b).expect("create dir b");
-        std::fs::write(sub_a.join("f.txt"), "target_match in a\n").expect("write a");
-        std::fs::write(sub_b.join("f.txt"), "target_match in b\n").expect("write b");
+        std::fs::write(
+            sub_a.join("f.txt").expect("temp root joins a bare name"),
+            "target_match in a\n",
+        )
+        .expect("write a");
+        std::fs::write(
+            sub_b.join("f.txt").expect("temp root joins a bare name"),
+            "target_match in b\n",
+        )
+        .expect("write b");
 
         let call = tool_call_with_args("target_match", serde_json::json!({ "path": "a" }));
-        let ctx = test_ctx_with_cwd(dir.path().to_owned());
+        let ctx = test_ctx_with_cwd(dir.path.clone());
 
         // When executing with path pointing at subdirectory a.
         let result = execute(call, ctx).await;
@@ -350,12 +360,24 @@ mod tests {
     #[tokio::test]
     async fn execute_with_glob_filters_files() {
         // Given a directory with .rs and .txt files.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        std::fs::write(dir.path().join("code.rs"), "fn special_func() {}\n").expect("write rs");
-        std::fs::write(dir.path().join("notes.txt"), "special_func is great\n").expect("write txt");
+        let dir = jinn_testutil::tempdir();
+        std::fs::write(
+            dir.path
+                .join("code.rs")
+                .expect("temp root joins a bare name"),
+            "fn special_func() {}\n",
+        )
+        .expect("write rs");
+        std::fs::write(
+            dir.path
+                .join("notes.txt")
+                .expect("temp root joins a bare name"),
+            "special_func is great\n",
+        )
+        .expect("write txt");
 
         let call = tool_call_with_args("special_func", serde_json::json!({ "glob": "*.rs" }));
-        let ctx = test_ctx_with_cwd(dir.path().to_owned());
+        let ctx = test_ctx_with_cwd(dir.path.clone());
 
         // When executing with glob filtering for .rs files.
         let result = execute(call, ctx).await;
@@ -370,12 +392,18 @@ mod tests {
     #[tokio::test]
     async fn execute_with_file_type_filters_by_language() {
         // Given a directory with .rs files.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        std::fs::write(dir.path().join("main.rs"), "fn my_unique_func() {}\n").expect("write rs");
+        let dir = jinn_testutil::tempdir();
+        std::fs::write(
+            dir.path
+                .join("main.rs")
+                .expect("temp root joins a bare name"),
+            "fn my_unique_func() {}\n",
+        )
+        .expect("write rs");
 
         let call =
             tool_call_with_args("my_unique_func", serde_json::json!({ "file_type": "rust" }));
-        let ctx = test_ctx_with_cwd(dir.path().to_owned());
+        let ctx = test_ctx_with_cwd(dir.path.clone());
 
         // When executing with file_type=rust.
         let result = execute(call, ctx).await;
@@ -389,11 +417,17 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_empty_on_no_matches() {
         // Given a directory with a file.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        std::fs::write(dir.path().join("sample.txt"), "hello world\n").expect("write file");
+        let dir = jinn_testutil::tempdir();
+        std::fs::write(
+            dir.path
+                .join("sample.txt")
+                .expect("temp root joins a bare name"),
+            "hello world\n",
+        )
+        .expect("write file");
 
         let call = tool_call("xyzzy_no_match_12345");
-        let ctx = test_ctx_with_cwd(dir.path().to_owned());
+        let ctx = test_ctx_with_cwd(dir.path.clone());
 
         // When searching for a pattern that doesn't exist.
         let result = execute(call, ctx).await;
@@ -407,15 +441,21 @@ mod tests {
     #[tokio::test]
     async fn execute_reports_rg_error_on_invalid_pattern() {
         // Given an invalid regex pattern that will cause rg to error.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        std::fs::write(dir.path().join("sample.txt"), "hello\n").expect("write file");
+        let dir = jinn_testutil::tempdir();
+        std::fs::write(
+            dir.path
+                .join("sample.txt")
+                .expect("temp root joins a bare name"),
+            "hello\n",
+        )
+        .expect("write file");
 
         let call = ToolCall {
             id: "call_err".into(),
             name: "grep".into(),
             arguments: serde_json::json!({ "pattern": "[" }).to_string(),
         };
-        let ctx = test_ctx_with_cwd(dir.path().to_owned());
+        let ctx = test_ctx_with_cwd(dir.path.clone());
 
         // When executing with an invalid pattern.
         let result = execute(call, ctx).await;
@@ -428,7 +468,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_empty_pattern() {
         // Given a grep tool call with an empty pattern.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let call = ToolCall {
             id: "call_empty".into(),
             name: "grep".into(),
@@ -436,7 +476,7 @@ mod tests {
         };
 
         // When executing the grep tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result indicates failure.
         assert!(!result.success);
@@ -447,7 +487,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_bad_json() {
         // Given a grep tool call with invalid JSON.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let call = ToolCall {
             id: "call_bad".into(),
             name: "grep".to_owned(),
@@ -455,7 +495,7 @@ mod tests {
         };
 
         // When executing the grep tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result indicates failure.
         assert!(!result.success);
@@ -466,15 +506,21 @@ mod tests {
     #[tokio::test]
     async fn execute_truncates_large_output() {
         // Given a file with many matching lines.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let content: String = (0..3000).fold(String::new(), |mut s, i| {
             s.push_str(&format!("match_line_{i}\n"));
             s
         });
-        std::fs::write(dir.path().join("big.txt"), content).expect("write file");
+        std::fs::write(
+            dir.path
+                .join("big.txt")
+                .expect("temp root joins a bare name"),
+            content,
+        )
+        .expect("write file");
 
         let call = tool_call("match_line");
-        let mut ctx = test_ctx_with_cwd(dir.path().to_owned());
+        let mut ctx = test_ctx_with_cwd(dir.path.clone());
         ctx.max_output_lines = Some(10);
 
         // When executing with a small line limit.

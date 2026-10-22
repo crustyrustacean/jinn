@@ -61,9 +61,14 @@ impl Wired {
             // the catalog seeded is re-seeded with the scan's result), but the
             // tests seed the entries they need rather than depending on the
             // loader.
-            let dir = std::path::PathBuf::from("/nonexistent-themes-dir");
-            let system = std::path::PathBuf::from("/nonexistent-system-themes-dir");
-            crate::activate(&mut host, &dir, &system);
+            let dir =
+                marked_path::MarkedPathBuf::<marked_path::Absolute>::new("/nonexistent-themes-dir")
+                    .expect("rooted test path");
+            let system = marked_path::MarkedPathBuf::<marked_path::Absolute>::new(
+                "/nonexistent-system-themes-dir",
+            )
+            .expect("rooted test path");
+            crate::activate(&mut host, &dir.as_marked_path(), &system.as_marked_path());
             crate::activate_picker(&mut host);
         }
         slices

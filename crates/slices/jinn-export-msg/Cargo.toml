@@ -5,6 +5,7 @@ edition.workspace = true
 description = "Export crossing contracts: the command that asks the export slice to write a session, and the event it publishes when done."
 
 [dependencies]
+marked-path = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-slices = { workspace = true }
 serde = { workspace = true }

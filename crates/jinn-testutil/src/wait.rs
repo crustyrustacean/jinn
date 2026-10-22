@@ -28,6 +28,7 @@
     reason = "test harness: a failed assertion aborts the test loudly, which is the desired mode"
 )]
 
+use marked_path::{Absolute, MarkedPathBuf};
 use std::future::Future;
 use std::time::Duration;
 
@@ -103,7 +104,7 @@ where
 /// # Errors
 ///
 /// Returns the underlying `std::fs::read_to_string` error.
-pub fn read_normalized(path: &std::path::Path) -> std::io::Result<String> {
+pub fn read_normalized(path: &MarkedPathBuf<Absolute>) -> std::io::Result<String> {
     let content = std::fs::read_to_string(path)?;
     Ok(content.replace("\r\n", "\n"))
 }
@@ -606,8 +607,11 @@ mod tests {
     #[test]
     fn read_normalized_collapses_crlf_to_lf() {
         // Given a file written with CRLF line endings.
-        let dir = crate::temp::tempdir().expect("temp dir");
-        let path = dir.path().join("crlf.txt");
+        let dir = crate::temp::tempdir();
+        let path = dir
+            .path
+            .join("crlf.txt")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, b"one\r\ntwo\r\n").expect("write file");
 
         // When reading it through the normalizer.
@@ -622,8 +626,11 @@ mod tests {
     #[test]
     fn read_normalized_leaves_lf_content_unchanged() {
         // Given a file written with LF line endings.
-        let dir = crate::temp::tempdir().expect("temp dir");
-        let path = dir.path().join("lf.txt");
+        let dir = crate::temp::tempdir();
+        let path = dir
+            .path
+            .join("lf.txt")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, b"one\ntwo\n").expect("write file");
 
         // When reading it through the normalizer.

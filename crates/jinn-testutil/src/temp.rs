@@ -13,30 +13,48 @@
 //! created with `keep(true)`, their exact paths are recorded in a registry,
 //! and an exit destructor ([`cleanup_retained`], run via `ctor`) removes them
 //! when the test binary exits, on any exit path short of `SIGKILL`.
+// Test harness: a failed construction aborts the test loudly, which is the
+// desired mode, and every panic here is a fixture failure of exactly that
+// kind — the wrappers' documented contract, not runtime state.
 #![allow(
     clippy::expect_used,
     clippy::unwrap_used,
+    clippy::missing_panics_doc,
     reason = "test harness: a failed expect aborts the test loudly, which is the desired mode"
 )]
 
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::LazyLock;
+
+use marked_path::Absolute;
+use marked_path::MarkedPathBuf;
 
 /// The head every test-created temp directory name must carry.
 pub const TEST_PREFIX: &str = "jinn-test-";
 
 /// Exact paths of dirs created by [`retained_tempdir`], removed at process exit.
-static RETAINED: LazyLock<parking_lot::Mutex<Vec<PathBuf>>> =
+static RETAINED: LazyLock<parking_lot::Mutex<Vec<MarkedPathBuf<Absolute>>>> =
     LazyLock::new(|| parking_lot::Mutex::new(Vec::new()));
+
+pub struct JinnTempDir {
+    pub path: MarkedPathBuf<Absolute>,
+    pub dir: tempfile::TempDir,
+}
 
 /// Creates a prefixed, normally-dropping temp directory.
 ///
 /// # Errors
 ///
 /// Returns the underlying `tempfile` error if directory creation fails.
-pub fn tempdir() -> std::io::Result<tempfile::TempDir> {
-    tempfile::Builder::new().prefix(TEST_PREFIX).tempdir()
+pub fn tempdir() -> JinnTempDir {
+    let dir = tempfile::Builder::new()
+        .prefix(TEST_PREFIX)
+        .tempdir()
+        .expect("failed to create temp dir");
+    JinnTempDir {
+        path: MarkedPathBuf::<Absolute>::new(dir.path()).expect("temp dir path is not absolute"),
+        dir,
+    }
 }
 
 /// Creates a prefixed, normally-dropping temp directory under `dir`.
@@ -44,11 +62,18 @@ pub fn tempdir() -> std::io::Result<tempfile::TempDir> {
 /// # Errors
 ///
 /// Returns the underlying `tempfile` error if directory creation fails.
-pub fn tempdir_in<P>(dir: P) -> std::io::Result<tempfile::TempDir>
+pub fn tempdir_in<P>(dir: P) -> JinnTempDir
 where
     P: AsRef<Path>,
 {
-    tempfile::Builder::new().prefix(TEST_PREFIX).tempdir_in(dir)
+    let dir = tempfile::Builder::new()
+        .prefix(TEST_PREFIX)
+        .tempdir_in(dir)
+        .expect("failed to create temp dir");
+    JinnTempDir {
+        path: MarkedPathBuf::<Absolute>::new(dir.path()).expect("temp dir path is not absolute"),
+        dir,
+    }
 }
 
 /// Creates a prefixed, normally-dropping temp directory with a caller-chosen
@@ -63,9 +88,16 @@ where
 /// # Errors
 ///
 /// Returns the underlying `tempfile` error if directory creation fails.
-pub fn tempdir_with_prefix(prefix: &str) -> std::io::Result<tempfile::TempDir> {
+pub fn tempdir_with_prefix(prefix: &str) -> JinnTempDir {
     require_test_prefix(prefix);
-    tempfile::Builder::new().prefix(prefix).tempdir()
+    let dir = tempfile::Builder::new()
+        .prefix(prefix)
+        .tempdir()
+        .expect("failed to create temp dir");
+    JinnTempDir {
+        path: MarkedPathBuf::<Absolute>::new(dir.path()).expect("temp dir path is not absolute"),
+        dir,
+    }
 }
 
 /// Enforces the jinn test prefix, refusing an unprefixed name outright.
@@ -92,13 +124,16 @@ fn require_test_prefix(prefix: &str) {
 /// # Errors
 ///
 /// Returns the underlying `tempfile` error if directory creation fails.
-pub fn retained_tempdir() -> std::io::Result<tempfile::TempDir> {
+pub fn retained_tempdir() -> JinnTempDir {
     let dir = tempfile::Builder::new()
         .prefix(TEST_PREFIX)
         .disable_cleanup(true)
-        .tempdir()?;
-    RETAINED.lock().push(dir.path().to_path_buf());
-    Ok(dir)
+        .tempdir()
+        .expect("failed to create temp dir");
+    let path = MarkedPathBuf::<Absolute>::new(dir.path()).expect("temp dir path is not absolute");
+    RETAINED.lock().push(path.clone());
+
+    JinnTempDir { path, dir }
 }
 
 /// Builder over `tempfile::Builder` with the jinn test prefix preset.
@@ -178,24 +213,25 @@ fn remove_retained_tempdirs_on_exit() {
 
 /// Reads the registry, for tests in this crate.
 #[cfg(test)]
-pub(crate) fn retained_paths() -> Vec<PathBuf> {
+pub(crate) fn retained_paths() -> Vec<MarkedPathBuf<Absolute>> {
     RETAINED.lock().clone()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use marked_path::MarkedPathAccess;
 
     #[rstest::rstest]
     #[test]
     fn tempdir_uses_the_jinn_test_prefix() {
         // Given the free wrapper.
         // When creating a temp directory.
-        let dir = tempdir().expect("temp dir");
+        let dir = tempdir();
 
         // Then its name carries the jinn test prefix.
         let name = dir
-            .path()
+            .path
             .file_name()
             .and_then(std::ffi::OsStr::to_str)
             .expect("named temp dir");
@@ -206,15 +242,15 @@ mod tests {
     #[test]
     fn tempdir_in_places_dir_under_given_root() {
         // Given a root directory.
-        let root = tempdir().expect("root temp dir");
+        let root = tempdir();
 
         // When creating a directory under it.
-        let dir = tempdir_in(root.path()).expect("nested temp dir");
+        let dir = tempdir_in(&root.path);
 
         // Then it lands inside the root, still prefixed.
-        assert!(dir.path().starts_with(root.path()));
+        assert!(dir.path.as_path().starts_with(root.path.as_path()));
         let name = dir
-            .path()
+            .path
             .file_name()
             .and_then(std::ffi::OsStr::to_str)
             .expect("named temp dir");
@@ -236,11 +272,11 @@ mod tests {
     fn tempdir_with_prefix_accepts_prefixed_name() {
         // Given a prefix carrying the jinn test head.
         // When creating a directory with it.
-        let dir = tempdir_with_prefix("jinn-test-scratch").expect("temp dir");
+        let dir = tempdir_with_prefix("jinn-test-scratch");
 
         // Then creation succeeds under that exact prefix.
         let name = dir
-            .path()
+            .path
             .file_name()
             .and_then(std::ffi::OsStr::to_str)
             .expect("named temp dir");
@@ -253,19 +289,22 @@ mod tests {
         // Given a retained temp directory.
 
         // When the temp directory is created.
-        let dir = retained_tempdir().expect("retained temp dir");
+        let dir = retained_tempdir();
 
         // Then its exact path sits in the registry.
-        assert!(retained_paths().contains(&dir.path().to_path_buf()));
+        assert!(retained_paths().contains(&dir.path));
     }
 
     #[rstest::rstest]
     #[test]
     fn cleanup_removes_registered_paths_only() {
         // Given a registered retained directory and an unregistered kept one.
-        let registered = retained_tempdir().expect("retained temp dir");
-        let unregistered = builder().keep(true).tempdir().expect("kept temp dir");
-        let registered_path = registered.path().to_path_buf();
+        let registered = retained_tempdir();
+        let unregistered = builder()
+            .keep(true)
+            .tempdir()
+            .expect("unregistered temp dir");
+        let registered_path = registered.path.clone();
         let unregistered_path = unregistered.path().to_path_buf();
         assert!(registered_path.exists());
         assert!(unregistered_path.exists());

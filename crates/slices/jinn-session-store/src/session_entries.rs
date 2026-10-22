@@ -211,6 +211,7 @@ mod tests {
     use jinn_session_store_msg::SessionSummary;
     use jinn_session_store_msg::SessionTreeEntry;
     use jinn_theme::default_theme;
+    use marked_path::{Absolute, MarkedPathBuf};
 
     use super::*;
 
@@ -572,7 +573,10 @@ mod tests {
         }
     }
 
-    fn summary_with_project(title: &str, project: Option<std::path::PathBuf>) -> SessionSummary {
+    fn summary_with_project(
+        title: &str,
+        project: Option<MarkedPathBuf<Absolute>>,
+    ) -> SessionSummary {
         SessionSummary {
             session_id: SessionId::new(),
             title: title.to_owned(),
@@ -586,17 +590,18 @@ mod tests {
 
     /// A project path whose leaf name is `jinn`, built under `root` so the
     /// fixture names the same directory on every platform.
-    fn project_path_named_jinn(root: &std::path::Path) -> std::path::PathBuf {
-        root.join("code").join("jinn")
+    fn project_path_named_jinn(root: &MarkedPathBuf<Absolute>) -> MarkedPathBuf<Absolute> {
+        root.join_all(["code", "jinn"])
+            .expect("temp root joins bare names")
     }
 
     #[rstest::rstest]
     #[tokio::test]
     async fn load_session_entries_applies_project_column_width_across_all_entries() {
         // Given a store returning one project-bearing summary and one without.
-        let root = jinn_testutil::tempdir().expect("temp dir");
+        let root = jinn_testutil::tempdir();
         let summaries = vec![
-            summary_with_project("Short", Some(project_path_named_jinn(root.path()))),
+            summary_with_project("Short", Some(project_path_named_jinn(&root.path))),
             summary_with_project("Blank", None),
         ];
         let store =
@@ -619,10 +624,10 @@ mod tests {
     #[tokio::test]
     async fn load_session_entries_passes_summary_project_to_entries() {
         // Given a store returning one project-bearing summary.
-        let root = jinn_testutil::tempdir().expect("temp dir");
+        let root = jinn_testutil::tempdir();
         let summaries = vec![summary_with_project(
             "Stamped",
-            Some(project_path_named_jinn(root.path())),
+            Some(project_path_named_jinn(&root.path)),
         )];
         let store =
             jinn_session_state::SessionStoreService::new(std::sync::Arc::new(ManySummariesStore {

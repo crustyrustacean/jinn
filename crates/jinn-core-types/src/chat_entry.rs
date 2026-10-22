@@ -113,7 +113,7 @@ pub struct ResolvedToken {
     /// The literal token body as it appears in the display text (after the `@`).
     pub raw: String,
     /// The absolute path the token resolved to at enqueue time.
-    pub abs: std::path::PathBuf,
+    pub abs: marked_path::MarkedPathBuf<marked_path::Absolute>,
 }
 
 impl AttachmentOutcome {

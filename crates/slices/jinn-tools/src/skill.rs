@@ -170,14 +170,14 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             Err(e) => {
                 return unprefixed_failure(
                     &call,
-                    format!("failed to read skill '{}': {e}", skill.file_path.display()),
+                    format!("failed to read skill '{}': {e}", skill.file_path),
                 );
             }
         };
 
         let body = strip_frontmatter(&content);
-        let location = skill.file_path.to_string_lossy().to_string();
-        let base_dir = skill.base_dir.to_string_lossy().to_string();
+        let location = skill.file_path.to_string();
+        let base_dir = skill.base_dir.to_string();
         let xml = format!(
             "<skill name=\"{name}\" location=\"{location}\">\nBase directory: {base_dir} — resolve all relative reference paths here.\n{body}\n</skill>"
         );
@@ -220,13 +220,13 @@ mod tests {
     use jinn_core_types::{NameFilter, SessionId};
     use jinn_kernel::common::app_state::AppState;
     use jinn_kernel::common::state::State;
-    use std::path::Path;
+    use marked_path::{Absolute, MarkedPathBuf};
 
     /// A context whose cwd is a real, existing scratch directory owned by the
     /// calling test.
-    fn test_ctx(cwd: &Path) -> ToolContext {
+    fn test_ctx(cwd: &MarkedPathBuf<Absolute>) -> ToolContext {
         ToolContext {
-            cwd: cwd.to_owned(),
+            cwd: cwd.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
             timeout: None,
@@ -260,8 +260,8 @@ mod tests {
     /// scratch directory backing the context's cwd. The directory is returned
     /// so the caller keeps it alive: it is deleted on drop.
     #[allow(clippy::type_complexity, reason = "test harness tuple")]
-    fn session_ctx() -> (State, SessionId, ToolContext, tempfile::TempDir) {
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+    fn session_ctx() -> (State, SessionId, ToolContext, jinn_testutil::JinnTempDir) {
+        let dir = jinn_testutil::tempdir();
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         {
@@ -271,7 +271,7 @@ mod tests {
         let ctx = ToolContext {
             state: Some(state.clone()),
             session_id: Some(session_id.clone()),
-            ..test_ctx(dir.path())
+            ..test_ctx(&dir.path)
         };
         (state, session_id, ctx, dir)
     }
@@ -283,11 +283,16 @@ mod tests {
         name: &str,
         description: &str,
         body: &str,
-    ) -> (tempfile::TempDir, State, SessionId, ToolContext) {
+    ) -> (jinn_testutil::JinnTempDir, State, SessionId, ToolContext) {
         let (state, session_id, ctx, tmp) = session_ctx();
-        let skill_dir = tmp.path().join(".agents").join("skills").join(name);
+        let skill_dir = tmp
+            .path
+            .join_all([".agents", "skills", name])
+            .expect("temp root joins a bare name");
         std::fs::create_dir_all(&skill_dir).expect("create skill dir");
-        let skill_file = skill_dir.join("SKILL.md");
+        let skill_file = skill_dir
+            .join("SKILL.md")
+            .expect("temp root joins a bare name");
         std::fs::write(
             &skill_file,
             format!("---\nname: {name}\ndescription: {description}\n---\n{body}\n"),
@@ -304,7 +309,7 @@ mod tests {
                 file_path: skill_file,
                 base_dir: skill_dir,
                 source: jinn_skills_msg::SkillSource::Project {
-                    dir: tmp.path().to_path_buf(),
+                    dir: tmp.path.clone(),
                 },
             }]);
         }
@@ -315,13 +320,18 @@ mod tests {
     /// the session reads as already having that skill loaded. `location` is
     /// interpolated into the seeded XML; the idempotency check matches on the
     /// skill name only.
-    fn seed_loaded_skill(state: &State, session_id: &SessionId, skill_name: &str, location: &Path) {
+    fn seed_loaded_skill(
+        state: &State,
+        session_id: &SessionId,
+        skill_name: &str,
+        location: &MarkedPathBuf<Absolute>,
+    ) {
         use jinn_kernel::protocol::ToolResultStatus;
         use jinn_kernel::protocol::{ChatEntry, PinPosition};
 
         let mut guard = state.write();
         let session = guard.session_mut_or_create(session_id);
-        let location = location.display().to_string();
+        let location = location.to_string();
         let seeded_xml =
             format!("<skill name=\"{skill_name}\" location=\"{location}\">\nbody\n</skill>");
         let mut entry = ChatEntry::tool_result(
@@ -389,7 +399,10 @@ mod tests {
         // dir and fail. Post-fix, it resolves from the session's discovered set.
         let (tmp, _state, _session_id, ctx) =
             project_skill("proj-skill", "a project skill", "project body");
-        let skill_dir = tmp.path().join(".agents").join("skills").join("proj-skill");
+        let skill_dir = tmp
+            .path
+            .join_all([".agents", "skills", "proj-skill"])
+            .expect("temp root joins a bare name");
         let call = skill_call("proj-skill");
 
         // When executing.
@@ -410,7 +423,7 @@ mod tests {
         assert!(
             result
                 .content
-                .contains(&format!("Base directory: {}", skill_dir.display())),
+                .contains(&format!("Base directory: {}", skill_dir)),
             "tool result header should carry the project skill's base_dir, got: {}",
             &result.content[..result.content.len().min(200)]
         );
@@ -422,10 +435,9 @@ mod tests {
         // Given a project-local skill seeded with a distinct base_dir.
         let (tmp, _state, _session_id, ctx) = project_skill("header-skill", "d", "body");
         let skill_dir = tmp
-            .path()
-            .join(".agents")
-            .join("skills")
-            .join("header-skill");
+            .path
+            .join_all([".agents", "skills", "header-skill"])
+            .expect("temp root joins a bare name");
         let call = skill_call("header-skill");
 
         // When executing.
@@ -440,7 +452,7 @@ mod tests {
         assert!(
             result
                 .content
-                .contains(&format!("Base directory: {}", skill_dir.display())),
+                .contains(&format!("Base directory: {}", skill_dir)),
             "header should carry the seeded base_dir verbatim, got: {}",
             result.content
         );
@@ -450,7 +462,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_empty_name() {
         // Given a call with empty name.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let call = ToolCall {
             id: "call_1".into(),
             name: "skill".into(),
@@ -458,7 +470,7 @@ mod tests {
         };
 
         // When executing.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result indicates failure.
         assert!(!result.success);
@@ -469,7 +481,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_bad_json() {
         // Given a call with invalid JSON.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let call = ToolCall {
             id: "call_1".into(),
             name: "skill".into(),
@@ -477,7 +489,7 @@ mod tests {
         };
 
         // When executing.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result indicates failure.
         assert!(!result.success);
@@ -524,7 +536,7 @@ mod tests {
         // Given a session that already has a pinned ToolResult from the `skill` tool
         // for "phased-task-loop" (matches the body-in-ToolResult shape).
         let (state, session_id, ctx, dir) = session_ctx();
-        seed_loaded_skill(&state, &session_id, "phased-task-loop", dir.path());
+        seed_loaded_skill(&state, &session_id, "phased-task-loop", &dir.path);
         let call = skill_call("phased-task-loop");
 
         // When executing.
@@ -552,7 +564,7 @@ mod tests {
     async fn execute_loads_different_skill_when_other_already_loaded() {
         // Given a session that already has a pinned ToolResult for "rust-programming".
         let (state, session_id, ctx, dir) = session_ctx();
-        seed_loaded_skill(&state, &session_id, "rust-programming", dir.path());
+        seed_loaded_skill(&state, &session_id, "rust-programming", &dir.path);
         let call = skill_call("phased-task-loop");
 
         // When executing.
@@ -585,7 +597,7 @@ mod tests {
         use jinn_kernel::common::state::State;
 
         // Given a session whose filter withholds "web-coder".
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         {
@@ -603,7 +615,7 @@ mod tests {
         let ctx = ToolContext {
             state: Some(state),
             session_id: Some(session_id),
-            ..test_ctx(dir.path())
+            ..test_ctx(&dir.path)
         };
 
         // When executing.
@@ -629,7 +641,7 @@ mod tests {
         use jinn_kernel::common::state::State;
 
         // Given a session permitted one skill, not this one.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let state = State::new(AppState::default());
         let session_id = SessionId::new();
         {
@@ -651,7 +663,7 @@ mod tests {
         let ctx = ToolContext {
             state: Some(state),
             session_id: Some(session_id),
-            ..test_ctx(dir.path())
+            ..test_ctx(&dir.path)
         };
 
         // When executing.

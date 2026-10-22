@@ -5,7 +5,6 @@
 //! types (state and service handles) that only the slice reads.
 
 use std::fmt;
-use std::path::PathBuf;
 use std::time::Duration;
 
 use jinn_core_types::SessionId;
@@ -13,6 +12,7 @@ use jinn_core_types::ToolCallId;
 use jinn_core_types::tool_types::{ToolCall, ToolResult};
 use jinn_kernel::common::services::bus_service::BusService;
 use jinn_kernel::common::state::State;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// Builds the failed [`ToolResult`] a tool returns when it cannot proceed.
 ///
@@ -97,7 +97,7 @@ pub fn failed(
 #[derive(Clone)]
 pub struct ToolContext {
     /// Working directory for resolving relative paths.
-    pub cwd: PathBuf,
+    pub cwd: MarkedPathBuf<Absolute>,
     /// Optional execution timeout.
     pub timeout: Option<Duration>,
     /// Shared application state (only available for tools that need it).
@@ -190,8 +190,8 @@ mod tests {
     #[rstest::rstest]
     fn tool_context_debug_contains_cwd_and_timeout() {
         // Given a ToolContext with known values.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let cwd = dir.path().join("test");
+        let dir = jinn_testutil::tempdir();
+        let cwd = dir.path.join("test").expect("temp root joins a bare name");
         let ctx = ToolContext {
             cwd: cwd.clone(),
             timeout: Some(std::time::Duration::from_secs(30)),

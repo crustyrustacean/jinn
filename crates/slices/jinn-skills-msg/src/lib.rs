@@ -6,8 +6,6 @@
 //! The crossing-schema ids ("SkillsLoaded", "ScanSkills") are wire
 //! contract and must not be renamed.
 
-use std::path::PathBuf;
-
 mod frontmatter;
 mod loaded_name;
 mod skill;
@@ -27,6 +25,7 @@ pub use skill_picker_state::{
 };
 pub use skill_preview_cache::SkillPreviewCache;
 
+use marked_path::{Absolute, MarkedPathBuf};
 use serde::{Deserialize, Serialize};
 
 /// Emitted when skills have been scanned and loaded.
@@ -56,8 +55,7 @@ pub struct ScanSkills {
     /// The session whose scan this is.
     pub session_id: jinn_core_types::SessionId,
     /// The working directory driving the scan.
-    #[serde(default)]
-    pub cwd: PathBuf,
+    pub cwd: MarkedPathBuf<Absolute>,
 }
 
 impl jinn_slices::BusMessage for SkillsLoaded {}

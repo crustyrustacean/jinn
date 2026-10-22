@@ -68,7 +68,10 @@ impl Wired {
             // cell the catalog seeded is re-seeded with the scan's result),
             // but the tests seed the entries they need rather than depending
             // on the loader.
-            let dir = std::path::PathBuf::from("/nonexistent-personas-dir");
+            let dir = marked_path::MarkedPathBuf::<marked_path::Absolute>::new(
+                "/nonexistent-personas-dir",
+            )
+            .expect("rooted test path");
             crate::activate(&mut host, &dir);
             crate::activate_picker(&mut host);
         }

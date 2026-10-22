@@ -19,36 +19,40 @@ use jinn_kernel::common::app_paths::AppPaths;
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::state::State;
 use jinn_session_lifecycle_msg::SessionCreated;
+use marked_path::MarkedPathAccess as _;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// Polls `check` until it passes or the retry budget runs out.
 /// Writes one skill under `<base>/.agents/skills/<name>`.
-fn write_skill(base: &std::path::Path, name: &str) {
-    let dir = base.join(".agents").join("skills").join(name);
-    std::fs::create_dir_all(&dir).expect("create skill dir");
+fn write_skill(base: &MarkedPathBuf<Absolute>, name: &str) {
+    let dir = base
+        .join_all([".agents", "skills", name])
+        .expect("home root joins bare names");
+    std::fs::create_dir_all(dir.as_path()).expect("create skill dir");
     std::fs::write(
-        dir.join("SKILL.md"),
+        dir.join("SKILL.md").expect("skill dir joins a bare name"),
         format!("---\nname: {name}\ndescription: {name} skill\n---\n\nbody"),
     )
     .expect("write SKILL.md");
 }
 
-/// A wired supervisor + state + fabric over real temp paths. The
-/// `TempDir` is boxed so the home outlives the harness.
+/// A wired supervisor + state + fabric over real temp paths. The temp
+/// dir is boxed so the home outlives the harness.
 struct Wired {
     fabric: jinn_testutil::TestFabric,
     state: State,
     session_id: SessionId,
-    home: std::path::PathBuf,
-    _dir: Box<tempfile::TempDir>,
+    home: MarkedPathBuf<Absolute>,
+    _dir: Box<jinn_testutil::JinnTempDir>,
 }
 
 impl Wired {
     /// Spawns the supervisor on a fresh fabric over a real temp home.
     /// The session's cwd lives only in test payloads — no state seeding.
     async fn wire() -> Self {
-        let dir = Box::new(jinn_testutil::tempdir().expect("temp dir"));
-        let home = dir.path().to_path_buf();
-        let paths = AppPaths::new_in(&home);
+        let dir = Box::new(jinn_testutil::tempdir());
+        let home = dir.path.clone();
+        let paths = AppPaths::new_in(&home.as_marked_path());
         let state = State::new(AppState::default());
         let session_id = state.read().session.active_session_id().clone();
         let fabric = jinn_testutil::TestFabric::new();
@@ -65,7 +69,7 @@ impl Wired {
 
     /// Sends a `RunDiscovery` for `session_id` at `cwd` through the
     /// partition set's public path.
-    async fn send_run_discovery(&self, session_id: &SessionId, cwd: &std::path::Path) {
+    async fn send_run_discovery(&self, session_id: &SessionId, cwd: &MarkedPathBuf<Absolute>) {
         let sent = self
             .fabric
             .system()
@@ -74,7 +78,7 @@ impl Wired {
                 trouper::actor::ActorPath::new(jinn_session_init::DISCOVERY_PATH),
                 serde_json::json!({
                     "session_id": session_id.to_string(),
-                    "cwd": cwd.to_string_lossy(),
+                    "cwd": cwd.to_string(),
                 }),
             ))
             .await;
@@ -107,41 +111,6 @@ async fn session_created_triggers_discovery_for_that_session() {
             .is_some_and(|s| !s.discovered_skills().is_empty())
     })
     .await;
-}
-
-#[rstest::rstest]
-#[tokio::test]
-async fn pending_cwd_session_produces_no_scan() {
-    // Given a wired supervisor whose home contains one skill.
-    let wired = Wired::wire().await;
-    write_skill(&wired.home, "test-skill");
-
-    // When SessionCreated crosses with the pending-cwd sentinel.
-    wired
-        .fabric
-        .send_to_topic(SessionCreated {
-            session_id: wired.session_id.clone(),
-            cwd: std::path::PathBuf::from("."),
-        })
-        .await;
-
-    // Then no scan runs: the discovered set stays empty.
-    // The wait must be long enough for a scan that was going to happen to
-    // have happened; a fixed window could pass simply because the scan had
-    // not been processed yet. The poll returns whether the condition ever
-    // held, so the assertion below reads the settled state.
-    let scanned = jinn_testutil::wait::poll_until_async(Duration::from_secs(1), || {
-        let guard = wired.state.read();
-        guard
-            .session
-            .get(&wired.session_id)
-            .is_some_and(|s| !s.discovered_skills().is_empty())
-    })
-    .await;
-    assert!(!scanned, "a pending-cwd session must not produce a scan");
-    let guard = wired.state.read();
-    let session = guard.session.get(&wired.session_id).expect("session");
-    assert!(session.discovered_skills().is_empty());
 }
 
 #[rstest::rstest]
@@ -247,10 +216,9 @@ async fn rescan_into_empty_dir_clears_stale_discovered_skills() {
     .await;
     let skill_dir = wired
         .home
-        .join(".agents")
-        .join("skills")
-        .join("stale-skill");
-    std::fs::remove_dir_all(&skill_dir).expect("remove skill dir");
+        .join_all([".agents", "skills", "stale-skill"])
+        .expect("home root joins bare names");
+    std::fs::remove_dir_all(skill_dir.as_path()).expect("remove skill dir");
 
     // When a second discovery runs against the now-empty tree.
     wired

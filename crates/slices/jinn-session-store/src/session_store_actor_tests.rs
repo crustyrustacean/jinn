@@ -28,7 +28,7 @@ use crate::session_store_tests_support::ControlledStartupStore;
 use crate::sqlite::SqliteSessionStore;
 
 struct ActorFixture {
-    _dir: tempfile::TempDir,
+    _dir: jinn_testutil::JinnTempDir,
     harness: TestHarness,
     state: State,
     store: Arc<SqliteSessionStore>,
@@ -49,9 +49,9 @@ struct ActorFixture {
 }
 
 async fn actor_fixture() -> ActorFixture {
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let store = Arc::new(
-        SqliteSessionStore::new_in(dir.path())
+        SqliteSessionStore::new_in(&dir.path)
             .await
             .expect("session store"),
     );

@@ -20,7 +20,7 @@ use jinn_mcp_msg::McpEnablementChanged;
 use jinn_preferences_config::schemas::mcp::{McpServerConfig, McpServersConfig};
 use jinn_session_state::ChatSessionState;
 use jinn_session_store_msg::PersistSession;
-use std::path::Path;
+use marked_path::{Absolute, MarkedPathBuf};
 
 // ---------------------------------------------------------------------------
 // Harness
@@ -28,9 +28,9 @@ use std::path::Path;
 
 /// A bare context whose cwd is a real, existing scratch directory owned by
 /// the calling test: both tools must fail gracefully.
-fn bare_ctx(cwd: &Path) -> ToolContext {
+fn bare_ctx(cwd: &MarkedPathBuf<Absolute>) -> ToolContext {
     ToolContext {
-        cwd: cwd.to_owned(),
+        cwd: cwd.clone(),
         config: jinn_config::testutil::config_layer(""),
         shells: Default::default(),
         timeout: None,
@@ -80,7 +80,7 @@ struct Harness {
     audit: BusAudit,
     ctx: ToolContext,
     /// Held so the temp project dir outlives the seeded skill paths.
-    _tmp: tempfile::TempDir,
+    _tmp: jinn_testutil::JinnTempDir,
 }
 
 impl Harness {
@@ -94,7 +94,7 @@ impl Harness {
     /// The servers are seeded through the layer (the real resolution path),
     /// not a hand-written TOML document.
     fn with_config(servers: &[&str]) -> Self {
-        let tmp = jinn_testutil::tempdir().expect("temp dir");
+        let tmp = jinn_testutil::tempdir();
         let state = State::new(AppState::default_with_scope_focus());
         // The default SessionMap already holds one active session; its id is
         // what every seeded edit and the tool context bind to.
@@ -115,7 +115,7 @@ impl Harness {
             state: Some(state.clone()),
             session_id: Some(session_id.clone()),
             bus: Some(bus),
-            ..bare_ctx(tmp.path())
+            ..bare_ctx(&tmp.path)
         };
         Self {
             state,
@@ -179,16 +179,32 @@ impl Harness {
                 name: first.to_owned(),
                 description: String::new(),
                 body: String::new(),
-                file_path: self._tmp.path().join(first).join("SKILL.md"),
-                base_dir: self._tmp.path().join(first),
+                file_path: self
+                    ._tmp
+                    .path
+                    .join_all([first, "SKILL.md"])
+                    .expect("temp root joins a bare name"),
+                base_dir: self
+                    ._tmp
+                    .path
+                    .join(first)
+                    .expect("temp root joins a bare name"),
                 source: jinn_skills_msg::SkillSource::Global,
             },
             jinn_skills_msg::Skill {
                 name: second.to_owned(),
                 description: String::new(),
                 body: String::new(),
-                file_path: self._tmp.path().join(second).join("SKILL.md"),
-                base_dir: self._tmp.path().join(second),
+                file_path: self
+                    ._tmp
+                    .path
+                    .join_all([second, "SKILL.md"])
+                    .expect("temp root joins a bare name"),
+                base_dir: self
+                    ._tmp
+                    .path
+                    .join(second)
+                    .expect("temp root joins a bare name"),
                 source: jinn_skills_msg::SkillSource::Global,
             },
         ]);
@@ -336,8 +352,8 @@ async fn an_allow_filter_session_reports_unlisted_entries_as_off() {
 #[tokio::test]
 async fn query_fails_gracefully_without_state() {
     // Given a bare context with no state and no session.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let ctx = bare_ctx(dir.path());
+    let dir = jinn_testutil::tempdir();
+    let ctx = bare_ctx(&dir.path);
 
     // When querying capabilities.
     let result = query_execute(query_call(), ctx).await;

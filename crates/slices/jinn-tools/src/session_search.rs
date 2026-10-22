@@ -15,6 +15,7 @@ use jinn_session_store_msg::{SearchOutcome, SearchParams, SearchableRole, Sessio
 use std::fmt::Write as _;
 
 use super::BoxedToolFuture;
+use marked_path::MarkedPathAccess;
 
 /// Upper bound on hits returned per search.
 const MAX_LIMIT: u64 = 50;

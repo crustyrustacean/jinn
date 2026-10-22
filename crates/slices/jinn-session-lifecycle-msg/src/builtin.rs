@@ -6,10 +6,10 @@
 
 use error_stack::Report;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use jinn_core_types::SessionId;
+use marked_path::{Absolute, MarkedPathBuf};
 
 pub use jinn_preferences_config::schemas::BuiltinId;
 
@@ -38,7 +38,7 @@ pub trait BuiltinHandler: Send + Sync {
         &self,
         session_id: &SessionId,
         args: &[String],
-    ) -> Result<PathBuf, Report<BuiltinHandlerError>>;
+    ) -> Result<MarkedPathBuf<Absolute>, Report<BuiltinHandlerError>>;
 
     /// Run teardown for this builtin lifecycle.
     ///
@@ -97,20 +97,20 @@ mod tests {
         clippy::expect_used,
         clippy::panic,
         clippy::unreachable,
+        clippy::unwrap_in_result,
         reason = "test code"
     )]
-
     use super::*;
 
     #[rstest::rstest]
     #[test]
     fn registry_register_and_get_roundtrip() {
         // Given an empty registry.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let mut registry = BuiltinRegistry::new();
 
         // When registering a handler.
-        let handler = MockHandler::new(dir.path());
+        let handler = MockHandler::new(&dir.path);
         registry.register(BuiltinId("test-handler".to_owned()), handler);
 
         // Then get returns Some.
@@ -122,9 +122,9 @@ mod tests {
     #[test]
     fn registry_get_returns_none_for_unknown() {
         // Given a registry with one handler.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let mut registry = BuiltinRegistry::new();
-        registry.register(BuiltinId("known".to_owned()), MockHandler::new(dir.path()));
+        registry.register(BuiltinId("known".to_owned()), MockHandler::new(&dir.path));
 
         // When looking up an unknown handler.
         let result = registry.get(&BuiltinId("unknown".to_owned()));
@@ -150,9 +150,9 @@ mod tests {
     #[test]
     fn registry_is_empty_false_after_register() {
         // Given a registry with one handler.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let mut registry = BuiltinRegistry::new();
-        registry.register(BuiltinId("test".to_owned()), MockHandler::new(dir.path()));
+        registry.register(BuiltinId("test".to_owned()), MockHandler::new(&dir.path));
 
         // When checking whether it holds any handler.
         let is_empty = registry.is_empty();
@@ -165,10 +165,10 @@ mod tests {
     #[test]
     fn registry_debug_shows_count() {
         // Given a registry with two handlers.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let mut registry = BuiltinRegistry::new();
-        registry.register(BuiltinId("a".to_owned()), MockHandler::new(dir.path()));
-        registry.register(BuiltinId("b".to_owned()), MockHandler::new(dir.path()));
+        registry.register(BuiltinId("a".to_owned()), MockHandler::new(&dir.path));
+        registry.register(BuiltinId("b".to_owned()), MockHandler::new(&dir.path));
 
         // When debugging.
         let debug_str = format!("{registry:?}");
@@ -179,11 +179,11 @@ mod tests {
 
     /// A minimal mock handler for testing the registry. Its working directory
     /// comes from the test's own tempdir root.
-    struct MockHandler(PathBuf);
+    struct MockHandler(MarkedPathBuf<Absolute>);
 
     impl MockHandler {
-        fn new(root: &std::path::Path) -> Arc<Self> {
-            Arc::new(Self(root.to_path_buf()))
+        fn new(root: &MarkedPathBuf<Absolute>) -> Arc<Self> {
+            Arc::new(Self(root.clone()))
         }
     }
 
@@ -196,8 +196,8 @@ mod tests {
             &self,
             _session_id: &SessionId,
             _args: &[String],
-        ) -> Result<PathBuf, Report<BuiltinHandlerError>> {
-            Ok(self.0.join("mock"))
+        ) -> Result<MarkedPathBuf<Absolute>, Report<BuiltinHandlerError>> {
+            Ok(self.0.join("mock").expect("mock root joins a bare name"))
         }
 
         fn teardown(&self, _session_id: &SessionId, _args: &[String]) -> bool {

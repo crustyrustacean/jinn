@@ -228,11 +228,10 @@ mod tests {
     use super::{DiscordThreadMap, ThreadId};
     use jinn_core_types::SessionId;
     use jinn_session_store::sqlite::SqliteSessionStore;
-    use tempfile::TempDir;
 
-    async fn make_map() -> (TempDir, DiscordThreadMap) {
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let store = SqliteSessionStore::new_in(dir.path()).await.expect("store");
+    async fn make_map() -> (jinn_testutil::JinnTempDir, DiscordThreadMap) {
+        let dir = jinn_testutil::tempdir();
+        let store = SqliteSessionStore::new_in(&dir.path).await.expect("store");
         let map = DiscordThreadMap::new(store.pool().clone());
         (dir, map)
     }

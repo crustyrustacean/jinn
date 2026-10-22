@@ -14,6 +14,7 @@
 use jinn_slices::StreamRules;
 use jinn_slices::cell::TypedCell;
 use jinn_stream_rules_msg::RefreshStreamRuleMatcher;
+use marked_path::{Absolute, MarkedPathBuf};
 use trouper::actor::ActorPath;
 use trouper::actor::{MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
@@ -30,7 +31,7 @@ pub const STREAM_RULE_MATCHER_PATH: &str = "stream-rule-matcher";
 pub struct StreamRuleMatcherActor {
     cell: TypedCell<StreamRules>,
     config: jinn_config::ConfigLayer,
-    preferences_path: std::path::PathBuf,
+    preferences_path: MarkedPathBuf<Absolute>,
 }
 
 impl ServiceActor for StreamRuleMatcherActor {
@@ -60,7 +61,7 @@ impl StreamRuleMatcherActor {
         system: &ActorSystem,
         cell: TypedCell<StreamRules>,
         config: jinn_config::ConfigLayer,
-        preferences_path: std::path::PathBuf,
+        preferences_path: MarkedPathBuf<Absolute>,
     ) -> ActorPath {
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new(STREAM_RULE_MATCHER_PATH))
@@ -138,9 +139,15 @@ mod tests {
 
     /// A temp preferences path with no sibling rules file. Returns the
     /// owned dir so the caller keeps it alive as long as the path is in use.
-    fn temp_prefs() -> (tempfile::TempDir, std::path::PathBuf) {
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("jinn.toml");
+    fn temp_prefs() -> (
+        jinn_testutil::JinnTempDir,
+        marked_path::MarkedPathBuf<marked_path::Absolute>,
+    ) {
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("jinn.toml")
+            .expect("temp root joins a bare name");
         (dir, path)
     }
 
@@ -148,7 +155,7 @@ mod tests {
     fn actor() -> (
         StreamRuleMatcherActor,
         TypedCell<StreamRules>,
-        tempfile::TempDir,
+        jinn_testutil::JinnTempDir,
     ) {
         let slices = jinn_slices::Slices::new();
         let cell = slices

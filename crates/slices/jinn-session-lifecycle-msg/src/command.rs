@@ -1,11 +1,10 @@
 //! Lifecycle command structs - async execution requests for setup/teardown.
 
-use std::path::PathBuf;
-
 use serde::{Deserialize, Serialize};
 
 use jinn_core_types::SessionId;
 use jinn_slices::BusMessage;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// Request to run a lifecycle setup command asynchronously.
 ///
@@ -110,7 +109,7 @@ pub struct SetSessionCwd {
     /// The session whose cwd is being set.
     pub session_id: SessionId,
     /// The new working directory.
-    pub cwd: PathBuf,
+    pub cwd: MarkedPathBuf<Absolute>,
 }
 
 impl BusMessage for SetSessionCwd {}
@@ -158,7 +157,7 @@ pub struct FinishSessionSetup {
     /// The session that was being set up.
     pub session_id: SessionId,
     /// The CWD path on success, or `None` on error.
-    pub cwd: Option<std::path::PathBuf>,
+    pub cwd: Option<MarkedPathBuf<Absolute>>,
     /// Error message if setup failed.
     pub error: Option<String>,
 }

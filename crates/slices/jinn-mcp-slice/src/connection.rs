@@ -28,6 +28,7 @@ use jinn_mcp::{
     CallToolResult, ContentBlock, JsonObject, McpClient, McpClientError, ServerCommand,
     tool_mapping::{map_tool, provider_name, strip_namespace},
 };
+use marked_path::{Absolute, MarkedPathBuf};
 use parking_lot::Mutex;
 use trouper::actor::ActorPath;
 use trouper::actor::MsgHandler;
@@ -203,7 +204,9 @@ impl McpActorDeps {
 fn server_command(config: &McpServerConfig) -> ServerCommand {
     // current_exe failure (exotic sandbox) leaves the token unexpanded; the
     // spawn then fails naming the literal `<jinn>`, which is legible.
-    let jinn_exe = std::env::current_exe().ok();
+    let jinn_exe = std::env::current_exe()
+        .ok()
+        .and_then(|raw| MarkedPathBuf::<Absolute>::new(raw).ok());
     let expand = |value: String| match &jinn_exe {
         Some(path) => jinn_mcp::transport::expand_jinn_token(&value, path),
         None => {

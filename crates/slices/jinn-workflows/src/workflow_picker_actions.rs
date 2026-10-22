@@ -41,7 +41,10 @@ mod tests {
         Workflow {
             name: name.to_owned(),
             description: format!("the {name} workflow"),
-            dir: std::path::PathBuf::from(format!("/cfg/workflows/{name}")),
+            dir: marked_path::MarkedPathBuf::<marked_path::Absolute>::new(format!(
+                "/cfg/workflows/{name}"
+            ))
+            .expect("rooted test path"),
         }
     }
 

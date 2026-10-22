@@ -9,6 +9,7 @@ use jinn_picker::PickerEntry;
 use jinn_project_msg::ProjectEntry;
 use jinn_project_msg::ProjectPickerState;
 use jinn_theme::Theme;
+use marked_path::{Absolute, MarkedPathBuf};
 
 type List = ProjectPickerState;
 
@@ -47,7 +48,7 @@ pub fn open(
 
 /// The highlighted project's path, if a row is highlighted.
 #[must_use]
-pub fn selected_path(state: &List) -> Option<std::path::PathBuf> {
+pub fn selected_path(state: &List) -> Option<MarkedPathBuf<Absolute>> {
     state
         .selection
         .selected_item()
@@ -65,7 +66,7 @@ pub fn selected_entry(state: &List) -> Option<PickerEntry<ProjectEntry>> {
 ///
 /// Returns `None` when no row is highlighted, which is the only case where
 /// the menu should do nothing.
-pub fn remove_highlighted(state: &mut List) -> Option<std::path::PathBuf> {
+pub fn remove_highlighted(state: &mut List) -> Option<MarkedPathBuf<Absolute>> {
     let entry = selected_entry(state)?;
     let path = entry.entry().path.clone();
     let remaining: Vec<ProjectEntry> = state

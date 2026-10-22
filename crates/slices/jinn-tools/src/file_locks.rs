@@ -19,23 +19,26 @@
 //! timed-out tool task cannot strand it.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
+use marked_path::{Absolute, MarkedPathBuf};
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::sync::OwnedMutexGuard;
 
 /// A held per-path lock. Released when dropped.
 pub(crate) type PathLock = OwnedMutexGuard<()>;
 
+/// The per-path lock table: one lazily-created async mutex per absolute path.
+type LockMap = HashMap<MarkedPathBuf<Absolute>, Arc<AsyncMutex<()>>>;
+
 /// The process-wide path → lock map.
-static LOCKS: OnceLock<Mutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>>> = OnceLock::new();
+static LOCKS: OnceLock<Mutex<LockMap>> = OnceLock::new();
 
 /// Returns the map, initializing it on first use.
 ///
 /// A poisoned map is recovered into: the mutex only guards table
 /// bookkeeping, so the map is always structurally valid.
-fn locks() -> &'static Mutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>> {
+fn locks() -> &'static Mutex<LockMap> {
     LOCKS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -45,7 +48,7 @@ fn locks() -> &'static Mutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>> {
 /// the content read through the rename, for `write`/`save_plan` from
 /// directory creation through the write — so no two tool calls can
 /// interleave their reads and writes on one file.
-pub(crate) async fn acquire(path: &Path) -> PathLock {
+pub(crate) async fn acquire(path: &MarkedPathBuf<Absolute>) -> PathLock {
     // Clone (or create) the entry's mutex under the sync map lock, then drop
     // the map lock before awaiting so no sync guard is ever held across an
     // await.
@@ -53,7 +56,7 @@ pub(crate) async fn acquire(path: &Path) -> PathLock {
         let mut map = locks()
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        Arc::clone(map.entry(path.to_path_buf()).or_default())
+        Arc::clone(map.entry(path.clone()).or_default())
     };
     mutex.lock_owned().await
 }
@@ -74,8 +77,11 @@ mod tests {
     #[tokio::test]
     async fn same_path_acquires_serialize() {
         // Given a lock held for a path.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let path = dir.path().join("target.txt");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("target.txt")
+            .expect("temp root joins a bare name");
         let first = acquire(&path).await;
 
         // When a second acquire for the same path is attempted.
@@ -105,9 +111,15 @@ mod tests {
     #[tokio::test]
     async fn different_paths_acquire_independently() {
         // Given a lock held for one path.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let held = dir.path().join("held.txt");
-        let other = dir.path().join("other.txt");
+        let dir = jinn_testutil::tempdir();
+        let held = dir
+            .path
+            .join("held.txt")
+            .expect("temp root joins a bare name");
+        let other = dir
+            .path
+            .join("other.txt")
+            .expect("temp root joins a bare name");
         let _first = acquire(&held).await;
 
         // When acquiring a different path.

@@ -4,6 +4,7 @@
 //! port for a managed child-process server (so jinn can hand it an explicit
 //! port rather than trusting the server to report where it bound).
 
+use marked_path::{Absolute, MarkedPathBuf};
 use std::net::{SocketAddr, TcpListener};
 
 /// Allocate a free TCP port on `bind_addr` via bind-and-release.
@@ -56,8 +57,8 @@ pub fn expand_tokens(args: &[String], ip: &str, port: u16) -> Vec<String> {
 /// is legible enough for a condition that basically cannot happen. Pure and
 /// allocation-only.
 #[must_use]
-pub fn expand_jinn_token(value: &str, jinn_exe: &std::path::Path) -> String {
-    value.replace("<jinn>", &jinn_exe.to_string_lossy())
+pub fn expand_jinn_token(value: &str, jinn_exe: &MarkedPathBuf<Absolute>) -> String {
+    value.replace("<jinn>", &jinn_exe.to_string())
 }
 
 /// Extracts the host portion from a URL template like `http://127.0.0.1:<port>/mcp`.
@@ -209,18 +210,16 @@ mod tests {
     fn expand_jinn_token_replaces_program_and_args() {
         // Given an absolute executable path and a program name and an arg
         // both carrying the <jinn> token.
-        let root = jinn_testutil::paths::TestRoot::new().expect("test root");
+        let root = jinn_testutil::paths::TestRoot::new();
         let exe = root.join_str("bin/jinn").expect("executable path");
-        let exe_path: &std::path::Path = exe.as_ref();
-        let exe_str = exe_path.to_string_lossy().into_owned();
 
         // When expanding.
-        let program = expand_jinn_token("<jinn>", exe_path);
-        let arg = expand_jinn_token("mcp overgraph --parent <jinn>", exe_path);
+        let program = expand_jinn_token("<jinn>", &exe);
+        let arg = expand_jinn_token("mcp overgraph --parent <jinn>", &exe);
 
         // Then every occurrence becomes the executable path.
-        assert_eq!(program, exe_str);
-        assert_eq!(arg, format!("mcp overgraph --parent {exe_str}"));
+        assert_eq!(program, exe.to_string());
+        assert_eq!(arg, format!("mcp overgraph --parent {exe}"));
     }
 
     #[rstest::rstest]
@@ -228,7 +227,9 @@ mod tests {
     fn expand_jinn_token_passes_through_without_token() {
         // Given a value with no token.
         // When expanding.
-        let out = expand_jinn_token("npx", std::path::Path::new("jinn"));
+        let root = jinn_testutil::paths::TestRoot::new();
+        let exe = root.join_str("jinn").expect("executable path");
+        let out = expand_jinn_token("npx", &exe);
 
         // Then the value passes through unchanged.
         assert_eq!(out, "npx");
@@ -238,13 +239,12 @@ mod tests {
     #[test]
     fn expand_jinn_token_handles_multiple_occurrences_in_one_value() {
         // Given one value naming jinn twice.
-        let root = jinn_testutil::paths::TestRoot::new().expect("test root");
+        let root = jinn_testutil::paths::TestRoot::new();
         let exe = root.join_str("jinn").expect("executable path");
-        let exe_path: &std::path::Path = exe.as_ref();
-        let exe_str = exe_path.to_string_lossy().into_owned();
+        let exe_str = exe.to_string();
 
         // When expanding.
-        let out = expand_jinn_token("<jinn> --jinn <jinn>", exe_path);
+        let out = expand_jinn_token("<jinn> --jinn <jinn>", &exe);
 
         // Then both occurrences are replaced.
         assert_eq!(out, format!("{exe_str} --jinn {exe_str}"));

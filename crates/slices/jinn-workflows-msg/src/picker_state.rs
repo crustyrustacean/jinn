@@ -156,12 +156,14 @@ mod tests {
     )]
     use super::*;
     use jinn_theme::default_theme;
+    use marked_path::{Absolute, MarkedPathBuf};
 
     fn workflow(name: &str, description: &str) -> Workflow {
         Workflow {
             name: name.to_owned(),
             description: description.to_owned(),
-            dir: std::path::PathBuf::from(format!("/cfg/workflows/{name}")),
+            dir: MarkedPathBuf::<Absolute>::new(format!("/cfg/workflows/{name}"))
+                .expect("absolute literal"),
         }
     }
 

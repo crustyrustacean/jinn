@@ -5,11 +5,10 @@
 //! [`launch`], so keymap setup happens in exactly one place. This is what
 //! prevents test/prod divergence in keymap binding.
 
-use std::path::Path;
-
 use error_stack::{Report, ResultExt};
 use jinn_kernel::common::system_resource::load_system_resource;
 use jinn_kernel::{AppCore, AppUiRegistry, State};
+use marked_path::{Absolute, MarkedPath};
 use wherror::Error;
 
 use crate::app::WhichKeyInstance;
@@ -58,8 +57,15 @@ pub fn launch(
     ui_registry: AppUiRegistry,
 ) -> Result<TuiApp, Report<LaunchError>> {
     let paths = &services.paths;
-    load_compaction_prompt(&paths.prompts_dir(), &paths.system_prompts_dir())?;
-    load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
+    load_compaction_prompt(
+        &paths.prompts_dir().as_marked_path(),
+        &paths.system_prompts_dir().as_marked_path(),
+    )?;
+    load_theme(
+        &core.state,
+        &paths.themes_dir().as_marked_path(),
+        &paths.system_themes_dir().as_marked_path(),
+    );
 
     // Resolve mouse-selection config from environment.
     let mouse_selection = !matches!(std::env::var("JINN_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
@@ -101,8 +107,8 @@ pub fn launch(
 /// Returns an error if the compaction prompt is missing from both directories
 /// or cannot be read. This is a fatal error - the application cannot run without it.
 pub fn load_compaction_prompt(
-    user_dir: &Path,
-    system_dir: &Path,
+    user_dir: &MarkedPath<Absolute>,
+    system_dir: &MarkedPath<Absolute>,
 ) -> Result<String, Report<LaunchError>> {
     let prompt =
         load_system_resource("_compaction.md", user_dir, system_dir).change_context(LaunchError)?;
@@ -115,7 +121,11 @@ pub fn load_compaction_prompt(
 /// Searches the user themes directory first, then the system themes directory.
 /// If the preferred theme cannot be loaded, falls back to the default theme.
 /// Failures are logged but not fatal.
-pub fn load_theme(state: &State, user_dir: &Path, system_dir: &Path) {
+pub fn load_theme(
+    state: &State,
+    user_dir: &MarkedPath<Absolute>,
+    system_dir: &MarkedPath<Absolute>,
+) {
     let theme_name = {
         let guard = state.read();
         guard.frontend.app_state.theme_name.clone()

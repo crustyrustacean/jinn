@@ -24,6 +24,7 @@ use jinn_session_store_msg::ArchiveSessionTree;
 use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 
 use crate::session_lifecycle_actor::{SessionLifecycleActor, SessionLifecycleActorDeps};
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// The shell the actor under test runs commands through — the same shared
 /// resolver production wiring uses, so the tests exercise the platform's
@@ -70,7 +71,7 @@ async fn plain_fixture() -> ActorFixture {
 /// creates the `TempDir`, derives the path from it, and keeps the `TempDir`
 /// alive for the whole test.
 struct SuccessfulBuiltin {
-    setup_dir: std::path::PathBuf,
+    setup_dir: MarkedPathBuf<Absolute>,
 }
 
 impl BuiltinHandler for SuccessfulBuiltin {
@@ -82,7 +83,7 @@ impl BuiltinHandler for SuccessfulBuiltin {
         &self,
         _session_id: &jinn_core_types::SessionId,
         _args: &[String],
-    ) -> Result<std::path::PathBuf, Report<BuiltinHandlerError>> {
+    ) -> Result<MarkedPathBuf<Absolute>, Report<BuiltinHandlerError>> {
         Ok(self.setup_dir.clone())
     }
 
@@ -97,8 +98,11 @@ async fn set_session_cwd_updates_session_working_directory() {
     // Given a running lifecycle actor and a session.
     let fixture = plain_fixture().await;
     let session_id = fixture.state.read().session.active_session_id().clone();
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let cwd = dir.path().join("lifecycle-cwd");
+    let dir = jinn_testutil::tempdir();
+    let cwd = dir
+        .path
+        .join("lifecycle-cwd")
+        .expect("temp root joins a bare name");
 
     // When SetSessionCwd is published.
     fixture
@@ -116,7 +120,7 @@ async fn set_session_cwd_updates_session_working_directory() {
             .read()
             .session
             .get(&session_id)
-            .is_some_and(|session| session.cwd() == cwd)
+            .is_some_and(|session| session.cwd() == &cwd)
     })
     .await;
     assert!(updated, "session cwd should be updated");
@@ -129,8 +133,11 @@ async fn set_session_cwd_publishes_session_cwd_changed() {
     let fixture = plain_fixture().await;
     let changed = fixture.harness.spawn_recorder::<SessionCwdChanged>().await;
     let session_id = fixture.state.read().session.active_session_id().clone();
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let cwd = dir.path().join("lifecycle-event-cwd");
+    let dir = jinn_testutil::tempdir();
+    let cwd = dir
+        .path
+        .join("lifecycle-event-cwd")
+        .expect("temp root joins a bare name");
 
     // When SetSessionCwd is published.
     fixture
@@ -187,12 +194,12 @@ async fn cancel_lifecycle_command_is_noop_without_running_child() {
 #[tokio::test]
 async fn builtin_setup_completes_with_setup_completed() {
     // Given a running lifecycle actor with a successful builtin setup.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let mut registry = BuiltinRegistry::new();
     registry.register(
         BuiltinId("test-builtin".to_owned()),
         Arc::new(SuccessfulBuiltin {
-            setup_dir: dir.path().to_path_buf(),
+            setup_dir: dir.path.clone(),
         }),
     );
     let fixture = actor_fixture(registry).await;
@@ -227,12 +234,12 @@ async fn builtin_setup_completes_with_setup_completed() {
 #[tokio::test]
 async fn builtin_setup_publishes_setup_completion_event() {
     // Given a running lifecycle actor with a successful builtin setup.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let mut registry = BuiltinRegistry::new();
     registry.register(
         BuiltinId("test-builtin".to_owned()),
         Arc::new(SuccessfulBuiltin {
-            setup_dir: dir.path().to_path_buf(),
+            setup_dir: dir.path.clone(),
         }),
     );
     let fixture = actor_fixture(registry).await;
@@ -1044,7 +1051,7 @@ async fn builtin_teardown_receives_recorded_values_in_template_order() {
     // Given a builtin teardown that records the values it was handed.
     struct RecordingTeardown {
         seen: Arc<Mutex<Vec<String>>>,
-        setup_dir: std::path::PathBuf,
+        setup_dir: MarkedPathBuf<Absolute>,
     }
     impl BuiltinHandler for RecordingTeardown {
         fn name(&self) -> &'static str {
@@ -1054,7 +1061,7 @@ async fn builtin_teardown_receives_recorded_values_in_template_order() {
             &self,
             _session_id: &jinn_core_types::SessionId,
             _args: &[String],
-        ) -> Result<std::path::PathBuf, Report<BuiltinHandlerError>> {
+        ) -> Result<MarkedPathBuf<Absolute>, Report<BuiltinHandlerError>> {
             Ok(self.setup_dir.clone())
         }
         fn teardown(&self, _session_id: &jinn_core_types::SessionId, args: &[String]) -> bool {
@@ -1064,14 +1071,14 @@ async fn builtin_teardown_receives_recorded_values_in_template_order() {
     }
 
     let (fixture, received, session_id, _dir) = {
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let received: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let mut registry = BuiltinRegistry::new();
         registry.register(
             BuiltinId("recording-teardown".to_owned()),
             Arc::new(RecordingTeardown {
                 seen: Arc::clone(&received),
-                setup_dir: dir.path().to_path_buf(),
+                setup_dir: dir.path.clone(),
             }),
         );
         let harness = TestHarness::new().await;

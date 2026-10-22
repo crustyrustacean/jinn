@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+marked-path = { workspace = true }
 jinn-config = { workspace = true }
 jinn-chat-input-msg = { workspace = true }
 jinn-attendant = { workspace = true }

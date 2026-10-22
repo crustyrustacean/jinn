@@ -13,9 +13,19 @@
 //! written to disk as a stand-in for a download — a directory on disk
 //! means a real fetch happened.
 
+// The `expect`s below join a bare cache filename onto a directory already
+// typed `Absolute`; a bare-name join cannot introduce a relative segment, so
+// they cannot fail at runtime — they guard programmer error, not state.
+#![allow(
+    clippy::expect_used,
+    clippy::missing_panics_doc,
+    reason = "bare-name joins onto a typed-absolute cache dir are infallible by construction"
+)]
+
+use error_stack::ResultExt;
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 use std::fs;
 use std::io::Read;
-use std::path::Path;
 
 /// The upstream archive (`research/openrouter-api-model-selection-data.md`
 /// §8 — ~2.4 MB, 91 benchmark CSVs plus the three files this slice
@@ -91,21 +101,30 @@ pub struct CachedEpoch {
 /// Completeness: all three CSVs present. Freshness: the `fetched_at`
 /// stamp within `ttl_ms` of `now_ms()`. Either failing returns `None`
 /// (the caller falls back to the seed or re-downloads).
-pub fn load_fresh<N>(dir: &Path, ttl_ms: u64, now_ms: N) -> Option<CachedEpoch>
+pub fn load_fresh<N>(dir: &MarkedPathBuf<Absolute>, ttl_ms: u64, now_ms: N) -> Option<CachedEpoch>
 where
     N: Fn() -> u64,
 {
-    let stamp = fs::read_to_string(dir.join(FETCHED_AT_FILE))
-        .ok()?
-        .trim()
-        .parse::<u64>()
-        .ok()?;
+    let stamp = fs::read_to_string(
+        dir.join(FETCHED_AT_FILE)
+            .expect("absolute parent joins a bare filename"),
+    )
+    .ok()?
+    .trim()
+    .parse::<u64>()
+    .ok()?;
     if now_ms().saturating_sub(stamp) >= ttl_ms {
         return None;
     }
     let mut files = Vec::with_capacity(EXTRACTED_FILES.len());
     for (name, _) in EXTRACTED_FILES {
-        files.push(fs::read(dir.join(name)).ok()?);
+        files.push(
+            fs::read(
+                dir.join(name)
+                    .expect("absolute parent joins a bare filename"),
+            )
+            .ok()?,
+        );
     }
     Some(CachedEpoch {
         files,
@@ -118,15 +137,24 @@ where
 /// `<c-r>` uses this after dropping the cache: the drop deletes the dir,
 /// so anything still standing is a completed extraction from *this*
 /// refresh's download.
-pub fn load_any(dir: &Path) -> Option<CachedEpoch> {
-    let stamp = fs::read_to_string(dir.join(FETCHED_AT_FILE))
-        .ok()?
-        .trim()
-        .parse::<u64>()
-        .ok()?;
+pub fn load_any(dir: &MarkedPathBuf<Absolute>) -> Option<CachedEpoch> {
+    let stamp = fs::read_to_string(
+        dir.join(FETCHED_AT_FILE)
+            .expect("absolute parent joins a bare filename"),
+    )
+    .ok()?
+    .trim()
+    .parse::<u64>()
+    .ok()?;
     let mut files = Vec::with_capacity(EXTRACTED_FILES.len());
     for (name, _) in EXTRACTED_FILES {
-        files.push(fs::read(dir.join(name)).ok()?);
+        files.push(
+            fs::read(
+                dir.join(name)
+                    .expect("absolute parent joins a bare filename"),
+            )
+            .ok()?,
+        );
     }
     Some(CachedEpoch {
         files,
@@ -143,13 +171,15 @@ pub fn load_any(dir: &Path) -> Option<CachedEpoch> {
 /// # Errors
 ///
 /// Returns an error when the directory exists but cannot be removed.
-pub fn drop_cache(dir: &Path) -> Result<(), error_stack::Report<EpochCacheError>> {
-    if !dir.exists() {
+pub fn drop_cache(
+    dir: &MarkedPathBuf<Absolute>,
+) -> Result<(), error_stack::Report<EpochCacheError>> {
+    if !dir.as_path().exists() {
         return Ok(());
     }
     fs::remove_dir_all(dir).map_err(|error| {
         error_stack::Report::new(EpochCacheError::Write {
-            dir: dir.display().to_string(),
+            dir: dir.to_string(),
             detail: error.to_string(),
         })
         .attach("failed to drop the epoch cache dir")
@@ -168,7 +198,7 @@ pub fn drop_cache(dir: &Path) -> Result<(), error_stack::Report<EpochCacheError>
 /// Returns an error when the download fails, the archive is unreadable
 /// or missing a member, or the extraction write fails.
 pub fn download_and_extract(
-    dir: &Path,
+    dir: &MarkedPathBuf<Absolute>,
     zip_bytes: &[u8],
     now_ms: u64,
 ) -> Result<(), error_stack::Report<EpochCacheError>> {
@@ -181,7 +211,7 @@ pub fn download_and_extract(
 
     fs::create_dir_all(dir).map_err(|error| {
         error_stack::Report::new(EpochCacheError::Write {
-            dir: dir.display().to_string(),
+            dir: dir.to_string(),
             detail: error.to_string(),
         })
         .attach("failed to create the epoch cache dir")
@@ -201,10 +231,18 @@ pub fn download_and_extract(
             })
             .attach("failed to read the archive member")
         })?;
-        write_file(&dir.join(name), &bytes)?;
+        let target = dir.join(name).change_context(EpochCacheError::Zip {
+            detail: format!("cannot join {name} under the cache dir"),
+        })?;
+        write_file(&target, &bytes)?;
     }
 
-    write_file(&dir.join(FETCHED_AT_FILE), now_ms.to_string().as_bytes())?;
+    let fetched_at = dir
+        .join(FETCHED_AT_FILE)
+        .change_context(EpochCacheError::Zip {
+            detail: "cannot join the fetched-at filename under the cache dir".to_owned(),
+        })?;
+    write_file(&fetched_at, now_ms.to_string().as_bytes())?;
     Ok(())
 }
 
@@ -245,10 +283,13 @@ pub async fn fetch_zip(
         })
 }
 
-fn write_file(path: &Path, bytes: &[u8]) -> Result<(), error_stack::Report<EpochCacheError>> {
+fn write_file(
+    path: &MarkedPathBuf<Absolute>,
+    bytes: &[u8],
+) -> Result<(), error_stack::Report<EpochCacheError>> {
     fs::write(path, bytes).map_err(|error| {
         error_stack::Report::new(EpochCacheError::Write {
-            dir: path.display().to_string(),
+            dir: path.to_string(),
             detail: error.to_string(),
         })
         .attach("failed to write an epoch cache file")

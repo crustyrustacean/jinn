@@ -12,6 +12,7 @@ use jinn_core_types::SessionId;
 use jinn_slices::Mode;
 use jinn_slices::PickerKind;
 use jinn_slices::{FocusScope, ScopeStack};
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
 #[rstest::rstest]
 fn push_entry_adds_to_history() {
@@ -237,7 +238,7 @@ fn session_mut_or_create_sets_cwd_from_default_cwd() {
     let mut state = AppState::default_with_scope_focus();
     state
         .session
-        .set_default_cwd(std::path::PathBuf::from("/custom/cwd"));
+        .set_default_cwd(MarkedPathBuf::<Absolute>::new("/custom/cwd").expect("absolute literal"));
 
     let session_id = SessionId::new();
 
@@ -245,7 +246,7 @@ fn session_mut_or_create_sets_cwd_from_default_cwd() {
     let session = state.session_mut_or_create(&session_id);
 
     // Then the session's CWD is the default CWD.
-    assert_eq!(session.cwd(), std::path::Path::new("/custom/cwd"));
+    assert_eq!(session.cwd().as_path(), std::path::Path::new("/custom/cwd"));
 }
 
 #[rstest::rstest]
@@ -285,17 +286,20 @@ fn session_mut_or_create_does_not_overwrite_existing_session_cwd() {
     let mut state = AppState::default_with_scope_focus();
     state
         .session
-        .set_default_cwd(std::path::PathBuf::from("/new/default"));
+        .set_default_cwd(MarkedPathBuf::<Absolute>::new("/new/default").expect("absolute literal"));
 
     let session_id = SessionId::new();
     {
         let session = state.session_mut_or_create(&session_id);
-        session.set_cwd(std::path::PathBuf::from("/existing/cwd"));
+        session.set_cwd(MarkedPathBuf::<Absolute>::new("/existing/cwd").expect("absolute literal"));
     }
 
     // When accessing the same session via session_mut_or_create.
     let session = state.session_mut_or_create(&session_id);
 
     // Then the CWD is unchanged.
-    assert_eq!(session.cwd(), std::path::Path::new("/existing/cwd"));
+    assert_eq!(
+        session.cwd().as_path(),
+        std::path::Path::new("/existing/cwd")
+    );
 }

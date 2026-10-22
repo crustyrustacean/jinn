@@ -160,6 +160,7 @@ mod tests {
     use super::*;
     use crate::chat_log::shared::RenderContext;
     use jinn_core_types::{AttachmentOutcome, ResolvedToken};
+    use marked_path::{Absolute, MarkedPathBuf};
 
     fn ctx() -> RenderContext {
         RenderContext {
@@ -189,7 +190,7 @@ mod tests {
         let outcome = AttachmentOutcome {
             attached: vec![ResolvedToken {
                 raw: "img.png".to_owned(),
-                abs: "/abs/img.png".into(),
+                abs: MarkedPathBuf::<Absolute>::new("/abs/img.png").expect("rooted test path"),
             }],
             degraded: vec![],
         };
@@ -209,7 +210,7 @@ mod tests {
             attached: vec![],
             degraded: vec![ResolvedToken {
                 raw: "whatever".to_owned(),
-                abs: "/abs/whatever".into(),
+                abs: MarkedPathBuf::<Absolute>::new("/abs/whatever").expect("rooted test path"),
             }],
         };
 
@@ -231,7 +232,7 @@ mod tests {
             attached: vec![],
             degraded: vec![ResolvedToken {
                 raw: "notes.txt".to_owned(),
-                abs: "/abs/notes.txt".into(),
+                abs: MarkedPathBuf::<Absolute>::new("/abs/notes.txt").expect("rooted test path"),
             }],
         };
 
@@ -271,11 +272,11 @@ mod tests {
         let outcome = AttachmentOutcome {
             attached: vec![ResolvedToken {
                 raw: "real.png".to_owned(),
-                abs: "/abs/real.png".into(),
+                abs: MarkedPathBuf::<Absolute>::new("/abs/real.png").expect("rooted test path"),
             }],
             degraded: vec![ResolvedToken {
                 raw: "whatever".to_owned(),
-                abs: "/abs/whatever".into(),
+                abs: MarkedPathBuf::<Absolute>::new("/abs/whatever").expect("rooted test path"),
             }],
         };
 

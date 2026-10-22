@@ -36,15 +36,16 @@ mod tests {
     use std::sync::Arc;
 
     use jinn_config::{ConfigLayer, InMemoryConfigStorage};
+    use marked_path::MarkedPathAccess;
 
     use super::ProjectConfig;
 
     #[rstest::rstest]
     fn project_entries_read_from_the_umbrella_key() {
         // Given a document listing two projects under the umbrella.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let first = dir.path().join("a");
-        let second = dir.path().join("b");
+        let dir = jinn_testutil::tempdir();
+        let first = dir.path.as_path().join("a");
+        let second = dir.path.as_path().join("b");
         // The paths ride through `toml_edit::Value` so the interpolated text is
         // a properly escaped TOML string on every platform.
         let doc = format!(
@@ -89,9 +90,9 @@ mod tests {
     #[rstest::rstest]
     fn a_project_renders_as_a_path_and_reads_back() {
         // Given a project with no rules of its own.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let project = ProjectConfig {
-            path: dir.path().join("demo"),
+            path: dir.path.as_path().join("demo"),
         };
         let storage = Arc::new(InMemoryConfigStorage::new(
             "[tools]\nx = 1\n".parse().expect("parses"),

@@ -503,8 +503,11 @@ fn compile_project(
 /// are whole-path glob vocabulary — `**/myapp` is the directory exactly,
 /// `**/myapp/**` is it and everything below, and a two-segment value like
 /// `**/jinn/image-tilth` names a nested project directly.
-fn project_matches(glob: &GlobMatcher, dir: &std::path::Path) -> bool {
-    let normalized = dir.to_string_lossy().replace('\\', "/");
+fn project_matches(
+    glob: &GlobMatcher,
+    dir: &marked_path::MarkedPathBuf<marked_path::Absolute>,
+) -> bool {
+    let normalized = dir.to_string().replace('\\', "/");
     let padded = format!("{normalized}/");
     glob.is_match(&normalized) || glob.is_match(&padded)
 }
@@ -587,7 +590,10 @@ impl StreamRuleSet for CompiledSet {
         })
     }
 
-    fn for_cwd(&self, cwd: Option<&std::path::Path>) -> std::sync::Arc<dyn StreamRuleSet> {
+    fn for_cwd(
+        &self,
+        cwd: Option<&marked_path::MarkedPathBuf<marked_path::Absolute>>,
+    ) -> std::sync::Arc<dyn StreamRuleSet> {
         // Rules are cloned rather than recompiled: the regexes and globs are
         // already built, and only the cwd test is new. A rule with no
         // `project` is cloned as-is, so the common configuration -- every rule
@@ -897,6 +903,8 @@ mod tests {
     use jinn_core_types::SessionId;
     use jinn_preferences_config::schemas::StreamRuleConfig;
     use jinn_slices::{StreamContext, StreamRuleSet};
+    use marked_path::{Absolute, MarkedPathBuf};
+    use std::path::PathBuf;
 
     /// A rule with the given name, one condition, and no scopes — so it
     /// admits every stream.
@@ -1508,9 +1516,12 @@ mod tests {
         let configs = [rule("global", "rm -rf")];
 
         // When the set is built for a project it names nothing about.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let anywhere_cwd = dir.path().join("anywhere/at/all");
-        let set = compiled(&configs).for_cwd(Some(anywhere_cwd.as_path()));
+        let dir = jinn_testutil::tempdir();
+        let anywhere_cwd = dir
+            .path
+            .join("anywhere/at/all")
+            .expect("temp root joins a bare name");
+        let set = compiled(&configs).for_cwd(Some(&anywhere_cwd));
 
         // Then the rule is live there.
         assert!(!set.is_empty());
@@ -1524,9 +1535,12 @@ mod tests {
 
         // When the set is built for a cwd that is exactly that directory,
         // rooted in a tempdir.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let myapp_cwd = dir.path().join("dev/code/myapp");
-        let set = compiled(&configs).for_cwd(Some(myapp_cwd.as_path()));
+        let dir = jinn_testutil::tempdir();
+        let myapp_cwd = dir
+            .path
+            .join("dev/code/myapp")
+            .expect("temp root joins a bare name");
+        let set = compiled(&configs).for_cwd(Some(&myapp_cwd));
 
         // Then the rule is live.
         assert!(!set.is_empty());
@@ -1539,9 +1553,12 @@ mod tests {
         let configs = [project_rule("**/myapp", "rm -rf")];
 
         // When the set is built for a cwd one level below that directory.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let below_cwd = dir.path().join("dev/code/myapp/submodule");
-        let set = compiled(&configs).for_cwd(Some(below_cwd.as_path()));
+        let dir = jinn_testutil::tempdir();
+        let below_cwd = dir
+            .path
+            .join("dev/code/myapp/submodule")
+            .expect("temp root joins a bare name");
+        let set = compiled(&configs).for_cwd(Some(&below_cwd));
 
         // Then the rule is not there: exact means exact, and self-or-below is
         // the `/**` spelling.
@@ -1555,9 +1572,12 @@ mod tests {
         let configs = [project_rule("**/myapp", "rm -rf")];
 
         // When the set is built for a sibling directory under the same root.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let other_cwd = dir.path().join("dev/code/other");
-        let set = compiled(&configs).for_cwd(Some(other_cwd.as_path()));
+        let dir = jinn_testutil::tempdir();
+        let other_cwd = dir
+            .path
+            .join("dev/code/other")
+            .expect("temp root joins a bare name");
+        let set = compiled(&configs).for_cwd(Some(&other_cwd));
 
         // Then the rule is not there at all.
         assert!(set.is_empty());
@@ -1571,9 +1591,12 @@ mod tests {
 
         // When the set is built for the project directory itself, where the
         // `/**` suffix has no path left to consume.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let root_cwd = dir.path().join("dev/code/myapp");
-        let set = compiled(&configs).for_cwd(Some(root_cwd.as_path()));
+        let dir = jinn_testutil::tempdir();
+        let root_cwd = dir
+            .path
+            .join("dev/code/myapp")
+            .expect("temp root joins a bare name");
+        let set = compiled(&configs).for_cwd(Some(&root_cwd));
 
         // Then the rule is live: the matcher also tests the cwd with a
         // trailing slash, giving the suffix its match.
@@ -1587,9 +1610,12 @@ mod tests {
         let configs = [project_rule("**/myapp/**", "rm -rf")];
 
         // When the set is built for a cwd several levels below the project.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let deep_cwd = dir.path().join("dev/code/myapp/crates/app/src");
-        let set = compiled(&configs).for_cwd(Some(deep_cwd.as_path()));
+        let dir = jinn_testutil::tempdir();
+        let deep_cwd = dir
+            .path
+            .join("dev/code/myapp/crates/app/src")
+            .expect("temp root joins a bare name");
+        let set = compiled(&configs).for_cwd(Some(&deep_cwd));
 
         // Then the rule is live.
         assert!(!set.is_empty());
@@ -1603,9 +1629,12 @@ mod tests {
 
         // When the set is built for a directory that merely contains the
         // project's name inside its own.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let lookalike_cwd = dir.path().join("dev/code/myapp-old");
-        let set = compiled(&configs).for_cwd(Some(lookalike_cwd.as_path()));
+        let dir = jinn_testutil::tempdir();
+        let lookalike_cwd = dir
+            .path
+            .join("dev/code/myapp-old")
+            .expect("temp root joins a bare name");
+        let set = compiled(&configs).for_cwd(Some(&lookalike_cwd));
 
         // Then the rule is not there: `**/myapp/` cannot swallow a different
         // segment name.
@@ -1621,9 +1650,12 @@ mod tests {
         // When the set is built for a cwd several levels below the project —
         // globset collapses `**/` before a single `*`, so one `*` is not one
         // level.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let deep_cwd = dir.path().join("dev/code/myapp/crates/app/src");
-        let set = compiled(&configs).for_cwd(Some(deep_cwd.as_path()));
+        let dir = jinn_testutil::tempdir();
+        let deep_cwd = dir
+            .path
+            .join("dev/code/myapp/crates/app/src")
+            .expect("temp root joins a bare name");
+        let set = compiled(&configs).for_cwd(Some(&deep_cwd));
 
         // Then the rule is live there, as it is at the project root itself.
         assert!(!set.is_empty());
@@ -1636,9 +1668,12 @@ mod tests {
         let configs = [project_rule("**/myapp*/**", "rm -rf")];
 
         // When the set is built for a directory whose name extends the stem.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let fork_cwd = dir.path().join("dev/code/myapp-fork");
-        let set = compiled(&configs).for_cwd(Some(fork_cwd.as_path()));
+        let dir = jinn_testutil::tempdir();
+        let fork_cwd = dir
+            .path
+            .join("dev/code/myapp-fork")
+            .expect("temp root joins a bare name");
+        let set = compiled(&configs).for_cwd(Some(&fork_cwd));
 
         // Then the rule is live.
         assert!(!set.is_empty());
@@ -1651,9 +1686,12 @@ mod tests {
         let configs = [project_rule("**/myapp*/**", "rm -rf")];
 
         // When the set is built for a directory that only contains the stem.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let lookalike_cwd = dir.path().join("dev/code/xmyapp");
-        let set = compiled(&configs).for_cwd(Some(lookalike_cwd.as_path()));
+        let dir = jinn_testutil::tempdir();
+        let lookalike_cwd = dir
+            .path
+            .join("dev/code/xmyapp")
+            .expect("temp root joins a bare name");
+        let set = compiled(&configs).for_cwd(Some(&lookalike_cwd));
 
         // Then the rule is not there: `myapp*` anchors at the start of the
         // segment, it is not a substring test.
@@ -1667,9 +1705,12 @@ mod tests {
         let configs = [project_rule("**/jinn/image-tilth", "rm -rf")];
 
         // When the set is built for that nested directory.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let nested_cwd = dir.path().join("work/jinn/image-tilth");
-        let set = compiled(&configs).for_cwd(Some(nested_cwd.as_path()));
+        let dir = jinn_testutil::tempdir();
+        let nested_cwd = dir
+            .path
+            .join("work/jinn/image-tilth")
+            .expect("temp root joins a bare name");
+        let set = compiled(&configs).for_cwd(Some(&nested_cwd));
 
         // Then the rule is live — multi-segment values work, which the old
         // whole-path-or-one-segment predicate could never deliver.
@@ -1683,9 +1724,12 @@ mod tests {
         let configs = [project_rule("**/jinn/image-tilth", "rm -rf")];
 
         // When the set is built for the parent of that nested directory.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let parent_cwd = dir.path().join("work/jinn");
-        let set = compiled(&configs).for_cwd(Some(parent_cwd.as_path()));
+        let dir = jinn_testutil::tempdir();
+        let parent_cwd = dir
+            .path
+            .join("work/jinn")
+            .expect("temp root joins a bare name");
+        let set = compiled(&configs).for_cwd(Some(&parent_cwd));
 
         // Then the rule is not there: the glob names the nested directory,
         // not anything that contains it.
@@ -1701,16 +1745,22 @@ mod tests {
 
         // When the set is built for the nested directory itself, a directory
         // deep below it, and a sibling of it.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let at =
-            compiled(&configs).for_cwd(Some(dir.path().join("work/jinn/image-tilth").as_path()));
-        let below = compiled(&configs).for_cwd(Some(
-            dir.path()
-                .join("work/jinn/image-tilth/crates/app")
-                .as_path(),
-        ));
-        let beside =
-            compiled(&configs).for_cwd(Some(dir.path().join("work/jinn/other-tilth").as_path()));
+        let dir = jinn_testutil::tempdir();
+        let image_tilth = dir
+            .path
+            .join("work/jinn/image-tilth")
+            .expect("temp root joins a bare name");
+        let below_tilth = dir
+            .path
+            .join("work/jinn/image-tilth/crates/app")
+            .expect("temp root joins a bare name");
+        let other_tilth = dir
+            .path
+            .join("work/jinn/other-tilth")
+            .expect("temp root joins a bare name");
+        let at = compiled(&configs).for_cwd(Some(&image_tilth));
+        let below = compiled(&configs).for_cwd(Some(&below_tilth));
+        let beside = compiled(&configs).for_cwd(Some(&other_tilth));
 
         // Then the rule is live at the directory and below it, and nowhere
         // beside it: both glob features compose, which the AC's literal shape
@@ -1727,8 +1777,21 @@ mod tests {
         let configs = [project_rule("**/myapp", "rm -rf")];
 
         // When the set is built for a cwd whose separators are backslashes —
-        // the shape Windows reports.
-        let set = compiled(&configs).for_cwd(Some(std::path::Path::new("C:\\dev\\code\\myapp")));
+        // the shape Windows reports. Built from the raw Windows text since
+        // only Windows can construct a drive-letter absolute.
+        let windows_cwd = {
+            #[cfg(windows)]
+            {
+                MarkedPathBuf::<Absolute>::new(PathBuf::from("C:\\dev\\code\\myapp"))
+                    .expect("drive-letter path is absolute on Windows")
+            }
+            #[cfg(not(windows))]
+            {
+                MarkedPathBuf::<Absolute>::new(PathBuf::from("/dev/code/myapp"))
+                    .expect("absolute path")
+            }
+        };
+        let set = compiled(&configs).for_cwd(Some(&windows_cwd));
 
         // Then the rule is live: separators are folded to `/` before the
         // candidates are built.
@@ -1782,9 +1845,12 @@ mod tests {
         let configs = [rule("global", "rm -rf"), project_rule("**/myapp", "curl")];
 
         // When the set is built for the project the scoped rule excludes.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let other_cwd = dir.path().join("dev/other");
-        let set = compiled(&configs).for_cwd(Some(other_cwd.as_path()));
+        let dir = jinn_testutil::tempdir();
+        let other_cwd = dir
+            .path
+            .join("dev/other")
+            .expect("temp root joins a bare name");
+        let set = compiled(&configs).for_cwd(Some(&other_cwd));
 
         // Then the global rule still fires there and the scoped one does not.
         let mut session = set.new_session(&SessionId::new());
@@ -1861,9 +1927,12 @@ mod tests {
         let configs = [project_rule("   ", "rm -rf")];
 
         // When the set is built for an unrelated directory.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let anywhere_cwd = dir.path().join("anywhere/at/all");
-        let set = compiled(&configs).for_cwd(Some(anywhere_cwd.as_path()));
+        let dir = jinn_testutil::tempdir();
+        let anywhere_cwd = dir
+            .path
+            .join("anywhere/at/all")
+            .expect("temp root joins a bare name");
+        let set = compiled(&configs).for_cwd(Some(&anywhere_cwd));
 
         // Then the rule is live: blank means global, the most common config
         // shape, and must not read as a broken anchor check.

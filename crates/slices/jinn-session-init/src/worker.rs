@@ -29,7 +29,6 @@
 //! (`jinn.domain`) as the exact kernel types kernel consumers already
 //! subscribe to.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicU64;
@@ -52,6 +51,7 @@ use jinn_workflows_msg::Workflow;
 use crate::commands::{RescanContext, RescanPrompts, RescanSkills, RescanWorkflows, RunDiscovery};
 use crate::contracts::{DiscoverySnapshot, SessionDiscoverySettled};
 use crate::scans;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// The settle budget: how long a discovery run waits for all three
 /// scans before settling with a delayed reason. Production value;
@@ -106,17 +106,17 @@ pub struct SessionDiscoveryWorker {
     /// the current run has been superseded and no-ops.
     run: Arc<AtomicU64>,
     /// The user's home dir.
-    home: PathBuf,
+    home: MarkedPathBuf<Absolute>,
     /// The system-installed skills dir.
-    system_skills_dir: PathBuf,
+    system_skills_dir: MarkedPathBuf<Absolute>,
     /// The user-global skills dir.
-    global_skills_dir: PathBuf,
+    global_skills_dir: MarkedPathBuf<Absolute>,
     /// The user prompts dir.
-    user_prompts_dir: PathBuf,
+    user_prompts_dir: MarkedPathBuf<Absolute>,
     /// The system-installed prompts dir.
-    system_prompts_dir: PathBuf,
+    system_prompts_dir: MarkedPathBuf<Absolute>,
     /// The workflows dir (launch-global: the config dir's workflows folder).
-    workflows_dir: PathBuf,
+    workflows_dir: MarkedPathBuf<Absolute>,
     /// How long a discovery run waits for all three scans. The
     /// production default ([`SETTLE_BUDGET`]); tests may shorten it via
     /// the entity's genesis args.
@@ -133,17 +133,17 @@ pub struct WorkerDeps {
     /// Shared application state.
     pub state: State,
     /// The user's home dir.
-    pub home: PathBuf,
+    pub home: MarkedPathBuf<Absolute>,
     /// The system-installed skills dir.
-    pub system_skills_dir: PathBuf,
+    pub system_skills_dir: MarkedPathBuf<Absolute>,
     /// The user-global skills dir.
-    pub global_skills_dir: PathBuf,
+    pub global_skills_dir: MarkedPathBuf<Absolute>,
     /// The user prompts dir.
-    pub user_prompts_dir: PathBuf,
+    pub user_prompts_dir: MarkedPathBuf<Absolute>,
     /// The system-installed prompts dir.
-    pub system_prompts_dir: PathBuf,
+    pub system_prompts_dir: MarkedPathBuf<Absolute>,
     /// The workflows dir (launch-global: the config dir's workflows folder).
-    pub workflows_dir: PathBuf,
+    pub workflows_dir: MarkedPathBuf<Absolute>,
     /// The settle budget (production default unless overridden).
     pub settle_budget: std::time::Duration,
 }
@@ -166,7 +166,7 @@ impl WorkerDeps {
             session_id,
             system: system.clone(),
             state: state.clone(),
-            home: paths.home_dir().to_path_buf(),
+            home: paths.home_dir().clone(),
             system_skills_dir: paths.system_skills_dir(),
             global_skills_dir: paths.skills_dir(),
             user_prompts_dir: paths.prompts_dir(),
@@ -254,7 +254,7 @@ impl SessionDiscoveryWorker {
     /// Begins a full discovery run: all four resource scans
     /// concurrently, each writing state + publishing as it completes,
     /// plus the settle waiter for this run.
-    fn run_discovery(&mut self, cwd: &std::path::Path) {
+    fn run_discovery(&mut self, cwd: &MarkedPathBuf<Absolute>) {
         let run = self.run.fetch_add(1, Ordering::AcqRel) + 1;
         let skills = self.spawn_skills_task(cwd);
         let prompts = self.spawn_prompts_task(cwd);
@@ -269,7 +269,7 @@ impl SessionDiscoveryWorker {
     /// the settle budget, naming it as delayed — and the notifier
     /// posts the summary entry (the old coordinator's safety-net
     /// behavior for `RescanPromptTemplates` and friends).
-    fn rescan_one(&mut self, scanned: Resource, cwd: PathBuf) {
+    fn rescan_one(&mut self, scanned: Resource, cwd: MarkedPathBuf<Absolute>) {
         let run = self.run.fetch_add(1, Ordering::AcqRel) + 1;
         // Positional: skills, prompts, context, workflows — exactly what
         // `spawn_settle_waiter` expects.
@@ -299,21 +299,14 @@ impl SessionDiscoveryWorker {
         self.spawn_settle_waiter(run, skills, prompts, context, workflows);
     }
 
-    /// The defensive cwd gate: the supervisor already suppressed the
-    /// `.`, but a direct send (test, future caller) must not scan the
-    /// sentinel either. `false` → no scan, no event.
-    fn cwd_gate_open(cwd: &std::path::Path) -> bool {
-        cwd != std::path::Path::new(".")
-    }
-
     /// The skills resource scan (blocking), with the state write +
     /// `SkillsLoaded` publication on completion. The picker repaints from
     /// that broadcast — the picker is slice-owned, so the worker has no
     /// reason to know it exists.
-    fn spawn_skills_task(&self, cwd: &std::path::Path) -> tokio::task::JoinHandle<ResourceOutcome> {
-        if !Self::cwd_gate_open(cwd) {
-            return skipped();
-        }
+    fn spawn_skills_task(
+        &self,
+        cwd: &MarkedPathBuf<Absolute>,
+    ) -> tokio::task::JoinHandle<ResourceOutcome> {
         let project_dirs = scans::project_skills_dirs(cwd, &self.home);
         let system = self.system.clone();
         let state = self.state.clone();
@@ -361,11 +354,8 @@ impl SessionDiscoveryWorker {
     /// The prompt-templates resource scan.
     fn spawn_prompts_task(
         &self,
-        cwd: &std::path::Path,
+        cwd: &MarkedPathBuf<Absolute>,
     ) -> tokio::task::JoinHandle<ResourceOutcome> {
-        if !Self::cwd_gate_open(cwd) {
-            return skipped();
-        }
         let project_dirs = scans::project_prompts_dirs(cwd, &self.home);
         let system = self.system.clone();
         let state = self.state.clone();
@@ -428,16 +418,13 @@ impl SessionDiscoveryWorker {
     /// The context-files resource scan.
     fn spawn_context_task(
         &self,
-        cwd: &std::path::Path,
+        cwd: &MarkedPathBuf<Absolute>,
     ) -> tokio::task::JoinHandle<ResourceOutcome> {
-        if !Self::cwd_gate_open(cwd) {
-            return skipped();
-        }
         let system = self.system.clone();
         let state = self.state.clone();
         let session_id = self.session_id.clone();
         let home = self.home.clone();
-        let cwd = cwd.to_path_buf();
+        let cwd = cwd.clone();
         tokio::spawn(async move {
             let joined =
                 tokio::task::spawn_blocking(move || scans::read_context_files(&cwd, &home)).await;
@@ -602,12 +589,12 @@ impl SessionDiscoveryWorker {
 struct SessionDiscoveryWorkerDepsBuilder {
     session_id: SessionId,
     state: State,
-    home: PathBuf,
-    system_skills_dir: PathBuf,
-    global_skills_dir: PathBuf,
-    user_prompts_dir: PathBuf,
-    system_prompts_dir: PathBuf,
-    workflows_dir: PathBuf,
+    home: MarkedPathBuf<Absolute>,
+    system_skills_dir: MarkedPathBuf<Absolute>,
+    global_skills_dir: MarkedPathBuf<Absolute>,
+    user_prompts_dir: MarkedPathBuf<Absolute>,
+    system_prompts_dir: MarkedPathBuf<Absolute>,
+    workflows_dir: MarkedPathBuf<Absolute>,
     system: ActorSystem,
     settle_budget: std::time::Duration,
 }

@@ -6,6 +6,7 @@ publish.workspace = true
 description = "Authoritative live session aggregate, session registry, runtime state, and snapshot contracts."
 
 [dependencies]
+marked-path = { workspace = true }
 jinn-chat-input-msg = { workspace = true }
 jinn-attendant-msg = { workspace = true }
 jinn-chat-log-view-msg = { workspace = true }

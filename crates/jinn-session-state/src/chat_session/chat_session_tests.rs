@@ -17,7 +17,7 @@ use jinn_token_count_msg::TokenRecord;
 use jinn_core_types::{
     ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, EntryTiming, PinPosition, SessionId,
 };
-use std::path::PathBuf;
+use marked_path::{Absolute, MarkedPathAccess as _, MarkedPathBuf};
 
 use super::*;
 use jinn_core_types::model_selection::ModelSelection;
@@ -140,8 +140,11 @@ const TINY_PNG: &[u8] = &[
 #[rstest::rstest]
 fn push_entry_at_path_creates_attachment_and_file_uri() {
     // Given a session and a temp png file referenced via @path.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let path = dir.path().join("img.png");
+    let dir = jinn_testutil::tempdir();
+    let path = dir
+        .path
+        .join("img.png")
+        .expect("temp root joins a bare name");
     std::fs::write(&path, TINY_PNG).expect("write");
     let abs = path.to_string_lossy().into_owned();
     let mut session = ChatSessionState::new();
@@ -2194,8 +2197,8 @@ fn visible_entry_range_uses_rendered_scroll_offset_not_scroll_offset() {
 #[rstest::rstest]
 fn cwd_preserved_across_serialization_round_trip() {
     // Given a session with a temp-rooted CWD.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let cwd = dir.path().to_path_buf();
+    let dir = jinn_testutil::tempdir();
+    let cwd = dir.path.clone();
     let mut session = ChatSessionState::new();
     session.set_cwd(cwd.clone());
 
@@ -2204,7 +2207,7 @@ fn cwd_preserved_across_serialization_round_trip() {
     let restored: ChatSessionState = serde_json::from_str(&json).expect("deserialize");
 
     // Then the CWD is preserved.
-    assert_eq!(restored.cwd(), cwd);
+    assert_eq!(restored.cwd(), &cwd);
 }
 
 #[rstest::rstest]
@@ -2221,8 +2224,10 @@ fn cwd_defaults_to_dot_when_missing_from_snapshot() {
     // When deserializing.
     let restored: ChatSessionState = serde_json::from_str(&json_str).expect("deserialize");
 
-    // Then the CWD defaults to "." (resolves to current directory).
-    assert_eq!(restored.cwd(), PathBuf::from("."));
+    // Then the CWD defaults to the launch directory, resolved to an
+    // absolute path at load (the field is absolute-by-construction).
+    let expected = std::env::current_dir().expect("process cwd");
+    assert_eq!(restored.cwd().as_path(), expected.as_path());
 }
 
 #[rstest::rstest]
@@ -2252,7 +2257,8 @@ fn serde_lifecycle_group_remains_flat() {
     // Given a session with lifecycle fields set.
     let mut session = ChatSessionState::new();
     session.set_title("Lifecycle title".to_owned());
-    session.set_cwd(std::path::PathBuf::from("/workspace/project"));
+    session
+        .set_cwd(MarkedPathBuf::<Absolute>::new("/workspace/project").expect("absolute literal"));
     session.set_lifecycle_name(Some("dev".to_owned()));
     session.set_lifecycle_args(LifecycleArgs::from_pairs([(
         "$1".to_owned(),
@@ -2273,7 +2279,7 @@ fn serde_lifecycle_group_remains_flat() {
     );
     assert_eq!(
         object.get("cwd"),
-        Some(&serde_json::json!("/workspace/project"))
+        Some(&serde_json::json!({"path": "/workspace/project", "marker": "absolute"}))
     );
     assert_eq!(
         object.get("lifecycle_name"),
@@ -2298,7 +2304,8 @@ fn composed_five_group_core() -> SessionCore {
     core.identity.parent_session = Some(SessionId::new());
     core.identity.origin = SessionOrigin::Fork;
     core.identity.has_interacted = true;
-    core.lifecycle.cwd = PathBuf::from("/workspace/project");
+    core.lifecycle.cwd =
+        MarkedPathBuf::<Absolute>::new("/workspace/project").expect("absolute literal");
     core.lifecycle.lifecycle_name = Some("release".to_owned());
     core.lifecycle.lifecycle_args = LifecycleArgs::from_pairs([("$1", "--verbose")]);
     core.lifecycle.lifecycle_script_state = LifecycleScriptState::SetupRan;
@@ -2344,7 +2351,7 @@ fn session_core_five_group_serialization_remains_flat() {
     );
     assert_eq!(
         object.get("cwd"),
-        Some(&serde_json::json!("/workspace/project"))
+        Some(&serde_json::json!({"path": "/workspace/project", "marker": "absolute"}))
     );
     assert_eq!(
         object
@@ -2393,7 +2400,10 @@ fn session_core_loads_legacy_flat_fields_into_broad_groups() {
 
     // Then every representative field is restored into its broad group.
     assert_eq!(core.identity.title.as_deref(), Some("Legacy composed"));
-    assert_eq!(core.lifecycle.cwd, PathBuf::from("/legacy/repo"));
+    assert_eq!(
+        core.lifecycle.cwd,
+        MarkedPathBuf::<Absolute>::new("/legacy/repo").expect("absolute literal")
+    );
     assert!(core.history_work.history.is_empty());
     assert_eq!(
         core.integrations.profile.model,
@@ -5646,16 +5656,20 @@ fn discovered_sets_are_independent_between_sessions() {
         name: "session-a-only".into(),
         description: String::new(),
         body: String::new(),
-        file_path: PathBuf::new(),
-        base_dir: PathBuf::new(),
+        file_path: MarkedPathBuf::<Absolute>::new("/skills/session-a-only/SKILL.md")
+            .expect("absolute literal"),
+        base_dir: MarkedPathBuf::<Absolute>::new("/skills/session-a-only")
+            .expect("absolute literal"),
         source: jinn_skills_msg::SkillSource::Global,
     }]);
     b.set_discovered_skills(vec![jinn_skills_msg::Skill {
         name: "session-b-only".into(),
         description: String::new(),
         body: String::new(),
-        file_path: PathBuf::new(),
-        base_dir: PathBuf::new(),
+        file_path: MarkedPathBuf::<Absolute>::new("/skills/session-b-only/SKILL.md")
+            .expect("absolute literal"),
+        base_dir: MarkedPathBuf::<Absolute>::new("/skills/session-b-only")
+            .expect("absolute literal"),
         source: jinn_skills_msg::SkillSource::Global,
     }]);
 
@@ -5672,7 +5686,7 @@ fn discovered_context_files_round_trip_empty_after_serialization() {
     // Given a session with discovered context files populated in ephemeral state.
     let mut session = ChatSessionState::new();
     session.set_discovered_context_files(vec![jinn_context::ContextFile {
-        path: PathBuf::from("/nonexistent/AGENTS.md"),
+        path: MarkedPathBuf::<Absolute>::new("/nonexistent/AGENTS.md").expect("absolute literal"),
         content: "should not persist".into(),
     }]);
 
@@ -6863,11 +6877,23 @@ fn tool_age_window_exclude_refused_on_included_todo_pair() {
 fn new_attendant_links_parent_without_inheriting_conversation() {
     // Given a parent session with a temp-rooted project stamp, cwd, home,
     // and MCP servers.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let mut parent = ChatSessionState::new();
-    parent.set_project(Some(dir.path().join("demo-project")));
-    parent.set_cwd(dir.path().join("demo-cwd"));
-    parent.set_home(dir.path().join("demo-home"));
+    parent.set_project(Some(
+        dir.path
+            .join("demo-project")
+            .expect("temp root joins a bare name"),
+    ));
+    parent.set_cwd(
+        dir.path
+            .join("demo-cwd")
+            .expect("temp root joins a bare name"),
+    );
+    parent.set_home(
+        dir.path
+            .join("demo-home")
+            .expect("temp root joins a bare name"),
+    );
     parent.set_enabled_mcp_servers(std::collections::BTreeSet::from(["filesystem".to_owned()]));
     parent.push_entry(ChatEntry::user("parent conversation"));
 
@@ -6889,11 +6915,23 @@ fn new_attendant_links_parent_without_inheriting_conversation() {
 #[test]
 fn new_attendant_copies_parent_environment() {
     // Given a parent session with temp-rooted environment values set.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let mut parent = ChatSessionState::new();
-    parent.set_project(Some(dir.path().join("demo-project")));
-    parent.set_cwd(dir.path().join("demo-cwd"));
-    parent.set_home(dir.path().join("demo-home"));
+    parent.set_project(Some(
+        dir.path
+            .join("demo-project")
+            .expect("temp root joins a bare name"),
+    ));
+    parent.set_cwd(
+        dir.path
+            .join("demo-cwd")
+            .expect("temp root joins a bare name"),
+    );
+    parent.set_home(
+        dir.path
+            .join("demo-home")
+            .expect("temp root joins a bare name"),
+    );
     parent.set_enabled_mcp_servers(std::collections::BTreeSet::from(["filesystem".to_owned()]));
 
     // When creating an attendant of that parent.

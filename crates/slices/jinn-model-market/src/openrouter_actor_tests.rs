@@ -34,6 +34,7 @@ use jinn_slices::Slices;
 use jinn_slices::TypedCell;
 use jinn_testutil::bus_harness::TestHarness;
 use jinn_testutil::bus_harness::await_recorded;
+use marked_path::{Absolute, MarkedPathAccess as _, MarkedPathBuf};
 use std::time::Duration;
 
 use super::OpenRouterMarketActor;
@@ -69,10 +70,10 @@ struct World {
     base_url: String,
     /// The market cache dir (a tempdir under the harness).
     #[expect(dead_code, reason = "kept so the tempdir outlives the test")]
-    cache_dir: std::path::PathBuf,
+    cache_dir: MarkedPathBuf<Absolute>,
     /// The epoch cache dir inside the market cache dir — the epoch
     /// actor's own drop target.
-    epoch_dir: std::path::PathBuf,
+    epoch_dir: MarkedPathBuf<Absolute>,
 }
 
 impl World {
@@ -82,7 +83,7 @@ impl World {
     /// The cells mint through a real `Slices` registry — the same
     /// registration path production's catalog walks — because
     /// `TypedCell::new` is registry-internal by design.
-    async fn start(base_url: &str, cache_dir: std::path::PathBuf) -> Self {
+    async fn start(base_url: &str, cache_dir: MarkedPathBuf<Absolute>) -> Self {
         let harness = TestHarness::new().await;
         let deps = harness.actor_deps().await;
         let slices = Slices::new();
@@ -95,7 +96,7 @@ impl World {
                 data: data.clone(),
                 ui: ui.clone(),
                 base_url: base_url.to_owned(),
-                cache_dir: cache_dir.clone(),
+                cache_dir: Some(cache_dir.clone()),
             },
         );
         Self {
@@ -103,7 +104,9 @@ impl World {
             data,
             ui,
             base_url: base_url.to_owned(),
-            epoch_dir: cache_dir.join("epoch"),
+            epoch_dir: cache_dir
+                .join("epoch")
+                .expect("cache root joins a bare name"),
             cache_dir,
         }
     }
@@ -115,7 +118,7 @@ impl World {
     /// fails fast and it falls back to the shipped seed — the delivery
     /// test is about which actors act, not about the epoch download
     /// succeeding.
-    async fn start_with_epoch_actor(base_url: &str, cache_dir: std::path::PathBuf) -> Self {
+    async fn start_with_epoch_actor(base_url: &str, cache_dir: MarkedPathBuf<Absolute>) -> Self {
         let world = Self::start(base_url, cache_dir).await;
         let deps = world.harness.actor_deps().await;
         EpochMarketActor::spawn(
@@ -206,14 +209,16 @@ async fn warm_models_cache_makes_no_outbound_request() {
     // with NO registered route: mockito answers 501 to any outbound
     // request, so a hidden fetch fails and never emits ModelsLoaded.
     let server = mockito::Server::new_async().await;
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let at = jiff::Timestamp::now() - jiff::SignedDuration::from_hours(1);
     crate::market_cache::store(
-        &dir.path().join("models.json"),
+        &dir.path
+            .join("models.json")
+            .expect("temp root joins a bare name"),
         &crate::market_cache::stamped(fixture_rows(), at),
     )
     .expect("seed the warm cache");
-    let world = World::start(&server.url(), dir.path().to_path_buf()).await;
+    let world = World::start(&server.url(), dir.path.clone()).await;
     let recorder = world.models_recorder().await;
 
     // When publishing FetchModels against the request-less server.
@@ -235,14 +240,16 @@ async fn expired_models_ttl_refetches() {
     // Given a disk cache stamped 8 days ago — past the 7-day TTL — and
     // a mock expecting exactly one GET.
     let mut server = mockito::Server::new_async().await;
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let at = jiff::Timestamp::now() - jiff::SignedDuration::from_hours(8 * 24);
     crate::market_cache::store(
-        &dir.path().join("models.json"),
+        &dir.path
+            .join("models.json")
+            .expect("temp root joins a bare name"),
         &crate::market_cache::stamped(fixture_rows(), at),
     )
     .expect("seed the stale cache");
-    let world = World::start(&server.url(), dir.path().to_path_buf()).await;
+    let world = World::start(&server.url(), dir.path.clone()).await;
     let recorder = world.models_recorder().await;
     let mock = expect_models_once(&mut server).await;
 
@@ -269,7 +276,7 @@ async fn epoch_loaded_rejoins_rows_without_a_refetch() {
     // checks read the server's live state, and the dir owns the
     // cache tree the actor writes into.
     let mut server = mockito::Server::new_async().await;
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let (world, models_mock, loaded) = {
         let joinable_catalog = serde_json::json!({
             "data": [
@@ -288,7 +295,7 @@ async fn epoch_loaded_rejoins_rows_without_a_refetch() {
             .with_body(joinable_catalog)
             .create_async()
             .await;
-        let world = World::start(&server.url(), dir.path().to_path_buf()).await;
+        let world = World::start(&server.url(), dir.path.clone()).await;
         let recorder = world.models_recorder().await;
         world.harness.publish(FetchModels).await;
         let loaded = await_recorded(&recorder, 1, SETTLE).await;
@@ -344,7 +351,7 @@ async fn refresh_all_drops_every_cache() {
     // checks read the server's live state, and the dir owns the
     // cache tree the refresh sweeps.
     let mut server = mockito::Server::new_async().await;
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let (world, recorder, models_mock, endpoints_mock) = {
         let at = jiff::Timestamp::now() - jiff::SignedDuration::from_hours(1);
         let detail = vec![MarketEndpointRow {
@@ -362,21 +369,27 @@ async fn refresh_all_drops_every_cache() {
         // A SECOND detail file for a model that is NOT displayed — refresh
         // must sweep the whole cache dir, not just the visible pane's file.
         crate::market_cache::store(
-            &dir.path().join("models.json"),
+            &dir.path
+                .join("models.json")
+                .expect("temp root joins a bare name"),
             &crate::market_cache::stamped(fixture_rows(), at),
         )
         .expect("seed models cache");
         crate::market_cache::store(
-            &dir.path().join("endpoints-test_model.json"),
+            &dir.path
+                .join("endpoints-test_model.json")
+                .expect("temp root joins a bare name"),
             &crate::market_cache::stamped(detail.clone(), at),
         )
         .expect("seed endpoints cache");
         crate::market_cache::store(
-            &dir.path().join("endpoints-other_model.json"),
+            &dir.path
+                .join("endpoints-other_model.json")
+                .expect("temp root joins a bare name"),
             &crate::market_cache::stamped(detail, at),
         )
         .expect("seed the non-displayed endpoint cache");
-        let world = World::start(&server.url(), dir.path().to_path_buf()).await;
+        let world = World::start(&server.url(), dir.path.clone()).await;
         // Put a detail id on the data cell so refresh knows what to drop.
         let displayed = jinn_model_market_msg::MarketDetail {
             model_id: "openrouter/test/model".to_owned(),
@@ -400,7 +413,7 @@ async fn refresh_all_drops_every_cache() {
     endpoints_mock.assert_async().await;
     // And the sweep dropped every endpoint disk file — the only one
     // present is the displayed model's freshly refetched file.
-    let leftovers: Vec<String> = std::fs::read_dir(dir.path())
+    let leftovers: Vec<String> = std::fs::read_dir(dir.path.as_path())
         .expect("cache dir readable")
         .flatten()
         .map(|e| e.file_name().to_string_lossy().into_owned())
@@ -426,15 +439,17 @@ async fn one_refresh_publish_reaches_both_market_actors_exactly_once() {
     // checks read the server's live state, and the dir owns the
     // cache tree the refresh sweeps.
     let mut server = mockito::Server::new_async().await;
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let (world, epoch_dir, models_recorder, epoch_recorder, models_mock) = {
         let at = jiff::Timestamp::now() - jiff::SignedDuration::from_hours(1);
         crate::market_cache::store(
-            &dir.path().join("models.json"),
+            &dir.path
+                .join("models.json")
+                .expect("temp root joins a bare name"),
             &crate::market_cache::stamped(fixture_rows(), at),
         )
         .expect("seed models cache");
-        let world = World::start_with_epoch_actor(&server.url(), dir.path().to_path_buf()).await;
+        let world = World::start_with_epoch_actor(&server.url(), dir.path.clone()).await;
         let epoch_dir = world.epoch_dir.clone();
         std::fs::create_dir_all(&epoch_dir).expect("seed epoch cache dir");
         // The recorders watch the halves' OUTPUTS. A recorder is a trouper
@@ -507,14 +522,16 @@ async fn refresh_all_emits_the_chain_fact_exactly_once() {
     // Given an actor whose models cache is warm and a mock serving the
     // refetch.
     let mut server = mockito::Server::new_async().await;
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let at = jiff::Timestamp::now() - jiff::SignedDuration::from_hours(1);
     crate::market_cache::store(
-        &dir.path().join("models.json"),
+        &dir.path
+            .join("models.json")
+            .expect("temp root joins a bare name"),
         &crate::market_cache::stamped(fixture_rows(), at),
     )
     .expect("seed the warm cache");
-    let world = World::start(&server.url(), dir.path().to_path_buf()).await;
+    let world = World::start(&server.url(), dir.path.clone()).await;
     // The chain fact's declarant set is the epoch actor's alone in
     // production. A tap here makes it two declarants of an EVENT, which
     // still broadcasts to both — the tap observes without changing the
@@ -592,8 +609,8 @@ async fn endpoint_debounce_drops_stale_fetches() {
     // Given an actor with an empty cache and a mock for the NEWEST
     // model only — a hit for the stale model would fail the test.
     let mut server = mockito::Server::new_async().await;
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let world = World::start(&server.url(), dir.path().to_path_buf()).await;
+    let dir = jinn_testutil::tempdir();
+    let world = World::start(&server.url(), dir.path.clone()).await;
     let recorder = world.endpoints_recorder().await;
     let newest = expect_endpoints_once(&mut server).await;
 
@@ -631,8 +648,8 @@ async fn equal_seq_fetch_still_serves_after_the_debounce() {
     // Given an actor whose UI sequence has not advanced since the
     // request was minted.
     let mut server = mockito::Server::new_async().await;
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let world = World::start(&server.url(), dir.path().to_path_buf()).await;
+    let dir = jinn_testutil::tempdir();
+    let world = World::start(&server.url(), dir.path.clone()).await;
     let recorder = world.endpoints_recorder().await;
     let mock = expect_endpoints_once(&mut server).await;
 
@@ -657,8 +674,8 @@ async fn fetch_models_without_a_key_still_serves_the_table() {
     // Given a world whose API-key store carries no OPENROUTER_API_KEY
     // (the harness's default) and a mock that requires NO auth header.
     let mut server = mockito::Server::new_async().await;
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let world = World::start(&server.url(), dir.path().to_path_buf()).await;
+    let dir = jinn_testutil::tempdir();
+    let world = World::start(&server.url(), dir.path.clone()).await;
     let recorder = world.models_recorder().await;
     let mock = server
         .mock("GET", "/models")
@@ -684,8 +701,8 @@ async fn fetch_models_without_a_key_still_serves_the_table() {
 async fn fetch_models_failure_emits_refresh_failed_and_keeps_stale_rows() {
     // Given an actor whose first fetch succeeded, then the mock breaks.
     let mut server = mockito::Server::new_async().await;
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let world = World::start(&server.url(), dir.path().to_path_buf()).await;
+    let dir = jinn_testutil::tempdir();
+    let world = World::start(&server.url(), dir.path.clone()).await;
     world.data.update(|d| {
         d.rows = fixture_rows();
     });
@@ -725,7 +742,7 @@ async fn fetch_models_fetches_no_detail() {
     // checks read the server's live state, and the dir owns the
     // cache tree the actor writes into.
     let mut server = mockito::Server::new_async().await;
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let (world, models_recorder, endpoints_recorder, models_mock, cheap_mock, dear_mock) = {
         let catalog = serde_json::json!({
             "data": [
@@ -744,7 +761,7 @@ async fn fetch_models_fetches_no_detail() {
             ]
         })
         .to_string();
-        let world = World::start(&server.url(), dir.path().to_path_buf()).await;
+        let world = World::start(&server.url(), dir.path.clone()).await;
         let models_recorder = world.models_recorder().await;
         let endpoints_recorder = world.endpoints_recorder().await;
         let models_mock = server

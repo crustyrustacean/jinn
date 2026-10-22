@@ -15,6 +15,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use jinn_cwd_msg::{CwdResolution, resolve_cwd_input};
 use jinn_project_msg::ProjectAddInputState;
 use jinn_slices::RenderFacts;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// Horizontal padding fraction for the popup (20% each side).
 const POPUP_H_PAD_FRAC: f32 = 0.20;
@@ -50,10 +51,7 @@ fn validation_footer<'a>(resolution: &'a CwdResolution, theme: &jinn_theme::Them
     match resolution {
         CwdResolution::Ok(path) => Line::from(vec![
             Span::styled("✓ ", Style::default().fg(theme.success)),
-            Span::styled(
-                path.to_string_lossy().into_owned(),
-                Style::default().fg(theme.success),
-            ),
+            Span::styled(path.to_string(), Style::default().fg(theme.success)),
         ]),
         CwdResolution::NotADir(path) => Line::from(vec![
             Span::styled("✗ ", Style::default().fg(theme.error_text)),
@@ -88,7 +86,8 @@ pub fn render_project_add_input(frame: &mut Frame<'_>, area: Rect, ctx: &RenderF
         .expect("project-add overlay renders only when its cell is registered");
     let state = cell.read();
     let current_cwd =
-        std::path::PathBuf::from(ctx.fact(super::SESSION_CWD_FACT).unwrap_or_default());
+        MarkedPathBuf::<Absolute>::new(ctx.fact(super::SESSION_CWD_FACT).unwrap_or_default())
+            .expect("the session.cwd fact is an absolute path");
     draw(frame, area, &state, &ctx.theme, &current_cwd);
 }
 
@@ -99,7 +98,7 @@ fn draw(
     popup_area: Rect,
     input_state: &ProjectAddInputState,
     theme: &jinn_theme::Theme,
-    current_cwd: &std::path::Path,
+    current_cwd: &MarkedPathBuf<Absolute>,
 ) {
     let title = Line::from(Span::styled(
         " Add project directory ",

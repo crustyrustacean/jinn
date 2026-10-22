@@ -867,10 +867,10 @@ impl InferenceActor {
             .read()
             .session
             .get(session_id)
-            .map(|session| session.cwd().to_path_buf());
+            .map(|session| session.cwd().clone());
 
         let guard = cell.read();
-        let set = guard.for_cwd(cwd.as_deref());
+        let set = guard.for_cwd(cwd.as_ref());
         set.filter(|set| !set.is_empty())
             .map(|set| set.new_session(session_id))
     }

@@ -39,6 +39,7 @@ use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
 use jinn_common::app_paths::AppPaths;
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 use overgraph::DatabaseEngine;
 use wherror::Error;
 
@@ -64,9 +65,43 @@ pub struct OvergraphServeArgs {
 
 /// Resolves the database directory: the explicit `--db` override, or the
 /// jinn-managed default under `AppPaths`.
+///
+/// # Panics
+///
+/// Panics when `--db` names a relative path: the MCP server is spawned as
+/// a child process whose only feedback channel at startup is process
+/// death plus stderr, so a malformed flag value aborts the launch loudly
+/// rather than silently opening the wrong directory.
+#[expect(
+    clippy::expect_used,
+    reason = "bare-name `default` join on the typed AppPaths base is infallible by construction"
+)]
 #[must_use]
-pub fn resolve_db_dir(db: Option<PathBuf>) -> PathBuf {
-    db.unwrap_or_else(|| AppPaths::default().graph_db_dir().join("default"))
+pub fn resolve_db_dir(db: Option<PathBuf>) -> MarkedPathBuf<Absolute> {
+    // A relative `--db` is user input at process startup: the server is a
+    // spawned child whose only startup feedback is process death plus
+    // stderr, so a malformed flag aborts the launch loudly.
+    #![allow(
+        clippy::panic,
+        clippy::panic_in_result_fn,
+        reason = "a relative --db is user input at process startup, where aborting the spawn is the only feedback channel"
+    )]
+    if let Some(db) = db {
+        let typed = MarkedPathBuf::<Absolute>::new(&db).unwrap_or_else(|error| {
+            panic!(
+                "--db must be an absolute path: {}: {error}",
+                db.to_string_lossy()
+            )
+        });
+        typed
+            .join("default")
+            .unwrap_or_else(|error| panic!("joining `default` keeps --db absolute: {error}"))
+    } else {
+        AppPaths::default()
+            .graph_db_dir()
+            .join("default")
+            .expect("name join keeps the base absolute")
+    }
 }
 
 /// Resolves the embedding model: the explicit `--embed-model` override, or
@@ -128,10 +163,7 @@ pub async fn serve(args: OvergraphServeArgs) -> Result<(), Report<ServeError>> {
     // The engine's own create-if-missing covers the leaf; this covers parents.
     if let Err(err) = std::fs::create_dir_all(&db_dir) {
         let report = Report::new(ServeError)
-            .attach(format!(
-                "failed to create database directory {}",
-                db_dir.display()
-            ))
+            .attach(format!("failed to create database directory {db_dir}"))
             .attach(format!("os error: {err}"));
         return Err(report);
     }
@@ -142,7 +174,7 @@ pub async fn serve(args: OvergraphServeArgs) -> Result<(), Report<ServeError>> {
         // reconciles it only here, and None -> Some upgrades an existing
         // graph-only database in place. A dimension mismatch with a
         // persisted database is a hard open error (below).
-        match DatabaseEngine::open(&db_dir, &db_options(model)) {
+        match DatabaseEngine::open(db_dir.as_path(), &db_options(model)) {
             Ok(engine) => {
                 let embedder: Arc<dyn embedder::Embedder> =
                     Arc::new(embedder::CandleEmbedder::with_default_cache(model));
@@ -156,20 +188,17 @@ pub async fn serve(args: OvergraphServeArgs) -> Result<(), Report<ServeError>> {
                     reason = "fatal startup failure before the transport starts"
                 )]
                 let () = {
-                    eprintln!(
-                        "overgraph: failed to open database at {}: {err}",
-                        db_dir.display()
-                    );
+                    eprintln!("overgraph: failed to open database at {db_dir}: {err}");
                 };
                 let report = Report::new(ServeError)
-                    .attach(format!("failed to open database at {}", db_dir.display()))
+                    .attach(format!("failed to open database at {db_dir}"))
                     .attach(format!("engine error: {err}"));
                 return Err(report);
             }
         }
     };
 
-    tracing::info!(db = %db_dir.display(), "overgraph MCP server listening on stdio");
+    tracing::info!(db = %db_dir, "overgraph MCP server listening on stdio");
 
     let transport = rmcp::transport::io::stdio();
     let running = rmcp::service::ServiceExt::serve(server, transport)

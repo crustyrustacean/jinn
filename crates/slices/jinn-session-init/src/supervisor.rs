@@ -17,12 +17,6 @@
 //! composition tail publishes [`SessionCwdChanged`] for the boot
 //! session — that publish, not `EnvironmentLoaded`, is what arms the
 //! initial session's discovery.
-//!
-//! Gating (recorded behavior): a payload whose cwd is still the `.`
-//! sentinel (a lifecycle setup is pending, the real cwd is unknown) is
-//! skipped silently — no scan, no event, no warn.
-
-use std::path::Path;
 
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
@@ -40,11 +34,7 @@ use jinn_skills_msg::ScanSkills;
 use jinn_workflows_msg::ScanWorkflows;
 
 use crate::commands::{RescanContext, RescanPrompts, RescanSkills, RescanWorkflows, RunDiscovery};
-
-/// The cwd sentinel meaning "the real working directory is not known
-/// yet" — a lifecycle setup is still pending. Scans gated on it are
-/// skipped silently.
-const CWD_SENTINEL: &str = ".";
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// The session-init supervisor: a pure payload router from the
 /// trigger topic to the discovery partition set.
@@ -136,22 +126,21 @@ impl SessionInitSupervisor {
     /// Runs a full discovery for `session_id` when the trigger's cwd
     /// has resolved. The payload's cwd rides into the command so the
     /// worker scans the same directory the trigger observed.
-    fn gated_run(&self, ctx: &mut MsgCtx<'_>, session_id: &SessionId, cwd: &Path) {
-        if Self::gate_open(cwd) {
-            self.send_to_worker(
-                ctx,
-                &RunDiscovery {
-                    session_id: session_id.clone(),
-                    cwd: cwd.to_path_buf(),
-                },
-            );
-        }
-    }
-
-    /// The pending-cwd gate: a trigger whose cwd is still the `.`
-    /// sentinel (lifecycle setup pending) gates closed, silently.
-    fn gate_open(cwd: &Path) -> bool {
-        cwd != Path::new(CWD_SENTINEL)
+    fn gated_run(
+        &self,
+        ctx: &mut MsgCtx<'_>,
+        session_id: &SessionId,
+        cwd: &MarkedPathBuf<Absolute>,
+    ) {
+        // The cwd is `Absolute` by construction, so there is no unresolved
+        // state to gate on: every trigger dispatches discovery directly.
+        self.send_to_worker(
+            ctx,
+            &RunDiscovery {
+                session_id: session_id.clone(),
+                cwd: cwd.clone(),
+            },
+        );
     }
 }
 
@@ -176,7 +165,7 @@ impl MsgHandler<SessionLoadCompleted> for SessionInitSupervisor {
             .read()
             .session
             .get(msg.session_id())
-            .map(|session| session.cwd().to_path_buf());
+            .map(|session| session.cwd().clone());
         if let Some(cwd) = cwd {
             self.gated_run(ctx, msg.session_id(), &cwd);
         }
@@ -193,56 +182,48 @@ impl MsgHandler<SessionCwdChanged> for SessionInitSupervisor {
 // cwd rides into the command.
 impl MsgHandler<ScanSkills> for SessionInitSupervisor {
     async fn handle(&mut self, msg: &ScanSkills, ctx: &mut MsgCtx<'_>) {
-        if Self::gate_open(&msg.cwd) {
-            self.send_to_worker(
-                ctx,
-                &RescanSkills {
-                    session_id: msg.session_id.clone(),
-                    cwd: msg.cwd.clone(),
-                },
-            );
-        }
+        self.send_to_worker(
+            ctx,
+            &RescanSkills {
+                session_id: msg.session_id.clone(),
+                cwd: msg.cwd.clone(),
+            },
+        );
     }
 }
 
 impl MsgHandler<RescanPromptTemplates> for SessionInitSupervisor {
     async fn handle(&mut self, msg: &RescanPromptTemplates, ctx: &mut MsgCtx<'_>) {
-        if Self::gate_open(&msg.cwd) {
-            self.send_to_worker(
-                ctx,
-                &RescanPrompts {
-                    session_id: msg.session_id.clone(),
-                    cwd: msg.cwd.clone(),
-                },
-            );
-        }
+        self.send_to_worker(
+            ctx,
+            &RescanPrompts {
+                session_id: msg.session_id.clone(),
+                cwd: msg.cwd.clone(),
+            },
+        );
     }
 }
 
 impl MsgHandler<ScanContextFiles> for SessionInitSupervisor {
     async fn handle(&mut self, msg: &ScanContextFiles, ctx: &mut MsgCtx<'_>) {
-        if Self::gate_open(&msg.cwd) {
-            self.send_to_worker(
-                ctx,
-                &RescanContext {
-                    session_id: msg.session_id.clone(),
-                    cwd: msg.cwd.clone(),
-                },
-            );
-        }
+        self.send_to_worker(
+            ctx,
+            &RescanContext {
+                session_id: msg.session_id.clone(),
+                cwd: msg.cwd.clone(),
+            },
+        );
     }
 }
 
 impl MsgHandler<ScanWorkflows> for SessionInitSupervisor {
     async fn handle(&mut self, msg: &ScanWorkflows, ctx: &mut MsgCtx<'_>) {
-        if Self::gate_open(&msg.cwd) {
-            self.send_to_worker(
-                ctx,
-                &RescanWorkflows {
-                    session_id: msg.session_id.clone(),
-                    cwd: msg.cwd.clone(),
-                },
-            );
-        }
+        self.send_to_worker(
+            ctx,
+            &RescanWorkflows {
+                session_id: msg.session_id.clone(),
+                cwd: msg.cwd.clone(),
+            },
+        );
     }
 }

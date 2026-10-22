@@ -7,9 +7,8 @@
 //! of its own — a third copy of scan logic is exactly what this must not
 //! become.
 
-use std::path::Path;
-
 use jinn_workflows_msg::Workflow;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// Scans the workflows directory for admitted workflows.
 ///
@@ -18,6 +17,6 @@ use jinn_workflows_msg::Workflow;
 /// `description` required, directory name as the name fallback. A
 /// nonexistent dir yields an empty list.
 #[must_use]
-pub fn scan_workflows(dir: &Path) -> Vec<Workflow> {
+pub fn scan_workflows(dir: &MarkedPathBuf<Absolute>) -> Vec<Workflow> {
     jinn_workflows::scan_workflows(dir)
 }

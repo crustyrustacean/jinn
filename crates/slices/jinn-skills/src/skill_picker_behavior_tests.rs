@@ -26,8 +26,8 @@
     reason = "test module, panics are acceptable"
 )]
 
+use marked_path::{Absolute, MarkedPathBuf};
 use std::collections::HashSet;
-use std::path::PathBuf;
 
 use jinn_core_types::{ChatEntry, NameFilter};
 use jinn_skills_msg::{Skill, SkillPickerState, SkillSource, skill_picker_slot};
@@ -94,9 +94,11 @@ fn skill(name: &str) -> Skill {
     Skill {
         name: name.to_owned(),
         description: format!("the {name} skill"),
-        file_path: PathBuf::from(format!("/skills/{name}/SKILL.md")),
+        file_path: MarkedPathBuf::<Absolute>::new(format!("/skills/{name}/SKILL.md"))
+            .expect("rooted test path"),
         body: format!("body of {name}"),
-        base_dir: PathBuf::from(format!("/skills/{name}")),
+        base_dir: MarkedPathBuf::<Absolute>::new(format!("/skills/{name}"))
+            .expect("rooted test path"),
         source: SkillSource::Global,
     }
 }
@@ -122,9 +124,11 @@ fn tall_skill(name: &str, lines: usize) -> Skill {
     Skill {
         name: name.to_owned(),
         description: format!("the {name} skill"),
-        file_path: PathBuf::from(format!("/skills/{name}/SKILL.md")),
+        file_path: MarkedPathBuf::<Absolute>::new(format!("/skills/{name}/SKILL.md"))
+            .expect("rooted test path"),
         body,
-        base_dir: PathBuf::from(format!("/skills/{name}")),
+        base_dir: MarkedPathBuf::<Absolute>::new(format!("/skills/{name}"))
+            .expect("rooted test path"),
         source: SkillSource::Global,
     }
 }

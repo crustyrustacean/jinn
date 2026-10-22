@@ -16,8 +16,6 @@
 //!   an export carries the whole payload rather than the head the terminal
 //!   showed. Truncation is a display affordance and is not reproduced.
 
-use std::path::PathBuf;
-
 use jiff::Timestamp;
 use jinn_core_types::attachment::Attachment;
 use jinn_core_types::chat_entry::ChatEntry;
@@ -25,6 +23,7 @@ use jinn_core_types::chat_entry::ChatEntryKind;
 use jinn_core_types::model_selection::ModelSelection;
 use jinn_core_types::tool_result_status::ToolResultStatus;
 use jinn_session_state::snapshot::SessionSnapshot;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// How a tool result finished.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,7 +126,7 @@ pub struct ExportDocument {
     /// The session's model selection, rendered as text.
     pub model: String,
     /// The working directory the session ran in.
-    pub cwd: PathBuf,
+    pub cwd: MarkedPathBuf<Absolute>,
     /// When the session was created.
     pub created_at: Timestamp,
     /// When the session was last updated.

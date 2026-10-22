@@ -199,14 +199,14 @@ mod tests {
 
         fn push_session_error(&mut self, _message: &str) {}
 
-        fn active_session_cwd(&self) -> std::path::PathBuf {
-            self.kernel.active_session().cwd().to_path_buf()
+        fn active_session_cwd(&self) -> marked_path::MarkedPathBuf<marked_path::Absolute> {
+            self.kernel.active_session().cwd().clone()
         }
 
         fn publish_session_cwd(
             &self,
             _session_id: jinn_core_types::SessionId,
-            _cwd: std::path::PathBuf,
+            _cwd: marked_path::MarkedPathBuf<marked_path::Absolute>,
         ) -> jinn_slices::PublishClosure {
             Box::new(|_sink| {})
         }

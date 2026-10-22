@@ -27,8 +27,7 @@ use crate::tool_types::ToolContext;
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::ToolCall;
 use jinn_kernel::common::app_paths::AppPaths;
-use std::path::Path;
-use std::path::PathBuf;
+use marked_path::{Absolute, MarkedPathBuf};
 
 fn call(command: &str) -> ToolCall {
     ToolCall {
@@ -40,16 +39,20 @@ fn call(command: &str) -> ToolCall {
 
 /// Builds a tool context rooted at `app_paths_root` with `cwd` as the
 /// working directory. Both paths must outlive the returned context — each
-/// test owns the `tempfile::TempDir` they are derived from.
-fn ctx_with(session_id: Option<SessionId>, app_paths_root: &Path, cwd: &Path) -> ToolContext {
+/// test owns the [`jinn_testutil::JinnTempDir`] they are derived from.
+fn ctx_with(
+    session_id: Option<SessionId>,
+    app_paths_root: &MarkedPathBuf<Absolute>,
+    cwd: &MarkedPathBuf<Absolute>,
+) -> ToolContext {
     ToolContext {
-        cwd: cwd.to_path_buf(),
+        cwd: cwd.clone(),
         config: jinn_config::testutil::config_layer(""),
         shells: Default::default(),
         timeout: None,
         state: None,
         session_id,
-        app_paths: AppPaths::new_in(app_paths_root),
+        app_paths: AppPaths::new_in(&app_paths_root.as_marked_path()),
         bus: None,
         max_output_lines: None,
         max_output_bytes: None,
@@ -67,8 +70,8 @@ fn ctx_with(session_id: Option<SessionId>, app_paths_root: &Path, cwd: &Path) ->
 #[tokio::test]
 async fn spawn_without_a_chat_session_is_rejected() {
     // Given a tool context with no chat session (no conversation is active).
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let ctx = ctx_with(None, dir.path(), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let ctx = ctx_with(None, &dir.path, &dir.path);
 
     // When executing the spawn tool.
     let result = execute(call("htop"), ctx).await;
@@ -86,8 +89,8 @@ async fn spawn_without_a_chat_session_is_rejected() {
 #[tokio::test]
 async fn spawn_without_a_coordinator_reports_unavailable() {
     // Given a context with a chat session but no coordinator (test harnesses).
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let ctx = ctx_with(Some(SessionId::new()), dir.path(), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let ctx = ctx_with(Some(SessionId::new()), &dir.path, &dir.path);
 
     // When executing the spawn tool.
     let result = execute(call("htop"), ctx).await;
@@ -101,8 +104,8 @@ async fn spawn_without_a_coordinator_reports_unavailable() {
 #[tokio::test]
 async fn spawn_without_a_command_is_rejected() {
     // Given a context with a chat session but a call missing `command`.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let ctx = ctx_with(Some(SessionId::new()), dir.path(), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let ctx = ctx_with(Some(SessionId::new()), &dir.path, &dir.path);
     let call = ToolCall {
         id: "call-2".into(),
         name: "interactive_term".into(),
@@ -197,8 +200,8 @@ fn started_result_has_no_model_facing_session_id() {
 #[tokio::test]
 async fn send_requires_a_chat_session_context() {
     // Given a tool context with no chat session.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let ctx = ctx_with(None, dir.path(), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let ctx = ctx_with(None, &dir.path, &dir.path);
     let call = ToolCall {
         id: "call-3".into(),
         name: "interactive_term_send".into(),
@@ -221,8 +224,8 @@ async fn send_requires_a_chat_session_context() {
 #[tokio::test]
 async fn kill_requires_a_chat_session_context() {
     // Given a tool context with no chat session.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let ctx = ctx_with(None, dir.path(), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let ctx = ctx_with(None, &dir.path, &dir.path);
     let call = ToolCall {
         id: "call-4".into(),
         name: "interactive_term_kill".into(),
@@ -245,8 +248,8 @@ async fn kill_requires_a_chat_session_context() {
 #[tokio::test]
 async fn send_without_a_coordinator_reports_unavailable() {
     // Given a context with a chat session but no coordinator.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let ctx = ctx_with(Some(SessionId::new()), dir.path(), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let ctx = ctx_with(Some(SessionId::new()), &dir.path, &dir.path);
     let call = ToolCall {
         id: "call-5".into(),
         name: "interactive_term_send".into(),
@@ -360,7 +363,7 @@ impl jinn_term_msg::TermHandle for FakeTermHandle {
         &self,
         _chat_session_id: SessionId,
         command: String,
-        _cwd: PathBuf,
+        _cwd: MarkedPathBuf<Absolute>,
         _size: (u16, u16),
         _max_wait: std::time::Duration,
     ) -> Result<jinn_term_msg::SpawnTermOutcome, jinn_term_msg::TermAskError> {
@@ -410,8 +413,8 @@ impl jinn_term_msg::TermHandle for FakeTermHandle {
 async fn spawn_tool_uses_the_term_handle_trait() {
     // Given a tool context carrying a fake term handle.
     let fake = FakeTermHandle::default();
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut ctx = ctx_with(Some(SessionId::new()), dir.path(), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let mut ctx = ctx_with(Some(SessionId::new()), &dir.path, &dir.path);
     ctx.interactive_term = Some(std::sync::Arc::new(fake.clone()));
     let call = call("htop");
 
@@ -429,8 +432,8 @@ async fn spawn_tool_uses_the_term_handle_trait() {
 async fn kill_tool_uses_the_term_handle_trait() {
     // Given a tool context carrying a fake term handle.
     let fake = FakeTermHandle::default();
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let mut ctx = ctx_with(Some(SessionId::new()), dir.path(), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let mut ctx = ctx_with(Some(SessionId::new()), &dir.path, &dir.path);
     ctx.interactive_term = Some(std::sync::Arc::new(fake.clone()));
     let call = ToolCall {
         id: "call-2".into(),
@@ -454,8 +457,8 @@ async fn kill_tool_uses_the_term_handle_trait() {
 #[tokio::test]
 async fn tools_fail_gracefully_when_the_handle_is_unset() {
     // Given a tool context with no handle (slice not activated).
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let ctx = ctx_with(Some(SessionId::new()), dir.path(), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let ctx = ctx_with(Some(SessionId::new()), &dir.path, &dir.path);
     let call = call("htop");
 
     // When executing the spawn tool.

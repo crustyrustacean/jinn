@@ -5,6 +5,7 @@ edition.workspace = true
 description = "The attendant slice — fires attendants on parent turn completion and re-runs them."
 
 [dependencies]
+marked-path = { workspace = true }
 jinn-attendant-msg = { workspace = true }
 jiff = { workspace = true }
 jinn-app-state = { workspace = true }

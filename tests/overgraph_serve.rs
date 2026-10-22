@@ -6,6 +6,7 @@
 //! the tools are advertised over the wire and that graph data persists
 //! across child processes on the same database directory.
 
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 use std::path::PathBuf;
 
 use jinn_mcp::client::{McpClient, ServerCommand};
@@ -24,7 +25,7 @@ fn jinn_bin() -> PathBuf {
 /// config spawns the child bare, and MCP subcommands are exempt from
 /// the debug-build `--db-path` guard (the child never opens the session
 /// store).
-async fn connect(bin: &std::path::Path, db: &std::path::Path) -> McpClient {
+async fn connect(bin: &std::path::Path, db: &MarkedPathBuf<Absolute>) -> McpClient {
     let command = ServerCommand {
         program: bin.to_string_lossy().into_owned(),
         args: vec![
@@ -56,8 +57,8 @@ fn text_of(result: &rmcp::model::CallToolResult) -> String {
 async fn served_child_advertises_the_graph_tools() {
     // Given the real jinn binary serving overgraph on a fresh db dir.
     let bin = jinn_bin();
-    let db = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect(&bin, db.path()).await;
+    let db = jinn_testutil::tempdir();
+    let mut client = connect(&bin, &db.path).await;
 
     // When listing tools.
     let tools = client.list_tools().await.expect("tools/list");
@@ -85,8 +86,8 @@ async fn served_child_advertises_the_graph_tools() {
 async fn served_child_returns_the_whole_vendored_reference() {
     // Given the real jinn binary serving overgraph on a fresh db dir.
     let bin = jinn_bin();
-    let db = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect(&bin, db.path()).await;
+    let db = jinn_testutil::tempdir();
+    let mut client = connect(&bin, &db.path).await;
 
     // When calling the docs tool with no arguments.
     let docs_result = client
@@ -118,8 +119,8 @@ async fn served_child_returns_the_whole_vendored_reference() {
 async fn served_child_upserts_a_node() {
     // Given the real jinn binary serving overgraph on a fresh db dir.
     let bin = jinn_bin();
-    let db = jinn_testutil::tempdir().expect("temp dir");
-    let mut client = connect(&bin, db.path()).await;
+    let db = jinn_testutil::tempdir();
+    let mut client = connect(&bin, &db.path).await;
 
     // When calling the upsert tool.
     let result = client
@@ -148,9 +149,9 @@ async fn served_child_upserts_a_node() {
 async fn graph_data_persists_across_child_processes() {
     // Given a first child that upserted a node and exited.
     let bin = jinn_bin();
-    let db = jinn_testutil::tempdir().expect("temp dir");
+    let db = jinn_testutil::tempdir();
     {
-        let mut first = connect(&bin, db.path()).await;
+        let mut first = connect(&bin, &db.path).await;
         first
             .call_tool(
                 "graph_upsert_node",
@@ -167,7 +168,7 @@ async fn graph_data_persists_across_child_processes() {
     }
 
     // When a second child opens the same db dir and queries.
-    let mut second = connect(&bin, db.path()).await;
+    let mut second = connect(&bin, &db.path).await;
     let result = second
         .call_tool(
             "graph_query",

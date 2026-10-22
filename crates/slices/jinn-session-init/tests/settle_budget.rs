@@ -19,6 +19,8 @@ use jinn_core_types::SessionId;
 use jinn_kernel::common::app_paths::AppPaths;
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::state::State;
+use marked_path::MarkedPathAccess as _;
+use marked_path::{Absolute, MarkedPathBuf};
 
 use jinn_session_init::commands::{RescanPrompts, RunDiscovery};
 use jinn_session_init::worker::SETTLE_BUDGET_ARG;
@@ -39,8 +41,8 @@ struct Wired {
     /// Schema names of every `Sent` broadcast observed on the system.
     sent: Arc<Mutex<Vec<String>>>,
     /// The VCS-rooted project dir the command payloads point at.
-    project: std::path::PathBuf,
-    _dir: Box<tempfile::TempDir>,
+    project: MarkedPathBuf<Absolute>,
+    _dir: Box<jinn_testutil::JinnTempDir>,
 }
 
 impl Wired {
@@ -52,11 +54,17 @@ impl Wired {
     /// letting tests shorten the settle budget. Spawns the notifier so
     /// settles surface as summary entries.
     async fn wire_with_args(args_template: trouper::json::Json) -> Self {
-        let dir = Box::new(jinn_testutil::tempdir().expect("temp dir"));
-        let home = dir.path().to_path_buf();
-        let project = home.join("proj");
-        std::fs::create_dir_all(project.join(".git")).expect("project dir");
-        let paths = AppPaths::new_in(&home);
+        let dir = Box::new(jinn_testutil::tempdir());
+        let home = dir.path.clone();
+        let project = home.join("proj").expect("temp root joins a bare name");
+        std::fs::create_dir_all(
+            project
+                .join(".git")
+                .expect("project root joins a bare name")
+                .as_path(),
+        )
+        .expect("project dir");
+        let paths = AppPaths::new_in(&home.as_marked_path());
         let state = State::new(AppState::default());
         let session_id = state.read().session.active_session_id().clone();
         let fabric = jinn_testutil::TestFabric::new();
@@ -105,7 +113,7 @@ impl Wired {
                 trouper::actor::ActorPath::new(jinn_session_init::DISCOVERY_PATH),
                 serde_json::json!({
                     "session_id": self.session_id.to_string(),
-                    "cwd": self.project.to_string_lossy(),
+                    "cwd": self.project.to_string(),
                 }),
             ))
             .await;
@@ -123,7 +131,7 @@ impl Wired {
                 trouper::actor::ActorPath::new(jinn_session_init::DISCOVERY_PATH),
                 serde_json::json!({
                     "session_id": self.session_id.to_string(),
-                    "cwd": self.project.to_string_lossy(),
+                    "cwd": self.project.to_string(),
                 }),
             ))
             .await;
@@ -156,11 +164,13 @@ impl Wired {
 }
 
 /// Writes one skill under `<base>/.agents/skills/<name>`.
-fn write_skill(base: &std::path::Path, name: &str) {
-    let dir = base.join(".agents").join("skills").join(name);
-    std::fs::create_dir_all(&dir).expect("create skill dir");
+fn write_skill(base: &MarkedPathBuf<Absolute>, name: &str) {
+    let dir = base
+        .join_all([".agents", "skills", name])
+        .expect("project root joins bare names");
+    std::fs::create_dir_all(dir.as_path()).expect("create skill dir");
     std::fs::write(
-        dir.join("SKILL.md"),
+        dir.join("SKILL.md").expect("skill dir joins a bare name"),
         format!("---\nname: {name}\ndescription: {name} skill\n---\n\nbody"),
     )
     .expect("write SKILL.md");
@@ -182,7 +192,7 @@ fn write_skill(base: &std::path::Path, name: &str) {
 /// Unix-only: the stall needs a fifo.
 #[cfg(unix)]
 struct StalledScan {
-    fifo: std::path::PathBuf,
+    fifo: MarkedPathBuf<Absolute>,
     release: std::sync::Arc<std::sync::Barrier>,
     /// Set by `release` so `Drop` becomes a no-op after an explicit
     /// release (the payload has already been consumed by the scanner).
@@ -191,13 +201,17 @@ struct StalledScan {
 
 #[cfg(unix)]
 impl StalledScan {
-    fn new(project: &std::path::Path) -> Self {
+    fn new(project: &MarkedPathBuf<Absolute>) -> Self {
         use std::sync::Arc;
         use std::sync::atomic::AtomicBool;
 
-        let prompts_dir = project.join(".agents").join("prompts");
-        std::fs::create_dir_all(&prompts_dir).expect("create prompts dir");
-        let fifo = prompts_dir.join("stuck.md");
+        let prompts_dir = project
+            .join_all([".agents", "prompts"])
+            .expect("project root joins bare names");
+        std::fs::create_dir_all(prompts_dir.as_path()).expect("create prompts dir");
+        let fifo = prompts_dir
+            .join("stuck.md")
+            .expect("prompts dir joins a bare name");
         let release = Arc::new(std::sync::Barrier::new(2));
         let waiter = Arc::clone(&release);
         mkfifo(&fifo);
@@ -205,7 +219,7 @@ impl StalledScan {
         std::thread::spawn(move || {
             // Holding the write end open without writing parks the
             // scanner's read on an empty pipe until this thread exits.
-            let file = std::fs::File::create(&writer_end).expect("open fifo write end");
+            let file = std::fs::File::create(writer_end.as_path()).expect("open fifo write end");
             waiter.wait();
             drop(file);
         });
@@ -236,7 +250,7 @@ impl StalledScan {
 
     /// The unblocking write, shared by `release` and `Drop`.
     fn write_and_close(
-        fifo: &std::path::Path,
+        fifo: &MarkedPathBuf<Absolute>,
         release: &std::sync::Arc<std::sync::Barrier>,
         content: &[u8],
     ) {
@@ -283,7 +297,7 @@ impl Drop for StalledScan {
 
 /// `mkfifo(3)` via the libc binding the platform links.
 #[cfg(unix)]
-fn mkfifo(path: &std::path::Path) {
+fn mkfifo(path: &MarkedPathBuf<Absolute>) {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt as _;
 
@@ -348,7 +362,14 @@ async fn timed_settle_snapshot_counts_finished_resources() {
     .await;
     let stalled = StalledScan::new(&wired.project);
     write_skill(&wired.project, "quick-skill");
-    std::fs::write(wired.project.join("AGENTS.md"), "context body").expect("write AGENTS.md");
+    std::fs::write(
+        wired
+            .project
+            .join("AGENTS.md")
+            .expect("project root joins a bare name"),
+        "context body",
+    )
+    .expect("write AGENTS.md");
 
     // When a discovery runs and the budget fires.
     wired.run_discovery().await;
@@ -374,14 +395,26 @@ async fn full_discovery_settles_without_a_delay_note() {
     }))
     .await;
     write_skill(&wired.project, "quick-skill");
-    let prompts_dir = wired.project.join(".agents").join("prompts");
-    std::fs::create_dir_all(&prompts_dir).expect("prompts dir");
+    let prompts_dir = wired
+        .project
+        .join_all([".agents", "prompts"])
+        .expect("project root joins bare names");
+    std::fs::create_dir_all(prompts_dir.as_path()).expect("prompts dir");
     std::fs::write(
-        prompts_dir.join("hello.md"),
+        prompts_dir
+            .join("hello.md")
+            .expect("prompts dir joins a bare name"),
         "+++\nname = \"hello\"\ndescription = \"Say hello\"\n+++\nHello!",
     )
     .expect("write prompt");
-    std::fs::write(wired.project.join("AGENTS.md"), "context body").expect("write AGENTS.md");
+    std::fs::write(
+        wired
+            .project
+            .join("AGENTS.md")
+            .expect("project root joins a bare name"),
+        "context body",
+    )
+    .expect("write AGENTS.md");
 
     // When a full discovery runs.
     wired.run_discovery().await;
@@ -426,8 +459,8 @@ async fn worker_publishes_onto_schema_named_topics() {
 #[rstest::rstest]
 #[tokio::test]
 async fn worker_scans_command_cwd_not_state() {
-    // Given a wired partition set (no cwd seeded into state — its
-    // sentinel stays) with one skill under the project dir.
+    // Given a wired partition set (no cwd seeded into state) with one
+    // skill under the project dir.
     let wired = Wired::wire().await;
     write_skill(&wired.project, "command-cwd-skill");
 
@@ -453,10 +486,15 @@ async fn manual_prompt_rescan_settles_with_a_summary() {
     // Given a wired partition set with one prompt under the project
     // dir (the unscanned resources have nothing on disk).
     let wired = Wired::wire().await;
-    let prompts_dir = wired.project.join(".agents").join("prompts");
-    std::fs::create_dir_all(&prompts_dir).expect("prompts dir");
+    let prompts_dir = wired
+        .project
+        .join_all([".agents", "prompts"])
+        .expect("project root joins bare names");
+    std::fs::create_dir_all(prompts_dir.as_path()).expect("prompts dir");
     std::fs::write(
-        prompts_dir.join("rescanned.md"),
+        prompts_dir
+            .join("rescanned.md")
+            .expect("prompts dir joins a bare name"),
         "+++\nname = \"rescanned\"\ndescription = \"Found by rescan\"\n+++\nFound!",
     )
     .expect("write prompt");
@@ -564,7 +602,7 @@ async fn idle_worker_passivates_and_reactivates_on_next_trigger() {
             trouper::actor::ActorPath::new(jinn_session_init::DISCOVERY_PATH),
             serde_json::json!({
                 "session_id": wired.session_id.to_string(),
-                "cwd": wired.project.to_string_lossy(),
+                "cwd": wired.project.to_string(),
             }),
         ))
         .await;

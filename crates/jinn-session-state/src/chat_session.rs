@@ -40,6 +40,7 @@ use jinn_skills_msg::Skill;
 use jinn_skills_msg::parse_loaded_skill_name;
 use jinn_token_count_msg::TokenRecord;
 use jinn_workflows_msg::Workflow;
+use marked_path::{Absolute, MarkedPathBuf};
 
 use jinn_chat_log_view_msg::SavedHistoryPosition;
 use jinn_session_lifecycle_msg::LifecycleScriptState;
@@ -329,7 +330,11 @@ impl ChatSessionState {
     )]
     pub(crate) fn push_entry_raw(&mut self, entry: &mut ChatEntry) -> usize {
         self.core.identity.last_history_activity_at = Timestamp::now();
-        let ctx = PathResolveContext::new(&self.core.lifecycle.cwd, &self.core.lifecycle.home);
+        let (cwd_view, home_view) = (
+            self.core.lifecycle.cwd.as_marked_path(),
+            self.core.lifecycle.home.as_marked_path(),
+        );
+        let ctx = PathResolveContext::new(&cwd_view, &home_view);
         expand_user_entry(
             entry,
             &self.core.ephemeral.discovered_prompt_templates,
@@ -962,7 +967,11 @@ impl ChatSessionState {
     /// once on the first pass, while degraded tokens (already recorded in
     /// [`ChatEntryKind::User::outcome`]) stay literal across re-expansion.
     pub fn expand_entry(&self, entry: &mut ChatEntry) {
-        let ctx = PathResolveContext::new(&self.core.lifecycle.cwd, &self.core.lifecycle.home);
+        let (cwd_view, home_view) = (
+            self.core.lifecycle.cwd.as_marked_path(),
+            self.core.lifecycle.home.as_marked_path(),
+        );
+        let ctx = PathResolveContext::new(&cwd_view, &home_view);
         expand_user_entry(
             entry,
             &self.core.ephemeral.discovered_prompt_templates,
@@ -3332,7 +3341,7 @@ impl ChatSessionState {
     }
 
     /// Returns this session's working directory for tool execution.
-    pub fn cwd(&self) -> &std::path::Path {
+    pub fn cwd(&self) -> &MarkedPathBuf<Absolute> {
         &self.core.lifecycle.cwd
     }
 
@@ -3357,24 +3366,24 @@ impl ChatSessionState {
     }
 
     /// Sets this session's working directory.
-    pub fn set_cwd(&mut self, cwd: std::path::PathBuf) {
+    pub fn set_cwd(&mut self, cwd: MarkedPathBuf<Absolute>) {
         self.core.lifecycle.cwd = cwd;
     }
 
     /// Returns the project directory this session is associated with, if any.
-    pub fn project(&self) -> Option<&std::path::Path> {
-        self.core.identity.project.as_deref()
+    pub fn project(&self) -> Option<&MarkedPathBuf<Absolute>> {
+        self.core.identity.project.as_ref()
     }
 
     /// Stamps the session's project association. Callers are the projects UI
     /// flow (at session creation) and subagent spawning (inheriting the
     /// parent's stamp); the stamp never follows later cwd changes.
-    pub fn set_project(&mut self, project: Option<std::path::PathBuf>) {
+    pub fn set_project(&mut self, project: Option<MarkedPathBuf<Absolute>>) {
         self.core.identity.project = project;
     }
 
     /// Sets this session's home directory for resolving `@~/path` references.
-    pub fn set_home(&mut self, home: std::path::PathBuf) {
+    pub fn set_home(&mut self, home: MarkedPathBuf<Absolute>) {
         self.core.lifecycle.home = home;
     }
 

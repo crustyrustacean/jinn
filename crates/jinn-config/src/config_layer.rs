@@ -14,7 +14,7 @@
 //! comments, key order, sibling sections, and any table this layer does
 //! not model.
 
-use std::path::PathBuf;
+use marked_path::{Absolute, MarkedPathBuf};
 use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
@@ -138,7 +138,7 @@ pub trait ConfigDocumentStorage: Send + Sync + 'static {
 /// The production backend: the document lives at a path on disk.
 #[derive(Debug)]
 pub struct FilesystemConfigStorage {
-    path: PathBuf,
+    path: MarkedPathBuf<Absolute>,
 }
 
 impl FilesystemConfigStorage {
@@ -152,13 +152,13 @@ impl FilesystemConfigStorage {
 
     /// Points a backend at the document's path.
     #[must_use]
-    pub fn new(path: PathBuf) -> Self {
+    pub fn new(path: MarkedPathBuf<Absolute>) -> Self {
         Self { path }
     }
 
     /// The document's path.
     #[must_use]
-    pub fn path(&self) -> &PathBuf {
+    pub fn path(&self) -> &MarkedPathBuf<Absolute> {
         &self.path
     }
 }
@@ -182,7 +182,7 @@ impl ConfigDocumentStorage for FilesystemConfigStorage {
             // chose.
             Err(error) => {
                 tracing::warn!(
-                    path = %self.path.display(),
+                    path = %self.path,
                     %error,
                     "config document exists but could not be read; falling back to an empty document"
                 );
@@ -191,13 +191,13 @@ impl ConfigDocumentStorage for FilesystemConfigStorage {
         };
         text.parse::<DocumentMut>()
             .change_context(ConfigError::Malformed {
-                detail: format!("{} is not valid TOML", self.path.display()),
+                detail: format!("{} is not valid TOML", self.path),
             })
     }
 
     fn write(&self, doc: &DocumentMut) -> Result<(), Report<ConfigError>> {
         std::fs::write(&self.path, doc.to_string()).change_context(ConfigError::Storage {
-            detail: format!("failed to write {}", self.path.display()),
+            detail: format!("failed to write {}", self.path),
         })
     }
 }

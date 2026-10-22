@@ -50,6 +50,7 @@
 //! arrive late and local backends need none. With no `model`, the child
 //! inherits the parent's whole [`ModelSelection`], alloys included.
 
+use marked_path::{Absolute, MarkedPathBuf};
 use std::time::Duration;
 
 use crate::BoxedToolFuture;
@@ -288,7 +289,7 @@ fn build_child(
     parent: &ChatSessionState,
     parent_id: &SessionId,
     args: &SpawnSubagentArgs,
-    app_home: &std::path::Path,
+    app_home: &MarkedPathBuf<Absolute>,
 ) -> ChatSessionState {
     let mut child = ChatSessionState::new_child(parent_id, true);
     let profile = parent.profile();
@@ -318,13 +319,13 @@ fn build_child(
         p.tool_filter = Some(child_filter);
         p.skill_filter.clone_from(&profile.skill_filter);
     }
-    child.set_cwd(parent.cwd().to_path_buf());
+    child.set_cwd(parent.cwd().clone());
     // Subagents inherit the parent's project association (stamped at the
     // parent's creation; the child's cwd may differ but the project does not).
-    child.set_project(parent.project().map(std::path::Path::to_path_buf));
+    child.set_project(parent.project().cloned());
     // Home resolves fresh at creation in every other path (runtime-only,
     // not persisted); the `spawn_subagent` tool's ctx carries the app paths.
-    child.set_home(app_home.to_path_buf());
+    child.set_home(app_home.clone());
     child.set_enabled_mcp_servers(parent.enabled_mcp_servers().clone());
     let title = args
         .description
@@ -533,7 +534,7 @@ async fn run(call: ToolCall, ctx: ToolContext) -> ToolResult {
         build_child(parent, &parent_id, &args, ctx.app_paths.home_dir())
     };
     let child_id = child.session_id().clone();
-    let child_cwd = child.cwd().to_path_buf();
+    let child_cwd = child.cwd().clone();
     // The settle gate's expectation set, frozen at spawn: the MCP coordinator
     // reconciles exactly the child's enabled set on SessionCreated, so these
     // are the servers whose terminal statuses the gate waits on.

@@ -5,6 +5,7 @@ edition.workspace = true
 description = "The export slice: writes a session to a single self-contained file, choosing the format from the path extension."
 
 [dependencies]
+marked-path = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-export-msg = { workspace = true }
 jinn-kernel = { workspace = true }

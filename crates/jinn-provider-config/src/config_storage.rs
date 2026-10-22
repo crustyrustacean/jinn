@@ -4,8 +4,8 @@
 //! provider configuration. [`FilesystemConfigStorage`] is the production
 //! implementation; [`InMemoryConfigStorage`] is for testing.
 
+use marked_path::{Absolute, MarkedPathBuf};
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use error_stack::{Report, ResultExt as _};
@@ -47,13 +47,13 @@ pub trait ConfigStorage: Send + Sync + 'static {
 /// Production derives the default path from `AppPaths`.
 pub struct FilesystemConfigStorage {
     /// Path to the config file.
-    path: PathBuf,
+    path: MarkedPathBuf<Absolute>,
 }
 
 impl FilesystemConfigStorage {
     /// Creates a storage backed by an explicit path.
     #[must_use]
-    pub fn new(path: PathBuf) -> Self {
+    pub fn new(path: MarkedPathBuf<Absolute>) -> Self {
         Self { path }
     }
 
@@ -212,6 +212,7 @@ mod tests {
 
     use super::*;
     use crate::config::{AliasEntry, ProviderEntry};
+    use marked_path::MarkedPathAccess;
 
     #[rstest::rstest]
     fn in_memory_load_returns_default_when_empty() {
@@ -276,8 +277,11 @@ mod tests {
     #[rstest::rstest]
     fn filesystem_load_creates_default_when_missing() {
         // Given a temp directory with no config file.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         let storage = FilesystemConfigStorage::new(path.clone());
 
         assert!(!path.exists());
@@ -294,8 +298,11 @@ mod tests {
     fn filesystem_save_then_load_round_trips() {
         // Given a FilesystemConfigStorage in a temp dir and the
         // fully-specified fixture.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         let storage = FilesystemConfigStorage::new(path);
 
         let config = crate::config::tests::explicit_providers_config();

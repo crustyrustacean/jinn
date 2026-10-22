@@ -22,6 +22,7 @@ pub use jinn_sidebar_msg::SessionsSectionState;
 pub use jinn_sidebar_msg::SidebarSections;
 pub use jinn_sidebar_msg::TaskListSectionState;
 use jinn_theme::Theme;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// Session creation in flight from the projects UI, stashed across the
 /// project-picker → lifecycle-picker → arg-input chain.
@@ -33,9 +34,9 @@ use jinn_theme::Theme;
 pub struct PendingSessionCreation {
     /// Project directory the session is associated with. Stamped into the
     /// session's project metadata at creation; never follows later cwd changes.
-    pub project_dir: std::path::PathBuf,
+    pub project_dir: MarkedPathBuf<Absolute>,
     /// The new session's starting cwd (scripts may later override it).
-    pub starting_cwd: std::path::PathBuf,
+    pub starting_cwd: MarkedPathBuf<Absolute>,
 }
 
 /// Frontend / UI state.

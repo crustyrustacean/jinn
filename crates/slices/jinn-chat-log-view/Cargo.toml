@@ -49,6 +49,7 @@ wherror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+marked-path.workspace = true
 rstest = { workspace = true }
 tokio = { workspace = true }
 jinn-preferences-config = { workspace = true }

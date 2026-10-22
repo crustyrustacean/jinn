@@ -6,6 +6,7 @@ publish.workspace = true
 description = "Kernel-free LLM support vocabulary: token estimation, tool-prompt blocks, chat-entry conversion, and image attachment conversion."
 
 [dependencies]
+marked-path = { workspace = true }
 jinn-context = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-provider = { workspace = true }

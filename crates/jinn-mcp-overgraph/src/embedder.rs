@@ -36,7 +36,7 @@
 //! feature-gated parity test (`--features embed-parity`) against reference
 //! vectors captured from the model itself.
 
-use std::path::{Path, PathBuf};
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::PoisonError;
@@ -275,7 +275,7 @@ fn l2_norm(values: &[f32]) -> f32 {
 /// and the stderr download announcement happens inside that critical section.
 pub struct CandleEmbedder {
     model: EmbedderModel,
-    cache_dir: PathBuf,
+    cache_dir: MarkedPathBuf<Absolute>,
     /// `None` until the first successful init; a failed init stays `None` so
     /// the next embed retries the download. The loaded model is shared behind
     /// an `Arc` because bert forward and tokenization both take `&self` and
@@ -289,7 +289,7 @@ impl CandleEmbedder {
     /// No I/O happens here; the model loads (and downloads, if the cache is
     /// cold) at the first [`Embedder::embed`].
     #[must_use]
-    pub fn new(model: EmbedderModel, cache_dir: PathBuf) -> Self {
+    pub fn new(model: EmbedderModel, cache_dir: MarkedPathBuf<Absolute>) -> Self {
         Self {
             model,
             cache_dir,
@@ -384,14 +384,14 @@ impl Embedder for CandleEmbedder {
 /// [`LoadedModel`] on CPU.
 fn load_candle_model(
     model: EmbedderModel,
-    cache_dir: &Path,
+    cache_dir: &MarkedPathBuf<Absolute>,
 ) -> Result<LoadedModel, Box<dyn std::error::Error + Send + Sync>> {
     let device = Device::Cpu;
     let api = {
         // The progress bar stays off: the download announcement on stderr is
         // jinn's user-visible record, and the inspector log must stay legible.
         let builder = ApiBuilder::new()
-            .with_cache_dir(cache_dir.to_path_buf())
+            .with_cache_dir(cache_dir.as_path().to_path_buf())
             .with_progress(false);
         builder.build()?
     };
@@ -498,12 +498,12 @@ impl Embedder for FakeEmbedder {
 /// jinn pipes the child's stderr into the MCP inspector log, so these lines
 /// are the user-visible record of the download; the model's own progress bar
 /// is disabled to keep the stream legible.
-fn announce_download_start(model: EmbedderModel, cache_dir: &std::path::Path) {
+fn announce_download_start(model: EmbedderModel, cache_dir: &MarkedPathBuf<Absolute>) {
     announce(&format!(
         "overgraph: loading embedding model {} ({}) into {} ...",
         model.arg_name(),
         model.approximate_download(),
-        cache_dir.display()
+        cache_dir
     ));
 }
 

@@ -19,6 +19,7 @@ use jinn_kernel::protocol::{ChatEntry, ChatEntryKind};
 use jinn_session_history_msg::PushChatEntry;
 
 use super::super::SessionPersistenceActor;
+use jinn_context::PromptTemplateStore;
 use jinn_context::attachment_path::{PathResolveContext, PendingPath};
 use jinn_llm_support::image_convert::ResolveOutcome;
 use jinn_session_msg::PhaseKind;
@@ -208,19 +209,19 @@ impl SessionPersistenceActor {
         use jinn_session_state::chat_session::expand_user_entry as expand;
         let (store, cwd) = {
             let guard = self.state.read();
-            guard
-                .session
-                .get(session_id)
-                .map(|s| {
+            guard.session.get(session_id).map_or_else(
+                || {
                     (
-                        s.discovered_prompt_templates().clone(),
-                        s.cwd().to_path_buf(),
+                        PromptTemplateStore::default(),
+                        jinn_session_state::fields::default_cwd(),
                     )
-                })
-                .unwrap_or_default()
+                },
+                |s| (s.discovered_prompt_templates().clone(), s.cwd().clone()),
+            )
         };
-        let home = self.services.paths.home_dir().to_path_buf();
-        let ctx = PathResolveContext::new(&cwd, &home);
+        let home = self.services.paths.home_dir().clone();
+        let (cwd_view, home_view) = (cwd.as_marked_path(), home.as_marked_path());
+        let ctx = PathResolveContext::new(&cwd_view, &home_view);
         expand(entry, &store, &ctx)
     }
 
@@ -461,6 +462,7 @@ mod tests {
     use jinn_kernel::protocol::{ChatEntry, ChatEntryKind};
     use jinn_session_history_msg::PushChatEntry;
     use jinn_session_msg::PhaseKind;
+    use marked_path::MarkedPathAccess;
 
     async fn create_actor() -> (
         super::super::super::SessionPersistenceActor,
@@ -851,11 +853,14 @@ mod tests {
             guard.session.active_session_id().clone()
         };
         // Write the image to a temp file and seed the capability table.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let png_path = dir.path().join("img.png");
+        let dir = jinn_testutil::tempdir();
+        let png_path = dir
+            .path
+            .join("img.png")
+            .expect("temp root joins a bare name");
         std::fs::write(&png_path, MULTIMODAL_TINY_PNG).expect("write png");
         seed_models_dev(&actor, "text-only-model", false);
-        let display = format!("describe this @{}", png_path.to_string_lossy());
+        let display = format!("describe this @{png_path}");
 
         // When enqueuing a user message with an @path image attachment.
         actor
@@ -894,11 +899,14 @@ mod tests {
             let _session = guard.active_session_mut();
             guard.session.active_session_id().clone()
         };
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let png_path = dir.path().join("photo.png");
+        let dir = jinn_testutil::tempdir();
+        let png_path = dir
+            .path
+            .join("photo.png")
+            .expect("temp root joins a bare name");
         std::fs::write(&png_path, MULTIMODAL_TINY_PNG).expect("write png");
         seed_models_dev(&actor, "vision-model", true);
-        let display = format!("describe this @{}", png_path.to_string_lossy());
+        let display = format!("describe this @{png_path}");
 
         // When enqueuing a user message with an @path image attachment.
         actor
@@ -937,10 +945,13 @@ mod tests {
                 .active_session_mut()
                 .set_model(ModelSelection::Single("my-uncatalogued-llama".to_owned()));
         }
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let png_path = dir.path().join("img.png");
+        let dir = jinn_testutil::tempdir();
+        let png_path = dir
+            .path
+            .join("img.png")
+            .expect("temp root joins a bare name");
         std::fs::write(&png_path, MULTIMODAL_TINY_PNG).expect("write png");
-        let display = format!("describe this @{}", png_path.to_string_lossy());
+        let display = format!("describe this @{png_path}");
 
         // When enqueuing a user message with an @path image attachment.
         actor
@@ -1173,15 +1184,18 @@ mod tests {
     async fn existing_non_image_at_path_dispatches() {
         // Given an idle vision-model session and an existing non-image file.
         let (actor, state, audit, session_id) = idle_vision_session().await;
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let notes = dir.path().join("notes.txt");
+        let dir = jinn_testutil::tempdir();
+        let notes = dir
+            .path
+            .join("notes.txt")
+            .expect("temp root joins a bare name");
         std::fs::write(&notes, b"not an image").expect("write");
 
         // When enqueuing a message with an @path to a non-image file.
         actor
             .handle_enqueue_user_message(&EnqueueUserMessage {
                 session_id: session_id.clone(),
-                entry: ChatEntry::user(format!("see @{}", notes.to_string_lossy())),
+                entry: ChatEntry::user(format!("see @{notes}")),
             })
             .await;
 
@@ -1201,10 +1215,13 @@ mod tests {
     async fn existing_non_image_at_path_keeps_literal_expanded() {
         // Given an idle vision-model session and an existing non-image file.
         let (actor, state, _audit, session_id) = idle_vision_session().await;
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let notes = dir.path().join("notes.txt");
+        let dir = jinn_testutil::tempdir();
+        let notes = dir
+            .path
+            .join("notes.txt")
+            .expect("temp root joins a bare name");
         std::fs::write(&notes, b"not an image").expect("write");
-        let token = format!("@{}", notes.to_string_lossy());
+        let token = format!("@{notes}");
 
         // When enqueuing a message with an @path to a non-image file.
         actor
@@ -1233,8 +1250,11 @@ mod tests {
     async fn recognizable_image_without_converter_blocks_with_error() {
         // Given an idle vision-model session and a recognizable HEIC file (test converter is unavailable).
         let (actor, state, audit, session_id) = idle_vision_session().await;
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let heic = dir.path().join("photo.heic");
+        let dir = jinn_testutil::tempdir();
+        let heic = dir
+            .path
+            .join("photo.heic")
+            .expect("temp root joins a bare name");
         let mut bytes = vec![0x00, 0x00, 0x00, 0x18];
         bytes.extend_from_slice(b"ftypheicpayload");
         std::fs::write(&heic, &bytes).expect("write");
@@ -1243,7 +1263,7 @@ mod tests {
         actor
             .handle_enqueue_user_message(&EnqueueUserMessage {
                 session_id: session_id.clone(),
-                entry: ChatEntry::user(format!("see @{}", heic.to_string_lossy())),
+                entry: ChatEntry::user(format!("see @{heic}")),
             })
             .await;
 
@@ -1274,10 +1294,13 @@ mod tests {
     async fn mixed_native_image_and_nonexistent_token_dispatches_with_one_attachment() {
         // Given an idle vision-model session, a real PNG, and a nonexistent path in one message.
         let (actor, state, audit, session_id) = idle_vision_session().await;
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let png = dir.path().join("real.png");
+        let dir = jinn_testutil::tempdir();
+        let png = dir
+            .path
+            .join("real.png")
+            .expect("temp root joins a bare name");
         std::fs::write(&png, MULTIMODAL_TINY_PNG).expect("write png");
-        let display = format!("see @{} and @/nonexistent/x", png.to_string_lossy());
+        let display = format!("see @{png} and @/nonexistent/x");
 
         // When enqueuing the mixed message.
         actor
@@ -1317,16 +1340,18 @@ mod tests {
     async fn mixed_native_image_and_existing_non_image_dispatches_with_one_attachment() {
         // Given an idle vision-model session, a real PNG, and an existing non-image file.
         let (actor, state, audit, session_id) = idle_vision_session().await;
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let png = dir.path().join("real.png");
+        let dir = jinn_testutil::tempdir();
+        let png = dir
+            .path
+            .join("real.png")
+            .expect("temp root joins a bare name");
         std::fs::write(&png, MULTIMODAL_TINY_PNG).expect("write png");
-        let notes = dir.path().join("notes.txt");
+        let notes = dir
+            .path
+            .join("notes.txt")
+            .expect("temp root joins a bare name");
         std::fs::write(&notes, b"text").expect("write");
-        let display = format!(
-            "see @{} and @{}",
-            png.to_string_lossy(),
-            notes.to_string_lossy()
-        );
+        let display = format!("see @{png} and @{notes}");
 
         // When enqueuing the mixed message.
         actor
@@ -1342,7 +1367,7 @@ mod tests {
         assert_eq!(session.phase(), PhaseKind::Streaming);
         let expanded = last_user_expanded(session).expect("user entry");
         assert!(
-            expanded.contains(&format!("@{}", notes.to_string_lossy())),
+            expanded.contains(&format!("@{notes}")),
             "non-image token must stay literal: {expanded}"
         );
         assert!(
@@ -1403,16 +1428,12 @@ mod tests {
     async fn multiple_native_images_all_attach() {
         // Given an idle vision-model session and a message with two real PNGs.
         let (actor, state, _audit, session_id) = idle_vision_session().await;
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let png_a = dir.path().join("a.png");
-        let png_b = dir.path().join("b.png");
+        let dir = jinn_testutil::tempdir();
+        let png_a = dir.path.join("a.png").expect("temp root joins a bare name");
+        let png_b = dir.path.join("b.png").expect("temp root joins a bare name");
         std::fs::write(&png_a, MULTIMODAL_TINY_PNG).expect("write a");
         std::fs::write(&png_b, MULTIMODAL_TINY_PNG).expect("write b");
-        let display = format!(
-            "see @{} and @{}",
-            png_a.to_string_lossy(),
-            png_b.to_string_lossy()
-        );
+        let display = format!("see @{png_a} and @{png_b}");
 
         // When enqueuing the message.
         actor
@@ -1437,18 +1458,20 @@ mod tests {
     async fn mixed_native_image_and_conversion_failing_image_blocks() {
         // Given an idle vision-model session, a real PNG, and a recognizable HEIC (converter unavailable).
         let (actor, state, audit, session_id) = idle_vision_session().await;
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let png = dir.path().join("real.png");
+        let dir = jinn_testutil::tempdir();
+        let png = dir
+            .path
+            .join("real.png")
+            .expect("temp root joins a bare name");
         std::fs::write(&png, MULTIMODAL_TINY_PNG).expect("write png");
-        let heic = dir.path().join("photo.heic");
+        let heic = dir
+            .path
+            .join("photo.heic")
+            .expect("temp root joins a bare name");
         let mut bytes = vec![0x00, 0x00, 0x00, 0x18];
         bytes.extend_from_slice(b"ftypheicpayload");
         std::fs::write(&heic, &bytes).expect("write");
-        let display = format!(
-            "see @{} and @{}",
-            png.to_string_lossy(),
-            heic.to_string_lossy()
-        );
+        let display = format!("see @{png} and @{heic}");
 
         // When enqueuing the mixed message.
         actor

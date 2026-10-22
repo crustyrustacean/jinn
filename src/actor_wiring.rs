@@ -26,6 +26,7 @@ use jinn_kernel::{AppCore, State};
 
 use crate::bootstrap::slices::ActivateError;
 use crate::bootstrap::slices::Activated;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// The fixed (required) inputs to actor-system construction.
 #[derive(Clone)]
@@ -52,7 +53,7 @@ pub struct ActorSystemBuilderArgs {
     /// Application paths.
     pub paths: jinn_kernel::AppPaths,
     /// Dump directory for provider request debugging. `None` disables.
-    pub dump_requests: Option<std::path::PathBuf>,
+    pub dump_requests: Option<MarkedPathBuf<Absolute>>,
     /// The compaction system prompt loaded from the prompts directory at
     /// startup (the compaction worker consumes it on each compaction).
     pub compaction_prompt: String,
@@ -127,7 +128,11 @@ impl ActorSystemBuilder {
 
         // Default CWD for sessions (inherited from the shell).
         let (initial_session_id, initial_cwd) = {
-            let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
+            let cwd = {
+                let raw = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
+                marked_path::MarkedPathBuf::<marked_path::Absolute>::new(raw)
+                    .expect("cwd and / are absolute")
+            };
             let mut guard = state.write();
             guard.session.set_default_cwd(cwd.clone());
             guard.active_session_mut().set_cwd(cwd.clone());
@@ -294,7 +299,7 @@ impl jinn_term_msg::TermHandle for ActorTermHandle {
         &self,
         chat_session_id: jinn_core_types::SessionId,
         command: String,
-        cwd: std::path::PathBuf,
+        cwd: MarkedPathBuf<Absolute>,
         size: (u16, u16),
         max_wait: std::time::Duration,
     ) -> Result<jinn_term_msg::SpawnTermOutcome, jinn_term_msg::TermAskError> {

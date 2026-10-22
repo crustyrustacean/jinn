@@ -4,6 +4,8 @@ edition.workspace = true
 version.workspace = true
 
 [dependencies]
+marked-path = { workspace = true }
+dirs = { workspace = true }
 async-trait = { workspace = true }
 daow = { workspace = true }
 jinn-config = { workspace = true }

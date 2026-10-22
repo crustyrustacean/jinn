@@ -7,7 +7,7 @@
 //! the same contract the retired `persona-loader` component fulfilled over
 //! the wire — so the session actor's consumer code is unchanged.
 
-use std::path::Path;
+use marked_path::{Absolute, MarkedPathBuf};
 
 use jinn_slices::Persona;
 use jinn_slices::SliceHost;
@@ -52,7 +52,7 @@ pub use parse::parse_persona_file;
 )]
 pub fn activate(
     host: &mut SliceHost<'_, jinn_slices::RenderFacts>,
-    personas_dir: &Path,
+    personas_dir: &MarkedPathBuf<Absolute>,
 ) -> Personas {
     let entries = scan(personas_dir);
     let scanned = Personas {
@@ -116,14 +116,17 @@ pub fn activate_picker(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
 /// is merged first and the user dir's personas overwrite them. Failures
 /// are noted on stderr (host-side diagnostics) and never abort the batch.
 #[must_use]
-pub fn scan(personas_dir: &Path) -> Vec<Persona> {
+pub fn scan(personas_dir: &MarkedPathBuf<Absolute>) -> Vec<Persona> {
     let mut defs = std::collections::BTreeMap::new();
     merge_dir(&mut defs, personas_dir);
     defs.into_values().collect()
 }
 
 /// Merges one directory's persona files into the accumulated set.
-fn merge_dir(defs: &mut std::collections::BTreeMap<String, Persona>, dir: &Path) {
+fn merge_dir(
+    defs: &mut std::collections::BTreeMap<String, Persona>,
+    dir: &MarkedPathBuf<Absolute>,
+) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -133,6 +136,9 @@ fn merge_dir(defs: &mut std::collections::BTreeMap<String, Persona>, dir: &Path)
         if path.extension().is_none_or(|ext| ext != "md") {
             continue;
         }
+        let Ok(path) = MarkedPathBuf::<Absolute>::new(&path) else {
+            continue;
+        };
         match parse::parse_persona_file(&path) {
             Ok(persona) => {
                 // The retired coordinator's translation dropped
@@ -146,7 +152,7 @@ fn merge_dir(defs: &mut std::collections::BTreeMap<String, Persona>, dir: &Path)
             }
             Err(report) => {
                 let reason = report.current_context();
-                tracing::warn!(file = %path.display(), ?reason, "skipping unparseable persona file");
+                tracing::warn!(file = %path, ?reason, "skipping unparseable persona file");
             }
         }
     }
@@ -161,12 +167,16 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+    use marked_path::MarkedPathAccess;
 
     /// Writes one parseable persona file into `dir`.
-    fn write_persona(dir: &Path, file: &str, name: &str, description: &str) {
-        std::fs::create_dir_all(dir).expect("mkdir");
+    fn write_persona(dir: &MarkedPathBuf<Absolute>, file: &str, name: &str, description: &str) {
+        std::fs::create_dir_all(dir.as_path()).expect("mkdir");
+        let file_path = dir
+            .join(format!("{file}.md"))
+            .expect("typed parent joins a bare name");
         std::fs::write(
-            dir.join(format!("{file}.md")),
+            file_path.as_path(),
             format!("+++\nname = \"{name}\"\ndescription = \"{description}\"\n+++\n\n{name} body."),
         )
         .expect("write persona");
@@ -175,13 +185,13 @@ mod tests {
     #[rstest::rstest]
     fn scan_returns_personas_sorted_by_name() {
         // Given a directory with persona files written out of name order.
-        let dir = jinn_testutil::tempdir().expect("tmpdir");
-        write_persona(dir.path(), "beta", "beta", "B");
-        write_persona(dir.path(), "alpha", "alpha", "A");
-        write_persona(dir.path(), "gamma", "gamma", "G");
+        let dir = jinn_testutil::tempdir();
+        write_persona(&dir.path, "beta", "beta", "B");
+        write_persona(&dir.path, "alpha", "alpha", "A");
+        write_persona(&dir.path, "gamma", "gamma", "G");
 
         // When scanning.
-        let personas = scan(dir.path());
+        let personas = scan(&dir.path);
 
         // Then personas are sorted by name.
         let names: Vec<_> = personas.iter().map(|p| p.name.as_str()).collect();
@@ -192,12 +202,12 @@ mod tests {
     fn same_name_persona_is_deduplicated_by_file_name() {
         // Given two files declaring the same persona name with different
         // descriptions (BTreeMap insert-overwrite: the later file wins).
-        let dir = jinn_testutil::tempdir().expect("tmpdir");
-        write_persona(dir.path(), "a-first", "dup", "First");
-        write_persona(dir.path(), "b-second", "dup", "Second");
+        let dir = jinn_testutil::tempdir();
+        write_persona(&dir.path, "a-first", "dup", "First");
+        write_persona(&dir.path, "b-second", "dup", "Second");
 
         // When scanning.
-        let personas = scan(dir.path());
+        let personas = scan(&dir.path);
 
         // Then one persona survives.
         assert_eq!(personas.len(), 1);
@@ -206,13 +216,19 @@ mod tests {
     #[rstest::rstest]
     fn one_bad_file_never_drops_the_batch() {
         // Given one broken and one valid persona file.
-        let user = jinn_testutil::tempdir().expect("tmpdir");
-        std::fs::create_dir_all(user.path()).expect("mkdir");
-        std::fs::write(user.path().join("invalid.md"), "Not a valid persona file.").expect("write");
-        write_persona(user.path(), "valid", "valid", "V");
+        let user = jinn_testutil::tempdir();
+        std::fs::create_dir_all(user.path.as_path()).expect("mkdir");
+        std::fs::write(
+            user.path
+                .join("invalid.md")
+                .expect("temp root joins a bare name"),
+            "Not a valid persona file.",
+        )
+        .expect("write");
+        write_persona(&user.path, "valid", "valid", "V");
 
         // When scanning.
-        let personas = scan(user.path());
+        let personas = scan(&user.path);
 
         // Then only the valid persona survives.
         assert_eq!(personas.len(), 1);
@@ -222,16 +238,18 @@ mod tests {
     #[rstest::rstest]
     fn non_md_files_are_ignored() {
         // Given a .txt file with valid persona content.
-        let user = jinn_testutil::tempdir().expect("tmpdir");
-        std::fs::create_dir_all(user.path()).expect("mkdir");
+        let user = jinn_testutil::tempdir();
+        std::fs::create_dir_all(user.path.as_path()).expect("mkdir");
         std::fs::write(
-            user.path().join("notes.txt"),
+            user.path
+                .join("notes.txt")
+                .expect("temp root joins a bare name"),
             "+++\nname = \"hidden\"\ndescription = \"H\"\n+++\n\nBody.",
         )
         .expect("write");
 
         // When scanning.
-        let personas = scan(user.path());
+        let personas = scan(&user.path);
 
         // Then nothing is found.
         assert!(personas.is_empty());
@@ -240,17 +258,19 @@ mod tests {
     #[rstest::rstest]
     fn empty_name_persona_is_skipped_but_batch_continues() {
         // Given a blank-name persona and a valid one.
-        let user = jinn_testutil::tempdir().expect("tmpdir");
-        std::fs::create_dir_all(user.path()).expect("mkdir");
+        let user = jinn_testutil::tempdir();
+        std::fs::create_dir_all(user.path.as_path()).expect("mkdir");
         std::fs::write(
-            user.path().join("blank.md"),
+            user.path
+                .join("blank.md")
+                .expect("temp root joins a bare name"),
             "+++\nname = \"\"\ndescription = \"B\"\n+++\n\nBody.",
         )
         .expect("write");
-        write_persona(user.path(), "valid", "valid", "V");
+        write_persona(&user.path, "valid", "valid", "V");
 
         // When scanning.
-        let personas = scan(user.path());
+        let personas = scan(&user.path);
 
         // Then only the named persona survives.
         assert_eq!(personas.len(), 1);
@@ -260,8 +280,11 @@ mod tests {
     #[rstest::rstest]
     fn missing_directory_yields_empty_set() {
         // Given a directory that does not exist.
-        let root = jinn_testutil::tempdir().expect("tmpdir");
-        let missing = root.path().join("nonexistent-personas");
+        let root = jinn_testutil::tempdir();
+        let missing = root
+            .path
+            .join("nonexistent-personas")
+            .expect("temp root joins a bare name");
 
         // When scanning it for personas.
         let personas = scan(&missing);

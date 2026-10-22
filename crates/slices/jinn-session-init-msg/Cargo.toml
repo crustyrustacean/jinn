@@ -5,6 +5,7 @@ edition.workspace = true
 description = "Session-init crossing contracts: resource discovery commands, loaded events, and the PromptTemplate noun."
 
 [dependencies]
+marked-path = { workspace = true }
 jinn-context = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-slices = { workspace = true }

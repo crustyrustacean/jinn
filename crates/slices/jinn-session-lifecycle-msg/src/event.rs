@@ -4,7 +4,17 @@
 //! `jinn-session-msg` (the crossing-contract crate) and are re-exported
 //! here so the kernel path stays stable.
 
-use std::path::PathBuf;
+use marked_path::{Absolute, MarkedPathBuf};
+
+/// The launch directory a legacy blob without a cwd resolves to.
+#[expect(
+    clippy::expect_used,
+    reason = "cwd and temp-dir fallback are absolute on supported platforms"
+)]
+fn default_cwd() -> MarkedPathBuf<Absolute> {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
+    MarkedPathBuf::<Absolute>::new(cwd).expect("cwd and temp dir are absolute")
+}
 
 use serde::{Deserialize, Serialize};
 
@@ -23,8 +33,8 @@ pub struct SessionCreated {
     /// The newly created session's ID.
     pub session_id: SessionId,
     /// The working directory the session starts in.
-    #[serde(default)]
-    pub cwd: PathBuf,
+    #[serde(default = "default_cwd")]
+    pub cwd: MarkedPathBuf<Absolute>,
 }
 
 /// A session's working directory changed.
@@ -38,7 +48,7 @@ pub struct SessionCwdChanged {
     /// The session whose cwd changed.
     pub session_id: SessionId,
     /// The new working directory.
-    pub cwd: PathBuf,
+    pub cwd: MarkedPathBuf<Absolute>,
 }
 
 impl BusMessage for SessionCwdChanged {}
@@ -64,9 +74,9 @@ mod tests {
         // When deserializing.
         let event: SessionCreated = serde_json::from_str(json).expect("deserialize");
 
-        // Then the cwd falls back to the empty default (backwards compatible)
-        // and the session id round-trips.
-        assert_eq!(event.cwd, PathBuf::new());
+        // Then the cwd falls back to the module's default (backwards
+        // compatible) and the session id round-trips.
+        assert_eq!(event.cwd, default_cwd());
         assert_eq!(
             event.session_id,
             SessionId::try_from_string("00000000-0000-0000-0000-000000000001")

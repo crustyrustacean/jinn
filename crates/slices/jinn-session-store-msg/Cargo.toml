@@ -5,6 +5,7 @@ edition.workspace = true
 description = "Session-store crossing contracts: the search and transcript-window data model shared by the kernel store seam, the store slice, and the session tools."
 
 [dependencies]
+marked-path = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-picker = { workspace = true }
 jinn-selection-widget = { workspace = true }

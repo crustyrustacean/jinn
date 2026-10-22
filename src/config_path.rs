@@ -21,6 +21,7 @@
 use std::path::{Path, PathBuf};
 
 use error_stack::Report;
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 use wherror::Error;
 
 /// The `--config` flag names a file that does not exist.
@@ -39,7 +40,11 @@ pub struct ConfigPathError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigPathResolution {
     /// The document to read and write for the whole run.
-    pub path: PathBuf,
+    ///
+    /// Always absolute: the default location is absolute by construction,
+    /// and a `--config` override is resolved against the current directory
+    /// at this boundary so every consumer downstream reads one shape.
+    pub path: MarkedPathBuf<Absolute>,
     /// True only when `path` is the default location and did not exist.
     ///
     /// An override never sets this: the user supplies their own file, and
@@ -59,7 +64,7 @@ pub struct ConfigPathResolution {
 /// resolution with `seed_template: true`.
 pub fn resolve_config_path(
     override_path: Option<&Path>,
-    default_path: &Path,
+    default_path: &MarkedPathBuf<Absolute>,
 ) -> Result<ConfigPathResolution, Report<ConfigPathError>> {
     match override_path {
         Some(path) => resolve_override(path),
@@ -68,10 +73,23 @@ pub fn resolve_config_path(
 }
 
 /// Resolves an explicit `--config` path, which must already exist.
+///
+/// A relative override is resolved against the current directory here —
+/// the CLI boundary — so the resolution is absolute. The error carries the
+/// user's original spelling, not the resolved form.
 fn resolve_override(path: &Path) -> Result<ConfigPathResolution, Report<ConfigPathError>> {
     if path.exists() {
+        let absolute = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            let cwd = std::env::current_dir()
+                .expect("current directory is readable for a relative --config");
+            cwd.join(path)
+        };
+        let typed =
+            MarkedPathBuf::<Absolute>::new(absolute).expect("resolved --config path is absolute");
         return Ok(ConfigPathResolution {
-            path: path.to_path_buf(),
+            path: typed,
             seed_template: false,
         });
     }
@@ -93,18 +111,30 @@ fn resolve_override(path: &Path) -> Result<ConfigPathResolution, Report<ConfigPa
 /// Infallible: there is no override to reject, and the default path is
 /// always a legitimate thing to create.
 #[must_use]
-pub fn config_init_target(override_path: Option<&Path>, default_path: &Path) -> PathBuf {
+pub fn config_init_target(
+    override_path: Option<&Path>,
+    default_path: &MarkedPathBuf<Absolute>,
+) -> MarkedPathBuf<Absolute> {
     match override_path {
-        Some(path) => path.to_path_buf(),
-        None => default_path.to_path_buf(),
+        Some(path) => {
+            let absolute = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                let cwd = std::env::current_dir()
+                    .expect("current directory is readable for a relative --config");
+                cwd.join(path)
+            };
+            MarkedPathBuf::<Absolute>::new(absolute).expect("resolved --config path is absolute")
+        }
+        None => default_path.clone(),
     }
 }
 
 /// Resolves the platform default, flagging a missing file for seeding.
-fn resolve_default(default_path: &Path) -> ConfigPathResolution {
+fn resolve_default(default_path: &MarkedPathBuf<Absolute>) -> ConfigPathResolution {
     ConfigPathResolution {
-        path: default_path.to_path_buf(),
-        seed_template: !default_path.exists(),
+        path: default_path.clone(),
+        seed_template: !default_path.as_path().exists(),
     }
 }
 
@@ -113,9 +143,12 @@ mod tests {
     use super::*;
 
     /// The default location for a test: a `jinn.toml` that does not exist.
-    fn absent_default() -> (tempfile::TempDir, PathBuf) {
-        let root = jinn_testutil::tempdir().expect("temp dir");
-        let path = root.path().join("jinn.toml");
+    fn absent_default() -> (jinn_testutil::JinnTempDir, MarkedPathBuf<Absolute>) {
+        let root = jinn_testutil::tempdir();
+        let path = root
+            .path
+            .join("jinn.toml")
+            .expect("temp root joins a bare name");
         (root, path)
     }
 
@@ -154,12 +187,16 @@ mod tests {
     fn existing_override_is_chosen() {
         // Given a default path and a separate override file that exists.
         let (_root, default) = absent_default();
-        let override_root = jinn_testutil::tempdir().expect("temp dir");
-        let override_path = override_root.path().join("alt.toml");
+        let override_root = jinn_testutil::tempdir();
+        let override_path = override_root
+            .path
+            .join("alt.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(&override_path, "# alt\n").expect("write");
 
         // When resolving.
-        let result = resolve_config_path(Some(&override_path), &default).expect("resolves");
+        let result =
+            resolve_config_path(Some(override_path.as_path()), &default).expect("resolves");
 
         // Then the override path is chosen.
         assert_eq!(result.path, override_path);
@@ -172,16 +209,19 @@ mod tests {
     fn missing_override_is_rejected() {
         // Given an override path that does not exist.
         let (_root, default) = absent_default();
-        let override_root = jinn_testutil::tempdir().expect("temp dir");
-        let override_path = override_root.path().join("missing.toml");
+        let override_root = jinn_testutil::tempdir();
+        let override_path = override_root
+            .path
+            .join("missing.toml")
+            .expect("temp root joins a bare name");
 
         // When resolving.
-        let result = resolve_config_path(Some(&override_path), &default);
+        let result = resolve_config_path(Some(override_path.as_path()), &default);
 
         // Then resolution fails.
         let report = result.expect_err("missing override must fail");
         // And the error names the offending path.
-        assert_eq!(report.current_context().path, override_path);
+        assert_eq!(report.current_context().path, override_path.as_path());
         // And nothing was created on disk.
         assert!(!override_path.exists());
     }
@@ -191,11 +231,14 @@ mod tests {
     fn missing_override_ignores_a_missing_default() {
         // Given a missing override alongside a default that also does not exist.
         let (_root, default) = absent_default();
-        let override_root = jinn_testutil::tempdir().expect("temp dir");
-        let override_path = override_root.path().join("missing.toml");
+        let override_root = jinn_testutil::tempdir();
+        let override_path = override_root
+            .path
+            .join("missing.toml")
+            .expect("temp root joins a bare name");
 
         // When resolving.
-        let result = resolve_config_path(Some(&override_path), &default);
+        let result = resolve_config_path(Some(override_path.as_path()), &default);
 
         // Then it fails on the override rather than seeding the default.
         assert!(result.is_err());

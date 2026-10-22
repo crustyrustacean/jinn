@@ -20,23 +20,23 @@ jinn-status-bar = { workspace = true }
 jinn-slices = { workspace = true }
 trouper = { workspace = true }
 
-wherror = { workspace = true }
-futures = { workspace = true }
-error-stack = { workspace = true }
-ratatui = { workspace = true }
-crossterm = { workspace = true }
-ratatui-which-key = { workspace = true }
-tokio = { workspace = true }
-kanal = { workspace = true }
-parking_lot = { workspace = true }
-derive_more = { workspace = true }
-unicode-segmentation = { workspace = true }
-dialoguer = { workspace = true }
 arboard = { workspace = true }
-tracing = { workspace = true }
-
+crossterm = { workspace = true }
+derive_more = { workspace = true }
+dialoguer = { workspace = true }
+error-stack = { workspace = true }
+futures = { workspace = true }
+kanal = { workspace = true }
+marked-path = { workspace = true }
+parking_lot = { workspace = true }
+ratatui = { workspace = true }
+ratatui-which-key = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+unicode-segmentation = { workspace = true }
+wherror = { workspace = true }
 
 jinn-provider-selection-msg = { workspace = true }
 

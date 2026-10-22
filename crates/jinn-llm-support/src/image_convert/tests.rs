@@ -6,10 +6,12 @@
     reason = "test code"
 )]
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use error_stack::Report;
+use marked_path::MarkedPathAccess;
+use marked_path::{Absolute, MarkedPathBuf};
 use rstest::rstest;
 
 use super::binary_locator::ImageMagickLocator;
@@ -37,7 +39,7 @@ impl ImageMagickLocator for FakeLocator {
 #[derive(Default, Debug)]
 struct SpyConverter {
     available: bool,
-    convert_calls: std::sync::Mutex<Vec<PathBuf>>,
+    convert_calls: std::sync::Mutex<Vec<MarkedPathBuf<Absolute>>>,
     /// Canned bytes returned on convert (when `available` and non-empty).
     canned: Vec<u8>,
     /// When true, convert returns an error instead of canned bytes.
@@ -53,11 +55,14 @@ impl ImageConverter for SpyConverter {
         self.available
     }
 
-    fn convert_to_png(&self, input: &Path) -> Result<Vec<u8>, Report<ImageConversionError>> {
+    fn convert_to_png(
+        &self,
+        input: &MarkedPathBuf<Absolute>,
+    ) -> Result<Vec<u8>, Report<ImageConversionError>> {
         self.convert_calls
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(input.to_path_buf());
+            .push(input.clone());
         if self.fail {
             Err(Report::new(ImageConversionError))
         } else {
@@ -96,9 +101,14 @@ fn converter_is_unavailable_when_locator_finds_nothing() {
 #[rstest]
 fn converter_is_available_when_locator_resolves() {
     // Given a converter whose locator resolves a binary.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let converter = ImageMagickConverter::with_locator(&FakeLocator {
-        resolved: Some(dir.path().join("bin").join("magick")),
+        resolved: Some(
+            dir.path
+                .join_all(["bin", "magick"])
+                .expect("name joins keep the base absolute")
+                .to_path_buf(),
+        ),
     });
 
     // When querying availability.
@@ -116,8 +126,11 @@ fn convert_errors_when_binary_unavailable() {
     let converter = ImageMagickConverter::with_locator(&FakeLocator { resolved: None });
 
     // When converting a path.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let input = dir.path().join("x.heic");
+    let dir = jinn_testutil::tempdir();
+    let input = dir
+        .path
+        .join("x.heic")
+        .expect("temp root joins a bare name");
     let result = converter.convert_to_png(&input);
 
     // Then it errors without spawning a process.
@@ -161,8 +174,11 @@ fn service_convert_returns_canned_bytes_when_backend_available() {
     }));
 
     // When converting.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let input = dir.path().join("x.heic");
+    let dir = jinn_testutil::tempdir();
+    let input = dir
+        .path
+        .join("x.heic")
+        .expect("temp root joins a bare name");
     let result = service.convert_to_png(&input);
 
     // Then the canned bytes are returned.
@@ -180,8 +196,11 @@ fn service_convert_errors_when_backend_fails() {
 
     // When converting.
     // Then it errors.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let input = dir.path().join("x.heic");
+    let dir = jinn_testutil::tempdir();
+    let input = dir
+        .path
+        .join("x.heic")
+        .expect("temp root joins a bare name");
     assert!(service.convert_to_png(&input).is_err());
 }
 

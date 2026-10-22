@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+marked-path = { workspace = true }
 rmcp = { workspace = true, features = ["client", "transport-child-process", "transport-streamable-http-client", "transport-streamable-http-client-reqwest"] }
 reqwest = { workspace = true }
 tokio = { workspace = true, features = ["process", "rt", "sync", "macros"] }

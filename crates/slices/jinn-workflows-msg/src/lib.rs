@@ -20,8 +20,8 @@ pub use picker_state::workflow_search_text;
 pub use workflow::Workflow;
 
 use jinn_core_types::SessionId;
+use marked_path::{Absolute, MarkedPathBuf};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 
 /// Command to trigger a workflows rescan for a specific session.
 ///
@@ -40,8 +40,7 @@ pub struct ScanWorkflows {
     pub session_id: SessionId,
     /// The working directory driving the scan (unused by the workflows
     /// resource; carried for shape parity with the other triggers).
-    #[serde(default)]
-    pub cwd: PathBuf,
+    pub cwd: MarkedPathBuf<Absolute>,
 }
 
 impl jinn_slices::BusMessage for ScanWorkflows {}
@@ -77,13 +76,16 @@ mod tests {
         // Given a loaded event carrying one workflow and no error. The
         // workflow's directory is built from a temp root, so it is an
         // absolute path on every platform.
-        let root = jinn_testutil::tempdir().expect("temp dir");
+        let root = jinn_testutil::tempdir();
         let event = WorkflowsLoaded {
             session_id: SessionId::new(),
             workflows: vec![Workflow {
                 name: "research-report".to_owned(),
                 description: "Research a topic and deliver a cited brief.".to_owned(),
-                dir: root.path().join("workflows").join("research-report"),
+                dir: root
+                    .path
+                    .join_all(["workflows", "research-report"])
+                    .expect("a"),
             }],
             error: None,
         };

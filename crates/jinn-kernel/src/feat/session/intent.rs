@@ -29,7 +29,7 @@ pub fn handle_rescan_prompt_templates(state: &mut AppState) -> IntentResult {
         .push_entry(ChatEntry::system("Rescanning prompt templates..."));
 
     let session_id = state.active_session().session_id().clone();
-    let cwd = state.active_session().cwd().to_path_buf();
+    let cwd = state.active_session().cwd().clone();
 
     IntentResult::new_message(RescanPromptTemplates { session_id, cwd })
 }
@@ -172,9 +172,12 @@ mod tests {
     fn session_new_inherits_active_session_cwd() {
         // Given a state whose active session has a distinct CWD (not the app
         // launch dir).
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let mut state = AppState::default_with_scope_focus();
-        let inherited_cwd = dir.path().join("inherited-project");
+        let inherited_cwd = dir
+            .path
+            .join("inherited-project")
+            .expect("temp root joins a bare name");
         state.active_session_mut().set_cwd(inherited_cwd.clone());
         assert_ne!(state.active_session().cwd(), state.session.default_cwd());
 
@@ -185,6 +188,6 @@ mod tests {
         );
 
         // Then the new session inherited the active session's CWD.
-        assert_eq!(state.active_session().cwd(), inherited_cwd);
+        assert_eq!(state.active_session().cwd(), &inherited_cwd);
     }
 }

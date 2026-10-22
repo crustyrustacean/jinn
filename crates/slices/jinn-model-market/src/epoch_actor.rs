@@ -51,6 +51,7 @@ use trouper::registry::RegistryError;
 use trouper::system::ActorSystem;
 
 use crate::epoch;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// The epoch actor's static trouper path.
 pub const EPOCH_ACTOR_PATH: &str = "model-market-epoch";
@@ -69,7 +70,7 @@ pub struct EpochMarketActorDeps {
     /// ([`jinn_common::app_paths::AppPaths::epoch_cache_dir`]), passed
     /// directly so the actor cannot re-derive a divergent path. Tests
     /// point it at a tempdir under the fixture root.
-    pub cache_dir: std::path::PathBuf,
+    pub cache_dir: MarkedPathBuf<Absolute>,
     /// The HTTP client for the zip download (tests point it at a mock).
     pub client: reqwest::Client,
     /// The epoch zip URL (tests point it at a mock server).
@@ -88,7 +89,7 @@ pub struct EpochMarketActor {
     /// Resolved epoch cache dir
     /// ([`jinn_common::app_paths::AppPaths::epoch_cache_dir`]). Set once
     /// at spawn from the deps.
-    cache_dir: std::path::PathBuf,
+    cache_dir: MarkedPathBuf<Absolute>,
     /// The HTTP client for the zip download.
     client: reqwest::Client,
     /// The epoch zip URL.

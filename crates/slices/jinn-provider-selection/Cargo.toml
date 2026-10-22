@@ -5,6 +5,7 @@ edition.workspace = true
 description = "The provider-selection slice: the provider actor (switch, refresh, picker loads, endpoint fetch), the discover actor, and the provider cell."
 
 [dependencies]
+marked-path = { workspace = true }
 jinn-provider-selection-msg = { workspace = true }
 # The trouper runtime: ServiceActors, topics, schemas.
 trouper = { workspace = true }

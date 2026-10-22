@@ -38,8 +38,6 @@
 //! by the next read, and a rule the user deleted is not left armed by a
 //! stale copy.
 
-use std::path::Path;
-
 use jinn_config::ConfigLayer;
 
 use crate::schemas::{
@@ -47,6 +45,7 @@ use crate::schemas::{
     parse_stream_rules_file,
 };
 use crate::{STREAM_RULES_FILE_NAME, STREAM_RULES_TEMPLATE};
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
 /// Assembles the full stream-rule set: the embedded shipped set, replaced
 /// wholesale by an existing user `stream_rules.toml` (malformed → warn and
@@ -61,15 +60,27 @@ use crate::{STREAM_RULES_FILE_NAME, STREAM_RULES_TEMPLATE};
 /// matcher slice installs exactly this set (minus the disabled names), the
 /// stream-rule picker lists exactly this set, and the storage boundary
 /// validates a name against exactly this set.
+///
+/// # Panics
+///
+/// Panics if `preferences_path` has no parent or the parent rejects a
+/// bare-name join, neither of which can happen for an absolute path: an
+/// absolute path always names a parent directory, and a parent directory
+/// cannot contribute a drive prefix or absolute segment to a join.
+#[expect(
+    clippy::expect_used,
+    reason = "parent-of-absolute and bare-name joins on typed absolute bases are infallible by construction"
+)]
 #[must_use]
 pub fn assemble_stream_rules(
     config: &ConfigLayer,
-    preferences_path: &Path,
+    preferences_path: &MarkedPathBuf<Absolute>,
 ) -> Vec<StreamRuleConfig> {
     let user_file = preferences_path
         .parent()
-        .unwrap_or(Path::new("."))
-        .join(STREAM_RULES_FILE_NAME);
+        .expect("preferences path is absolute, so it has a parent")
+        .join(STREAM_RULES_FILE_NAME)
+        .expect("absolute parent joins a bare filename");
 
     let mut rules = embedded_rules();
     if user_file.exists() {
@@ -82,14 +93,14 @@ pub fn assemble_stream_rules(
                         .map(StreamRuleFileEntry::live_rule)
                         .collect();
                     tracing::debug!(
-                        path = %user_file.display(),
+                        path = %user_file,
                         rules = rules.len(),
                         "user stream_rules.toml replaces the embedded set"
                     );
                 }
                 Err(error) => {
                     tracing::warn!(
-                        path = %user_file.display(),
+                        path = %user_file,
                         error = %error,
                         "user stream_rules.toml is malformed, continuing with the embedded set"
                     );
@@ -97,7 +108,7 @@ pub fn assemble_stream_rules(
             },
             Err(error) => {
                 tracing::warn!(
-                    path = %user_file.display(),
+                    path = %user_file,
                     error = %error,
                     "user stream_rules.toml could not be read, continuing with the embedded set"
                 );
@@ -259,6 +270,7 @@ mod tests {
 
     use super::assemble_stream_rules;
     use jinn_config::ConfigLayer;
+    use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
     /// Reads `doc` as a config layer.
     fn layer(doc: &str) -> ConfigLayer {
@@ -270,30 +282,34 @@ mod tests {
     ///
     /// Returns the owned dir so the caller keeps it alive as long as the
     /// path is in use.
-    fn temp_prefs() -> (tempfile::TempDir, std::path::PathBuf) {
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("jinn.toml");
+    fn temp_prefs() -> (jinn_testutil::JinnTempDir, MarkedPathBuf<Absolute>) {
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("jinn.toml")
+            .expect("temp root joins a bare name");
         (dir, path)
     }
 
     /// A `jinn.toml` path inside `dir`, so the sibling rules file resolves
     /// inside the same temp directory.
-    fn prefs_path_in(dir: &std::path::Path) -> std::path::PathBuf {
-        dir.join("jinn.toml")
+    fn prefs_path_in(dir: &MarkedPathBuf<Absolute>) -> MarkedPathBuf<Absolute> {
+        dir.join("jinn.toml").expect("temp root joins a bare name")
     }
 
     /// Writes a user `stream_rules.toml` beside `prefs`, returning its path.
-    fn write_user_rules(prefs: &std::path::Path, body: &str) -> std::path::PathBuf {
+    fn write_user_rules(prefs: &MarkedPathBuf<Absolute>, body: &str) -> MarkedPathBuf<Absolute> {
         let path = prefs
             .parent()
-            .unwrap_or_else(|| std::path::Path::new("."))
-            .join(crate::STREAM_RULES_FILE_NAME);
+            .expect("prefs path is absolute, so it has a parent")
+            .join(crate::STREAM_RULES_FILE_NAME)
+            .expect("absolute parent joins a bare filename");
         std::fs::write(&path, body).expect("write user rules file");
         path
     }
 
     /// The names of the rules an assembly produces, in order.
-    fn assembled_names(config: &ConfigLayer, prefs: &std::path::Path) -> Vec<String> {
+    fn assembled_names(config: &ConfigLayer, prefs: &MarkedPathBuf<Absolute>) -> Vec<String> {
         assemble_stream_rules(config, prefs)
             .into_iter()
             .map(|r| r.name)
@@ -304,11 +320,11 @@ mod tests {
     #[test]
     fn the_embedded_set_loads_when_no_user_file_exists() {
         // Given an empty temp dir (no user rules file) and an empty config.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let config = layer("");
 
         // When the rules are assembled.
-        let names = assembled_names(&config, &prefs_path_in(dir.path()));
+        let names = assembled_names(&config, &prefs_path_in(&dir.path));
 
         // Then the embedded shipped set is present with no user
         // configuration — the guards work out of the box.
@@ -322,8 +338,8 @@ mod tests {
     #[test]
     fn a_user_file_replaces_the_embedded_set_wholesale() {
         // Given a user rules file carrying exactly one rule.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let prefs = prefs_path_in(dir.path());
+        let dir = jinn_testutil::tempdir();
+        let prefs = prefs_path_in(&dir.path);
         write_user_rules(
             &prefs,
             r#"
@@ -351,8 +367,8 @@ mod tests {
     #[test]
     fn an_existing_but_empty_user_file_disarms_every_shipped_guard() {
         // Given an existing but empty user rules file.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let prefs = prefs_path_in(dir.path());
+        let dir = jinn_testutil::tempdir();
+        let prefs = prefs_path_in(&dir.path);
         write_user_rules(&prefs, "");
         let config = layer("");
 
@@ -371,8 +387,8 @@ mod tests {
     #[test]
     fn a_malformed_user_file_falls_back_to_the_embedded_set() {
         // Given a user rules file that is not valid TOML.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let prefs = prefs_path_in(dir.path());
+        let dir = jinn_testutil::tempdir();
+        let prefs = prefs_path_in(&dir.path);
         write_user_rules(&prefs, "NOT [valid toml");
         let config = layer("");
 
@@ -391,8 +407,8 @@ mod tests {
     #[test]
     fn a_jinn_toml_rule_appends_after_the_base_set() {
         // Given a jinn.toml carrying one rule and no user file.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let prefs = prefs_path_in(dir.path());
+        let dir = jinn_testutil::tempdir();
+        let prefs = prefs_path_in(&dir.path);
         let config = layer(
             r#"
             [[stream_rules.entry]]
@@ -419,8 +435,8 @@ mod tests {
     #[test]
     fn a_jinn_toml_rule_appends_after_a_user_file_set() {
         // Given a user file and a jinn.toml rule.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let prefs = prefs_path_in(dir.path());
+        let dir = jinn_testutil::tempdir();
+        let prefs = prefs_path_in(&dir.path);
         write_user_rules(
             &prefs,
             r#"
@@ -456,8 +472,8 @@ mod tests {
     fn a_name_in_the_user_file_and_jinn_toml_resolves_to_the_jinn_toml_definition() {
         // Given a user file and a jinn.toml entry sharing a name, each with
         // its own body.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let prefs = prefs_path_in(dir.path());
+        let dir = jinn_testutil::tempdir();
+        let prefs = prefs_path_in(&dir.path);
         write_user_rules(
             &prefs,
             r#"
@@ -588,9 +604,15 @@ mod tests {
     #[test]
     fn a_projects_own_command_policy_becomes_a_project_scoped_rule() {
         // Given two projects, the second carrying its own blocked-command rule.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let myapp = dir.path().join("dev/code/myapp");
-        let other = dir.path().join("dev/code/other");
+        let dir = jinn_testutil::tempdir();
+        let myapp = dir
+            .path
+            .join("dev/code/myapp")
+            .expect("temp root joins a bare name");
+        let other = dir
+            .path
+            .join("dev/code/other")
+            .expect("temp root joins a bare name");
         // The paths ride through `toml_edit::Value` so the interpolated text
         // is quoted and escaped, never spliced raw into the document.
         let config = layer(&format!(

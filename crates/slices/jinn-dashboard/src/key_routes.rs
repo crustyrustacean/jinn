@@ -135,6 +135,8 @@ mod tests {
         clippy::expect_used,
         reason = "test code; a missing attached row is a hard failure"
     )]
+    use marked_path::{Absolute, MarkedPathBuf};
+
     use crate::attach_dashboard_rows;
     use crate::dashboard_scope;
     use jinn_slices::ActionCtx;
@@ -234,14 +236,14 @@ mod tests {
             self.errors.push(message.to_owned());
         }
 
-        fn active_session_cwd(&self) -> std::path::PathBuf {
-            std::path::PathBuf::new()
+        fn active_session_cwd(&self) -> MarkedPathBuf<Absolute> {
+            MarkedPathBuf::<Absolute>::new("/").expect("test cwd")
         }
 
         fn publish_session_cwd(
             &self,
             _session_id: jinn_core_types::SessionId,
-            _cwd: std::path::PathBuf,
+            _cwd: MarkedPathBuf<Absolute>,
         ) -> jinn_slices::PublishClosure {
             Box::new(|_bus| {})
         }

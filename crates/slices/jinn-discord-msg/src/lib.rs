@@ -8,8 +8,8 @@
 //! does.
 
 use jinn_core_types::SessionId;
+use marked_path::{Absolute, MarkedPathBuf};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use std::sync::Arc;
 
 pub mod connection_state;
@@ -56,7 +56,7 @@ pub enum BridgeEvent {
         /// The session that was being set up.
         session_id: SessionId,
         /// The resulting CWD on success, or default CWD on failure.
-        cwd: PathBuf,
+        cwd: MarkedPathBuf<Absolute>,
         /// Error message if setup failed.
         error: Option<String>,
     },

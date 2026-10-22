@@ -486,8 +486,8 @@ pub fn activate_theme(services: &mut jinn_kernel::Services) {
     );
     jinn_theme_slice::activate(
         &mut host,
-        &services.paths.themes_dir(),
-        &services.paths.system_themes_dir(),
+        &services.paths.themes_dir().as_marked_path(),
+        &services.paths.system_themes_dir().as_marked_path(),
     );
     jinn_theme_slice::activate_picker(&mut host);
 }

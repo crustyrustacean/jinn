@@ -5,6 +5,7 @@ edition.workspace = true
 description = "Workflows crossing contracts: the Workflow payload, the picker state/slot/scope, and the WorkflowsLoaded event."
 
 [dependencies]
+marked-path = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-picker = { workspace = true }
 jinn-selection-widget = { workspace = true }

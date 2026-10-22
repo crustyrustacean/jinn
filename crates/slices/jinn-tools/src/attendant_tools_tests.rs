@@ -2,7 +2,6 @@
 
 #![allow(clippy::expect_used, reason = "test code")]
 
-use std::path::Path;
 use std::time::Duration;
 
 use jinn_attendant_msg::AttendantTrigger;
@@ -14,6 +13,7 @@ use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::state::State;
 use jinn_session_state::ChatSessionState;
 use jinn_testutil::bus_harness::{TestHarness, await_recorded};
+use marked_path::{Absolute, MarkedPathBuf};
 
 use crate::attendant_tools::{
     conclude_definition, conclude_execute, notify_parent_definition, notify_parent_execute,
@@ -35,16 +35,16 @@ async fn ctx(
     harness: &TestHarness,
     state: &State,
     session_id: SessionId,
-    paths_root: &Path,
+    paths_root: &MarkedPathBuf<Absolute>,
 ) -> ToolContext {
     ToolContext {
-        cwd: paths_root.to_path_buf(),
+        cwd: paths_root.clone(),
         config: jinn_config::testutil::config_layer(""),
         shells: Default::default(),
         timeout: None,
         state: Some(state.clone()),
         session_id: Some(session_id),
-        app_paths: AppPaths::new_in(paths_root),
+        app_paths: AppPaths::new_in(&paths_root.as_marked_path()),
         bus: Some(harness.bus()),
         max_output_lines: None,
         max_output_bytes: None,
@@ -79,8 +79,8 @@ async fn conclude_appends_to_the_callers_own_log() {
     // Given an attendant session.
     let harness = TestHarness::new().await;
     let (state, attendant_id, _parent) = attendant_fixture();
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let tool_ctx = ctx(&harness, &state, attendant_id.clone(), dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let tool_ctx = ctx(&harness, &state, attendant_id.clone(), &dir.path).await;
 
     // When the report tool runs.
     let result = conclude_execute(
@@ -106,8 +106,8 @@ async fn report_does_not_wake_the_parent() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, attendant_id, _parent) = attendant_fixture();
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let tool_ctx = ctx(&harness, &state, attendant_id, dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let tool_ctx = ctx(&harness, &state, attendant_id, &dir.path).await;
 
     // When the report tool runs.
     let result = conclude_execute(call("conclude", r#"{"body":"a finding"}"#), tool_ctx).await;
@@ -138,8 +138,8 @@ async fn conclude_persists_the_session() {
         .spawn_recorder::<jinn_session_store_msg::PersistSession>()
         .await;
     let (state, attendant_id, _parent) = attendant_fixture();
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let tool_ctx = ctx(&harness, &state, attendant_id.clone(), dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let tool_ctx = ctx(&harness, &state, attendant_id.clone(), &dir.path).await;
 
     // When the report tool runs.
     let result = conclude_execute(call("conclude", r#"{"body":"a finding"}"#), tool_ctx).await;
@@ -163,8 +163,8 @@ async fn notify_parent_enqueues_an_intersession_message_into_the_parent() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, attendant_id, parent_id) = attendant_fixture();
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let tool_ctx = ctx(&harness, &state, attendant_id.clone(), dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let tool_ctx = ctx(&harness, &state, attendant_id.clone(), &dir.path).await;
 
     // When the notify tool runs.
     let result = notify_parent_execute(
@@ -199,8 +199,8 @@ async fn notify_parent_composes_the_shared_attribution_prefix() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, attendant_id, _parent) = attendant_fixture();
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let tool_ctx = ctx(&harness, &state, attendant_id.clone(), dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let tool_ctx = ctx(&harness, &state, attendant_id.clone(), &dir.path).await;
 
     // When the notify tool runs.
     let result = notify_parent_execute(
@@ -231,8 +231,8 @@ async fn notify_parent_wake_is_included_in_the_parents_llm_context() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, attendant_id, _parent) = attendant_fixture();
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let tool_ctx = ctx(&harness, &state, attendant_id, dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let tool_ctx = ctx(&harness, &state, attendant_id, &dir.path).await;
 
     // When the notify tool runs.
     let result =
@@ -252,8 +252,8 @@ async fn notify_parent_leaves_an_untitled_parent_untitled() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, attendant_id, parent_id) = attendant_fixture();
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let tool_ctx = ctx(&harness, &state, attendant_id, dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let tool_ctx = ctx(&harness, &state, attendant_id, &dir.path).await;
 
     // When the notify tool runs.
     let result = notify_parent_execute(
@@ -280,7 +280,7 @@ async fn notify_parent_marks_the_parent_interacted() {
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let (state, attendant_id, parent_id) = attendant_fixture();
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     {
         let mut guard = state.write();
         guard
@@ -289,7 +289,7 @@ async fn notify_parent_marks_the_parent_interacted() {
             .expect("attendant")
             .set_attendant_trigger(AttendantTrigger::ParentCompleted);
     }
-    let tool_ctx = ctx(&harness, &state, attendant_id, dir.path()).await;
+    let tool_ctx = ctx(&harness, &state, attendant_id, &dir.path).await;
 
     // When the notify tool runs.
     let result =
@@ -318,8 +318,8 @@ async fn notify_parent_fails_for_a_non_attendant() {
         state.write().session.insert(session);
         id
     };
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let tool_ctx = ctx(&harness, &state, user_id, dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let tool_ctx = ctx(&harness, &state, user_id, &dir.path).await;
 
     // When the notify tool runs.
     let result =
@@ -369,8 +369,8 @@ async fn conclude_fails_cleanly_with_a_missing_body() {
     // Given an attendant and a call whose arguments lack `body`.
     let harness = TestHarness::new().await;
     let (state, attendant_id, _parent) = attendant_fixture();
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let tool_ctx = ctx(&harness, &state, attendant_id, dir.path()).await;
+    let dir = jinn_testutil::tempdir();
+    let tool_ctx = ctx(&harness, &state, attendant_id, &dir.path).await;
 
     // When the report tool runs.
     let result = conclude_execute(call("conclude", r#"{}"#), tool_ctx).await;

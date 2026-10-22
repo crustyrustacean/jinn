@@ -85,11 +85,13 @@ mod tests {
     #[rstest::rstest]
     fn content_with_body_and_location_returns_name_only() {
         // Given a skill content with a long body and location path.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let location = dir.path().join("u/.agents/skills/.../SKILL.md");
+        let dir = jinn_testutil::tempdir();
+        let location = dir
+            .path
+            .join("u/.agents/skills/.../SKILL.md")
+            .expect("temp root joins a bare name");
         let content = format!(
-            "<skill name=\"rust-programming\" location=\"{}\">\nlots\nof\nbody\n</skill>",
-            location.display()
+            "<skill name=\"rust-programming\" location=\"{location}\">\nlots\nof\nbody\n</skill>"
         );
 
         // When parsing.

@@ -9,7 +9,7 @@
 //! format is one trait impl plus one arm in [`format_for_path`]; no call
 //! site outside a renderer's own file names a concrete format type.
 
-use std::path::Path;
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
 use wherror::Error;
 
@@ -61,7 +61,7 @@ pub struct UnsupportedExtensionError {
 /// caller turns that into an [`UnsupportedExtensionError`]. This is the only
 /// function that maps an extension to a format.
 #[must_use]
-pub fn format_for_path(path: &Path) -> Option<Box<dyn ExportFormat>> {
+pub fn format_for_path(path: &MarkedPathBuf<Absolute>) -> Option<Box<dyn ExportFormat>> {
     let ext = path.extension()?.to_str()?.to_ascii_lowercase();
     match ext.as_str() {
         "html" | "htm" => Some(Box::new(HtmlExport)),
@@ -72,7 +72,7 @@ pub fn format_for_path(path: &Path) -> Option<Box<dyn ExportFormat>> {
 
 /// Builds the error for a path whose extension cannot be written.
 #[must_use]
-pub fn unsupported_extension_error(path: &Path) -> UnsupportedExtensionError {
+pub fn unsupported_extension_error(path: &MarkedPathBuf<Absolute>) -> UnsupportedExtensionError {
     let found = path
         .extension()
         .and_then(std::ffi::OsStr::to_str)
@@ -107,7 +107,11 @@ mod tests {
     #[case("markdown", "md")]
     fn supported_extension_resolves_to_a_format(#[case] ext: &str, #[case] expected: &str) {
         // Given a path with a supported extension.
-        let path = Path::new("out").with_extension(ext);
+        let path = MarkedPathBuf::<Absolute>::new(std::path::MAIN_SEPARATOR_STR)
+            .expect("root separator is absolute")
+            .join("out")
+            .expect("root joins a bare name")
+            .with_extension(ext);
 
         // When resolving its format.
         let format = format_for_path(&path);
@@ -123,7 +127,11 @@ mod tests {
     #[case("rs")]
     fn unsupported_extension_resolves_to_none(#[case] ext: &str) {
         // Given a path with an extension this slice cannot write.
-        let path = Path::new("out").with_extension(ext);
+        let path = MarkedPathBuf::<Absolute>::new(std::path::MAIN_SEPARATOR_STR)
+            .expect("root separator is absolute")
+            .join("out")
+            .expect("root joins a bare name")
+            .with_extension(ext);
 
         // When resolving its format.
         let format = format_for_path(&path);
@@ -135,10 +143,13 @@ mod tests {
     #[rstest::rstest]
     fn extensionless_path_resolves_to_none() {
         // Given a path with no extension at all.
-        let path = Path::new("chat-export");
+        let path = MarkedPathBuf::<Absolute>::new(std::path::MAIN_SEPARATOR_STR)
+            .expect("root separator is absolute")
+            .join("chat-export")
+            .expect("root joins a bare name");
 
         // When resolving its format.
-        let format = format_for_path(path);
+        let format = format_for_path(&path);
 
         // Then nothing is found, so the export is refused.
         assert!(format.is_none());
@@ -147,10 +158,13 @@ mod tests {
     #[rstest::rstest]
     fn unsupported_error_names_the_extension_and_the_alternatives() {
         // Given a path the slice cannot write.
-        let path = Path::new("out.pdf");
+        let path = MarkedPathBuf::<Absolute>::new(std::path::MAIN_SEPARATOR_STR)
+            .expect("root separator is absolute")
+            .join("out.pdf")
+            .expect("root joins a bare name");
 
         // When building the refusal error.
-        let err = unsupported_extension_error(path);
+        let err = unsupported_extension_error(&path);
 
         // Then the message says there is no exporter, and lists the ones there are.
         assert_eq!(err.found, ".pdf");
@@ -162,10 +176,13 @@ mod tests {
     #[rstest::rstest]
     fn extensionless_error_reports_none_found() {
         // Given a path with no extension.
-        let path = Path::new("chat-export");
+        let path = MarkedPathBuf::<Absolute>::new(std::path::MAIN_SEPARATOR_STR)
+            .expect("root separator is absolute")
+            .join("chat-export")
+            .expect("root joins a bare name");
 
         // When building the refusal error.
-        let err = unsupported_extension_error(path);
+        let err = unsupported_extension_error(&path);
 
         // Then the message says no extension was found.
         assert_eq!(err.found, "(none)");

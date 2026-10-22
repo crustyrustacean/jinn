@@ -3,7 +3,7 @@
 //! Insertion, deletion, submission, and clearing of the text
 //! the user is composing.
 
-use std::path::PathBuf;
+use marked_path::{Absolute, MarkedPathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -71,7 +71,7 @@ pub struct ListDirectory {
     /// The session whose popup this listing is for.
     pub session_id: SessionId,
     /// Resolved absolute directory to list.
-    pub path: PathBuf,
+    pub path: MarkedPathBuf<Absolute>,
     /// Monotonic id tying this request to the expected reply slot.
     pub request_id: u64,
 }

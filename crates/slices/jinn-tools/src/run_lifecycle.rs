@@ -519,7 +519,7 @@ async fn await_completion(
                 let where_to = match kind {
                     AwaitKind::Setup => done
                         .cwd
-                        .map(|cwd| format!(" Session cwd: {}.", cwd.display()))
+                        .map(|cwd| format!(" Session cwd: {cwd}."))
                         .unwrap_or_default(),
                     AwaitKind::Teardown => String::new(),
                 };
@@ -586,7 +586,7 @@ fn resolve_from_path(
     kind: AwaitKind,
 ) -> Result<(String, Option<String>), Report<LifecycleError>> {
     let resolved = crate::tool_paths::resolve_path(path, &ctx.cwd);
-    let source = resolved.display().to_string();
+    let source = resolved.to_string();
     let text = std::fs::read_to_string(&resolved).map_err(|error| LifecycleError::FileRead {
         file: source.clone(),
         detail: error.to_string(),

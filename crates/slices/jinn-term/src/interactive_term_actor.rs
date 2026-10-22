@@ -656,6 +656,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+    use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
     /// Snapshot a session's mirror from the term/tabs cell.
     fn test_mirror(
@@ -929,7 +930,9 @@ mod tests {
         SpawnTerm {
             chat_session_id: chat,
             command: command.to_owned(),
-            cwd: std::path::PathBuf::from("."),
+            cwd: std::env::current_dir()
+                .map(|cwd| MarkedPathBuf::<Absolute>::new(cwd).expect("process cwd is absolute"))
+                .expect("process cwd is readable"),
             size: (24, 80),
             max_wait: Duration::from_secs(3),
         }
@@ -1004,21 +1007,18 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn spawn_pty_runs_in_the_requested_cwd() {
-        use std::path::PathBuf;
-
         // Given a coordinator and a real scratch directory.
         let harness = TestHarness::new().await;
         let (actor, _system) = spawn_coordinator(&harness, TermControls::default()).await;
-        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-term-cwd").expect("temp dir");
+        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-term-cwd");
         // The expectation is the canonicalized directory: `pwd` prints the
         // path the kernel resolves, and macOS resolves the temp dir's
         // `/var/folders/...` to `/private/var/folders/...` through a symlink.
-        let expected =
-            jinn_common::canonicalize_display(dir.path()).expect("canonicalize temp dir");
+        let expected = jinn_common::canonicalize_display(&dir.path).expect("canonicalize temp dir");
 
         // When spawning `pwd` with that directory as cwd.
         let mut msg = spawn_msg(jinn_core_types::SessionId::new(), "pwd");
-        msg.cwd = PathBuf::from(dir.path());
+        msg.cwd = dir.path.clone();
         let reply = actor.ask(msg).await;
 
         // Then the screen shows the requested directory. The comparison is
@@ -1031,7 +1031,7 @@ mod tests {
             SpawnTermOutcome::Started { screen, .. } => {
                 let shown: String = plain_screen(&screen.screen).replace('\n', "");
                 assert!(
-                    shown.contains(expected.to_string_lossy().as_ref()),
+                    shown.contains(expected.as_path().to_string_lossy().as_ref()),
                     "pwd should print the requested cwd, got: {}",
                     plain_screen(&screen.screen)
                 );

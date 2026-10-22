@@ -8,6 +8,7 @@
 use jinn_core_types::SessionId;
 
 use crate::command::{KillTermOutcome, SendTermOutcome, SpawnTermOutcome};
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// The error surface of a failed term ask (mailbox closed, timed out).
 #[derive(Debug, Clone, wherror::Error)]
@@ -22,7 +23,7 @@ pub trait TermHandle: Send + Sync {
         &self,
         chat_session_id: SessionId,
         command: String,
-        cwd: std::path::PathBuf,
+        cwd: MarkedPathBuf<Absolute>,
         size: (u16, u16),
         max_wait: std::time::Duration,
     ) -> Result<SpawnTermOutcome, TermAskError>;

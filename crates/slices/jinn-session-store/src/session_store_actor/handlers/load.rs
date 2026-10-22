@@ -28,6 +28,7 @@ use jinn_preferences_config::schemas::ChatLogConfig;
 
 use crate::hydrate::{HydrateCompleted, HydrateSession};
 use crate::session_store_actor::SessionStoreActor;
+use marked_path::{Absolute, MarkedPathBuf};
 
 impl MsgHandler<HydrateCompleted> for SessionStoreActor {
     async fn handle(&mut self, msg: &HydrateCompleted, ctx: &mut MsgCtx<'_>) {
@@ -189,7 +190,7 @@ impl SessionStoreActor {
         // The snapshot may have been taken while the session was archived. Loading it
         // makes it live again, and the sidebar lists only `Loaded` sessions.
         session.set_session_state(SessionState::Loaded);
-        let original_cwd = session.cwd().to_path_buf();
+        let original_cwd = session.cwd().clone();
 
         // Everything the measurement needs, taken while the session is still
         // owned here. Once it is moved into the map only a borrow of its
@@ -414,16 +415,14 @@ impl SessionStoreActor {
     }
 
     /// Replaces a missing working directory with the application default.
-    fn restore_missing_cwd(&self, session_id: &SessionId, original_cwd: &std::path::Path) {
+    fn restore_missing_cwd(&self, session_id: &SessionId, original_cwd: &MarkedPathBuf<Absolute>) {
         let default_cwd = self.state.read().session.default_cwd().clone();
         self.state.with_session(|view| {
             let Some(session) = view.session.map().get_mut(session_id) else {
                 return;
             };
             session.push_entry(ChatEntry::system(format!(
-                "Warning: working directory '{}' not found, falling back to '{}'",
-                original_cwd.display(),
-                default_cwd.display()
+                "Warning: working directory '{original_cwd}' not found, falling back to '{default_cwd}'"
             )));
             session.set_cwd(default_cwd);
         });

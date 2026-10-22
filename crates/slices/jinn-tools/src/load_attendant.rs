@@ -23,6 +23,7 @@ use jinn_attendant::saved_create;
 use jinn_core_types::AttendantSourcePath;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use jinn_preferences_config::schemas::AttendantEntryConfig;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// The `load_attendant` tool definition.
 pub fn definition() -> ToolDefinition {
@@ -103,17 +104,18 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             if caller.is_attendant() {
                 return tool_error(&call, "only a non-attendant session can load an attendant");
             }
-            caller.cwd().to_path_buf()
+            caller.cwd().clone()
         };
         let path = {
             let candidate = std::path::Path::new(&raw_path);
             if candidate.is_absolute() {
-                candidate.to_path_buf()
+                MarkedPathBuf::<Absolute>::new(candidate).expect("checked absolute above")
             } else {
                 cwd.join(candidate)
+                    .expect("absolute parent joins a bare candidate")
             }
         };
-        let source = path.display().to_string();
+        let source = path.to_string();
         let entry = match std::fs::read_to_string(&path) {
             Ok(text) => match parse_attendant_entry(&text) {
                 Ok(entry) => entry,

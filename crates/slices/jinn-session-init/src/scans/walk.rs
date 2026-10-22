@@ -15,12 +15,11 @@
 //! **least-local first, cwd last**, so merging "most-local wins" is a simple
 //! later-insert-overwrites-earlier pass.
 
-use std::path::{Path, PathBuf};
-
 use jinn_common::canonicalize_display;
 
 use super::vcs::is_vcs_root;
 use super::{CONTEXT_FILE_CANDIDATES, PROMPTS_SUBDIR, SKILLS_SUBDIR};
+use marked_path::{Absolute, MarkedPath, MarkedPathAccess, MarkedPathBuf};
 
 /// Returns the ordered project directories for `cwd`, bounded by VCS root or
 /// `$HOME`.
@@ -47,13 +46,21 @@ use super::{CONTEXT_FILE_CANDIDATES, PROMPTS_SUBDIR, SKILLS_SUBDIR};
 /// - Canonicalization failure (e.g. cwd does not exist) falls back to the input
 ///   path; the walk proceeds against the literal input.
 #[must_use]
-pub fn project_dirs(cwd: &Path, home: &Path) -> Vec<PathBuf> {
+pub fn project_dirs(
+    cwd: &MarkedPathBuf<Absolute>,
+    home: &MarkedPathBuf<Absolute>,
+) -> Vec<MarkedPathBuf<Absolute>> {
     let current = canonicalize_or_input(cwd);
     let home = canonicalize_or_input(home);
 
     let mut dirs = collect_bounded(&current, &home);
     dirs.reverse();
-    dirs
+    dirs.into_iter()
+        .map(|dir| {
+            MarkedPathBuf::<Absolute>::new(dir)
+                .expect("walk rebuilds absolutes from canonicalized inputs")
+        })
+        .collect()
 }
 
 /// Walks `cwd` upward, collecting each directory until a boundary is hit.
@@ -61,21 +68,27 @@ pub fn project_dirs(cwd: &Path, home: &Path) -> Vec<PathBuf> {
 /// Returns dirs in **walk order (cwd → ancestor)**; the public [`project_dirs`]
 /// reverses to ancestor → cwd. Collecting in walk order keeps the boundary logic
 /// linear (one loop) per the one-loop-per-function rule.
-fn collect_bounded(cwd: &Path, home: &Path) -> Vec<PathBuf> {
+fn collect_bounded(
+    cwd: &MarkedPathBuf<Absolute>,
+    home: &MarkedPathBuf<Absolute>,
+) -> Vec<MarkedPathBuf<Absolute>> {
     let mut dirs = Vec::new();
-    let mut current = cwd.to_path_buf();
+    let mut current = cwd.clone();
     loop {
-        if current == home {
+        if current == *home {
             break;
         }
         dirs.push(current.clone());
         if is_vcs_root(&current) {
             break;
         }
-        match current.parent() {
+        match current.as_path().parent() {
             None => break,
-            Some(parent) if parent == current => break, // filesystem root
-            Some(parent) => current = parent.to_path_buf(),
+            Some(parent) if parent == current.as_path() => break, // filesystem root
+            Some(parent) => {
+                current = MarkedPathBuf::<Absolute>::new(parent)
+                    .expect("parent of an absolute path is absolute");
+            }
         }
     }
     dirs
@@ -92,8 +105,11 @@ fn collect_bounded(cwd: &Path, home: &Path) -> Vec<PathBuf> {
 /// walk rebuilds, so the home bound would never fire. When canonicalization
 /// fails we use the literal input so the walk proceeds against the given path
 /// rather than aborting.
-fn canonicalize_or_input(path: &Path) -> PathBuf {
-    canonicalize_display(path).unwrap_or_else(|_| path.to_path_buf())
+fn canonicalize_or_input(path: &MarkedPathBuf<Absolute>) -> MarkedPathBuf<Absolute> {
+    canonicalize_display(path)
+        .ok()
+        .and_then(|raw| MarkedPathBuf::<Absolute>::new(raw).ok())
+        .unwrap_or_else(|| path.clone())
 }
 
 /// Returns the `.agents/skills` directory under each project dir for `cwd`.
@@ -104,10 +120,13 @@ fn canonicalize_or_input(path: &Path) -> PathBuf {
 /// result uses the platform's own separators throughout — never a
 /// mixed-separator path such as `C:\proj\.agents/skills` on Windows.
 #[must_use]
-pub fn project_skills_dirs(cwd: &Path, home: &Path) -> Vec<PathBuf> {
+pub fn project_skills_dirs(
+    cwd: &MarkedPathBuf<Absolute>,
+    home: &MarkedPathBuf<Absolute>,
+) -> Vec<MarkedPathBuf<Absolute>> {
     project_dirs(cwd, home)
         .into_iter()
-        .map(|dir| join_segments(dir, SKILLS_SUBDIR))
+        .map(|dir| join_segments(&dir, SKILLS_SUBDIR))
         .collect()
 }
 
@@ -117,10 +136,13 @@ pub fn project_skills_dirs(cwd: &Path, home: &Path) -> Vec<PathBuf> {
 /// returned even if they don't exist yet. The suffix is joined one segment at
 /// a time, exactly as [`project_skills_dirs`] does.
 #[must_use]
-pub fn project_prompts_dirs(cwd: &Path, home: &Path) -> Vec<PathBuf> {
+pub fn project_prompts_dirs(
+    cwd: &MarkedPathBuf<Absolute>,
+    home: &MarkedPathBuf<Absolute>,
+) -> Vec<MarkedPathBuf<Absolute>> {
     project_dirs(cwd, home)
         .into_iter()
-        .map(|dir| join_segments(dir, PROMPTS_SUBDIR))
+        .map(|dir| join_segments(&dir, PROMPTS_SUBDIR))
         .collect()
 }
 
@@ -129,10 +151,11 @@ pub fn project_prompts_dirs(cwd: &Path, home: &Path) -> Vec<PathBuf> {
 /// Joining a multi-segment suffix (`.agents/skills`) as a single string
 /// would bake `/` separators into a `\`-separated Windows path; folding
 /// one segment per [`Path::join`] keeps every separator native.
-fn join_segments(base: PathBuf, segments: &[&str]) -> PathBuf {
-    segments
-        .iter()
-        .fold(base, |path, segment| path.join(segment))
+fn join_segments(base: &MarkedPathBuf<Absolute>, segments: &[&str]) -> MarkedPathBuf<Absolute> {
+    segments.iter().fold(base.clone(), |path, segment| {
+        path.join(segment)
+            .expect("absolute dir joins a bare subdir name")
+    })
 }
 
 /// Returns the context files (AGENTS.md / CLAUDE.md) present in each project dir.
@@ -145,10 +168,13 @@ fn join_segments(base: PathBuf, segments: &[&str]) -> PathBuf {
 /// Unlike [`project_skills_dirs`] / [`project_prompts_dirs`], this returns
 /// concrete file paths (already known to exist), not directories to scan.
 #[must_use]
-pub fn project_context_files(cwd: &Path, home: &Path) -> Vec<PathBuf> {
+pub fn project_context_files(
+    cwd: &MarkedPathBuf<Absolute>,
+    home: &MarkedPathBuf<Absolute>,
+) -> Vec<MarkedPathBuf<Absolute>> {
     project_dirs(cwd, home)
         .into_iter()
-        .filter_map(|dir| first_existing_context_candidate(&dir))
+        .filter_map(|dir| first_existing_context_candidate(&dir.as_marked_path()))
         .collect()
 }
 
@@ -156,11 +182,13 @@ pub fn project_context_files(cwd: &Path, home: &Path) -> Vec<PathBuf> {
 ///
 /// [`CONTEXT_FILE_CANDIDATES`] is checked in order; the first file that
 /// exists wins for this directory. Returns `None` if no candidate exists.
-fn first_existing_context_candidate(dir: &Path) -> Option<PathBuf> {
+fn first_existing_context_candidate(
+    dir: &MarkedPath<'_, Absolute>,
+) -> Option<MarkedPathBuf<Absolute>> {
     CONTEXT_FILE_CANDIDATES
         .iter()
-        .map(|name| dir.join(name))
-        .find(|path| path.is_file())
+        .map(|name| dir.join(name).expect("absolute dir joins a bare filename"))
+        .find(|path| path.as_path().is_file())
 }
 
 #[cfg(test)]
@@ -174,21 +202,22 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+    use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
     /// A home directory that is nowhere near the tree under test.
     ///
     /// The walk must not reach it, so it lives in its own temp root — a
     /// sibling of the tree, never one of its ancestors. Building it from a
     /// typed root keeps the path absolute on every platform.
-    fn far_away_home() -> PathBuf {
-        let root = jinn_testutil::paths::TestRoot::new().expect("test root");
-        root.join_str("home").expect("relative path").into_inner()
+    fn far_away_home() -> MarkedPathBuf<Absolute> {
+        let root = jinn_testutil::paths::TestRoot::new();
+        root.join_str("home").expect("relative path")
     }
 
     /// Builds a nested temp dir tree and returns the root + a leaf path.
     struct Tree {
-        root: PathBuf,
-        leaf: PathBuf,
+        root: MarkedPathBuf<Absolute>,
+        leaf: MarkedPathBuf<Absolute>,
         _tmp: tempfile::TempDir,
     }
 
@@ -202,21 +231,28 @@ mod tests {
         /// output. Linux is identity; Windows loses only the verbatim
         /// prefix, which [`canonicalize_display`] already strips.
         fn new(marker: Option<&str>) -> Self {
-            let tmp = jinn_testutil::tempdir().expect("temp dir");
-            let root = canonicalize_display(tmp.path()).expect("temp dir canonicalizes");
-            std::fs::create_dir_all(root.join("sub").join("leaf")).expect("create dir chain");
+            let tmp = jinn_testutil::tempdir();
+            let root = canonicalize_display(&tmp.path).expect("temp dir canonicalizes");
+            let leaf = root
+                .join_all(["sub", "leaf"])
+                .expect("name joins keep the base absolute");
+            std::fs::create_dir_all(leaf.as_path()).expect("create dir chain");
             if let Some(m) = marker {
                 // Marker is a file for .fslckout/.fossil, dir for .git/.hg/.jj.
                 if m == ".git" || m == ".hg" || m == ".jj" {
-                    std::fs::create_dir(root.join(m)).expect("create marker dir");
+                    let marker_dir = root.join(m).expect("typed parent joins a bare name");
+                    std::fs::create_dir(marker_dir.as_path()).expect("create marker dir");
                 } else {
-                    std::fs::write(root.join(m), b"marker").expect("create marker file");
+                    let marker_file = root.join(m).expect("typed parent joins a bare name");
+                    std::fs::write(marker_file.as_path(), b"marker").expect("create marker file");
                 }
             }
             Self {
-                leaf: root.join("sub").join("leaf"),
+                leaf: root
+                    .join_all(["sub", "leaf"])
+                    .expect("name joins keep the base absolute"),
                 root,
-                _tmp: tmp,
+                _tmp: tmp.dir,
             }
         }
     }
@@ -233,7 +269,12 @@ mod tests {
         // and stops. Root comes first after reverse, leaf last.
         assert_eq!(dirs.len(), 3, "should collect leaf, sub, and root");
         assert_eq!(dirs[0], tree.root, "root (VCS) is least-local");
-        assert_eq!(dirs[1], tree.root.join("sub"));
+        assert_eq!(
+            dirs[1],
+            tree.root
+                .join("sub")
+                .expect("typed parent joins a bare name")
+        );
         assert_eq!(dirs[2], tree.leaf, "cwd is most-local");
     }
 
@@ -286,7 +327,12 @@ mod tests {
         // Then home (root) is excluded; only leaf and sub are collected.
         assert_eq!(
             dirs,
-            vec![tree.root.join("sub"), tree.leaf],
+            vec![
+                tree.root
+                    .join("sub")
+                    .expect("typed parent joins a bare name"),
+                tree.leaf,
+            ],
             "home must be excluded"
         );
     }
@@ -307,14 +353,16 @@ mod tests {
     fn walk_home_reached_before_vcs_excludes_home() {
         // Given home is an ANCESTOR of cwd, and a VCS marker exists BELOW home
         // (so home would be reached first walking up).
-        let tmp = jinn_testutil::tempdir().expect("temp dir");
-        let home = canonicalize_display(tmp.path())
+        let tmp = jinn_testutil::tempdir();
+        let home = canonicalize_display(&tmp.path)
             .expect("temp dir canonicalizes")
-            .join("home");
-        let repo = home.join("repo");
-        let cwd = repo.join("deep");
+            .join("home")
+            .expect("typed parent joins a bare name");
+        let repo = home.join("repo").expect("typed parent joins a bare name");
+        let cwd = repo.join("deep").expect("typed parent joins a bare name");
         std::fs::create_dir_all(&cwd).expect("mkdir");
-        std::fs::create_dir(repo.join(".git")).expect("git marker at repo");
+        let git = repo.join(".git").expect("typed parent joins a bare name");
+        std::fs::create_dir(git.as_path()).expect("git marker at repo");
 
         // When walking from cwd with the given home.
         let dirs = project_dirs(&cwd, &home);
@@ -329,12 +377,20 @@ mod tests {
     #[rstest::rstest]
     fn walk_vcs_root_above_home_stops_at_home() {
         // Given a VCS marker ABOVE home — home should bound first.
-        let tmp = jinn_testutil::tempdir().expect("temp dir");
-        let outer = canonicalize_display(tmp.path()).expect("temp dir canonicalizes");
-        let home = outer.join("home");
-        let cwd = home.join("project");
+        let tmp = jinn_testutil::tempdir();
+        let outer = canonicalize_display(&tmp.path).expect("temp dir canonicalizes");
+        let home = outer.join("home").expect("typed parent joins a bare name");
+        let cwd = home
+            .join("project")
+            .expect("typed parent joins a bare name");
         std::fs::create_dir_all(&cwd).expect("mkdir");
-        std::fs::create_dir(outer.join(".git")).expect("git marker above home");
+        std::fs::create_dir(
+            outer
+                .join(".git")
+                .expect("typed parent joins a bare name")
+                .as_path(),
+        )
+        .expect("git marker above home");
 
         // When walking from cwd with home.
         let dirs = project_dirs(&cwd, &home);
@@ -346,11 +402,13 @@ mod tests {
     #[rstest::rstest]
     fn walk_nonexistent_cwd_falls_back_to_input() {
         // Given a cwd path that does not exist.
-        let tmp = jinn_testutil::tempdir().expect("temp dir");
+        let tmp = jinn_testutil::tempdir();
         // The base is canonicalized so the literal fallback form and home
         // compare in the same form on every platform (see `Tree::new`).
-        let home = canonicalize_display(tmp.path()).expect("temp dir canonicalizes");
-        let cwd = home.join("nope/does-not-exist");
+        let home = canonicalize_display(&tmp.path).expect("temp dir canonicalizes");
+        let cwd = home
+            .join("nope/does-not-exist")
+            .expect("typed parent joins a bare name");
 
         // When walking.
         let dirs = project_dirs(&cwd, &home);
@@ -370,11 +428,11 @@ mod tests {
         let dirs = project_skills_dirs(&tree.leaf, &far_away_home());
 
         // Then each project dir has the .agents/skills suffix with native
-        // separators, computed from a PathBuf join.
+        // separators (the typed join normalizes them).
         assert_eq!(dirs.len(), 3);
         assert!(
-            dirs.iter()
-                .all(|d| d.ends_with(Path::new(".agents").join("skills")))
+            dirs.iter().all(|d| d.to_string_lossy().ends_with("skills")
+                && d.to_string_lossy().contains(".agents"))
         );
     }
 
@@ -387,11 +445,11 @@ mod tests {
         let dirs = project_prompts_dirs(&tree.leaf, &far_away_home());
 
         // Then each project dir has the .agents/prompts suffix with native
-        // separators, computed from a PathBuf join.
+        // separators (the typed join normalizes them).
         assert_eq!(dirs.len(), 3);
         assert!(
-            dirs.iter()
-                .all(|d| d.ends_with(Path::new(".agents").join("prompts")))
+            dirs.iter().all(|d| d.to_string_lossy().ends_with("prompts")
+                && d.to_string_lossy().contains(".agents"))
         );
     }
 
@@ -426,14 +484,23 @@ mod tests {
     fn project_context_files_returns_existing_candidates() {
         // Given a tree with an AGENTS.md at the root (VCS root) only.
         let tree = Tree::new(Some(".git"));
-        std::fs::write(tree.root.join("AGENTS.md"), "# root").expect("write AGENTS.md");
+        let agents = tree
+            .root
+            .join("AGENTS.md")
+            .expect("typed parent joins a bare name");
+        std::fs::write(agents.as_path(), "# root").expect("write AGENTS.md");
 
         // When resolving context files.
         let files = project_context_files(&tree.leaf, &far_away_home());
 
         // Then only the root contributes a context file.
         assert_eq!(files.len(), 1);
-        assert_eq!(files[0], tree.root.join("AGENTS.md"));
+        assert_eq!(
+            files[0],
+            tree.root
+                .join("AGENTS.md")
+                .expect("typed parent joins a bare name")
+        );
     }
 
     #[rstest::rstest]
@@ -451,10 +518,22 @@ mod tests {
     #[rstest::rstest]
     fn project_context_files_first_candidate_wins_per_dir() {
         // Given a dir with both AGENTS.md and CLAUDE.md.
-        let tmp = jinn_testutil::tempdir().expect("temp dir");
-        let root = tmp.path().to_path_buf();
-        std::fs::write(root.join("AGENTS.md"), "# agents").expect("write");
-        std::fs::write(root.join("CLAUDE.md"), "# claude").expect("write");
+        let tmp = jinn_testutil::tempdir();
+        let root = tmp.path.clone();
+        std::fs::write(
+            root.join("AGENTS.md")
+                .expect("typed parent joins a bare name")
+                .as_path(),
+            "# agents",
+        )
+        .expect("write");
+        std::fs::write(
+            root.join("CLAUDE.md")
+                .expect("typed parent joins a bare name")
+                .as_path(),
+            "# claude",
+        )
+        .expect("write");
 
         // When resolving context files.
         let files = project_context_files(&root, &far_away_home());
@@ -467,15 +546,16 @@ mod tests {
     #[rstest::rstest]
     fn walk_canonicalizes_symlinked_cwd() {
         // Given a real dir and a symlink to it, with home elsewhere.
-        let tmp = jinn_testutil::tempdir().expect("temp dir");
-        let real = canonicalize_display(tmp.path())
+        let tmp = jinn_testutil::tempdir();
+        let real = canonicalize_display(&tmp.path)
             .expect("temp dir canonicalizes")
-            .join("real");
-        std::fs::create_dir(&real).expect("mkdir");
+            .join("real")
+            .expect("typed parent joins a bare name");
+        std::fs::create_dir(real.as_path()).expect("mkdir");
         #[cfg(unix)]
         let link = {
-            let link = tmp.path().join("link");
-            std::os::unix::fs::symlink(&real, &link).expect("symlink");
+            let link = tmp.path.join("link").expect("temp root joins a bare name");
+            std::os::unix::fs::symlink(real.as_path(), link.as_path()).expect("symlink");
             link
         };
         #[cfg(not(unix))]
@@ -483,7 +563,7 @@ mod tests {
 
         // When walking from the symlink, with home set to the real parent
         // so the walk is bounded to the real directory only.
-        let dirs = project_dirs(&link, tmp.path());
+        let dirs = project_dirs(&link, &tmp.path);
 
         // Then the canonicalized real path is used (symlink resolved,
         // walk bounded by tmp parent = home).

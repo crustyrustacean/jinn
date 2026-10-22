@@ -8,8 +8,8 @@
 
 #![allow(clippy::expect_used, reason = "test code")]
 
+use marked_path::{Absolute, MarkedPathBuf};
 use std::collections::BTreeMap;
-use std::path::Path;
 use std::time::Duration;
 
 use jinn_common::app_paths::AppPaths;
@@ -47,23 +47,23 @@ teardown_command = "fossil close && rm -rf <dir>"
 /// Builds a tool context wired to the harness, with the script document.
 ///
 /// Both paths must outlive the returned context — each test owns the
-/// `tempfile::TempDir` they are derived from (a `TempDir` created inside a
-/// helper would delete its tree before the test body ran).
+/// [`jinn_testutil::JinnTempDir`] they are derived from (a temp dir created
+/// inside a helper would delete its tree before the test body ran).
 async fn ctx_with(
     harness: &TestHarness,
     state: &State,
     session_id: SessionId,
-    app_paths_root: &Path,
-    cwd: &Path,
+    app_paths_root: &MarkedPathBuf<Absolute>,
+    cwd: &MarkedPathBuf<Absolute>,
 ) -> ToolContext {
     ToolContext {
-        cwd: cwd.to_path_buf(),
+        cwd: cwd.clone(),
         config: jinn_config::testutil::config_layer(SCRIPT_DOC),
         shells: Default::default(),
         timeout: None,
         state: Some(state.clone()),
         session_id: Some(session_id),
-        app_paths: AppPaths::new_in(app_paths_root),
+        app_paths: AppPaths::new_in(&app_paths_root.as_marked_path()),
         bus: Some(harness.bus()),
         max_output_lines: None,
         max_output_bytes: None,
@@ -190,14 +190,17 @@ async fn setup_stamps_coordinates_and_persists_before_the_run_command() {
     // Given a session and a harness recording setup commands and persists.
     // The temp dir outlives the setup block: the tool's context points
     // into it, and the tool runs after the block closes.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let (harness, setups, persists, state, id, tool_ctx, adopted_cwd) = {
         let harness = TestHarness::new().await;
         let setups = harness.spawn_recorder::<RunSessionSetup>().await;
         let persists = harness.spawn_recorder::<PersistSession>().await;
         let (state, id) = fixture();
-        let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
-        let adopted_cwd = dir.path().join("inherited-project");
+        let tool_ctx = ctx_with(&harness, &state, id.clone(), &dir.path, &dir.path).await;
+        let adopted_cwd = dir
+            .path
+            .join("inherited-project")
+            .expect("temp root joins a bare name");
         (harness, setups, persists, state, id, tool_ctx, adopted_cwd)
     };
 
@@ -268,7 +271,7 @@ async fn setup_stamps_coordinates_and_persists_before_the_run_command() {
     );
     // And the tool reported the adopted cwd.
     assert!(
-        result.content.contains(&adopted_cwd.display().to_string()),
+        result.content.contains(&adopted_cwd.to_string()),
         "{}",
         result.content
     );
@@ -281,24 +284,27 @@ async fn teardown_ignores_supplied_options_and_replays_the_stored_coordinates() 
     // coordinates, and a harness recording teardown commands.
     // The temp dir outlives the setup block: the tool's context points
     // into it, and the tool runs after the block closes.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let (harness, teardowns, state, id, tool_ctx) = {
         let harness = TestHarness::new().await;
         let teardowns = harness.spawn_recorder::<RunSessionTeardown>().await;
         let (state, id) = setup_ran_fixture();
-        let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+        let tool_ctx = ctx_with(&harness, &state, id.clone(), &dir.path, &dir.path).await;
         (harness, teardowns, state, id, tool_ctx)
     };
 
     // When the tool runs teardown with a WRONG script, a WRONG path, and
     // WRONG args — none of which the call's stored coordinates agree with.
     // The subdirectories are never created, so the path still does not exist.
-    let gone_path = dir.path().join("gone/workflow/lifecycle.toml");
+    let gone_path = dir
+        .path
+        .join("gone/workflow/lifecycle.toml")
+        .expect("temp root joins a bare name");
     let tool = tokio::spawn(execute(
         call(
             &serde_json::json!({
                 "script": "stage",
-                "path": gone_path.display().to_string(),
+                "path": gone_path.to_string(),
                 "action": "teardown",
                 "session_id": id,
                 "args": { "dir": "WRONG", "base": "WRONGER" },
@@ -369,11 +375,11 @@ async fn teardown_for_a_session_with_nothing_recorded_fails_fast() {
     // Given a harness with a session that ran setup but recorded no
     // lifecycle — and no listener answer, so a hang would consume the
     // whole wait budget.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let harness = TestHarness::new().await;
     let teardowns = harness.spawn_recorder::<RunSessionTeardown>().await;
     let (state, id) = setup_ran_without_record_fixture();
-    let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+    let tool_ctx = ctx_with(&harness, &state, id.clone(), &dir.path, &dir.path).await;
 
     // When the tool runs teardown for that session.
     let started = std::time::Instant::now();
@@ -401,10 +407,10 @@ async fn teardown_for_a_session_with_nothing_recorded_fails_fast() {
 #[tokio::test]
 async fn teardown_before_setup_fails_naming_the_state() {
     // Given a session whose lifecycle state is still nothing_ran.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let harness = TestHarness::new().await;
     let (state, id) = fixture();
-    let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+    let tool_ctx = ctx_with(&harness, &state, id.clone(), &dir.path, &dir.path).await;
 
     // When the tool runs teardown for that session.
     let result = execute(
@@ -427,11 +433,11 @@ async fn teardown_before_setup_fails_naming_the_state() {
 #[tokio::test]
 async fn setup_on_a_session_that_already_ran_setup_fails_naming_the_state() {
     // Given a session whose lifecycle already ran setup.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let harness = TestHarness::new().await;
     let setups = harness.spawn_recorder::<RunSessionSetup>().await;
     let (state, id) = setup_ran_fixture();
-    let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+    let tool_ctx = ctx_with(&harness, &state, id.clone(), &dir.path, &dir.path).await;
 
     // When the tool runs setup for that session.
     let result = execute(
@@ -465,10 +471,10 @@ async fn setup_on_a_session_that_already_ran_setup_fails_naming_the_state() {
 async fn setup_without_the_script_argument_refuses() {
     // Given a harness with a plain session and the schema no longer
     // requiring script at the schema level.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let harness = TestHarness::new().await;
     let (state, id) = fixture();
-    let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+    let tool_ctx = ctx_with(&harness, &state, id.clone(), &dir.path, &dir.path).await;
 
     // When the tool runs setup with no script argument.
     let result = execute(
@@ -508,10 +514,10 @@ fn the_wait_budget_message_says_the_command_may_still_be_running() {
 #[tokio::test]
 async fn unknown_script_fails_naming_the_known_ones() {
     // Given a state with the worktree script configured.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let harness = TestHarness::new().await;
     let (state, id) = fixture();
-    let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+    let tool_ctx = ctx_with(&harness, &state, id.clone(), &dir.path, &dir.path).await;
 
     // When the tool runs an unknown script name.
     let result = execute(
@@ -532,11 +538,11 @@ async fn unknown_script_fails_naming_the_known_ones() {
 #[tokio::test]
 async fn missing_placeholder_argument_fails_before_any_publish() {
     // Given a harness recording setup commands.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let harness = TestHarness::new().await;
     let setups = harness.spawn_recorder::<RunSessionSetup>().await;
     let (state, id) = fixture();
-    let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+    let tool_ctx = ctx_with(&harness, &state, id.clone(), &dir.path, &dir.path).await;
 
     // When the tool runs with only one of the two placeholders supplied.
     let result = execute(
@@ -562,11 +568,11 @@ async fn missing_placeholder_argument_fails_before_any_publish() {
 #[tokio::test]
 async fn a_failed_script_reports_the_failure_as_a_failed_result() {
     // Given a session whose script will report an error.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let harness = TestHarness::new().await;
     let setups = harness.spawn_recorder::<RunSessionSetup>().await;
     let (state, id) = fixture();
-    let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+    let tool_ctx = ctx_with(&harness, &state, id.clone(), &dir.path, &dir.path).await;
 
     // When the tool runs and the completion carries an error.
     let tool = tokio::spawn(execute(
@@ -582,7 +588,7 @@ async fn a_failed_script_reports_the_failure_as_a_failed_result() {
     harness
         .publish(jinn_session_lifecycle_msg::SessionSetupCompleted {
             session_id: id.clone(),
-            cwd: dir.path().to_path_buf(),
+            cwd: dir.path.clone(),
             error: Some("exit code 1".to_owned()),
         })
         .await;
@@ -598,8 +604,8 @@ async fn a_failed_script_reports_the_failure_as_a_failed_result() {
 // The second script source: a workflow-local lifecycle TOML read by
 // exact path, with the name selecting the entry inside it. The two
 // sources never combine — a call carrying a path never reads jinn.toml,
-// and one carrying neither source is refused. Each test owns its
-// `tempfile::TempDir`; `workflow_file` only derives the file's path.
+// and one carrying neither source is refused. Each test owns its temp
+// dir; `workflow_file` only derives the file's path.
 
 /// The document shape a workflow's `lifecycle.toml` ships: the bare
 /// `[[session_lifecycle.script]]` section.
@@ -619,9 +625,12 @@ teardown_command = "true"
 
 /// Writes a workflow lifecycle file into a temp dir; returns the temp dir
 /// (held for the test's lifetime) and the file's path.
-fn workflow_file(doc: &str) -> (tempfile::TempDir, std::path::PathBuf) {
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let path = dir.path().join("lifecycle.toml");
+fn workflow_file(doc: &str) -> (jinn_testutil::JinnTempDir, MarkedPathBuf<Absolute>) {
+    let dir = jinn_testutil::tempdir();
+    let path = dir
+        .path
+        .join("lifecycle.toml")
+        .expect("temp root joins a bare name");
     std::fs::write(&path, doc).expect("write workflow lifecycle file");
     (dir, path)
 }
@@ -633,11 +642,11 @@ async fn path_source_resolves_the_named_entry_and_publishes_the_same_shape() {
     // carrying a DIFFERENT script of the same name — proof the path
     // bypasses jinn.toml entirely.
     let (_dir, path) = workflow_file(WORKFLOW_DOC);
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let harness = TestHarness::new().await;
     let setups = harness.spawn_recorder::<RunSessionSetup>().await;
     let (state, id) = fixture();
-    let mut tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+    let mut tool_ctx = ctx_with(&harness, &state, id.clone(), &dir.path, &dir.path).await;
     tool_ctx.config = jinn_config::testutil::config_layer(
         "[[session_lifecycle.script]]\nname = \"stage\"\n\
          setup_command = \"echo from-user-config\"\n",
@@ -648,7 +657,7 @@ async fn path_source_resolves_the_named_entry_and_publishes_the_same_shape() {
         call(
             &serde_json::json!({
                 "script": "stage",
-                "path": path.display().to_string(),
+                "path": path.to_string(),
                 "action": "setup",
                 "session_id": id.to_string(),
                 "args": { "dir": "wt" }
@@ -664,7 +673,7 @@ async fn path_source_resolves_the_named_entry_and_publishes_the_same_shape() {
     harness
         .publish(jinn_session_lifecycle_msg::SessionSetupCompleted {
             session_id: id.clone(),
-            cwd: dir.path().join("wt"),
+            cwd: dir.path.join("wt").expect("temp root joins a bare name"),
             error: None,
         })
         .await;
@@ -691,15 +700,24 @@ async fn path_source_resolves_the_named_entry_and_publishes_the_same_shape() {
 async fn a_relative_path_resolves_against_the_session_cwd() {
     // Given a workflow file inside the session's cwd, and a separate temp
     // root for the context paths (this test owns both TempDirs).
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let ctx_dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
+    let ctx_dir = jinn_testutil::tempdir();
     let rel = "workflows/autocoder/lifecycle.toml";
-    std::fs::create_dir_all(dir.path().join("workflows/autocoder")).expect("mkdir");
-    std::fs::write(dir.path().join(rel), WORKFLOW_DOC).expect("write");
+    std::fs::create_dir_all(
+        dir.path
+            .join("workflows/autocoder")
+            .expect("temp root joins a bare name"),
+    )
+    .expect("mkdir");
+    std::fs::write(
+        dir.path.join(rel).expect("temp root joins a bare name"),
+        WORKFLOW_DOC,
+    )
+    .expect("write");
     let harness = TestHarness::new().await;
     let setups = harness.spawn_recorder::<RunSessionSetup>().await;
     let (state, id) = fixture();
-    let tool_ctx = ctx_with(&harness, &state, id.clone(), ctx_dir.path(), dir.path()).await;
+    let tool_ctx = ctx_with(&harness, &state, id.clone(), &ctx_dir.path, &dir.path).await;
 
     // When the tool is called with the relative path, answered by the
     // completion event (the tool always awaits one — an unreadable file
@@ -724,7 +742,7 @@ async fn a_relative_path_resolves_against_the_session_cwd() {
     harness
         .publish(jinn_session_lifecycle_msg::SessionSetupCompleted {
             session_id: id.clone(),
-            cwd: dir.path().to_path_buf(),
+            cwd: dir.path.clone(),
             error: None,
         })
         .await;
@@ -746,18 +764,21 @@ async fn a_relative_path_resolves_against_the_session_cwd() {
 async fn an_unreadable_path_fails_naming_the_file() {
     // Given a path that does not exist (the subdirectories are never
     // created, so the joined path stays missing).
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let missing_path = dir.path().join("no/such/lifecycle.toml");
+    let dir = jinn_testutil::tempdir();
+    let missing_path = dir
+        .path
+        .join("no/such/lifecycle.toml")
+        .expect("temp root joins a bare name");
     let harness = TestHarness::new().await;
     let (state, id) = fixture();
-    let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+    let tool_ctx = ctx_with(&harness, &state, id.clone(), &dir.path, &dir.path).await;
 
     // When the tool runs with that path.
     let result = execute(
         call(
             &serde_json::json!({
                 "script": "stage",
-                "path": missing_path.display().to_string(),
+                "path": missing_path.to_string(),
                 "action": "setup",
                 "session_id": id,
                 "args": {},
@@ -771,7 +792,7 @@ async fn an_unreadable_path_fails_naming_the_file() {
     // Then it fails naming the file.
     assert!(!result.success);
     assert!(
-        result.content.contains(&missing_path.display().to_string()),
+        result.content.contains(missing_path.to_string().as_str()),
         "{}",
         result.content
     );
@@ -783,17 +804,17 @@ async fn an_unreadable_path_fails_naming_the_file() {
 async fn an_unparseable_path_file_fails_naming_the_file() {
     // Given a file that is not a lifecycle document.
     let (_dir, path) = workflow_file("not = [a lifecycle");
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let harness = TestHarness::new().await;
     let (state, id) = fixture();
-    let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+    let tool_ctx = ctx_with(&harness, &state, id.clone(), &dir.path, &dir.path).await;
 
     // When the tool runs with that path.
     let result = execute(
         call(
             &serde_json::json!({
                 "script": "stage",
-                "path": path.display().to_string(),
+                "path": path.to_string(),
                 "action": "setup",
                 "session_id": id.to_string(),
                 "args": {}
@@ -823,10 +844,10 @@ async fn an_unparseable_path_file_fails_naming_the_file() {
 async fn a_name_missing_from_the_path_file_fails_naming_the_file_and_entries() {
     // Given the shipped-shaped workflow file.
     let (_dir, path) = workflow_file(WORKFLOW_DOC);
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let harness = TestHarness::new().await;
     let (state, id) = fixture();
-    let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+    let tool_ctx = ctx_with(&harness, &state, id.clone(), &dir.path, &dir.path).await;
 
     // When the tool runs with a script name the file does not define —
     // and the user's jinn.toml DOES define (the config carries "stage").
@@ -834,7 +855,7 @@ async fn a_name_missing_from_the_path_file_fails_naming_the_file_and_entries() {
         call(
             &serde_json::json!({
                 "script": "nope",
-                "path": path.display().to_string(),
+                "path": path.to_string(),
                 "action": "setup",
                 "session_id": id.to_string(),
                 "args": {}
@@ -870,17 +891,17 @@ async fn an_entry_without_the_requested_half_fails() {
         "[[session_lifecycle.script]]\nname = \"solo\"\n\
          teardown_command = \"echo bye\"\n",
     );
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let harness = TestHarness::new().await;
     let (state, id) = fixture();
-    let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+    let tool_ctx = ctx_with(&harness, &state, id.clone(), &dir.path, &dir.path).await;
 
     // When the tool runs the entry's setup.
     let result = execute(
         call(
             &serde_json::json!({
                 "script": "solo",
-                "path": path.display().to_string(),
+                "path": path.to_string(),
                 "action": "setup",
                 "session_id": id.to_string(),
                 "args": {}
@@ -909,17 +930,17 @@ async fn a_builtin_entry_is_refused_through_the_path_source_too() {
         "[[session_lifecycle.script]]\nname = \"built\"\n\
          setup_command = { builtin = \"some-handler\" }\n",
     );
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let harness = TestHarness::new().await;
     let (state, id) = fixture();
-    let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+    let tool_ctx = ctx_with(&harness, &state, id.clone(), &dir.path, &dir.path).await;
 
     // When the tool runs that entry.
     let result = execute(
         call(
             &serde_json::json!({
                 "script": "built",
-                "path": path.display().to_string(),
+                "path": path.to_string(),
                 "action": "setup",
                 "session_id": id.to_string(),
                 "args": {}
@@ -941,17 +962,17 @@ async fn path_with_blank_script_refuses_naming_the_requirement() {
     // Given a workflow file and a call whose script is the empty string —
     // which satisfies the schema's `required` array.
     let (_dir, path) = workflow_file(WORKFLOW_DOC);
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let harness = TestHarness::new().await;
     let (state, id) = fixture();
-    let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+    let tool_ctx = ctx_with(&harness, &state, id.clone(), &dir.path, &dir.path).await;
 
     // When the tool runs with that blank name and the path present.
     let result = execute(
         call(
             &serde_json::json!({
                 "script": "",
-                "path": path.display().to_string(),
+                "path": path.to_string(),
                 "action": "setup",
                 "session_id": id.to_string(),
                 "args": {}
@@ -976,10 +997,10 @@ async fn path_with_blank_script_refuses_naming_the_requirement() {
 #[tokio::test]
 async fn neither_source_refuses() {
     // Given a call with no path and an unknown script name.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let harness = TestHarness::new().await;
     let (state, id) = fixture();
-    let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+    let tool_ctx = ctx_with(&harness, &state, id.clone(), &dir.path, &dir.path).await;
 
     // When the tool runs.
     let result = execute(
@@ -1008,11 +1029,11 @@ async fn teardown_replays_even_when_the_call_carries_a_path() {
     // config, and a workflow file whose stage entry exists but is NOT the
     // session's lifecycle.
     let (_dir, path) = workflow_file(WORKFLOW_DOC);
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let harness = TestHarness::new().await;
     let teardowns = harness.spawn_recorder::<RunSessionTeardown>().await;
     let (state, id) = setup_ran_fixture();
-    let tool_ctx = ctx_with(&harness, &state, id.clone(), dir.path(), dir.path()).await;
+    let tool_ctx = ctx_with(&harness, &state, id.clone(), &dir.path, &dir.path).await;
 
     // When the tool runs teardown carrying that path and the file's entry
     // name, answered by the finish event.
@@ -1020,7 +1041,7 @@ async fn teardown_replays_even_when_the_call_carries_a_path() {
         call(
             &serde_json::json!({
                 "script": "stage",
-                "path": path.display().to_string(),
+                "path": path.to_string(),
                 "action": "teardown",
                 "session_id": id.to_string(),
                 "args": { "dir": "wt" }

@@ -5,6 +5,7 @@ edition.workspace = true
 description = "Session-lifecycle crossing contracts and kernel-consumed leaf vocabulary: setup/teardown messages, command templates, builtin handler registry, and picker rows."
 
 [dependencies]
+marked-path = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-picker = { workspace = true }
 jinn-preferences-config = { workspace = true }

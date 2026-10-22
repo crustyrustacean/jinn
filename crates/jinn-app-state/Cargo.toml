@@ -5,6 +5,7 @@ edition.workspace = true
 description = "The shared application state layer: AppState, FrontendState, and the session-creation operations that mutate them."
 
 [dependencies]
+marked-path = { workspace = true }
 jinn-chat-input-msg = { workspace = true }
 jinn-cell-catalog = { workspace = true }
 jinn-chat-log-view-msg = { workspace = true }

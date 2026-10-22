@@ -39,7 +39,7 @@ pub mod matcher;
 pub mod matcher_actor;
 pub mod rules;
 
-use std::path::Path;
+use marked_path::{Absolute, MarkedPathBuf};
 use std::sync::Arc;
 
 use jinn_slices::{RenderFacts, SliceHost, StreamRules};
@@ -102,7 +102,7 @@ fn install_compiled_matcher(
 pub fn activate(
     host: &mut SliceHost<'_, RenderFacts>,
     config: &jinn_config::ConfigLayer,
-    preferences_path: &Path,
+    preferences_path: &MarkedPathBuf<Absolute>,
 ) -> Result<(), error_stack::Report<ProjectGlobError>> {
     // Read at the point of use rather than cached, matching the rules
     // themselves: a reload is observed by the next refresh or launch.
@@ -123,7 +123,7 @@ pub fn activate(
         host.system(),
         cell,
         config.clone(),
-        preferences_path.to_path_buf(),
+        preferences_path.clone(),
     );
     Ok(())
 }
@@ -158,8 +158,11 @@ mod tests {
             body = 'Finish it.'
             "#,
             );
-            let prefs_dir = jinn_testutil::tempdir().expect("temp dir");
-            let prefs = prefs_dir.path().join("jinn.toml");
+            let prefs_dir = jinn_testutil::tempdir();
+            let prefs = prefs_dir
+                .path
+                .join("jinn.toml")
+                .expect("temp root joins a bare name");
             let system =
                 trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
             let mut viewport = jinn_slices::view::Viewport::new();
@@ -235,8 +238,11 @@ mod tests {
             project = 'broken-proj'
             "#,
         );
-        let prefs_dir = jinn_testutil::tempdir().expect("temp dir");
-        let prefs = prefs_dir.path().join("jinn.toml");
+        let prefs_dir = jinn_testutil::tempdir();
+        let prefs = prefs_dir
+            .path
+            .join("jinn.toml")
+            .expect("temp root joins a bare name");
         let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
 
         // When the slice activates over the same view state boot hands it.

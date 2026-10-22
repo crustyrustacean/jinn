@@ -40,6 +40,7 @@ use super::token::{
     is_valid_slash_trigger_position,
 };
 use super::validator;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// Handles `InsertChar` - inserts a character and manages autocomplete.
 pub fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
@@ -485,6 +486,15 @@ fn with_mark_interacted(session_id: SessionId, mut result: IntentResult) -> Inte
 }
 
 /// Executes a slash command.
+///
+/// The two `expect`s below are typed-path operations on model text the
+/// branch itself already guarantees: a `/`-prefixed argument is absolute by
+/// the `starts_with('/')` guard, and a non-`/` argument joins onto the
+/// session cwd (already typed `Absolute`).
+#[expect(
+    clippy::expect_used,
+    reason = "guarded typed-path re-typing and joins on a typed-absolute cwd"
+)]
 fn execute_slash_command(
     command: SlashCommand,
     argument: &str,
@@ -505,10 +515,31 @@ fn execute_slash_command(
         }
         SlashCommand::Export => {
             let session_id = state.session.active_session_id().clone();
-            IntentResult::new_message(jinn_export_msg::ExportSessionToFile {
-                session_id,
-                path: std::path::PathBuf::from(argument),
-            })
+            // The argument is model text; an empty argument means the
+            // export slice picks a default. A relative argument resolves
+            // against the session cwd so the destination is always absolute.
+            let path = if argument.is_empty() {
+                None
+            } else if argument.starts_with('/') {
+                Some(
+                    MarkedPathBuf::<Absolute>::new(argument)
+                        .expect("a `/`-prefixed export target is absolute"),
+                )
+            } else {
+                Some(
+                    state
+                        .session
+                        .active_session()
+                        .cwd()
+                        .join(argument)
+                        .expect("joining a relative export target keeps the cwd absolute"),
+                )
+            };
+            let path = match path {
+                Some(p) => p,
+                None => state.session.active_session().cwd().clone(),
+            };
+            IntentResult::new_message(jinn_export_msg::ExportSessionToFile { session_id, path })
         }
     }
 }
@@ -854,7 +885,7 @@ fn try_reactivate_at_autocomplete(state: &mut AppState) -> Option<ListDirectory>
 /// Returns `None` if the active session is missing.
 fn emit_list_directory(state: &mut AppState, filter: &str) -> ListDirectory {
     let session = state.active_session();
-    let cwd = session.cwd().to_path_buf();
+    let cwd = session.cwd().clone();
     let home = home_dir();
     let dir = resolve_list_dir(filter, &cwd, &home);
     // Bump the expected request id so stale replies are dropped, and show

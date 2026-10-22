@@ -13,8 +13,6 @@
 //! formatter, and publishes no refresh — the file and the live matcher
 //! still agree.
 
-use std::path::PathBuf;
-
 use jinn_config::ConfigLayer;
 use jinn_core_types::SessionId;
 use jinn_preferences_config::StreamRulesStorage;
@@ -32,13 +30,14 @@ use trouper::system::ActorSystem;
 use jinn_stream_rule_picker_msg::PersistStreamRuleDisabled;
 use jinn_stream_rule_picker_msg::StreamRuleDisabledChange;
 use jinn_stream_rule_picker_msg::stream_rule_failure_line;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// The persist actor's static trouper path.
 pub const STREAM_RULE_PERSIST_PATH: &str = "stream-rule-persist";
 
 /// One blocking write, owned so it can cross the thread boundary.
 struct PersistJob {
-    preferences_path: PathBuf,
+    preferences_path: MarkedPathBuf<Absolute>,
     changes: Vec<StreamRuleDisabledChange>,
 }
 
@@ -191,8 +190,11 @@ mod tests {
     fn a_change_loop_persists_every_change_in_order() {
         // Given a layer over a temp jinn.toml defining two rules, and a
         // job toggling both — one off, one on.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("jinn.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("jinn.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(
             &path,
             "[stream_rules]\ndisabled_rules = [\"beta\"]\n\n[[stream_rules.entry]]\nname = \"alpha\"\nconditions = ['a']\nbody = \"A.\"\n\n[[stream_rules.entry]]\nname = \"beta\"\nconditions = ['b']\nbody = \"B.\"\n",
@@ -231,8 +233,11 @@ mod tests {
     #[rstest::rstest]
     fn the_first_failing_change_stops_the_loop_with_the_shared_line() {
         // Given a job whose second change names a rule no source defines.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("jinn.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("jinn.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(
             &path,
             "[[stream_rules.entry]]\nname = \"alpha\"\nconditions = ['a']\nbody = \"A.\"\n",
@@ -297,9 +302,12 @@ mod tests {
             }
         }
         let layer = ConfigLayer::load(Arc::new(Failing)).expect("layer loads");
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let job = PersistJob {
-            preferences_path: dir.path().join("jinn.toml"),
+            preferences_path: dir
+                .path
+                .join("jinn.toml")
+                .expect("temp root joins a bare name"),
             changes: vec![StreamRuleDisabledChange {
                 name: "alpha".to_owned(),
                 disabled: true,
@@ -365,9 +373,12 @@ mod bus_tests {
     /// A layer over a temp jinn.toml defining `alpha`, plus the path and
     /// the dir itself — kept alive by the caller, because the actor's
     /// write lands after the helper returns.
-    fn layer_over_pref_dir() -> (ConfigLayer, PathBuf, tempfile::TempDir) {
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("jinn.toml");
+    fn layer_over_pref_dir() -> (ConfigLayer, MarkedPathBuf<Absolute>, tempfile::TempDir) {
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("jinn.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(
             &path,
             "[[stream_rules.entry]]\nname = \"alpha\"\nconditions = ['a']\nbody = \"A.\"\n",
@@ -377,7 +388,7 @@ mod bus_tests {
             path.clone(),
         )))
         .expect("layer loads");
-        (layer, path, dir)
+        (layer, path, dir.dir)
     }
 
     #[rstest::rstest]
@@ -452,7 +463,7 @@ mod bus_tests {
             }
         }
         let layer = ConfigLayer::load(Arc::new(Failing)).expect("layer loads");
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let harness = TestHarness::new().await;
         let _ = StreamRulePersistActor::spawn(harness.system(), layer);
         let refreshes = harness.spawn_recorder::<RefreshStreamRuleMatcher>().await;
@@ -463,7 +474,10 @@ mod bus_tests {
         harness
             .publish(PersistStreamRuleDisabled {
                 session_id: session_id.clone(),
-                preferences_path: dir.path().to_path_buf().join("jinn.toml"),
+                preferences_path: dir
+                    .path
+                    .join("jinn.toml")
+                    .expect("temp root joins a bare name"),
                 changes: vec![StreamRuleDisabledChange {
                     name: "alpha".to_owned(),
                     disabled: true,

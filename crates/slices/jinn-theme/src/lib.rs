@@ -8,7 +8,7 @@
 //! bad file never drops the batch, and the user directory shadows the
 //! system directory for same-name themes.
 
-use std::path::Path;
+use marked_path::{Absolute, MarkedPath, MarkedPathBuf};
 
 use jinn_slices::SliceHost;
 use jinn_theme::loader::{discover_themes, load_theme_from_file};
@@ -49,8 +49,8 @@ pub use theme_picker_routes::open_from_scope as open_theme_picker_from_scope;
 )]
 pub fn activate(
     host: &mut SliceHost<'_, jinn_slices::RenderFacts>,
-    themes_dir: &Path,
-    system_themes_dir: &Path,
+    themes_dir: &MarkedPath<Absolute>,
+    system_themes_dir: &MarkedPath<Absolute>,
 ) {
     let entries = scan(themes_dir, system_themes_dir);
     let cell = host
@@ -109,7 +109,10 @@ pub fn activate_picker(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
 /// merged first and the user dir's entries overwrite them. Failures are
 /// noted on stderr (host-side diagnostics) and never abort the batch.
 #[must_use]
-pub fn scan(themes_dir: &Path, system_themes_dir: &Path) -> ThemeEntries {
+pub fn scan(
+    themes_dir: &MarkedPath<Absolute>,
+    system_themes_dir: &MarkedPath<Absolute>,
+) -> ThemeEntries {
     let mut defs = std::collections::BTreeMap::new();
     for dir in [system_themes_dir, themes_dir] {
         match discover_themes(dir) {
@@ -141,10 +144,10 @@ pub fn scan(themes_dir: &Path, system_themes_dir: &Path) -> ThemeEntries {
 )]
 fn merge_dir(
     defs: &mut std::collections::BTreeMap<String, jinn_theme::Theme>,
-    found: Vec<(String, std::path::PathBuf)>,
+    found: Vec<(String, MarkedPathBuf<Absolute>)>,
 ) {
     for (name, path) in found {
-        match load_theme_from_file(&path) {
+        match load_theme_from_file(&path.as_marked_path()) {
             Ok(theme) => {
                 defs.insert(name, theme);
             }
@@ -160,8 +163,11 @@ fn merge_dir(
     clippy::print_stderr,
     reason = "host-side diagnostics before tracing is available in the theme loader"
 )]
-fn note_scan_failure(dir: &Path, report: &error_stack::Report<jinn_theme::ThemeError>) {
-    eprintln!("theme-slice: scan failed for {}: {report}", dir.display());
+fn note_scan_failure(
+    dir: &MarkedPath<Absolute>,
+    report: &error_stack::Report<jinn_theme::ThemeError>,
+) {
+    eprintln!("theme-slice: scan failed for {dir}: {report}");
 }
 
 #[cfg(test)]
@@ -173,31 +179,30 @@ mod tests {
         reason = "test code"
     )]
 
-    use std::path::PathBuf;
-
     use super::*;
+    use marked_path::MarkedPathAccess;
 
     /// Writes one loadable theme TOML into `dir`.
-    fn write_theme(dir: &Path, name: &str, accent: &str) {
-        std::fs::create_dir_all(dir).expect("mkdir");
-        std::fs::write(
-            dir.join(format!("{name}.toml")),
-            format!("focus_accent = \"{accent}\"\n"),
-        )
-        .expect("write theme");
+    fn write_theme(dir: &MarkedPathBuf<Absolute>, name: &str, accent: &str) {
+        std::fs::create_dir_all(dir.as_path()).expect("mkdir");
+        let file = dir
+            .join(format!("{name}.toml"))
+            .expect("typed parent joins a bare name");
+        std::fs::write(file.as_path(), format!("focus_accent = \"{accent}\"\n"))
+            .expect("write theme");
     }
 
     #[rstest::rstest]
     fn scan_merges_both_dirs_with_default_first() {
         // Given a user dir with two themes and a system dir with one.
-        let user = jinn_testutil::tempdir().expect("tmpdir");
-        let system = jinn_testutil::tempdir().expect("tmpdir");
-        write_theme(user.path(), "beta", "#ff0000");
-        write_theme(user.path(), "alpha", "#00ff00");
-        write_theme(system.path(), "gamma", "#0000ff");
+        let user = jinn_testutil::tempdir();
+        let system = jinn_testutil::tempdir();
+        write_theme(&user.path, "beta", "#ff0000");
+        write_theme(&user.path, "alpha", "#00ff00");
+        write_theme(&system.path, "gamma", "#0000ff");
 
         // When scanning.
-        let entries = scan(user.path(), system.path());
+        let entries = scan(&user.path.as_marked_path(), &system.path.as_marked_path());
 
         // Then default is pinned first and the rest follow in
         // case-insensitive name order.
@@ -208,13 +213,13 @@ mod tests {
     #[rstest::rstest]
     fn user_dir_shadows_system_dir_for_same_name() {
         // Given the same theme name in both dirs with different accents.
-        let user = jinn_testutil::tempdir().expect("tmpdir");
-        let system = jinn_testutil::tempdir().expect("tmpdir");
-        write_theme(user.path(), "dup", "#ff0000");
-        write_theme(system.path(), "dup", "#0000ff");
+        let user = jinn_testutil::tempdir();
+        let system = jinn_testutil::tempdir();
+        write_theme(&user.path, "dup", "#ff0000");
+        write_theme(&system.path, "dup", "#0000ff");
 
         // When scanning.
-        let entries = scan(user.path(), system.path());
+        let entries = scan(&user.path.as_marked_path(), &system.path.as_marked_path());
 
         // Then the user dir's colors win.
         let dup = entries.theme("dup").expect("dup present");
@@ -224,11 +229,12 @@ mod tests {
     #[rstest::rstest]
     fn a_theme_named_default_replaces_the_builtin() {
         // Given a scanned theme named "default".
-        let user = jinn_testutil::tempdir().expect("tmpdir");
-        write_theme(user.path(), "default", "#123456");
+        let user = jinn_testutil::tempdir();
+        write_theme(&user.path, "default", "#123456");
 
         // When scanning.
-        let entries = scan(user.path(), &system_dir_absent());
+        let absent = system_dir_absent();
+        let entries = scan(&user.path.as_marked_path(), &absent.as_marked_path());
 
         // Then the pinned first entry carries the scanned look under the
         // reserved "default" name.
@@ -242,13 +248,20 @@ mod tests {
     #[rstest::rstest]
     fn one_bad_file_never_drops_the_batch() {
         // Given one broken toml and one good toml.
-        let user = jinn_testutil::tempdir().expect("tmpdir");
-        std::fs::create_dir_all(user.path()).expect("mkdir");
-        std::fs::write(user.path().join("broken.toml"), "not [valid toml").expect("write");
-        write_theme(user.path(), "good", "#00ff00");
+        let user = jinn_testutil::tempdir();
+        std::fs::create_dir_all(user.path.as_path()).expect("mkdir");
+        std::fs::write(
+            user.path
+                .join("broken.toml")
+                .expect("temp root joins a bare name"),
+            "not [valid toml",
+        )
+        .expect("write");
+        write_theme(&user.path, "good", "#00ff00");
 
         // When scanning.
-        let entries = scan(user.path(), &system_dir_absent());
+        let absent = system_dir_absent();
+        let entries = scan(&user.path.as_marked_path(), &absent.as_marked_path());
 
         // Then only the good theme survives, alongside the pinned default.
         let names: Vec<_> = entries.entries.iter().map(|e| e.name.as_str()).collect();
@@ -258,12 +271,18 @@ mod tests {
     #[rstest::rstest]
     fn missing_directories_yield_default_only() {
         // Given directories that do not exist.
-        let root = jinn_testutil::tempdir().expect("tmpdir");
-        let user = root.path().join("nonexistent-a");
-        let system = root.path().join("nonexistent-b");
+        let root = jinn_testutil::tempdir();
+        let user = root
+            .path
+            .join("nonexistent-a")
+            .expect("temp root joins a bare name");
+        let system = root
+            .path
+            .join("nonexistent-b")
+            .expect("temp root joins a bare name");
 
         // When scanning both directories.
-        let entries = scan(&user, &system);
+        let entries = scan(&user.as_marked_path(), &system.as_marked_path());
 
         // Then the selection is the built-in default alone.
         assert_eq!(entries.entries.len(), 1);
@@ -275,8 +294,10 @@ mod tests {
     /// The temp root is removed when this returns, and the child path below
     /// it was never created, so the named directory is absent on every
     /// platform.
-    fn system_dir_absent() -> PathBuf {
-        let dir = jinn_testutil::tempdir().expect("tmpdir");
-        dir.path().join("nonexistent-system-themes")
+    fn system_dir_absent() -> MarkedPathBuf<Absolute> {
+        let dir = jinn_testutil::tempdir();
+        dir.path
+            .join("nonexistent-system-themes")
+            .expect("temp root joins a bare name")
     }
 }

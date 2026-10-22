@@ -9,9 +9,8 @@
 //! matcher refresh only after they land. This crate is the pure contract:
 //! data and one pure failure formatter, no actor.
 
-use std::path::PathBuf;
-
 use jinn_core_types::SessionId;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// One rule's pending disabled state, as the confirm captured it.
 ///
@@ -44,7 +43,7 @@ pub struct PersistStreamRuleDisabled {
     /// Where the run's `jinn.toml` lives — the same path the open read the
     /// list from, captured at activation and carried here so the actor
     /// never guesses.
-    pub preferences_path: PathBuf,
+    pub preferences_path: MarkedPathBuf<Absolute>,
     /// Every pending change, in the order the confirm captured them.
     pub changes: Vec<StreamRuleDisabledChange>,
 }
@@ -106,10 +105,13 @@ mod tests {
         // Given a persist command naming one session, one path, and two
         // changes in opposite directions. The preferences path is built from a
         // temp root, so it is an absolute path on every platform.
-        let root = jinn_testutil::tempdir().expect("temp dir");
+        let root = jinn_testutil::tempdir();
         let command = PersistStreamRuleDisabled {
             session_id: SessionId::new(),
-            preferences_path: root.path().join("jinn.toml"),
+            preferences_path: root
+                .path
+                .join("jinn.toml")
+                .expect("temp root joins a bare name"),
             changes: vec![
                 StreamRuleDisabledChange {
                     name: "no-todos".to_owned(),

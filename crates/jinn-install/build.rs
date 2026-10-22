@@ -20,46 +20,59 @@
 
 #![allow(warnings, reason = "want to fail fast")]
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+
+use marked_path::{Absolute, MarkedPath, MarkedPathAccess, MarkedPathBuf};
 
 /// The resource tree embedded by `jinn-install`.
 const RES: &str = "../../res";
 
 fn main() {
-    let res = manifest_dir().join(RES);
+    let res = manifest_dir()
+        .join(RES)
+        .expect("RES is a relative constant, so the join stays absolute");
 
     assert!(
         res.is_dir(),
         "build script rerun path is not a directory: {} (resolved from CARGO_MANIFEST_DIR)",
-        res.display()
+        res.to_string_lossy()
     );
 
-    watch_tree(&res);
+    watch_tree(&res.as_marked_path());
 }
 
 /// Emits `cargo:rerun-if-changed` for every path under `root`, files and
 /// directories alike.
-fn watch_tree(root: &Path) {
-    let entries = std::fs::read_dir(root)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", root.display()));
+fn watch_tree(root: &MarkedPath<Absolute>) {
+    let entries = std::fs::read_dir(root.as_path())
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", root.to_string_lossy()));
 
-    let mut paths: Vec<PathBuf> = entries
+    let mut paths: Vec<MarkedPathBuf<Absolute>> = entries
         .map(|entry| {
-            entry
-                .unwrap_or_else(|e| panic!("failed to read entry in {}: {e}", root.display()))
-                .path()
+            let path = entry
+                .unwrap_or_else(|e| {
+                    panic!("failed to read entry in {}: {e}", root.to_string_lossy())
+                })
+                .path();
+            MarkedPathBuf::<Absolute>::new(&path).unwrap_or_else(|e| {
+                panic!(
+                    "build-script entry is not absolute: {}: {e}",
+                    path.to_string_lossy()
+                )
+            })
         })
         .collect();
-    paths.sort();
+    paths.sort_by(|a, b| a.as_path().cmp(b.as_path()));
 
-    for path in paths {
+    for path in &paths {
         if path.is_dir() {
-            watch_tree(&path);
+            watch_tree(&path.as_marked_path());
         }
-        println!("cargo:rerun-if-changed={}", path.display());
+        println!("cargo:rerun-if-changed={}", path.to_string_lossy());
     }
 }
 
-fn manifest_dir() -> PathBuf {
-    PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"))
+fn manifest_dir() -> MarkedPathBuf<Absolute> {
+    let dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
+    MarkedPathBuf::<Absolute>::new(dir).expect("CARGO_MANIFEST_DIR is absolute")
 }

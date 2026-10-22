@@ -22,6 +22,7 @@ ratatui = { workspace = true }
 jinn-provider-config = { workspace = true }
 
 [dev-dependencies]
+marked-path.workspace = true
 rstest = { workspace = true }
 tokio = { workspace = true }
 jinn-testutil = { workspace = true }

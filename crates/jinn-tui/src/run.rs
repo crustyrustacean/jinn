@@ -21,6 +21,7 @@ use wherror::Error;
 use crate::TuiApp;
 use crate::app::scope_for_focus;
 use crate::msg::Msg;
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
 /// Error type for TUI run operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -185,7 +186,7 @@ enum SuspendResult {
     /// The edited content, to be written to the input buffer.
     EditContent(Option<String>),
     /// The selected directory path, to be set as session CWD.
-    ChangeCwd(Option<std::path::PathBuf>),
+    ChangeCwd(Option<MarkedPathBuf<Absolute>>),
 }
 
 /// Executes a suspend/restore cycle for the given action.
@@ -198,6 +199,15 @@ enum SuspendResult {
 /// 6. Restarts the event thread
 /// 7. Redraws the terminal
 /// 8. Writes the result directly to the active session's input box via `replace_all`
+///
+/// The CWD-selector expect cannot fail at runtime: the selector lists paths
+/// under the session's search root, which is already typed `Absolute`, so
+/// every printed line is absolute; anything else is a selector bug, and a
+/// selected non-directory is still rejected below.
+#[expect(
+    clippy::expect_used,
+    reason = "cwd selector prints paths under a typed-absolute search root"
+)]
 fn handle_suspend_action(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     app: &mut TuiApp,
@@ -231,7 +241,7 @@ fn handle_suspend_action(
                 .clone();
 
             // Shell-escape the path for safe substitution.
-            let escaped_path = shell_escape(&search_root.to_string_lossy());
+            let escaped_path = shell_escape(&search_root.as_path().to_string_lossy());
             let rendered = command_template.replace("{path}", &escaped_path);
 
             let output_result = std::process::Command::new("sh")
@@ -248,7 +258,10 @@ fn handle_suspend_action(
                             .lines()
                             .next()
                             .filter(|line| !line.is_empty())
-                            .map(std::path::PathBuf::from)
+                            .map(|line| {
+                                MarkedPathBuf::<Absolute>::new(line.trim())
+                                    .expect("selector line checked absolute below")
+                            })
                     } else {
                         // Non-zero exit = user cancelled (ESC in fzf) or error.
                         // Log stderr as debug - user cancelled is not an error.
@@ -300,7 +313,7 @@ fn handle_suspend_action(
                 let session_id = app.core.state.read().active_session().session_id().clone();
                 if apply_selected_cwd(&app.core.bridge, session_id, &path) {
                     tracing::info!(
-                        cwd = %app.core.state.read().active_session().cwd().display(),
+                        cwd = %app.core.state.read().active_session().cwd(),
                         "session CWD updated"
                     );
                 }
@@ -337,23 +350,34 @@ fn shell_escape(s: &str) -> String {
 ///
 /// Routing through the [`Bridge`] is what makes the selection actually
 /// reach the session actor.
+///
+/// # Panics
+///
+/// Panics if the canonicalized path is not absolute, which cannot happen:
+/// `canonicalize` of an existing absolute path is absolute.
+#[expect(
+    clippy::expect_used,
+    reason = "a canonicalized absolute path stays absolute by construction"
+)]
 fn apply_selected_cwd(
     bridge: &jinn_kernel::common::bridge::Bridge,
     session_id: jinn_core_types::SessionId,
-    path: &std::path::Path,
+    path: &MarkedPathBuf<Absolute>,
 ) -> bool {
     if !path.is_dir() {
         tracing::warn!(
-            path = %path.display(),
+            path = %path,
             "CWD selector returned non-directory path, ignoring"
         );
         return false;
     }
     let canonical = match std::fs::canonicalize(path) {
-        Ok(c) => c,
+        Ok(c) => {
+            MarkedPathBuf::<Absolute>::new(c).expect("a canonicalized absolute path stays absolute")
+        }
         Err(e) => {
             tracing::warn!(
-                path = %path.display(),
+                path = %path,
                 err = %e,
                 "failed to canonicalize CWD selector result"
             );
@@ -381,6 +405,7 @@ mod tests {
     use jinn_kernel::common::bridge::Bridge;
     use jinn_session_lifecycle_msg::SetSessionCwd;
     use jinn_testutil::barrier::Barrier;
+    use marked_path::strip_verbatim_prefix;
     use std::sync::{Arc, Mutex};
 
     /// A trouper service actor that records decoded `SetSessionCwd`
@@ -485,8 +510,8 @@ mod tests {
     #[rstest::rstest]
     fn shell_escape_simple_path() {
         // Given a temp-rooted path with no shell metacharacters.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let base = dir.path().display().to_string();
+        let dir = jinn_testutil::tempdir();
+        let base = dir.path.to_string();
         let path = format!("{base}/project");
 
         // When escaping it for a shell.
@@ -499,8 +524,8 @@ mod tests {
     #[rstest::rstest]
     fn shell_escape_path_with_spaces() {
         // Given a temp-rooted path containing spaces.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let base = dir.path().display().to_string();
+        let dir = jinn_testutil::tempdir();
+        let base = dir.path.to_string();
         let path = format!("{base}/my project");
 
         // When escaping it for a shell.
@@ -513,8 +538,8 @@ mod tests {
     #[rstest::rstest]
     fn shell_escape_path_with_single_quote() {
         // Given a temp-rooted path containing a single quote.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let base = dir.path().display().to_string();
+        let dir = jinn_testutil::tempdir();
+        let base = dir.path.to_string();
         let path = format!("{base}/it's/project");
 
         // When escaping it for a shell.
@@ -569,12 +594,15 @@ mod tests {
             let (_system, bridge, buffer, acks) =
                 spawn_system_with_recorder(&tokio::runtime::Handle::current());
 
-            let dir = jinn_testutil::tempdir().expect("temp dir");
-            let expected = std::fs::canonicalize(dir.path()).expect("canonicalize");
+            let dir = jinn_testutil::tempdir();
+            let expected = MarkedPathBuf::<Absolute>::new(strip_verbatim_prefix(
+                std::fs::canonicalize(dir.path.as_path()).expect("canonicalize"),
+            ))
+            .expect("canonicalized temp path is absolute");
 
             // When applying a real directory path.
             let session_id = jinn_core_types::SessionId::new();
-            let published = apply_selected_cwd(&bridge, session_id.clone(), dir.path());
+            let published = apply_selected_cwd(&bridge, session_id.clone(), &dir.path);
 
             // Then exactly one SetSessionCwd is published with the canonical cwd.
             assert!(published, "valid dir should publish");
@@ -597,8 +625,11 @@ mod tests {
                 spawn_system_with_recorder(&tokio::runtime::Handle::current());
 
             // And a real file (not a directory) inside a temp dir.
-            let dir = jinn_testutil::tempdir().expect("temp dir");
-            let file_path = dir.path().join("not_a_dir.txt");
+            let dir = jinn_testutil::tempdir();
+            let file_path = dir
+                .path
+                .join("not_a_dir.txt")
+                .expect("temp root joins a bare name");
             std::fs::write(&file_path, b"contents").expect("write file");
 
             // When applying a file path.
@@ -624,8 +655,11 @@ mod tests {
 
             // And a path derived from a test-owned temp dir that does not
             // exist on disk.
-            let dir = jinn_testutil::tempdir().expect("temp dir");
-            let missing_path = dir.path().join("does-not-exist");
+            let dir = jinn_testutil::tempdir();
+            let missing_path = dir
+                .path
+                .join("does-not-exist")
+                .expect("temp root joins a bare name");
 
             // When applying a nonexistent path.
             let published =

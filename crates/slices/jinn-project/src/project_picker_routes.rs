@@ -26,6 +26,7 @@ use jinn_slices::route::{
 
 use crate::project_picker_actions;
 use jinn_project_msg::project_picker_scope;
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
 /// The picker's cell — the single home for everything it shows.
 type ProjectPickerCell = TypedCell<ProjectPickerState>;
@@ -282,10 +283,11 @@ fn remove_highlighted_project(ctx: &mut ActionCtx<'_>, cell: &ProjectPickerCell)
 /// A failed write is logged, not surfaced, for the reason the project-add
 /// input gives: the row is already gone from the open picker, and refusing
 /// to act would strand the user.
-fn remove_project(config: &jinn_preferences_config::ConfigLayer, path: &std::path::PathBuf) {
+fn remove_project(config: &jinn_preferences_config::ConfigLayer, path: &MarkedPathBuf<Absolute>) {
     let mut projects = config.get_list::<ProjectConfig>().unwrap_or_default();
     let before = projects.len();
-    projects.retain(|project| project.path != *path);
+    let path_view = path.as_path();
+    projects.retain(|project| project.path != path_view);
     if projects.len() == before {
         return;
     }
@@ -342,7 +344,7 @@ fn clear_filter_or_leave(_ctx: &mut ActionCtx<'_>, cell: &ProjectPickerCell) -> 
 }
 
 /// The highlighted project's path, if a row is highlighted.
-fn selected_path(cell: &ProjectPickerCell) -> Option<std::path::PathBuf> {
+fn selected_path(cell: &ProjectPickerCell) -> Option<MarkedPathBuf<Absolute>> {
     let guard = cell.read();
     project_picker_actions::selected_path(&guard)
 }

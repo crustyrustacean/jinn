@@ -76,13 +76,13 @@ fn parse_args(raw: &str) -> Result<String, serde_json::Error> {
 /// Spawns a PowerShell command with stdout/stderr piped and terminal-isolated.
 fn spawn_powershell_command(
     command: &str,
-    cwd: &std::path::Path,
+    cwd: &MarkedPathBuf<Absolute>,
     powershell: &str,
 ) -> std::io::Result<KillOnDrop> {
     let mut std_cmd = std::process::Command::new(powershell);
     std_cmd
         .args(jinn_common::shell::powershell_command_args(command))
-        .current_dir(cwd)
+        .current_dir(cwd.as_path())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

@@ -90,7 +90,7 @@ pub fn render_markdown_document(doc: &ExportDocument) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "# {}\n", doc.title);
     let _ = writeln!(out, "- **Model:** {}", doc.model);
-    let _ = writeln!(out, "- **Working directory:** {}", doc.cwd.display());
+    let _ = writeln!(out, "- **Working directory:** {}", doc.cwd);
     let _ = writeln!(out, "- **Created:** {}", doc.created_at);
     let _ = writeln!(out, "- **Updated:** {}", doc.updated_at);
     let _ = writeln!(out, "- **Entries:** {}\n", doc.entries.len());
@@ -137,8 +137,8 @@ mod tests {
         // The cwd is fixture data nothing reads back from disk: the temp root
         // only keeps test paths off absolute literals, so it is deleted when
         // this helper returns and no tempdir lifetime reaches the call sites.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let cwd = dir.path().join("work");
+        let dir = jinn_testutil::tempdir();
+        let cwd = dir.path.join("work").expect("temp root joins a bare name");
         ExportDocument {
             title: "Test session".to_owned(),
             model: "test-model".to_owned(),
@@ -228,7 +228,7 @@ mod tests {
         // Then the metadata block is present.
         assert!(md.starts_with("# Test session"));
         assert!(md.contains("**Model:** test-model"));
-        let cwd_label = doc.cwd.display().to_string();
+        let cwd_label = doc.cwd.to_string();
         assert!(md.contains(cwd_label.as_str()));
         assert!(md.contains("**Entries:** 1"));
     }

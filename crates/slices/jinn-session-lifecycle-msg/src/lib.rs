@@ -17,9 +17,9 @@ pub mod lifecycle_script_state;
 pub mod picker_entry;
 pub mod picker_scope;
 pub mod picker_state;
-use std::path::PathBuf;
 
 use jinn_core_types::SessionId;
+use marked_path::{Absolute, MarkedPathBuf};
 use serde::{Deserialize, Serialize};
 
 pub use arg_input::{ArgInputState, arg_input_scope, arg_input_slot};
@@ -58,7 +58,7 @@ pub struct SessionSetupCompleted {
     /// The session that was being set up.
     pub session_id: SessionId,
     /// The resulting CWD on success, or default CWD on failure.
-    pub cwd: PathBuf,
+    pub cwd: MarkedPathBuf<Absolute>,
     /// Error message if setup failed.
     pub error: Option<String>,
 }
@@ -96,8 +96,8 @@ mod tests {
     fn lifecycle_events_roundtrip_through_json() {
         // Given one of each lifecycle event.
         let id = SessionId::new();
-        let cwd_dir = jinn_testutil::tempdir().expect("temp dir");
-        let cwd = cwd_dir.path().to_path_buf();
+        let cwd_dir = jinn_testutil::tempdir();
+        let cwd = cwd_dir.path.clone();
         let events = (
             SessionSetupCompleted {
                 session_id: id.clone(),

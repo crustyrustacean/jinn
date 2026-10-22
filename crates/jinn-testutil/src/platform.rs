@@ -277,6 +277,7 @@ mod tests {
         clippy::expect_used,
         reason = "test code: a failed expect aborts the test loudly, which is the desired mode"
     )]
+    use marked_path::MarkedPathAccess;
 
     use super::{exit_command, idle_command, is_alive, shell_or_skip, success_command};
 
@@ -390,12 +391,12 @@ mod tests {
         // `tail -f` on a regular file blocks forever and keeps the file's
         // name — which carries the marker — in its command line.
         let marker = format!("jinn-test-orphan-marker-{}", std::process::id());
-        let dir = crate::temp::tempdir().expect("temp dir");
-        let watched = dir.path().join(&marker);
+        let dir = crate::temp::tempdir();
+        let watched = dir.path.join(&marker).expect("temp root joins a bare name");
         std::fs::write(&watched, b"x").expect("write watched file");
         let Ok(mut child) = std::process::Command::new("tail")
             .arg("-f")
-            .arg(&watched)
+            .arg(watched.as_path())
             .spawn()
         else {
             eprintln!("SKIP: could not spawn a tail child");

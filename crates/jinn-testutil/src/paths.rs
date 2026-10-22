@@ -13,19 +13,14 @@
 //! two cannot be confused.
 //!
 //! ```
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use jinn_testutil::paths::TestRoot;
-//! use marked_path::MarkedPathBuf;
-//! use marked_path::Relative;
+//! use marked_path::{MarkedPathAccess, MarkedPathBuf, Relative};
 //!
-//! let root = TestRoot::new()?;
-//! let name = MarkedPathBuf::<Relative>::new("notes.txt")?;
+//! let root = TestRoot::new();
+//! let name = MarkedPathBuf::<Relative>::new("notes.txt").expect("valid relative");
 //! let path = root.join_rel(&name.as_marked_path());
-//! // `MarkedPathBuf` derefs to `Path`, so the path's own query methods
-//! // are available directly.
-//! assert!(path.is_absolute());
-//! # Ok(())
-//! # }
+//! // Query methods come from the `MarkedPathAccess` trait.
+//! assert!(path.as_path().is_absolute());
 //! ```
 
 use std::path::PathBuf;
@@ -43,22 +38,39 @@ use crate::temp::tempdir;
 /// [`TEST_PREFIX`]), so residue from a crashed run is greppable and
 /// hand-removable without touching another process's files.
 pub struct TestRoot {
-    dir: tempfile::TempDir,
+    dir: crate::temp::JinnTempDir,
     root: MarkedPathBuf<Absolute>,
+}
+
+impl Default for TestRoot {
+    /// Creates a fresh temporary directory and captures its absolute root.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the temporary directory cannot be created — a failed fixture
+    /// aborts the test loudly, which is the desired mode.
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TestRoot {
     /// Creates a fresh temporary directory and captures its absolute root.
     ///
-    /// # Errors
+    /// # Panics
     ///
-    /// Returns the underlying `tempfile` error if directory creation fails, or
-    /// a [`PathError`] if the created path cannot be represented as an
-    /// absolute path.
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let dir = tempdir()?;
-        let root = MarkedPathBuf::<Absolute>::new(dir.path().to_path_buf())?;
-        Ok(Self { dir, root })
+    /// Panics if the temporary directory cannot be created — a failed fixture
+    /// aborts the test loudly, which is the desired mode.
+    #[expect(
+        clippy::expect_used,
+        reason = "tempdir guarantees an absolute path; the expect guards the typed construction only"
+    )]
+    #[must_use]
+    pub fn new() -> Self {
+        let dir = tempdir();
+        let root =
+            MarkedPathBuf::<Absolute>::new(dir.path.as_path()).expect("temp dir path is absolute");
+        Self { dir, root }
     }
 
     /// The absolute root path.
@@ -69,8 +81,8 @@ impl TestRoot {
 
     /// The underlying temp directory, for APIs that need to own it.
     #[must_use]
-    pub fn dir(&self) -> &tempfile::TempDir {
-        &self.dir
+    pub const fn dir(&self) -> &tempfile::TempDir {
+        &self.dir.dir
     }
 
     /// Joins a typed relative path onto the root, producing an absolute path.
@@ -108,7 +120,7 @@ impl std::fmt::Debug for TestRoot {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TestRoot")
             .field("path", &self.root.as_path())
-            .field("dir", &self.dir.path())
+            .field("dir", &self.dir.dir.path())
             .finish()
     }
 }
@@ -133,7 +145,7 @@ mod tests {
         // Given a freshly created test root.
 
         // When the root is created.
-        let root = TestRoot::new().expect("test root");
+        let root = TestRoot::new();
 
         // Then its path is absolute.
         assert!(root.path().as_path().is_absolute());
@@ -145,7 +157,7 @@ mod tests {
         // Given a freshly created test root.
 
         // When the root is created.
-        let root = TestRoot::new().expect("test root");
+        let root = TestRoot::new();
 
         // Then its directory name carries the jinn test prefix.
         let name = root
@@ -161,7 +173,7 @@ mod tests {
     #[test]
     fn join_rel_produces_a_path_inside_the_root() {
         // Given a test root and a typed relative path.
-        let root = TestRoot::new().expect("test root");
+        let root = TestRoot::new();
         let relative = MarkedPathBuf::<Relative>::new("notes.txt").expect("relative path");
 
         // When joining the relative path onto the root.
@@ -176,7 +188,7 @@ mod tests {
     #[test]
     fn join_rel_keeps_the_relative_tail() {
         // Given a test root and a nested typed relative path.
-        let root = TestRoot::new().expect("test root");
+        let root = TestRoot::new();
         let relative = MarkedPathBuf::<Relative>::new("sub/dir/file.txt").expect("relative path");
 
         // When joining the relative path onto the root.
@@ -193,7 +205,7 @@ mod tests {
     #[test]
     fn join_str_rejects_a_drive_relative_path() {
         // Given a test root.
-        let root = TestRoot::new().expect("test root");
+        let root = TestRoot::new();
 
         // When joining a drive-relative path onto it.
         let result = root.join_str("C:foo");
@@ -206,7 +218,7 @@ mod tests {
     #[test]
     fn join_str_rejects_an_absolute_path() {
         // Given a test root.
-        let root = TestRoot::new().expect("test root");
+        let root = TestRoot::new();
 
         // When joining an absolute path onto it.
         let result = root.join_str("/etc/passwd");
@@ -219,7 +231,7 @@ mod tests {
     #[test]
     fn join_str_accepts_a_plain_relative_path() {
         // Given a test root.
-        let root = TestRoot::new().expect("test root");
+        let root = TestRoot::new();
 
         // When joining a plain relative path onto it.
         let joined = root.join_str("plain.txt").expect("joined path");

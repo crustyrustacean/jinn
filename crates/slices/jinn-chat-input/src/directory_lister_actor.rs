@@ -2,6 +2,7 @@
 
 use error_stack::Report;
 use jinn_chat_input_msg::{FileEntry, ListDirectory};
+use marked_path::{Absolute, MarkedPathBuf};
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
@@ -109,7 +110,7 @@ impl MsgHandler<ListDirectory> for DirectoryListerActor {
 
 /// Reads a directory on a blocking thread. On any error (missing dir,
 /// permission denied), returns an empty list — the popup shows `<empty>`.
-fn list_dir_blocking(path: &std::path::Path) -> Vec<FileEntry> {
+fn list_dir_blocking(path: &MarkedPathBuf<Absolute>) -> Vec<FileEntry> {
     let read = std::fs::read_dir(path);
     let Ok(read) = read else {
         return Vec::new();

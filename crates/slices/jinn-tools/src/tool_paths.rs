@@ -10,18 +10,18 @@
 //! Resolution is purely lexical. It does not canonicalize, expand `~`, or touch
 //! the filesystem, so it cannot fail and cannot be surprised by a symlink.
 
-use std::path::{Path, PathBuf};
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// Resolves a tool's `path` argument against the session's working directory.
 ///
 /// An absolute path is returned as-is; a relative one is joined onto `cwd`.
 #[must_use]
-pub(crate) fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
-    let p = Path::new(path);
+pub(crate) fn resolve_path(path: &str, cwd: &MarkedPathBuf<Absolute>) -> MarkedPathBuf<Absolute> {
+    let p = std::path::Path::new(path);
     if p.is_absolute() {
-        p.to_owned()
+        MarkedPathBuf::<Absolute>::new(p).expect("checked absolute above")
     } else {
-        cwd.join(p)
+        cwd.join(p).expect("absolute parent joins a bare candidate")
     }
 }
 
@@ -36,18 +36,24 @@ mod tests {
     )]
 
     use super::*;
+    use marked_path::MarkedPathAccess;
 
     #[rstest::rstest]
     fn resolve_path_relative() {
         // Given a relative path and a CWD.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let cwd = dir.path();
+        let dir = jinn_testutil::tempdir();
+        let cwd = &dir.path;
 
         // When resolving the path against that CWD.
         let resolved = resolve_path("foo/bar.txt", cwd);
 
         // Then it's joined against CWD.
-        assert_eq!(resolved, dir.path().join("foo/bar.txt"));
+        assert_eq!(
+            resolved,
+            dir.path
+                .join("foo/bar.txt")
+                .expect("temp root joins a bare name")
+        );
     }
 
     #[rstest::rstest]
@@ -55,21 +61,22 @@ mod tests {
         // Given an absolute path and a CWD. The path is built from a temp
         // root, so it is absolute on every platform — a leading slash would
         // not be (it is drive-relative on Windows).
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let cwd = dir.path();
+        let dir = jinn_testutil::tempdir();
+        let cwd = &dir.path;
 
         // When resolving it against that CWD.
-        let input = dir.path().join("etc").join("hosts");
+        let input = dir.path.join("etc").expect("a").join("hosts").expect("b");
         let resolved = resolve_path(&input.to_string_lossy(), cwd);
 
         // Then it comes back unchanged. The rule is the platform's own: a
         // path that is absolute there is returned as-is, and one that is not
         // is joined onto the CWD — so the expectation mirrors that rule
         // rather than assuming one platform's spelling.
-        let expected = if input.is_absolute() {
+        let expected = if input.as_path().is_absolute() {
             input
         } else {
             cwd.join(input)
+                .expect("absolute parent joins a bare candidate")
         };
         assert_eq!(resolved, expected);
     }

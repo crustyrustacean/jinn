@@ -1,13 +1,12 @@
 //! Lightweight session metadata and archived tree projections.
 
-use std::path::PathBuf;
-
 use jiff::Timestamp;
 use jinn_core_types::SessionId;
 use jinn_core_types::WorkingInterval;
 use serde::{Deserialize, Serialize};
 
 use crate::SessionState;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// Lightweight metadata used to build a session index without full history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,7 +29,7 @@ pub struct SessionSummary {
     pub parent_session: Option<SessionId>,
     /// Project directory associated with this session.
     #[serde(default)]
-    pub project: Option<PathBuf>,
+    pub project: Option<MarkedPathBuf<Absolute>>,
 }
 
 fn default_title() -> String {
@@ -106,8 +105,11 @@ mod tests {
         // Given a summary with project and parent metadata.
         let session_id = SessionId::new();
         let parent_id = SessionId::new();
-        let project_dir = jinn_testutil::tempdir().expect("temp dir");
-        let project = project_dir.path().join("repo");
+        let project_dir = jinn_testutil::tempdir();
+        let project = project_dir
+            .path
+            .join("repo")
+            .expect("temp root joins a bare name");
         let summary = SessionSummary {
             session_id: session_id.clone(),
             title: "Child".to_owned(),

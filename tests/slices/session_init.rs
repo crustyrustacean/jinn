@@ -9,6 +9,7 @@
 
 #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 use std::time::Duration;
 
 use jinn_core_types::SessionId;
@@ -30,29 +31,40 @@ use crate::common::test_app;
 /// stays alive for the whole test and removes the tree on drop.
 async fn composed_app_with_project() -> (TuiApp, tempfile::TempDir, SessionId) {
     let app = test_app().await;
-    let project =
-        jinn_testutil::tempdir_with_prefix("jinn-test-session-init-e2e").expect("temp dir");
+    let project = jinn_testutil::tempdir_with_prefix("jinn-test-session-init-e2e");
     let skills_dir = project
-        .path()
-        .join(".agents")
-        .join("skills")
-        .join("e2e-skill");
-    std::fs::create_dir_all(&skills_dir).expect("skill dir");
+        .path
+        .join_all([".agents", "skills", "e2e-skill"])
+        .expect("typed parent joins a bare name");
+    std::fs::create_dir_all(skills_dir.as_path()).expect("skill dir");
+    let skill_file = skills_dir
+        .join("SKILL.md")
+        .expect("typed parent joins a bare name");
     std::fs::write(
-        skills_dir.join("SKILL.md"),
+        skill_file.as_path(),
         "---\nname: e2e-skill\ndescription: end-to-end\n---\nbody",
     )
     .expect("SKILL.md");
-    let prompts_dir = project.path().join(".agents").join("prompts");
-    std::fs::create_dir_all(&prompts_dir).expect("prompts dir");
+    let prompts_dir = project
+        .path
+        .join_all([".agents", "prompts"])
+        .expect("typed parent joins a bare name");
+    std::fs::create_dir_all(prompts_dir.as_path()).expect("prompts dir");
+    let hello = prompts_dir
+        .join("hello.md")
+        .expect("typed parent joins a bare name");
     std::fs::write(
-        prompts_dir.join("hello.md"),
+        hello.as_path(),
         "+++\nname = \"hello\"\ndescription = \"Say hello\"\n+++\nHello!",
     )
     .expect("prompt template");
-    std::fs::write(project.path().join("AGENTS.md"), "context body").expect("AGENTS.md");
+    let agents = project
+        .path
+        .join("AGENTS.md")
+        .expect("typed parent joins a bare name");
+    std::fs::write(agents.as_path(), "context body").expect("AGENTS.md");
     let session_id = app.core.state.read().session.active_session_id().clone();
-    (app, project, session_id)
+    (app, project.dir, session_id)
 }
 
 /// Spawns a [`Recorder`] for `M` tapped on the app's fabric topic.
@@ -94,7 +106,7 @@ async fn session_created_triggers_discovery_and_loaded_events_land_on_slice_topi
         .bridge
         .send(Bridge::publish_closure(SessionCreated {
             session_id: session_id.clone(),
-            cwd: project.path().to_path_buf(),
+            cwd: MarkedPathBuf::<Absolute>::new(project.path()).expect("temp dir is absolute"),
         }));
 
     // Then the kernel `SkillsLoaded` type crosses back — and its
@@ -147,7 +159,7 @@ async fn boot_cwd_changed_triggers_initial_discovery() {
     let _ = app.core.bridge.send(Bridge::publish_closure(
         jinn_session_lifecycle_msg::SessionCwdChanged {
             session_id: session_id.clone(),
-            cwd: project.path().to_path_buf(),
+            cwd: MarkedPathBuf::<Absolute>::new(project.path()).expect("temp dir is absolute"),
         },
     ));
 
@@ -212,7 +224,8 @@ async fn manual_scan_reaches_only_the_addressed_session() {
     let (app, project, first) = composed_app_with_project().await;
     let second = {
         let mut session = ChatSessionState::new();
-        session.set_cwd(project.path().to_path_buf());
+        session
+            .set_cwd(MarkedPathBuf::<Absolute>::new(project.path()).expect("temp dir is absolute"));
         let id = session.session_id().clone();
         app.core.state.write().session.insert(session);
         id
@@ -226,7 +239,7 @@ async fn manual_scan_reaches_only_the_addressed_session() {
         .bridge
         .send(Bridge::publish_closure(jinn_skills_msg::ScanSkills {
             session_id: first.clone(),
-            cwd: project.path().to_path_buf(),
+            cwd: MarkedPathBuf::<Absolute>::new(project.path()).expect("temp dir is absolute"),
         }));
 
     // Then exactly the addressed session's event crosses.

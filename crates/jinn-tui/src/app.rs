@@ -289,7 +289,7 @@ impl TuiApp {
                     self.core.state.read().active_session().cwd().to_owned()
                 }
                 jinn_kernel::protocol::CwdRoot::Home => {
-                    jinn_kernel::AppPaths::default().home_dir().to_path_buf()
+                    jinn_kernel::AppPaths::default().home_dir().clone()
                 }
             };
             self.suspend

@@ -17,13 +17,13 @@ use jinn_testutil::bus_harness::TestHarness;
 /// the harness too, so tests can spawn recorders on the same bus the actor
 /// publishes to, and the concrete store for direct DB access.
 async fn sqlite_actor_deps() -> (
-    tempfile::TempDir,
+    jinn_testutil::JinnTempDir,
     TestHarness,
     jinn_kernel::common::actor_deps::ActorDeps,
     std::sync::Arc<SqliteSessionStore>,
 ) {
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let store = std::sync::Arc::new(SqliteSessionStore::new_in(dir.path()).await.expect("store"));
+    let dir = jinn_testutil::tempdir();
+    let store = std::sync::Arc::new(SqliteSessionStore::new_in(&dir.path).await.expect("store"));
     let harness = TestHarness::new().await;
     let mut services = harness.services().await;
     services.session_store = SessionStoreService::new(store.clone());

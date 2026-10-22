@@ -231,7 +231,7 @@ fn render_header(doc: &ExportDocument) -> String {
     let _ = write!(
         out,
         "<dt>working directory</dt><dd>{}</dd>",
-        escape_html(&doc.cwd.display().to_string())
+        escape_html(&doc.cwd.to_string())
     );
     let _ = write!(
         out,
@@ -325,8 +325,8 @@ mod tests {
         // The cwd is fixture data nothing reads back from disk: the temp root
         // only keeps test paths off absolute literals, so it is deleted when
         // this helper returns and no tempdir lifetime reaches the call sites.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let cwd = dir.path().join("work");
+        let dir = jinn_testutil::tempdir();
+        let cwd = dir.path.join("work").expect("temp root joins a bare name");
         ExportDocument {
             title: "Test session".to_owned(),
             model: "test-model".to_owned(),

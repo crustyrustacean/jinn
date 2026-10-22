@@ -6,10 +6,11 @@
 //! first run with commented-out examples for every known backend.
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use error_stack::{Report, ResultExt as _};
 use jinn_common::app_paths::AppPaths;
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 use serde::{Deserialize, Serialize};
 use wherror::Error;
 
@@ -161,7 +162,7 @@ const fn default_true() -> bool {
 /// Derives from [`AppPaths`] (`~/.config/jinn/providers.toml`), so the
 /// `JINN_PATHS_ROOT` override is honored here too.
 #[must_use]
-pub fn config_path() -> PathBuf {
+pub fn config_path() -> MarkedPathBuf<Absolute> {
     AppPaths::default().config_path()
 }
 
@@ -216,9 +217,9 @@ where
 /// # Errors
 ///
 /// Returns [`ConfigError::Io`] if directory creation or file writing fails.
-pub fn create_default_config() -> Result<PathBuf, Report<ConfigError>> {
+pub fn create_default_config() -> Result<MarkedPathBuf<Absolute>, Report<ConfigError>> {
     let path = config_path();
-    create_default_config_to(&path)?;
+    create_default_config_to(path.as_path())?;
     Ok(path)
 }
 
@@ -459,8 +460,11 @@ pub(crate) mod tests {
     #[rstest::rstest]
     fn init_providers_writes_template_when_missing() {
         // Given a path to a nonexistent file.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
 
         // When initializing the default providers config (no force).
         let outcome = init_default_providers_to(&path, false).expect("init");
@@ -474,8 +478,11 @@ pub(crate) mod tests {
     #[rstest::rstest]
     fn init_providers_refuses_existing_without_force() {
         // Given an existing file with hand-authored content.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         let marker = "# user-managed\n[providers.ollama]\n";
         std::fs::write(&path, marker).expect("write");
 
@@ -491,8 +498,11 @@ pub(crate) mod tests {
     #[rstest::rstest]
     fn init_providers_overwrites_when_force() {
         // Given an existing file with stale content.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, "# stale\n").expect("write");
 
         // When initializing with --force.
@@ -506,8 +516,11 @@ pub(crate) mod tests {
 
     /// Writes a well-formed new-format TOML config to a temp file and loads it.
     fn load_test_config() -> ProvidersConfig {
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         let toml = r#"
 [providers.ollama]
 backend = "ollama"
@@ -560,8 +573,11 @@ target = "ollama/llama3""#;
     #[rstest::rstest]
     fn malformed_toml_render_includes_parse_detail() {
         // Given a providers.toml with a missing comma (unclosed array).
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         let toml = "[providers.ollama]\nbackend = \"ollama\"\nmodels = [\"llama3\"\n";
         std::fs::write(&path, toml).expect("write");
 
@@ -584,8 +600,11 @@ target = "ollama/llama3""#;
     #[rstest::rstest]
     fn legacy_array_syntax_fails_with_new_syntax_hint() {
         // Given a legacy [[providers]] array-format file.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         let toml =
             "[[providers]]\nname = \"ollama\"\nbackend = \"ollama\"\nmodels = [\"llama3\"]\n";
         std::fs::write(&path, toml).expect("write");
@@ -605,8 +624,11 @@ target = "ollama/llama3""#;
     #[rstest::rstest]
     fn duplicate_provider_keys_fail_toml_parse() {
         // Given a file declaring the same provider table twice.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         let toml = "[providers.ollama]\nbackend = \"ollama\"\nmodels = [\"llama3\"]\n\n[providers.ollama]\nbackend = \"ollama\"\nmodels = [\"llama3\"]\n";
         std::fs::write(&path, toml).expect("write");
 
@@ -620,8 +642,11 @@ target = "ollama/llama3""#;
     #[rstest::rstest]
     fn load_config_creates_default_when_missing() {
         // Given a temp directory with no config file.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
 
         assert!(!path.exists());
 
@@ -644,8 +669,11 @@ target = "ollama/llama3""#;
             endpoint_defaults: Vec::new(),
         };
 
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
 
         // When saving and reloading.
         save_config_to(&config, &path).expect("save");
@@ -670,8 +698,11 @@ target = "ollama/llama3""#;
             endpoint_defaults: Vec::new(),
         };
 
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
 
         // When saving to a path with no existing file (first-save path).
         save_config_to(&config, &path).expect("save");
@@ -686,8 +717,11 @@ target = "ollama/llama3""#;
     #[rstest::rstest]
     fn patch_save_over_shipped_template_preserves_all_comments() {
         // Given the shipped template written to disk.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, DEFAULT_CONFIG).expect("write template");
 
         // When loading, mutating one field, and saving.
@@ -712,19 +746,26 @@ target = "ollama/llama3""#;
         let path = config_path();
 
         // Then it ends with jinn/providers.toml, separator-portably.
-        assert_eq!(
-            path.ancestors()
-                .find(|a| a.ends_with("jinn"))
-                .map(|a| path.strip_prefix(a).map(Path::to_path_buf)),
-            Some(Ok(Path::new("providers.toml").to_path_buf()))
-        );
+        let stripped = path
+            .ancestors()
+            .find(|a| a.ends_with("jinn"))
+            .map(|a| path.strip_prefix(a));
+        match stripped {
+            Some(Ok(stripped)) => {
+                assert_eq!(stripped.as_marked_path().to_str(), Some("providers.toml"));
+            }
+            other => panic!("strip_prefix against the `jinn` ancestor failed: {other:?}"),
+        }
     }
 
     #[rstest::rstest]
     fn load_config_parses_extra_body_on_named_provider() {
         // Given a config with extra_body under a named provider.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         let toml = r#"
 [providers.zai]
 backend = "zai"
@@ -752,8 +793,11 @@ tool_stream = true"#;
     #[rstest::rstest]
     fn explicit_providers_save_then_load_round_trips() {
         // Given a fully-specified providers config fixture.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         let config = explicit_providers_config();
 
         // When saving and reloading.
@@ -768,8 +812,11 @@ tool_stream = true"#;
     fn save_config_preserves_user_comments() {
         // Given a comment-rich providers.toml written by the user.
         let original = "# my favorite provider\n[providers.ollama]\nbackend = \"ollama\"\nmodels = [\"llama3\"]\n";
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, original).expect("write");
 
         // When loading, mutating default_provider, and saving.
@@ -790,8 +837,11 @@ tool_stream = true"#;
     fn save_config_appends_new_provider_at_end() {
         // Given a single-provider config.
         let original = "# existing\n[providers.alpha]\nbackend = \"x\"\nmodels = [\"a\"]\n";
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, original).expect("write");
 
         // When saving a config with alpha + beta.
@@ -818,8 +868,11 @@ tool_stream = true"#;
     fn save_config_preserves_alias_block_comments_on_mutation() {
         // Given a providers.toml with a comment-rich alias block.
         let original = "[providers.ollama]\nbackend = \"ollama\"\nrequires_key = false\nmodels = [\"llama3\", \"codellama\"]\n\n# shortcut for my favorite model\n[[aliases]]\nname = \"fast\"\ntarget = \"ollama/llama3\"\n\n# another alias\n[[aliases]]\nname = \"smart\"\ntarget = \"ollama/codellama\"\n";
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, original).expect("write");
 
         // When loading and changing only the first alias's target.
@@ -851,8 +904,11 @@ tool_stream = true"#;
     fn save_config_actually_writes_to_disk() {
         // If save_config were a no-op, the file would not exist after the call.
         // Given a config to persist and a target path.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         let config = ProvidersConfig {
             providers: BTreeMap::from([("test-save".to_owned(), entry("ollama", &["llama3"]))]),
             aliases: vec![],
@@ -874,8 +930,11 @@ tool_stream = true"#;
     fn create_default_config_returns_actual_path() {
         // If it returned an empty PathBuf, the path would not point to a file.
         // Given a path with no config file yet.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
 
         // When creating the default config there.
         create_default_config_to(&path).expect("create");
@@ -890,8 +949,11 @@ tool_stream = true"#;
     fn default_true_makes_requires_key_default_to_true() {
         // Verifies that a provider entry without requires_key in TOML defaults to true.
         // Given a provider entry with no requires_key field.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         // No requires_key field - should default to true.
         std::fs::write(
             &path,
@@ -962,8 +1024,11 @@ default_provider = "smart"   # what opens on launch
     fn save_config_round_trip_preserves_all_comment_styles() {
         // Given a comment-rich providers.toml fixture.
         let original = realistic_providers_toml();
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, original).expect("write");
 
         // When loading and immediately re-saving without mutation.
@@ -1001,8 +1066,11 @@ default_provider = "smart"   # what opens on launch
     fn save_config_mutating_one_field_preserves_all_unrelated_comments() {
         // Given the comment-rich providers.toml fixture.
         let original = realistic_providers_toml();
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, original).expect("write");
 
         // When mutating a single field (add a model to openrouter).
@@ -1031,8 +1099,11 @@ default_provider = "smart"   # what opens on launch
     fn save_config_deleting_one_alias_preserves_only_its_comment() {
         // Given the comment-rich providers.toml fixture.
         let original = realistic_providers_toml();
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, original).expect("write");
 
         // When deleting only the 'fast' alias.
@@ -1055,8 +1126,11 @@ default_provider = "smart"   # what opens on launch
     #[rstest::rstest]
     fn load_config_parses_model_info_tables() {
         // Given a config with [[providers.<name>.model_info]] tables.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         let toml = r#"
 [providers.ollama]
 backend = "ollama"
@@ -1088,8 +1162,11 @@ input_modalities = ["text", "image"]"#;
     fn save_config_preserves_model_info_block_comments() {
         // Given a user-authored config with commented model_info blocks.
         let original = "# my vision model\n[providers.ollama]\nbackend = \"ollama\"\nrequires_key = false\nmodels = [\"llama3\"]\n\n# vision-capable local model\n[[providers.ollama.model_info]]\nid = \"llama3\"\ncontext_length = 8192\ninput_modalities = [\"text\", \"image\"]\n";
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, original).expect("write");
 
         // When loading, changing the context length, and saving.
@@ -1128,8 +1205,11 @@ requires_key = false
 name = "balanced"
 models = ["ollama/llama3", "openrouter/anthropic/claude-sonnet-4"]
 strategy = "round_robin""#;
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, original).expect("write");
 
         // When loading and re-saving without mutation.
@@ -1148,8 +1228,11 @@ strategy = "round_robin""#;
     #[rstest::rstest]
     fn load_config_without_endpoint_defaults_key_yields_empty_list() {
         // Given a providers.toml written before endpoint pinning existed.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(
             &path,
             "[providers.ollama]\nbackend = \"ollama\"\nmodels = [\"llama3\"]\n",
@@ -1166,8 +1249,11 @@ strategy = "round_robin""#;
     #[rstest::rstest]
     fn load_config_parses_endpoint_defaults_rows() {
         // Given a providers.toml with two [[endpoint_defaults]] rows.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         let toml = r#"
 [providers.openrouter]
 backend = "openrouter"
@@ -1205,8 +1291,11 @@ tag = "openai"
     #[rstest::rstest]
     fn endpoint_default_row_missing_tag_fails_to_parse() {
         // Given a providers.toml whose [[endpoint_defaults]] row omits `tag`.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         let toml = r#"
 [providers.openrouter]
 backend = "openrouter"
@@ -1228,8 +1317,11 @@ model = "openrouter/anthropic/claude-sonnet-4-20250514"
     #[rstest::rstest]
     fn save_config_round_trips_multiple_endpoint_default_rows() {
         // Given a config carrying two [[endpoint_defaults]] rows.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         let config = ProvidersConfig {
             providers: BTreeMap::from([(
                 "openrouter".to_owned(),
@@ -1274,8 +1366,11 @@ tag = "anthropic"
 model = "openrouter/openai/gpt-oss-120b"
 tag = "openai"
 "#;
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, original).expect("write");
 
         // When loading, re-pinning only the first model, and saving.
@@ -1302,8 +1397,11 @@ models = ["openai/gpt-oss-120b"]
 model = "openrouter/openai/gpt-oss-120b"
 tag = "openai"
 "#;
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, original).expect("write");
 
         // When loading, clearing the row (the auto-route sentinel), and saving.
@@ -1323,8 +1421,11 @@ tag = "openai"
     #[rstest::rstest]
     fn save_config_over_template_with_endpoint_defaults_writes_past_the_commented_example() {
         // Given the shipped template, whose endpoint_defaults example is commented out.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let path = dir.path().join("providers.toml");
+        let dir = jinn_testutil::tempdir();
+        let path = dir
+            .path
+            .join("providers.toml")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, DEFAULT_CONFIG).expect("write template");
 
         // When loading, pinning an endpoint, and saving.

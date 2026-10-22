@@ -18,6 +18,7 @@ use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{
     ActionCtx, ActionFn, BindSite, EditIntent, InputHook, RouteId, RouteRow, ScopeSignal,
 };
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 use std::sync::Arc;
 
 /// The project-add popup's dynamic scope (input-capturing).
@@ -173,7 +174,7 @@ pub(super) fn confirm_project_add(ctx: &mut ActionCtx<'_>, cell: &ProjectAddCell
     let current_cwd = ctx.state.active_session_cwd();
     match resolve_cwd_input(&raw, &current_cwd) {
         CwdResolution::Ok(path) => {
-            add_project(ctx.config, path);
+            add_project(ctx.config, &path);
             leave_project_add(cell);
             IntentResult::empty().with_scope_signal(ScopeSignal::PopIf(project_add_scope()))
         }
@@ -187,12 +188,17 @@ pub(super) fn confirm_project_add(ctx: &mut ActionCtx<'_>, cell: &ProjectAddCell
 /// A failed write is logged, not surfaced: the popup has already
 /// confirmed, and refusing to close over a disk error would strand the
 /// user in an input they can no longer act on.
-fn add_project(config: &jinn_preferences_config::ConfigLayer, path: std::path::PathBuf) {
+fn add_project(config: &jinn_preferences_config::ConfigLayer, path: &MarkedPathBuf<Absolute>) {
     let mut projects = config.get_list::<ProjectConfig>().unwrap_or_default();
-    if projects.iter().any(|project| project.path == path) {
+    if projects
+        .iter()
+        .any(|project| project.path == path.as_path())
+    {
         return;
     }
-    projects.push(ProjectConfig { path });
+    projects.push(ProjectConfig {
+        path: path.as_path().to_path_buf(),
+    });
     if let Err(error) = config.put_list::<ProjectConfig>(&projects) {
         tracing::warn!(err = ?error, "failed to persist the added project to jinn.toml");
     }

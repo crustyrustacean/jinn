@@ -1,8 +1,7 @@
 //! Portable workflow values shared by the workflow messages and the
 //! workflows slice implementation.
 
-use std::path::PathBuf;
-
+use marked_path::{Absolute, MarkedPathBuf};
 use serde::{Deserialize, Serialize};
 
 /// A discovered workflow.
@@ -22,7 +21,7 @@ pub struct Workflow {
     pub description: String,
     /// Absolute path to the workflow's directory (the one holding
     /// `workflow.md` and `steps/`).
-    pub dir: PathBuf,
+    pub dir: MarkedPathBuf<Absolute>,
 }
 
 #[cfg(test)]
@@ -35,11 +34,14 @@ mod tests {
     fn workflow_roundtrips_through_serde() {
         // Given a workflow with every field set. The directory is built from
         // a temp root, so it is an absolute path on every platform.
-        let root = jinn_testutil::tempdir().expect("temp dir");
+        let root = jinn_testutil::tempdir();
         let workflow = Workflow {
             name: "research-report".to_owned(),
             description: "Research a topic and deliver a cited brief.".to_owned(),
-            dir: root.path().join("workflows").join("research-report"),
+            dir: root
+                .path
+                .join_all(["workflows", "research-report"])
+                .expect("a"),
         };
 
         // When serializing then deserializing.

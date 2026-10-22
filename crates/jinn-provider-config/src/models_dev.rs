@@ -6,8 +6,8 @@
 //! during model discovery and cache merge.
 
 use error_stack::ResultExt as _;
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 use std::collections::HashMap;
-use std::path::Path;
 
 /// Why a models.dev lookup file could not be parsed.
 #[derive(Debug, Clone, Copy, wherror::Error)]
@@ -48,14 +48,17 @@ impl ModelsDevData {
     ///
     /// This never returns an error - missing or unreadable files result in
     /// an empty lookup table.
-    pub fn load(user_path: &Path, system_path: &Path) -> Self {
+    pub fn load(
+        user_path: &MarkedPathBuf<Absolute>,
+        system_path: &MarkedPathBuf<Absolute>,
+    ) -> Self {
         // Try user path first.
         if user_path.exists() {
             match Self::parse_file(user_path) {
                 Ok(data) => return data,
                 Err(e) => {
                     tracing::warn!(
-                        path = %user_path.display(),
+                        path = %user_path,
                         err = %e,
                         "corrupted models.dev user file, trying system fallback"
                     );
@@ -69,7 +72,7 @@ impl ModelsDevData {
                 Ok(data) => return data,
                 Err(e) => {
                     tracing::warn!(
-                        path = %system_path.display(),
+                        path = %system_path,
                         err = %e,
                         "corrupted models.dev system file"
                     );
@@ -139,10 +142,12 @@ impl ModelsDevData {
     ///
     /// Returns an error when the file cannot be read or is not the
     /// models.dev JSON shape.
-    fn parse_file(path: &Path) -> Result<Self, error_stack::Report<ModelsDevError>> {
+    fn parse_file(
+        path: &MarkedPathBuf<Absolute>,
+    ) -> Result<Self, error_stack::Report<ModelsDevError>> {
         let content = std::fs::read_to_string(path)
             .change_context(ModelsDevError::Read)
-            .attach(format!("failed to read {}", path.display()))?;
+            .attach(format!("failed to read {path}"))?;
         let providers: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&content)
             .change_context(ModelsDevError::Parse)
             .attach("invalid models.dev JSON")?;
@@ -194,19 +199,24 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+    use marked_path::{Absolute, MarkedPathBuf};
 
     /// Returns the path of a file that does not exist.
     ///
     /// The path is built under a fresh temp root, so it is absolute on every
     /// platform and guaranteed to name nothing on disk — which is the whole
     /// point of the tests that use it.
-    fn missing_file(name: &str) -> std::path::PathBuf {
-        let root = jinn_testutil::paths::TestRoot::new().expect("test root");
-        root.join_str(name).expect("relative path").into_inner()
+    fn missing_file(name: &str) -> MarkedPathBuf<Absolute> {
+        let root = jinn_testutil::paths::TestRoot::new();
+        root.join_str(name).expect("relative path")
     }
 
-    fn write_json(dir: &std::path::Path, filename: &str, json: &str) -> std::path::PathBuf {
-        let path = dir.join(filename);
+    fn write_json(
+        dir: &MarkedPathBuf<Absolute>,
+        filename: &str,
+        json: &str,
+    ) -> MarkedPathBuf<Absolute> {
+        let path = dir.join(filename).expect("temp root joins a bare filename");
         std::fs::write(&path, json).expect("write json");
         path
     }
@@ -249,8 +259,8 @@ mod tests {
     #[rstest::rstest]
     fn load_parses_context_length_correctly() {
         // Given a valid models.dev file with multiple providers and models.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let user_path = write_json(dir.path(), "models.dev.json", minimal_models_dev_json());
+        let dir = jinn_testutil::tempdir();
+        let user_path = write_json(&dir.path, "models.dev.json", minimal_models_dev_json());
 
         // When loading.
         let data = ModelsDevData::load(&user_path, &missing_file("system"));
@@ -266,21 +276,25 @@ mod tests {
     #[rstest::rstest]
     fn load_prefers_user_over_system() {
         // Given different data in user and system files.
-        let user_dir = jinn_testutil::tempdir().expect("temp dir");
-        let system_dir = jinn_testutil::tempdir().expect("temp dir");
+        let user_dir = jinn_testutil::tempdir();
+        let system_dir = jinn_testutil::tempdir();
         let user_path = write_json(
-            user_dir.path(),
+            &user_dir.path,
             "models.dev.json",
             r#"{"openai":{"models":{"gpt-4o":{"limit":{"context":100}}}}}"#,
         );
         write_json(
-            system_dir.path(),
+            &system_dir.path,
             "models.dev.json",
             r#"{"openai":{"models":{"gpt-4o":{"limit":{"context":200}}}}}"#,
         );
 
         // When loading.
-        let data = ModelsDevData::load(&user_path, &system_dir.path().join("models.dev.json"));
+        let system = system_dir
+            .path
+            .join("models.dev.json")
+            .expect("temp root joins a bare name");
+        let data = ModelsDevData::load(&user_path, &system);
 
         // Then the user file value wins.
         assert_eq!(data.get("gpt-4o"), Some(100));
@@ -289,9 +303,9 @@ mod tests {
     #[rstest::rstest]
     fn load_falls_back_to_system_when_user_missing() {
         // Given only a system file.
-        let system_dir = jinn_testutil::tempdir().expect("temp dir");
+        let system_dir = jinn_testutil::tempdir();
         let system_path = write_json(
-            system_dir.path(),
+            &system_dir.path,
             "models.dev.json",
             r#"{"openai":{"models":{"gpt-4o":{"limit":{"context":200}}}}}"#,
         );
@@ -317,9 +331,9 @@ mod tests {
     #[rstest::rstest]
     fn load_handles_missing_limit_field() {
         // Given a model entry with no limit key.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let user_path = write_json(
-            dir.path(),
+            &dir.path,
             "models.dev.json",
             r#"{"openai":{"models":{"gpt-4o":{"name":"GPT-4o"}}}}"#,
         );
@@ -335,9 +349,9 @@ mod tests {
     #[rstest::rstest]
     fn load_handles_zero_context() {
         // Given a model with context: 0 (e.g., embedding model).
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let user_path = write_json(
-            dir.path(),
+            &dir.path,
             "models.dev.json",
             r#"{"openai":{"models":{"text-embedding-3-large":{"limit":{"context":0}}}}}"#,
         );
@@ -352,12 +366,15 @@ mod tests {
     #[rstest::rstest]
     fn load_handles_corrupted_user_file() {
         // Given garbage in user path and valid data in system path.
-        let user_dir = jinn_testutil::tempdir().expect("temp dir");
-        let system_dir = jinn_testutil::tempdir().expect("temp dir");
-        let user_path = user_dir.path().join("models.dev.json");
+        let user_dir = jinn_testutil::tempdir();
+        let system_dir = jinn_testutil::tempdir();
+        let user_path = user_dir
+            .path
+            .join("models.dev.json")
+            .expect("temp root joins a bare name");
         std::fs::write(&user_path, "NOT VALID JSON!!!").expect("write garbage");
         let system_path = write_json(
-            system_dir.path(),
+            &system_dir.path,
             "models.dev.json",
             r#"{"openai":{"models":{"gpt-4o":{"limit":{"context":200}}}}}"#,
         );
@@ -372,9 +389,9 @@ mod tests {
     #[rstest::rstest]
     fn first_provider_wins_for_duplicate_model_ids() {
         // Given two providers listing the same model ID with different contexts.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let user_path = write_json(
-            dir.path(),
+            &dir.path,
             "models.dev.json",
             r#"{
                 "zai": {
@@ -413,9 +430,9 @@ mod tests {
     fn is_empty_returns_false_when_data_present() {
         // If is_empty always returned true, data loading would appear to never work.
         // Given a models.dev file holding one model.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let dir = jinn_testutil::tempdir();
         let user_path = write_json(
-            dir.path(),
+            &dir.path,
             "models.dev.json",
             r#"{"openai":{"models":{"gpt-4o":{"limit":{"context":128000}}}}}"#,
         );
@@ -434,8 +451,8 @@ mod tests {
     #[rstest::rstest]
     fn supports_images_true_for_vision_model() {
         // Given a models.dev file with a vision-capable model.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let user_path = write_json(dir.path(), "models.dev.json", minimal_models_dev_json());
+        let dir = jinn_testutil::tempdir();
+        let user_path = write_json(&dir.path, "models.dev.json", minimal_models_dev_json());
         let data = ModelsDevData::load(&user_path, &missing_file("system"));
 
         // When looking up image support for gpt-4o.
@@ -446,8 +463,8 @@ mod tests {
     #[rstest::rstest]
     fn supports_images_false_for_text_only_model() {
         // Given a models.dev file with a text-only model.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let user_path = write_json(dir.path(), "models.dev.json", minimal_models_dev_json());
+        let dir = jinn_testutil::tempdir();
+        let user_path = write_json(&dir.path, "models.dev.json", minimal_models_dev_json());
         let data = ModelsDevData::load(&user_path, &missing_file("system"));
 
         // When looking up image support for gpt-3.5-turbo.
@@ -458,8 +475,8 @@ mod tests {
     #[rstest::rstest]
     fn supports_images_none_for_unknown_model() {
         // Given a models.dev file.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let user_path = write_json(dir.path(), "models.dev.json", minimal_models_dev_json());
+        let dir = jinn_testutil::tempdir();
+        let user_path = write_json(&dir.path, "models.dev.json", minimal_models_dev_json());
         let data = ModelsDevData::load(&user_path, &missing_file("system"));
 
         // When looking up a model not in the reference data.

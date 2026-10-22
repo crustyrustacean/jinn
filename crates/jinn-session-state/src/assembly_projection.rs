@@ -1,13 +1,13 @@
 //! Coherent projection of the session-owned fields required for prompt assembly.
 
 use std::collections::HashSet;
-use std::path::PathBuf;
 
 use jinn_context::ContextFile;
 use jinn_core_types::{ChatEntry, NameFilter, SessionId};
 use jinn_skills_msg::Skill;
 
 use crate::ChatSessionState;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// Immutable session values required by the context-assembly service.
 ///
@@ -20,7 +20,7 @@ pub struct AssemblySessionProjection {
     /// Session identity.
     pub session_id: SessionId,
     /// Working directory rendered into the environment block.
-    pub cwd: PathBuf,
+    pub cwd: MarkedPathBuf<Absolute>,
     /// Selected persona name before persona-cell resolution.
     pub persona_name: String,
     /// Full conversation history, including pins.
@@ -51,7 +51,7 @@ impl AssemblySessionProjection {
     pub fn capture(session_id: &SessionId, session: &ChatSessionState) -> Self {
         Self {
             session_id: session_id.clone(),
-            cwd: session.cwd().to_path_buf(),
+            cwd: session.cwd().clone(),
             persona_name: session.persona_name().to_owned(),
             history: session.history().to_vec(),
             tool_filter: session.tool_filter().cloned(),

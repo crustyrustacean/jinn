@@ -15,6 +15,7 @@ use trouper::registry::RegistryError;
 use jinn_core_types::SessionId;
 use jinn_kernel::common::services::bus_service::BusService;
 use jinn_session_lifecycle_msg::{SessionSetupCompleted, SessionTeardownFinished};
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// Which single event this listener awaits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,7 +32,7 @@ pub struct LifecycleCompletion {
     /// Which script phase finished.
     pub kind: AwaitKind,
     /// The adopted cwd (setup only; `None` on the teardown kind).
-    pub cwd: Option<std::path::PathBuf>,
+    pub cwd: Option<MarkedPathBuf<Absolute>>,
     /// The failure description, when the script failed.
     pub error: Option<String>,
 }

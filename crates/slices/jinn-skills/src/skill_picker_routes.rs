@@ -427,7 +427,7 @@ fn load_highlighted_skill(ctx: &mut ActionCtx<'_>, cell: &SkillPickerCell) -> In
     }
 
     let tool_call_id = ChatEntryId::new().to_string();
-    let location = skill_path.to_string_lossy().to_string();
+    let location = skill_path.to_string();
     let xml = format!("<skill name=\"{name}\" location=\"{location}\">\n{body}\n</skill>");
     let arguments = serde_json::json!({ "name": name }).to_string();
 
@@ -497,7 +497,7 @@ fn refresh_skill_resources(ctx: &mut ActionCtx<'_>, _cell: &SkillPickerCell) -> 
 
     let session = state.active_session();
     let session_id = session.session_id().clone();
-    let cwd = session.cwd().to_path_buf();
+    let cwd = session.cwd().clone();
 
     IntentResult::new_message(jinn_skills_msg::ScanSkills {
         session_id: session_id.clone(),

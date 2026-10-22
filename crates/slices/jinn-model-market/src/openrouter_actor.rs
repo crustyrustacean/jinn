@@ -55,6 +55,7 @@
 //! `RefreshAll` forced refetch, so a models load alone makes no
 //! endpoints request.
 
+use marked_path::{Absolute, MarkedPathBuf};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -116,7 +117,7 @@ pub struct OpenRouterMarketActor {
     /// gates the models fetch.
     api_key: Option<String>,
     /// The market cache directory (tests point this at a tempdir).
-    cache_dir: std::path::PathBuf,
+    cache_dir: MarkedPathBuf<Absolute>,
     /// The shared HTTP client.
     client: reqwest::Client,
     /// In-memory *raw* parsed listings with their fetch stamp — the
@@ -140,8 +141,9 @@ pub struct OpenRouterMarketActorDeps {
     pub ui: TypedCell<MarketUiState>,
     /// OpenRouter base URL; empty resolves to the production default.
     pub base_url: String,
-    /// Cache directory; empty resolves to `AppPaths::openrouter_cache_dir()`.
-    pub cache_dir: std::path::PathBuf,
+    /// Cache directory override; `None` resolves to
+    /// `AppPaths::openrouter_cache_dir()`.
+    pub cache_dir: Option<MarkedPathBuf<Absolute>>,
 }
 
 impl OpenRouterMarketActorDeps {
@@ -157,7 +159,7 @@ impl OpenRouterMarketActorDeps {
             data,
             ui,
             base_url: String::new(),
-            cache_dir: std::path::PathBuf::new(),
+            cache_dir: None,
         }
     }
 }
@@ -233,11 +235,10 @@ impl OpenRouterMarketActor {
         } else {
             deps.base_url
         };
-        let cache_dir = if deps.cache_dir.as_os_str().is_empty() {
-            deps.deps.services.paths.openrouter_cache_dir()
-        } else {
-            deps.cache_dir
-        };
+        let cache_dir = deps
+            .cache_dir
+            .clone()
+            .unwrap_or_else(|| deps.deps.services.paths.openrouter_cache_dir());
         let api_key = deps.deps.services.api_keys.get(OPENROUTER_API_KEY_ENV);
         Self {
             deps: deps.deps,
@@ -285,6 +286,14 @@ impl BusPublish for OpenRouterMarketActor {
 }
 
 impl OpenRouterMarketActor {
+    // The cache-path helpers join bare filenames onto `cache_dir`, which is
+    // typed `Absolute` at spawn; a bare-name join cannot make the result
+    // relative, so the expects guard programmer error, not runtime state.
+    #![allow(
+        clippy::expect_used,
+        reason = "bare-name joins onto a typed-absolute cache dir are infallible by construction"
+    )]
+
     /// FetchModels: serve warm memory, then warm disk, then the network.
     ///
     /// A warm cache at either level produces no outbound request and
@@ -542,21 +551,24 @@ impl OpenRouterMarketActor {
     }
 
     /// The models listing's disk path.
-    fn models_cache_path(&self) -> std::path::PathBuf {
-        self.cache_dir.join(MODELS_CACHE_FILE)
+    fn models_cache_path(&self) -> MarkedPathBuf<Absolute> {
+        self.cache_dir
+            .join(MODELS_CACHE_FILE)
+            .expect("absolute parent joins a bare filename")
     }
 
     /// One model's endpoint-detail disk path.
     ///
     /// The id is a file-name component: separators are flattened so a
     /// slash- or colon-bearing id cannot escape the cache dir.
-    fn endpoints_cache_path(&self, model_id: &str) -> std::path::PathBuf {
+    fn endpoints_cache_path(&self, model_id: &str) -> MarkedPathBuf<Absolute> {
         let flat: String = model_id
             .chars()
             .map(|c| if c == '/' || c == ':' { '_' } else { c })
             .collect();
         self.cache_dir
             .join(format!("{ENDPOINT_CACHE_PREFIX}{flat}.json"))
+            .expect("absolute parent joins a bare filename")
     }
 }
 
@@ -565,7 +577,7 @@ impl OpenRouterMarketActor {
 /// `RefreshAll` means all endpoints, not just the displayed one; the
 /// read_dir failure is logged and swallowed — a missing cache dir is a
 /// cold cache, which is a fine starting state for a refresh.
-fn drop_all_endpoint_files(cache_dir: &std::path::Path) {
+fn drop_all_endpoint_files(cache_dir: &MarkedPathBuf<Absolute>) {
     let entries = match std::fs::read_dir(cache_dir) {
         Ok(entries) => entries,
         Err(error) => {

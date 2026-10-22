@@ -4,7 +4,6 @@
 //! recursively. It supports exact name lookup and fuzzy search for the
 //! autocomplete popup.
 
-use std::path::Path;
 use std::sync::Arc;
 
 use crate::PromptTemplate;
@@ -14,6 +13,7 @@ use fuzzy_matcher::skim::SkimMatcherV2;
 use tracing::warn;
 
 use super::loader::parse_template_file;
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
 /// Errors that can occur during prompt template loading.
 #[derive(Debug, wherror::Error)]
@@ -55,7 +55,9 @@ impl PromptTemplateStore {
     /// # Errors
     ///
     /// Returns an error if the directory cannot be read due to I/O failure.
-    pub fn load_from_dir(path: &Path) -> Result<Self, Report<PromptTemplateStoreError>> {
+    pub fn load_from_dir(
+        path: &MarkedPathBuf<Absolute>,
+    ) -> Result<Self, Report<PromptTemplateStoreError>> {
         if !path.exists() {
             return Ok(Self::new());
         }
@@ -70,15 +72,16 @@ impl PromptTemplateStore {
         })
     }
 
-    /// Loads all `*.md` files from both system and user directories (recursively),
-    /// merging results. User templates override system templates of the same name.
+    /// Loads templates from the system and user directories, merging results
+    /// with user-overrides-system precedence.
     ///
     /// # Errors
     ///
-    /// Returns an error if either directory cannot be read due to I/O failure.
+    /// Returns an error if either directory cannot be read due to I/O
+    /// failure.
     pub fn load_from_dirs(
-        user_dir: &Path,
-        system_dir: &Path,
+        user_dir: &MarkedPathBuf<Absolute>,
+        system_dir: &MarkedPathBuf<Absolute>,
     ) -> Result<Self, Report<PromptTemplateStoreError>> {
         let mut templates = Vec::new();
         let mut seen_names = std::collections::HashSet::new();
@@ -114,9 +117,9 @@ impl PromptTemplateStore {
     ///
     /// Returns an error if any directory cannot be read due to I/O failure.
     pub fn load_from_dirs_ordered(
-        user_dir: &Path,
-        system_dir: &Path,
-        project_dirs: &[std::path::PathBuf],
+        user_dir: &MarkedPathBuf<Absolute>,
+        system_dir: &MarkedPathBuf<Absolute>,
+        project_dirs: &[MarkedPathBuf<Absolute>],
     ) -> Result<Self, Report<PromptTemplateStoreError>> {
         let mut templates = Vec::new();
         let mut seen_names = std::collections::HashSet::new();
@@ -200,20 +203,22 @@ impl PromptTemplateStore {
 
     /// Recursively scans a directory for `*.md` files and parses them.
     fn scan_dir(
-        dir: &Path,
+        dir: &MarkedPathBuf<Absolute>,
         templates: &mut Vec<PromptTemplate>,
         seen_names: &mut std::collections::HashSet<String>,
     ) -> Result<(), Report<PromptTemplateStoreError>> {
         let entries = std::fs::read_dir(dir)
             .change_context(PromptTemplateStoreError::Io)
-            .attach(format!("failed to read directory {}", dir.display()))?;
+            .attach(format!("failed to read directory {dir}"))?;
 
         for entry in entries {
             let entry: std::fs::DirEntry = entry
                 .change_context(PromptTemplateStoreError::Io)
-                .attach(format!("failed to read dir entry in {}", dir.display()))?;
+                .attach(format!("failed to read dir entry in {dir}"))?;
 
-            let path = entry.path();
+            let path = MarkedPathBuf::<Absolute>::new(entry.path())
+                .change_context(PromptTemplateStoreError::Io)
+                .attach(format!("dir entry in {dir} is not a valid absolute path"))?;
 
             if path.is_dir() {
                 Self::scan_dir(&path, templates, seen_names)?;
@@ -238,7 +243,7 @@ impl PromptTemplateStore {
                     if seen_names.contains(&template.name) {
                         warn!(
                             name = %template.name,
-                            path = %path.display(),
+                            path = %path,
                             "duplicate prompt template name, skipping"
                         );
                     } else {
@@ -248,7 +253,7 @@ impl PromptTemplateStore {
                 }
                 Err(e) => {
                     warn!(
-                        path = %path.display(),
+                        path = %path,
                         error = %e,
                         "failed to parse prompt template, skipping"
                     );
@@ -263,20 +268,22 @@ impl PromptTemplateStore {
     ///
     /// Used for user directories - user templates replace system templates.
     fn scan_dir_override(
-        dir: &Path,
+        dir: &MarkedPathBuf<Absolute>,
         templates: &mut Vec<PromptTemplate>,
         seen_names: &mut std::collections::HashSet<String>,
     ) -> Result<(), Report<PromptTemplateStoreError>> {
         let entries = std::fs::read_dir(dir)
             .change_context(PromptTemplateStoreError::Io)
-            .attach(format!("failed to read directory {}", dir.display()))?;
+            .attach(format!("failed to read directory {dir}"))?;
 
         for entry in entries {
             let entry: std::fs::DirEntry = entry
                 .change_context(PromptTemplateStoreError::Io)
-                .attach(format!("failed to read dir entry in {}", dir.display()))?;
+                .attach(format!("failed to read dir entry in {dir}"))?;
 
-            let path = entry.path();
+            let path = MarkedPathBuf::<Absolute>::new(entry.path())
+                .change_context(PromptTemplateStoreError::Io)
+                .attach(format!("dir entry in {dir} is not a valid absolute path"))?;
 
             if path.is_dir() {
                 Self::scan_dir_override(&path, templates, seen_names)?;
@@ -312,7 +319,7 @@ impl PromptTemplateStore {
                 }
                 Err(e) => {
                     warn!(
-                        path = %path.display(),
+                        path = %path,
                         error = %e,
                         "failed to parse prompt template, skipping"
                     );
@@ -336,31 +343,40 @@ mod tests {
     use super::*;
 
     /// Writes a minimal .md template file to `dir`.
-    fn write_template(dir: &Path, filename: &str, name: &str, description: &str) {
+    fn write_template(
+        dir: &MarkedPathBuf<Absolute>,
+        filename: &str,
+        name: &str,
+        description: &str,
+    ) {
         let content = format!(
             "+++\nname = \"{name}\"\ndescription = \"{description}\"\n+++\nBody for {name}"
         );
-        std::fs::write(dir.join(filename), content).expect("write template");
+        std::fs::write(
+            dir.join(filename).expect("typed dir joins a bare name"),
+            content,
+        )
+        .expect("write template");
     }
 
     #[rstest::rstest]
     #[test]
     fn scan_dir_override_replaces_existing_template() {
         // Given a system directory with a template "greeting".
-        let sys_dir = jinn_testutil::tempdir().expect("sys dir");
-        write_template(sys_dir.path(), "greeting.md", "greeting", "System version");
+        let sys_dir = jinn_testutil::tempdir();
+        write_template(&sys_dir.path, "greeting.md", "greeting", "System version");
 
         let mut templates = Vec::new();
         let mut seen_names = std::collections::HashSet::new();
-        PromptTemplateStore::scan_dir(sys_dir.path(), &mut templates, &mut seen_names)
+        PromptTemplateStore::scan_dir(&sys_dir.path, &mut templates, &mut seen_names)
             .expect("scan system");
         assert_eq!(templates.len(), 1);
         assert_eq!(templates[0].description, "System version");
 
         // When the user directory has an override for "greeting".
-        let user_dir = jinn_testutil::tempdir().expect("user dir");
-        write_template(user_dir.path(), "greeting.md", "greeting", "User override");
-        PromptTemplateStore::scan_dir_override(user_dir.path(), &mut templates, &mut seen_names)
+        let user_dir = jinn_testutil::tempdir();
+        write_template(&user_dir.path, "greeting.md", "greeting", "User override");
+        PromptTemplateStore::scan_dir_override(&user_dir.path, &mut templates, &mut seen_names)
             .expect("scan override");
 
         // Then the user version replaces the system version.
@@ -375,15 +391,27 @@ mod tests {
     #[test]
     fn scan_dir_only_loads_md_files() {
         // Given a directory with .md and .txt files.
-        let dir = jinn_testutil::tempdir().expect("dir");
-        write_template(dir.path(), "valid.md", "valid", "Valid template");
-        std::fs::write(dir.path().join("notes.txt"), "not a template").expect("write txt");
-        std::fs::write(dir.path().join("data.json"), "{}").expect("write json");
+        let dir = jinn_testutil::tempdir();
+        write_template(&dir.path, "valid.md", "valid", "Valid template");
+        std::fs::write(
+            dir.path
+                .join("notes.txt")
+                .expect("temp root joins a bare name"),
+            "not a template",
+        )
+        .expect("write txt");
+        std::fs::write(
+            dir.path
+                .join("data.json")
+                .expect("temp root joins a bare name"),
+            "{}",
+        )
+        .expect("write json");
 
         // When scanning the directory.
         let mut templates = Vec::new();
         let mut seen_names = std::collections::HashSet::new();
-        PromptTemplateStore::scan_dir(dir.path(), &mut templates, &mut seen_names).expect("scan");
+        PromptTemplateStore::scan_dir(&dir.path, &mut templates, &mut seen_names).expect("scan");
 
         // Then only the .md file is loaded.
         assert_eq!(templates.len(), 1);
@@ -394,14 +422,14 @@ mod tests {
     #[test]
     fn scan_dir_skips_underscore_prefixed_files() {
         // Given a directory with a normal and an underscore-prefixed template.
-        let dir = jinn_testutil::tempdir().expect("dir");
-        write_template(dir.path(), "visible.md", "visible", "Should load");
-        write_template(dir.path(), "_hidden.md", "_hidden", "Should skip");
+        let dir = jinn_testutil::tempdir();
+        write_template(&dir.path, "visible.md", "visible", "Should load");
+        write_template(&dir.path, "_hidden.md", "_hidden", "Should skip");
 
         // When scanning the directory.
         let mut templates = Vec::new();
         let mut seen_names = std::collections::HashSet::new();
-        PromptTemplateStore::scan_dir(dir.path(), &mut templates, &mut seen_names).expect("scan");
+        PromptTemplateStore::scan_dir(&dir.path, &mut templates, &mut seen_names).expect("scan");
 
         // Then only the non-underscore file is loaded.
         assert_eq!(templates.len(), 1);

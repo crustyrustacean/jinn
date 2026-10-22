@@ -21,6 +21,7 @@ use jinn_session_state::SessionSnapshot;
 use jinn_session_state::{SessionStore, SessionStoreError, SessionStoreService};
 use jinn_session_store_msg::SessionSummary;
 use jinn_session_store_msg::{SearchOutcome, SearchParams, SearchableRole};
+use marked_path::{Absolute, MarkedPathAccess as _, MarkedPathBuf};
 
 /// A stub store with canned summaries and a canned search outcome,
 /// recording the last params it was asked to search.
@@ -178,7 +179,11 @@ fn summary(id: &str, title: &str, project: Option<&str>) -> SessionSummary {
         created_at: jiff::Timestamp::now(),
         session_state: jinn_session_store_msg::SessionState::Loaded,
         parent_session: None,
-        project: project.map(std::path::PathBuf::from),
+        project: project.map(|p| {
+            let root = std::env::current_dir().expect("process cwd is readable");
+            MarkedPathBuf::<Absolute>::new(root.join(p))
+                .expect("project paths in these fixtures are repo-relative")
+        }),
     }
 }
 
@@ -202,16 +207,16 @@ fn hit(
 fn tool_ctx(
     store: SessionStoreService,
     session_id: Option<SessionId>,
-    paths_root: &std::path::Path,
+    paths_root: &MarkedPathBuf<Absolute>,
 ) -> ToolContext {
     ToolContext {
-        cwd: paths_root.to_path_buf(),
+        cwd: paths_root.clone(),
         config: jinn_config::testutil::config_layer(""),
         shells: Default::default(),
         timeout: None,
         state: None,
         session_id,
-        app_paths: AppPaths::new_in(paths_root),
+        app_paths: AppPaths::new_in(&paths_root.as_marked_path()),
         bus: None,
         max_output_lines: None,
         max_output_bytes: None,
@@ -228,7 +233,7 @@ fn tool_ctx(
 fn stub_ctx(
     store: StubStore,
     session_id: Option<SessionId>,
-    paths_root: &std::path::Path,
+    paths_root: &MarkedPathBuf<Absolute>,
 ) -> (ToolContext, std::sync::Arc<StubStore>) {
     let arc = std::sync::Arc::new(store);
     (
@@ -265,8 +270,8 @@ fn other_id() -> SessionId {
 #[tokio::test]
 async fn missing_query_is_rejected() {
     // Given a tool context.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(current_id()), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(current_id()), &dir.path);
 
     // When searching without a query.
     let result = run(ctx, serde_json::json!({})).await;
@@ -284,8 +289,8 @@ async fn missing_query_is_rejected() {
 #[tokio::test]
 async fn blank_query_is_rejected() {
     // Given a tool context.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(current_id()), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(current_id()), &dir.path);
 
     // When searching with a whitespace-only query.
     let result = run(ctx, serde_json::json!({ "query": "   " })).await;
@@ -303,8 +308,8 @@ async fn blank_query_is_rejected() {
 #[tokio::test]
 async fn invalid_json_arguments_are_rejected() {
     // Given a tool context.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let (ctx, _stub) = stub_ctx(StubStore::new(), None, dir.path());
+    let dir = jinn_testutil::tempdir();
+    let (ctx, _stub) = stub_ctx(StubStore::new(), None, &dir.path);
 
     // When invoking with malformed JSON.
     let call = ToolCall {
@@ -327,8 +332,8 @@ async fn invalid_json_arguments_are_rejected() {
 #[tokio::test]
 async fn omitted_scope_searches_current_session() {
     // Given a stub store and a current session.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let (ctx, stub) = stub_ctx(StubStore::new(), Some(current_id()), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let (ctx, stub) = stub_ctx(StubStore::new(), Some(current_id()), &dir.path);
 
     // When searching with no scope.
     run(ctx, serde_json::json!({ "query": "needle" })).await;
@@ -342,8 +347,8 @@ async fn omitted_scope_searches_current_session() {
 #[tokio::test]
 async fn current_scope_without_current_session_errors() {
     // Given a stub store and no current session.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let (ctx, _stub) = stub_ctx(StubStore::new(), None, dir.path());
+    let dir = jinn_testutil::tempdir();
+    let (ctx, _stub) = stub_ctx(StubStore::new(), None, &dir.path);
 
     // When searching with no scope.
     let result = run(ctx, serde_json::json!({ "query": "needle" })).await;
@@ -361,14 +366,14 @@ async fn current_scope_without_current_session_errors() {
 #[tokio::test]
 async fn all_scope_searches_every_session() {
     // Given two persisted sessions.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let (ctx, stub) = stub_ctx(
         StubStore::new().with_summaries(vec![
             summary(CURRENT, "one", None),
             summary(OTHER, "two", None),
         ]),
         Some(current_id()),
-        dir.path(),
+        &dir.path,
     );
 
     // When searching with scope "all".
@@ -389,21 +394,27 @@ async fn all_scope_searches_every_session() {
 #[tokio::test]
 async fn project_scope_matches_project_name_case_insensitively() {
     // Given sessions in two projects, the project paths owned by the test.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let project = dir.path().join("home/j/session-search");
+    let dir = jinn_testutil::tempdir();
+    let project = dir
+        .path
+        .join("home/j/session-search")
+        .expect("temp root joins a bare name");
     let project_name = project
         .file_name()
         .expect("named project")
         .to_string_lossy()
         .to_string();
-    let other_project = dir.path().join("home/j/other-proj");
+    let other_project = dir
+        .path
+        .join("home/j/other-proj")
+        .expect("temp root joins a bare name");
     let (ctx, stub) = stub_ctx(
         StubStore::new().with_summaries(vec![
-            summary(CURRENT, "one", Some(project.to_string_lossy().as_ref())),
-            summary(OTHER, "two", Some(other_project.to_string_lossy().as_ref())),
+            summary(CURRENT, "one", Some(&project.to_string())),
+            summary(OTHER, "two", Some(&other_project.to_string())),
         ]),
         Some(current_id()),
-        dir.path(),
+        &dir.path,
     );
 
     // When searching with a differently-cased form of the project's name.
@@ -425,21 +436,20 @@ async fn project_scope_matches_project_name_case_insensitively() {
 #[tokio::test]
 async fn unknown_project_name_lists_known_projects() {
     // Given a session in a known project whose path the test owns.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let project = dir.path().join("home/j/session-search");
+    let dir = jinn_testutil::tempdir();
+    let project = dir
+        .path
+        .join("home/j/session-search")
+        .expect("temp root joins a bare name");
     let project_name = project
         .file_name()
         .expect("named project")
         .to_string_lossy()
         .to_string();
     let (ctx, _stub) = stub_ctx(
-        StubStore::new().with_summaries(vec![summary(
-            CURRENT,
-            "one",
-            Some(project.to_string_lossy().as_ref()),
-        )]),
+        StubStore::new().with_summaries(vec![summary(CURRENT, "one", Some(&project.to_string()))]),
         None,
-        dir.path(),
+        &dir.path,
     );
 
     // When searching a project that does not exist.
@@ -462,8 +472,8 @@ async fn unknown_project_name_lists_known_projects() {
 #[tokio::test]
 async fn invalid_scope_value_is_rejected() {
     // Given a tool context.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(current_id()), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(current_id()), &dir.path);
 
     // When searching with an unrecognized scope.
     let result = run(
@@ -485,8 +495,8 @@ async fn invalid_scope_value_is_rejected() {
 #[tokio::test]
 async fn explicit_session_id_overrides_scope() {
     // Given a stub store with the current session set.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let (ctx, stub) = stub_ctx(StubStore::new(), Some(current_id()), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let (ctx, stub) = stub_ctx(StubStore::new(), Some(current_id()), &dir.path);
 
     // When searching with an explicit other session id.
     run(
@@ -504,8 +514,8 @@ async fn explicit_session_id_overrides_scope() {
 #[tokio::test]
 async fn default_fields_are_assistant_and_user() {
     // Given a stub store.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let (ctx, stub) = stub_ctx(StubStore::new(), Some(current_id()), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let (ctx, stub) = stub_ctx(StubStore::new(), Some(current_id()), &dir.path);
 
     // When searching without fields.
     run(ctx, serde_json::json!({ "query": "n" })).await;
@@ -522,8 +532,8 @@ async fn default_fields_are_assistant_and_user() {
 #[tokio::test]
 async fn fields_opt_in_tool_result_is_passed_through() {
     // Given a stub store.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let (ctx, stub) = stub_ctx(StubStore::new(), Some(current_id()), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let (ctx, stub) = stub_ctx(StubStore::new(), Some(current_id()), &dir.path);
 
     // When searching with fields [tool_result].
     run(
@@ -541,8 +551,8 @@ async fn fields_opt_in_tool_result_is_passed_through() {
 #[tokio::test]
 async fn actor_field_is_rejected_as_never_indexed() {
     // Given a tool context.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(current_id()), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(current_id()), &dir.path);
 
     // When searching with fields including actor.
     let result = run(
@@ -577,8 +587,8 @@ fn limit_is_clamped_into_allowed_range(#[case] requested: u64, #[case] expected:
 #[tokio::test]
 async fn invalid_since_date_is_rejected() {
     // Given a tool context.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(current_id()), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(current_id()), &dir.path);
 
     // When searching with a malformed since date.
     let result = run(
@@ -600,8 +610,8 @@ async fn invalid_since_date_is_rejected() {
 #[tokio::test]
 async fn date_only_since_is_accepted_as_utc() {
     // Given a stub store.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let (ctx, stub) = stub_ctx(StubStore::new(), Some(current_id()), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let (ctx, stub) = stub_ctx(StubStore::new(), Some(current_id()), &dir.path);
 
     // When searching with a date-only since.
     run(
@@ -620,8 +630,8 @@ async fn date_only_since_is_accepted_as_utc() {
 #[tokio::test]
 async fn search_failure_surfaced_verbatim() {
     // Given a stub store whose search fails with an fts5 message.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let (ctx, _stub) = stub_ctx(StubStore::new().failing(), Some(current_id()), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let (ctx, _stub) = stub_ctx(StubStore::new().failing(), Some(current_id()), &dir.path);
 
     // When searching with a syntactically invalid query.
     let result = run(ctx, serde_json::json!({ "query": "AND (" })).await;
@@ -639,13 +649,13 @@ async fn search_failure_surfaced_verbatim() {
 #[tokio::test]
 async fn missing_session_store_fails_gracefully() {
     // Given a context with no session store.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let ctx = tool_ctx(
         SessionStoreService::new(std::sync::Arc::new(
             jinn_kernel::common::services::test_services::FakeSessionStore,
         )),
         None,
-        dir.path(),
+        &dir.path,
     );
     let ctx = ToolContext {
         config: jinn_config::testutil::config_layer(""),
@@ -672,8 +682,8 @@ async fn missing_session_store_fails_gracefully() {
 #[tokio::test]
 async fn zero_matches_renders_no_match_header() {
     // Given a stub store returning an empty outcome.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(current_id()), dir.path());
+    let dir = jinn_testutil::tempdir();
+    let (ctx, _stub) = stub_ctx(StubStore::new(), Some(current_id()), &dir.path);
 
     // When searching.
     let result = run(ctx, serde_json::json!({ "query": "zzz" })).await;
@@ -701,14 +711,14 @@ async fn outcome_renders_header_legend_rollup_and_hits() {
             hit(OTHER, "e-2", "tool_result", "…CREATE TABLE <<fts5>>…", true),
         ],
     };
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let (ctx, _stub) = stub_ctx(
         StubStore::new().with_outcome(outcome).with_summaries(vec![
             summary(CURRENT, "migrate auth flow", None),
             summary(OTHER, "session search", None),
         ]),
         Some(current_id()),
-        dir.path(),
+        &dir.path,
     );
 
     // When searching.
@@ -758,13 +768,13 @@ async fn multiline_snippet_is_collapsed_to_one_line() {
             false,
         )],
     };
-    let dir = jinn_testutil::tempdir().expect("temp dir");
+    let dir = jinn_testutil::tempdir();
     let (ctx, _stub) = stub_ctx(
         StubStore::new()
             .with_outcome(outcome)
             .with_summaries(vec![summary(CURRENT, "t", None)]),
         Some(current_id()),
-        dir.path(),
+        &dir.path,
     );
 
     // When searching.

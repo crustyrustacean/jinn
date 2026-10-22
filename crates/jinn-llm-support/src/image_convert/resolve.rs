@@ -13,9 +13,8 @@
 //! On any failure the whole resolution fails — the actor surfaces a single
 //! `Error` entry rather than a partial attachment set.
 
-use std::path::Path;
-
 use error_stack::{Report, ResultExt};
+use marked_path::{Absolute, MarkedPathBuf};
 
 use super::ImageConverterService;
 use jinn_context::attachment_path::{ImageKind, PendingPath, classify_image_bytes};
@@ -113,7 +112,7 @@ enum OneOutcome {
 /// - Recognizable image needing conversion → conversion runs; on success
 ///   attaches, on failure returns `Err` (hard error — the user meant an image).
 fn resolve_one_blocking(
-    path: &Path,
+    path: &MarkedPathBuf<Absolute>,
     converter: &ImageConverterService,
 ) -> Result<OneOutcome, Report<ImageResolveError>> {
     // Missing file: degrade rather than error. A `@word` that isn't a file is
@@ -137,13 +136,13 @@ fn resolve_one_blocking(
 /// converter is unavailable (ImageMagick not found) or the conversion fails
 /// (non-zero exit, invalid output).
 fn convert_via_imagemagick(
-    path: &Path,
+    path: &MarkedPathBuf<Absolute>,
     converter: &ImageConverterService,
 ) -> Result<Attachment, Report<ImageResolveError>> {
     let png_bytes = converter
         .convert_to_png(path)
         .change_context(ImageResolveError)
-        .attach(path.to_string_lossy().to_string())?;
+        .attach(path.to_string())?;
     Ok(Attachment::image(String::from("image/png"), png_bytes))
 }
 
@@ -191,7 +190,7 @@ pub enum ImageFileError {
 ///
 /// Blocking; callers must run it inside `spawn_blocking`.
 pub fn resolve_image_file_blocking(
-    path: &Path,
+    path: &MarkedPathBuf<Absolute>,
     converter: &ImageConverterService,
 ) -> Result<ResolvedImage, ImageFileError> {
     let bytes = std::fs::read(path).map_err(|_io| ImageFileError::Missing)?;
@@ -235,10 +234,10 @@ mod tests {
         reason = "test code"
     )]
 
-    use std::path::{Path, PathBuf};
     use std::sync::{Arc, Mutex};
 
     use error_stack::Report;
+    use marked_path::MarkedPathAccess;
 
     use super::*;
     use crate::image_convert::converter::{ImageConversionError, ImageConverter};
@@ -249,18 +248,21 @@ mod tests {
     struct FakeConverter {
         available: bool,
         fail: bool,
-        calls: Mutex<Vec<PathBuf>>,
+        calls: Mutex<Vec<MarkedPathBuf<Absolute>>>,
     }
 
     impl ImageConverter for FakeConverter {
         fn name(&self) -> &'static str {
             "Fake"
         }
-        fn convert_to_png(&self, input: &Path) -> Result<Vec<u8>, Report<ImageConversionError>> {
+        fn convert_to_png(
+            &self,
+            input: &MarkedPathBuf<Absolute>,
+        ) -> Result<Vec<u8>, Report<ImageConversionError>> {
             self.calls
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .push(input.to_path_buf());
+                .push(input.clone());
             if !self.available {
                 return Err(Report::new(ImageConversionError));
             }
@@ -289,7 +291,7 @@ mod tests {
 
     /// Wraps a resolved path in a `PendingPath` with the basename as the raw
     /// token body — sufficient for resolver tests (only `abs` drives I/O).
-    fn pending(path: impl Into<PathBuf>) -> PendingPath {
+    fn pending(path: impl Into<MarkedPathBuf<Absolute>>) -> PendingPath {
         let abs = path.into();
         let raw = abs
             .file_name()
@@ -301,8 +303,11 @@ mod tests {
     #[test]
     fn native_png_attaches_without_conversion() {
         // Given a native PNG file.
-        let tmp = jinn_testutil::tempdir().expect("tmp");
-        let path = tmp.path().join("native.png");
+        let tmp = jinn_testutil::tempdir();
+        let path = tmp
+            .path
+            .join("native.png")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, png_bytes()).expect("write");
         let converter = service(true, false);
 
@@ -320,8 +325,11 @@ mod tests {
     #[test]
     fn non_native_image_is_converted_when_converter_available() {
         // Given a recognizable-but-non-native image (HEIC magic bytes).
-        let tmp = jinn_testutil::tempdir().expect("tmp");
-        let path = tmp.path().join("photo.heic");
+        let tmp = jinn_testutil::tempdir();
+        let path = tmp
+            .path
+            .join("photo.heic")
+            .expect("temp root joins a bare name");
         // ftyp box: [size][ftyp][brand=heic]
         let mut heic = vec![0x00, 0x00, 0x00, 0x08];
         heic.extend_from_slice(b"ftyp");
@@ -344,8 +352,11 @@ mod tests {
     #[test]
     fn non_native_image_errors_when_converter_unavailable() {
         // Given a non-native image and an unavailable converter.
-        let tmp = jinn_testutil::tempdir().expect("tmp");
-        let path = tmp.path().join("photo.heic");
+        let tmp = jinn_testutil::tempdir();
+        let path = tmp
+            .path
+            .join("photo.heic")
+            .expect("temp root joins a bare name");
         let mut heic = vec![0x00, 0x00, 0x00, 0x08];
         heic.extend_from_slice(b"ftypheicpayload");
         std::fs::write(&path, &heic).expect("write");
@@ -362,8 +373,11 @@ mod tests {
     #[test]
     fn non_native_image_errors_when_conversion_fails() {
         // Given a non-native image and a failing converter.
-        let tmp = jinn_testutil::tempdir().expect("tmp");
-        let path = tmp.path().join("photo.heic");
+        let tmp = jinn_testutil::tempdir();
+        let path = tmp
+            .path
+            .join("photo.heic")
+            .expect("temp root joins a bare name");
         let mut heic = vec![0x00, 0x00, 0x00, 0x08];
         heic.extend_from_slice(b"ftypheicpayload");
         std::fs::write(&path, &heic).expect("write");
@@ -380,13 +394,16 @@ mod tests {
     #[test]
     fn not_an_image_degrades() {
         // Given a non-image file.
-        let tmp = jinn_testutil::tempdir().expect("tmp");
-        let path = tmp.path().join("notes.txt");
+        let tmp = jinn_testutil::tempdir();
+        let path = tmp
+            .path
+            .join("notes.txt")
+            .expect("temp root joins a bare name");
         std::fs::write(&path, b"hello world").expect("write");
         let converter = service(true, false);
 
         // When resolving.
-        let result = resolve_attachments_blocking(&[pending(&path)], &converter);
+        let result = resolve_attachments_blocking(&[pending(path.clone())], &converter);
 
         // Then it degrades: no error, no attachment, path in degraded set.
         let outcome = result.expect("resolve");
@@ -399,12 +416,15 @@ mod tests {
     #[test]
     fn missing_file_degrades() {
         // Given a path to a nonexistent file under a temp root.
-        let tmp = jinn_testutil::tempdir().expect("tmp");
-        let path = tmp.path().join("nonexistent").join("x.png");
+        let tmp = jinn_testutil::tempdir();
+        let path = tmp
+            .path
+            .join_all(["nonexistent", "x.png"])
+            .expect("name joins keep the base absolute");
         let converter = service(true, false);
 
         // When resolving.
-        let result = resolve_attachments_blocking(&[pending(&path)], &converter);
+        let result = resolve_attachments_blocking(&[pending(path.clone())], &converter);
 
         // Then it degrades: no error, no attachment, path in degraded set.
         let outcome = result.expect("resolve");
@@ -417,10 +437,13 @@ mod tests {
     #[test]
     fn mixed_native_and_non_native_all_resolve() {
         // Given one native PNG and one non-native HEIC.
-        let tmp = jinn_testutil::tempdir().expect("tmp");
-        let png_path = tmp.path().join("a.png");
+        let tmp = jinn_testutil::tempdir();
+        let png_path = tmp.path.join("a.png").expect("temp root joins a bare name");
         std::fs::write(&png_path, png_bytes()).expect("write");
-        let heic_path = tmp.path().join("b.heic");
+        let heic_path = tmp
+            .path
+            .join("b.heic")
+            .expect("temp root joins a bare name");
         let mut heic = vec![0x00, 0x00, 0x00, 0x08];
         heic.extend_from_slice(b"ftypheicpayload");
         std::fs::write(&heic_path, &heic).expect("write");
@@ -442,10 +465,13 @@ mod tests {
     #[test]
     fn mixed_native_png_and_missing_path_attaches_and_degrades() {
         // Given one native PNG and one nonexistent path in the same batch.
-        let tmp = jinn_testutil::tempdir().expect("tmp");
-        let png_path = tmp.path().join("a.png");
+        let tmp = jinn_testutil::tempdir();
+        let png_path = tmp.path.join("a.png").expect("temp root joins a bare name");
         std::fs::write(&png_path, png_bytes()).expect("write");
-        let missing_path = tmp.path().join("nonexistent").join("b.png");
+        let missing_path = tmp
+            .path
+            .join_all(["nonexistent", "b.png"])
+            .expect("name joins keep the base absolute");
         let converter = service(true, false);
 
         // When resolving both.

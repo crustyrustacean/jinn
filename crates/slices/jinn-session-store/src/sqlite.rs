@@ -11,7 +11,6 @@
 //! native rusqlite `transaction(|tx| …)` on one held connection.
 
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -39,6 +38,7 @@ use jinn_session_store_msg::{
 };
 use jinn_session_store_msg::{SessionState, SessionSummary};
 use jinn_token_count_msg::TokenRecord;
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
 use super::migrator;
 use jinn_session_state::{SessionStore, SessionStoreError};
@@ -106,7 +106,7 @@ impl SqliteSessionStore {
     ///
     /// Returns an error if the directory cannot be created, the pool cannot be
     /// built, or migrations fail.
-    pub async fn new_in(dir: &Path) -> Result<Self, Report<SessionStoreError>> {
+    pub async fn new_in(dir: &MarkedPathBuf<Absolute>) -> Result<Self, Report<SessionStoreError>> {
         Self::new_with_config(dir, PoolConfig::default()).await
     }
 
@@ -116,14 +116,26 @@ impl SqliteSessionStore {
     ///
     /// Returns an error if the directory cannot be created, the pool cannot be
     /// built, or migrations fail.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the joined database path is not absolute, which cannot
+    /// happen: `sessions.db` is a bare name joined onto a directory already
+    /// typed `Absolute`.
+    #[expect(
+        clippy::expect_used,
+        reason = "bare-name joins onto a typed-absolute sessions dir are infallible by construction"
+    )]
     pub async fn new_with_config(
-        dir: &Path,
+        dir: &MarkedPathBuf<Absolute>,
         config: PoolConfig,
     ) -> Result<Self, Report<SessionStoreError>> {
         std::fs::create_dir_all(dir)
             .change_context(SessionStoreError)
             .attach("failed to create sessions directory")?;
-        let db_path = dir.join("sessions.db");
+        let db_path = dir
+            .join("sessions.db")
+            .expect("absolute parent joins a bare filename");
         Self::connect_at(&db_path, config).await
     }
 
@@ -134,7 +146,9 @@ impl SqliteSessionStore {
     ///
     /// Returns an error if the parent directories cannot be created, the pool
     /// cannot be built, or migrations fail.
-    pub async fn open_or_create(file_path: &Path) -> Result<Self, Report<SessionStoreError>> {
+    pub async fn open_or_create(
+        file_path: &MarkedPathBuf<Absolute>,
+    ) -> Result<Self, Report<SessionStoreError>> {
         if let Some(parent) = file_path.parent() {
             std::fs::create_dir_all(parent)
                 .change_context(SessionStoreError)
@@ -149,10 +163,10 @@ impl SqliteSessionStore {
     /// and `busy_timeout=5000` to every freshly-opened connection, so the
     /// per-connection pragma customizer is no longer needed.
     async fn connect_at(
-        db_path: &Path,
+        db_path: &MarkedPathBuf<Absolute>,
         config: PoolConfig,
     ) -> Result<Self, Report<SessionStoreError>> {
-        let url = db_path.to_string_lossy().to_string();
+        let url = db_path.to_string();
         let pool = {
             let mut builder = Pool::builder().path(url).max_size(config.max_size);
             // The sessions store runs pragmas via the pool. Override journal_mode
@@ -553,7 +567,11 @@ pub(crate) struct PersistableCore {
     updated_at: jiff::Timestamp,
     created_at: jiff::Timestamp,
     profile: SessionProfile,
-    cwd: std::path::PathBuf,
+    #[serde(
+        default = "jinn_session_state::fields::default_cwd",
+        deserialize_with = "jinn_session_state::fields::deserialize_cwd_resolving_legacy_dot"
+    )]
+    cwd: MarkedPathBuf<Absolute>,
     parent_session: Option<SessionId>,
     /// Highest entry ordinal inherited from parent at fork time.
     /// `None` for root sessions.
@@ -566,7 +584,7 @@ pub(crate) struct PersistableCore {
     /// Project directory association, stamped at session creation from the
     /// projects UI. Defaults to `None` for blobs written by older versions.
     #[serde(default)]
-    project: Option<std::path::PathBuf>,
+    project: Option<MarkedPathBuf<Absolute>>,
 
     blobs: HashMap<String, JsonValue>,
     lifecycle_name: Option<String>,

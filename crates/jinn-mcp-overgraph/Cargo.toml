@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+marked-path = { workspace = true }
 rmcp = { workspace = true, features = ["server", "transport-io"] }
 overgraph = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros", "io-std"] }

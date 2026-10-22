@@ -344,7 +344,7 @@ fn rescan_workflows(ctx: &mut ActionCtx<'_>, _cell: &WorkflowPickerCell) -> Inte
 
     let session = state.active_session();
     let session_id = session.session_id().clone();
-    let cwd = session.cwd().to_path_buf();
+    let cwd = session.cwd().clone();
 
     IntentResult::new_message(jinn_workflows_msg::ScanWorkflows { session_id, cwd })
 }

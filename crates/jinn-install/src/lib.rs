@@ -12,10 +12,9 @@
 
 mod bundled;
 
-use std::path::{Path, PathBuf};
-
 use error_stack::{Report, ResultExt};
 use jinn_preferences_config::StreamRulesSeedOutcome;
+use marked_path::{Absolute, MarkedPath, MarkedPathAccess, MarkedPathBuf};
 use wherror::Error;
 
 use bundled::{Bundled, bundled_catalogue};
@@ -28,56 +27,56 @@ use bundled::{Bundled, bundled_catalogue};
 /// tests can point at temp dirs.
 #[derive(Debug, Clone)]
 pub struct Destinations {
-    themes: PathBuf,
-    personas: PathBuf,
-    prompts: PathBuf,
-    workflows: PathBuf,
-    skills: PathBuf,
+    themes: MarkedPathBuf<Absolute>,
+    personas: MarkedPathBuf<Absolute>,
+    prompts: MarkedPathBuf<Absolute>,
+    workflows: MarkedPathBuf<Absolute>,
+    skills: MarkedPathBuf<Absolute>,
 }
 
 impl Destinations {
     /// Creates a destination set from the five root directories.
     #[must_use]
     pub fn new(
-        themes: PathBuf,
-        personas: PathBuf,
-        prompts: PathBuf,
-        workflows: PathBuf,
-        skills: PathBuf,
+        themes: MarkedPath<Absolute>,
+        personas: MarkedPath<Absolute>,
+        prompts: MarkedPath<Absolute>,
+        workflows: MarkedPath<Absolute>,
+        skills: MarkedPath<Absolute>,
     ) -> Self {
         Self {
-            themes,
-            personas,
-            prompts,
-            workflows,
-            skills,
+            themes: themes.to_owned(),
+            personas: personas.to_owned(),
+            prompts: prompts.to_owned(),
+            workflows: workflows.to_owned(),
+            skills: skills.to_owned(),
         }
     }
 
     /// The root directory themes install into.
-    pub(crate) fn themes(&self) -> &Path {
-        &self.themes
+    pub(crate) fn themes(&self) -> MarkedPath<'_, Absolute> {
+        self.themes.as_marked_path()
     }
 
     /// The root directory personas install into.
-    pub(crate) fn personas(&self) -> &Path {
-        &self.personas
+    pub(crate) fn personas(&self) -> MarkedPath<'_, Absolute> {
+        self.personas.as_marked_path()
     }
 
     /// The root directory prompts install into.
-    pub(crate) fn prompts(&self) -> &Path {
-        &self.prompts
+    pub(crate) fn prompts(&self) -> MarkedPath<'_, Absolute> {
+        self.prompts.as_marked_path()
     }
 
     /// The root directory workflows install into — one subdirectory per
     /// workflow, the shape `scan_workflows` discovers.
-    pub(crate) fn workflows(&self) -> &Path {
-        &self.workflows
+    pub(crate) fn workflows(&self) -> MarkedPath<'_, Absolute> {
+        self.workflows.as_marked_path()
     }
 
     /// The root directory skills install into.
-    pub(crate) fn skills(&self) -> &Path {
-        &self.skills
+    pub(crate) fn skills(&self) -> MarkedPath<'_, Absolute> {
+        self.skills.as_marked_path()
     }
 }
 
@@ -85,17 +84,17 @@ impl Destinations {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstallOutcome {
     /// Resource was written to a previously-missing path.
-    Created(PathBuf),
+    Created(MarkedPathBuf<Absolute>),
     /// Resource already existed and was left untouched.
-    Skipped(PathBuf),
+    Skipped(MarkedPathBuf<Absolute>),
     /// Resource already existed and was overwritten in place.
-    Overwritten(PathBuf),
+    Overwritten(MarkedPathBuf<Absolute>),
 }
 
 impl InstallOutcome {
     /// The full destination path this outcome refers to.
     #[must_use]
-    pub fn path(&self) -> &Path {
+    pub fn path(&self) -> &MarkedPathBuf<Absolute> {
         match self {
             InstallOutcome::Created(p)
             | InstallOutcome::Skipped(p)
@@ -130,9 +129,9 @@ pub struct InstallReport {
 pub enum JinnTomlOutcome {
     /// The file did not exist and was created this run (the comment-rich
     /// default template).
-    Created(PathBuf),
+    Created(MarkedPathBuf<Absolute>),
     /// The file already existed and was never read or modified this run.
-    Untouched(PathBuf),
+    Untouched(MarkedPathBuf<Absolute>),
 }
 
 /// Installs every bundled default resource into the given destinations.
@@ -158,10 +157,20 @@ pub enum JinnTomlOutcome {
 ///
 /// Returns [`Report<InstallError>`] if directory creation or file writing
 /// fails, or if preferences cannot be created on the fresh-create path.
+///
+/// # Panics
+///
+/// Panics if the preferences path has no parent, which cannot happen for an
+/// absolute path: an absolute path always names a parent directory (the
+/// filesystem root is its own).
+#[expect(
+    clippy::expect_used,
+    reason = "parent of an absolute path is absolute by construction"
+)]
 pub fn install_defaults_to(
     destinations: &Destinations,
     overwrite: bool,
-    prefs_path: &Path,
+    prefs_path: &MarkedPathBuf<Absolute>,
 ) -> Result<InstallReport, Report<InstallError>> {
     let prefs_existed = prefs_path.exists();
 
@@ -173,7 +182,7 @@ pub fn install_defaults_to(
     }
 
     let jinn_toml = if prefs_existed {
-        JinnTomlOutcome::Untouched(prefs_path.to_path_buf())
+        JinnTomlOutcome::Untouched(prefs_path.to_owned())
     } else {
         // Fresh-create path: write the comment-rich default template as
         // bytes. Deliberately NOT a round-trip through a config struct —
@@ -182,7 +191,7 @@ pub fn install_defaults_to(
         jinn_preferences_config::create_default_preferences_to(prefs_path)
             .change_context(InstallError)
             .attach("failed to create jinn.toml with the default template")?;
-        JinnTomlOutcome::Created(prefs_path.to_path_buf())
+        JinnTomlOutcome::Created(prefs_path.to_owned())
     };
 
     // The stream-rules file follows the same exactly-once contract as
@@ -190,14 +199,22 @@ pub fn install_defaults_to(
     // present — including under `overwrite`. The sibling location is the
     // same directory the preferences file lives in, which is what the
     // runtime read path resolves against.
-    let stream_rules = jinn_preferences_config::init_stream_rules_for_install(
-        prefs_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(jinn_preferences_config::STREAM_RULES_FILE_NAME),
-    )
-    .change_context(InstallError)
-    .attach("failed to create stream_rules.toml with the embedded template")?;
+    // `parent()` is `None` only for the filesystem root, which is then its
+    // own parent for the sibling lookup.
+    let prefs_parent = prefs_path.parent().map_or_else(
+        || prefs_path.clone(),
+        |p| {
+            MarkedPathBuf::<Absolute>::new(p.as_path())
+                .expect("parent of an absolute path is absolute")
+        },
+    );
+    let stream_rules_path = prefs_parent
+        .join(jinn_preferences_config::STREAM_RULES_FILE_NAME)
+        .change_context(InstallError)
+        .attach("failed to build stream_rules.toml path")?;
+    let stream_rules = jinn_preferences_config::init_stream_rules_for_install(&stream_rules_path)
+        .change_context(InstallError)
+        .attach("failed to create stream_rules.toml with the embedded template")?;
 
     Ok(InstallReport {
         outcomes,
@@ -215,35 +232,41 @@ fn install_resource(
     destinations: &Destinations,
     overwrite: bool,
 ) -> Result<InstallOutcome, Report<InstallError>> {
-    let destination = resource.destination(destinations);
+    let destination = resource
+        .destination(destinations)
+        .change_context(InstallError)
+        .attach("failed to build destination path")?;
     let existed = destination.exists();
 
     if existed && !overwrite {
         return Ok(InstallOutcome::Skipped(destination));
     }
 
-    write_resource(&destination, resource.contents())?;
+    write_resource(&destination.as_marked_path(), resource.contents())?;
 
     Ok(final_outcome(destination, existed))
 }
 
 /// Writes `bytes` to `destination`, creating parent directories first.
-fn write_resource(destination: &Path, bytes: &[u8]) -> Result<(), Report<InstallError>> {
+fn write_resource(
+    destination: &MarkedPath<Absolute>,
+    bytes: &[u8],
+) -> Result<(), Report<InstallError>> {
     if let Some(parent) = destination.parent() {
         std::fs::create_dir_all(parent)
             .change_context(InstallError)
             .attach("failed to create destination directory")
-            .attach(format!("path: {}", parent.display()))?;
+            .attach(format!("path: {}", parent.to_string_lossy()))?;
     }
 
     std::fs::write(destination, bytes)
         .change_context(InstallError)
         .attach("failed to write resource")
-        .attach(format!("path: {}", destination.display()))
+        .attach(format!("path: {}", destination.to_string_lossy()))
 }
 
 /// The outcome for a write that happened: overwritten vs created.
-fn final_outcome(destination: PathBuf, existed: bool) -> InstallOutcome {
+fn final_outcome(destination: MarkedPathBuf<Absolute>, existed: bool) -> InstallOutcome {
     if existed {
         InstallOutcome::Overwritten(destination)
     } else {
@@ -261,22 +284,21 @@ mod tests {
     )]
 
     use super::*;
-    use tempfile::TempDir;
 
     /// Builds a [`Destinations`] rooted at five distinct temp dirs. The
     /// returned temps must outlive the destinations.
-    fn fresh_destinations() -> (Destinations, Vec<TempDir>) {
-        let themes = jinn_testutil::tempdir().unwrap();
-        let personas = jinn_testutil::tempdir().unwrap();
-        let prompts = jinn_testutil::tempdir().unwrap();
-        let workflows = jinn_testutil::tempdir().unwrap();
-        let skills = jinn_testutil::tempdir().unwrap();
+    fn fresh_destinations() -> (Destinations, Vec<jinn_testutil::JinnTempDir>) {
+        let themes = jinn_testutil::tempdir();
+        let personas = jinn_testutil::tempdir();
+        let prompts = jinn_testutil::tempdir();
+        let workflows = jinn_testutil::tempdir();
+        let skills = jinn_testutil::tempdir();
         let destinations = Destinations::new(
-            themes.path().to_path_buf(),
-            personas.path().to_path_buf(),
-            prompts.path().to_path_buf(),
-            workflows.path().to_path_buf(),
-            skills.path().to_path_buf(),
+            themes.path.as_marked_path(),
+            personas.path.as_marked_path(),
+            prompts.path.as_marked_path(),
+            workflows.path.as_marked_path(),
+            skills.path.as_marked_path(),
         );
         let temps = vec![themes, personas, prompts, workflows, skills];
         (destinations, temps)
@@ -288,15 +310,18 @@ mod tests {
     /// gate depends on are exercised end to end.
     struct TestEnv {
         destinations: Destinations,
-        prefs_path: std::path::PathBuf,
-        _temps: Vec<TempDir>,
+        prefs_path: MarkedPathBuf<Absolute>,
+        _temps: Vec<jinn_testutil::JinnTempDir>,
     }
 
     impl TestEnv {
         fn fresh() -> Self {
             let (destinations, mut temps) = fresh_destinations();
-            let prefs_dir = jinn_testutil::tempdir().unwrap();
-            let prefs_path = prefs_dir.path().join("jinn.toml");
+            let prefs_dir = jinn_testutil::tempdir();
+            let prefs_path = prefs_dir
+                .path
+                .join("jinn.toml")
+                .expect("temp root joins a bare name");
             temps.push(prefs_dir);
             Self {
                 destinations,
@@ -343,7 +368,11 @@ mod tests {
     fn install_skips_theme_when_present() {
         // Given a destinations dir where `default.toml` already exists.
         let env = TestEnv::fresh();
-        let existing = env.destinations.themes().join("default.toml");
+        let existing = env
+            .destinations
+            .themes()
+            .join("default.toml")
+            .expect("dest root joins a bare name");
         std::fs::create_dir_all(env.destinations.themes()).unwrap();
         std::fs::write(&existing, "PRE-EXISTING").unwrap();
 
@@ -365,21 +394,44 @@ mod tests {
     #[test]
     fn install_creates_parent_dirs_when_missing() {
         // Given destinations whose root dirs do not exist at all.
-        let themes = jinn_testutil::tempdir().unwrap();
-        let personas = jinn_testutil::tempdir().unwrap();
-        let prompts = jinn_testutil::tempdir().unwrap();
-        let workflows = jinn_testutil::tempdir().unwrap();
-        let skills = jinn_testutil::tempdir().unwrap();
-        let prefs_dir = jinn_testutil::tempdir().unwrap();
+        let themes = jinn_testutil::tempdir();
+        let personas = jinn_testutil::tempdir();
+        let prompts = jinn_testutil::tempdir();
+        let workflows = jinn_testutil::tempdir();
+        let skills = jinn_testutil::tempdir();
+        let prefs_dir = jinn_testutil::tempdir();
         // Non-existent subdirs under each temp root.
         let destinations = Destinations::new(
-            themes.path().join("themes"),
-            personas.path().join("personas"),
-            prompts.path().join("prompts"),
-            workflows.path().join("workflows"),
-            skills.path().join("skills"),
+            themes
+                .path
+                .join("themes")
+                .expect("dest root joins a bare name")
+                .as_marked_path(),
+            personas
+                .path
+                .join("personas")
+                .expect("dest root joins a bare name")
+                .as_marked_path(),
+            prompts
+                .path
+                .join("prompts")
+                .expect("dest root joins a bare name")
+                .as_marked_path(),
+            workflows
+                .path
+                .join("workflows")
+                .expect("dest root joins a bare name")
+                .as_marked_path(),
+            skills
+                .path
+                .join("skills")
+                .expect("dest root joins a bare name")
+                .as_marked_path(),
         );
-        let prefs_path = prefs_dir.path().join("nested").join("jinn.toml");
+        let prefs_path = prefs_dir
+            .path
+            .join_all(["nested", "jinn.toml"])
+            .expect("name joins keep the base absolute");
 
         // When installing defaults.
         let result = install_defaults_to(&destinations, false, &prefs_path);
@@ -535,7 +587,10 @@ mod tests {
 
         // Then every outcome path is absolute (full path for the CLI to print).
         assert!(
-            report.outcomes.iter().all(|o| o.path().is_absolute()),
+            report
+                .outcomes
+                .iter()
+                .all(|o| o.path().as_path().is_absolute()),
             "every outcome must carry an absolute path"
         );
         // And the install covered at least one bundled resource.
@@ -547,7 +602,11 @@ mod tests {
     fn install_overwrites_theme_when_force() {
         // Given a destinations dir where `default.toml` already exists.
         let env = TestEnv::fresh();
-        let existing = env.destinations.themes().join("default.toml");
+        let existing = env
+            .destinations
+            .themes()
+            .join("default.toml")
+            .expect("dest root joins a bare name");
         std::fs::create_dir_all(env.destinations.themes()).unwrap();
         std::fs::write(&existing, "PRE-EXISTING").unwrap();
 
@@ -569,12 +628,20 @@ mod tests {
         // and a second destinations dir installed fresh to capture the bundled bytes.
         let env = TestEnv::fresh();
         let bundled_env = TestEnv::fresh();
-        let existing = env.destinations.themes().join("default.toml");
+        let existing = env
+            .destinations
+            .themes()
+            .join("default.toml")
+            .expect("dest root joins a bare name");
         std::fs::create_dir_all(env.destinations.themes()).unwrap();
         std::fs::write(&existing, "PRE-EXISTING").unwrap();
         bundled_env.run(false);
-        let bundled_default = bundled_env.destinations.themes().join("default.toml");
-        let expected = std::fs::read_to_string(&bundled_default).expect("read bundled");
+        let bundled_default = bundled_env
+            .destinations
+            .themes()
+            .join("default.toml")
+            .expect("dest root joins a bare name");
+        let expected = std::fs::read_to_string(bundled_default.as_path()).expect("read bundled");
 
         // When installing with overwrite enabled.
         env.run(true);
@@ -665,7 +732,11 @@ mod tests {
         }
         let original = "# my edits\n[compaction]\nthreshold = 0.4\n";
         std::fs::write(&env.prefs_path, original).unwrap();
-        let existing = env.destinations.themes().join("default.toml");
+        let existing = env
+            .destinations
+            .themes()
+            .join("default.toml")
+            .expect("dest root joins a bare name");
         std::fs::create_dir_all(env.destinations.themes()).unwrap();
         std::fs::write(&existing, "PRE-EXISTING").unwrap();
 
@@ -701,8 +772,9 @@ mod tests {
         let expected = env
             .prefs_path
             .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(jinn_preferences_config::STREAM_RULES_FILE_NAME);
+            .unwrap_or(env.prefs_path.as_marked_path())
+            .join(jinn_preferences_config::STREAM_RULES_FILE_NAME)
+            .expect("typed parent joins a bare name");
         assert_eq!(
             report.stream_rules,
             StreamRulesSeedOutcome::Created(expected.clone())
@@ -724,8 +796,9 @@ mod tests {
         let rules_path = env
             .prefs_path
             .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(jinn_preferences_config::STREAM_RULES_FILE_NAME);
+            .unwrap_or(env.prefs_path.as_marked_path())
+            .join(jinn_preferences_config::STREAM_RULES_FILE_NAME)
+            .expect("typed parent joins a bare name");
         std::fs::create_dir_all(rules_path.parent().unwrap()).unwrap();
         let original = "# my rules\nNOT [valid toml\n";
         std::fs::write(&rules_path, original).unwrap();
@@ -755,11 +828,16 @@ mod tests {
         let rules_path = env
             .prefs_path
             .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(jinn_preferences_config::STREAM_RULES_FILE_NAME);
+            .unwrap_or(env.prefs_path.as_marked_path())
+            .join(jinn_preferences_config::STREAM_RULES_FILE_NAME)
+            .expect("typed parent joins a bare name");
         let edited = "# my edits\n[[stream_rules.entry]]\nname = 'mine'\nconditions = ['X']\nscopes = ['tool:bash']\nbody = 'x'\n";
         std::fs::write(&rules_path, edited).unwrap();
-        let existing = env.destinations.themes().join("default.toml");
+        let existing = env
+            .destinations
+            .themes()
+            .join("default.toml")
+            .expect("dest root joins a bare name");
         std::fs::create_dir_all(env.destinations.themes()).unwrap();
         std::fs::write(&existing, "PRE-EXISTING").unwrap();
 
@@ -823,9 +901,9 @@ mod tests {
         assert!(!report.outcomes.is_empty(), "the catalogue is not empty");
         for outcome in &report.outcomes {
             let installed = outcome.path();
-            let bytes = std::fs::read(installed)
-                .unwrap_or_else(|e| panic!("{} reads: {e}", installed.display()));
-            assert!(!bytes.is_empty(), "{} installed empty", installed.display());
+            let bytes =
+                std::fs::read(installed).unwrap_or_else(|e| panic!("{installed} reads: {e}"));
+            assert!(!bytes.is_empty(), "{installed} installed empty");
         }
     }
 }

@@ -10,8 +10,8 @@
 //! Template body here...
 //! ```
 
+use marked_path::{Absolute, MarkedPathBuf};
 use std::collections::BTreeMap;
-use std::path::Path;
 
 use crate::PromptTemplate;
 use error_stack::{Report, ResultExt as _};
@@ -49,11 +49,11 @@ struct Frontmatter {
 /// Returns an error if the file cannot be read, the frontmatter is missing or
 /// malformed, or the TOML cannot be parsed.
 pub fn parse_template_file(
-    path: &Path,
+    path: &MarkedPathBuf<Absolute>,
 ) -> Result<PromptTemplate, Report<PromptTemplateParseError>> {
     let content = std::fs::read_to_string(path)
         .change_context(PromptTemplateParseError::Io)
-        .attach(format!("failed to read {}", path.display()))?;
+        .attach(format!("failed to read {path}"))?;
 
     parse_template_content(&content)
 }

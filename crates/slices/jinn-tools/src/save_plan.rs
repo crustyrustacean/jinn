@@ -11,6 +11,7 @@ use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult, ToolResu
 
 use super::BoxedToolFuture;
 use crate::tool_paths::resolve_path;
+use marked_path::MarkedPathAccess;
 
 /// Returns the tool definition for the `save_plan` built-in tool.
 pub fn definition() -> ToolDefinition {
@@ -73,7 +74,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 &call,
                 format!(
                     "failed to create parent directories for '{}': {e}",
-                    resolved.display()
+                    resolved
                 ),
             );
         }
@@ -82,21 +83,16 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             Ok(()) => ToolResult {
                 tool_call_id: call.id,
                 name: call.name,
-                content: format!(
-                    "saved plan to {} ({} bytes)",
-                    resolved.display(),
-                    content.len()
-                ),
+                content: format!("saved plan to {} ({} bytes)", resolved, content.len()),
                 success: true,
                 full_content: None,
                 truncation: None,
                 pin_position: Some(ToolResultPinPosition::Relative),
                 attachments: Vec::new(),
             },
-            Err(e) => unprefixed_failure(
-                &call,
-                format!("failed to write file '{}': {e}", resolved.display()),
-            ),
+            Err(e) => {
+                unprefixed_failure(&call, format!("failed to write file '{}': {e}", resolved))
+            }
         }
     })
 }
@@ -127,13 +123,13 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use std::path::Path;
+    use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
     /// A context whose cwd is a real, existing scratch directory owned by the
     /// calling test.
-    fn test_ctx(cwd: &Path) -> ToolContext {
+    fn test_ctx(cwd: &MarkedPathBuf<Absolute>) -> ToolContext {
         ToolContext {
-            cwd: cwd.to_owned(),
+            cwd: cwd.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
             timeout: None,
@@ -197,8 +193,11 @@ mod tests {
     #[tokio::test]
     async fn execute_writes_file_content() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("plan.md");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("plan.md")
+            .expect("temp root joins a bare name");
 
         let call = ToolCall {
             id: "call_1".into(),
@@ -211,7 +210,7 @@ mod tests {
         };
 
         // When executing the save_plan tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the file on disk contains the written content.
         assert!(result.success, "expected success, got: {}", result.content);
@@ -223,8 +222,11 @@ mod tests {
     #[tokio::test]
     async fn execute_pins_on_success() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("plan.md");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("plan.md")
+            .expect("temp root joins a bare name");
 
         let call = ToolCall {
             id: "call_2".into(),
@@ -237,7 +239,7 @@ mod tests {
         };
 
         // When executing the save_plan tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result is pinned with Relative.
         assert!(result.success);
@@ -248,7 +250,7 @@ mod tests {
     #[tokio::test]
     async fn execute_no_pin_on_bad_json() {
         // Given a call with invalid JSON.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let call = ToolCall {
             id: "call_3".into(),
             name: "save_plan".into(),
@@ -256,7 +258,7 @@ mod tests {
         };
 
         // When executing the save_plan tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result has no pin and is a failure.
         assert!(!result.success);
@@ -268,10 +270,15 @@ mod tests {
     async fn execute_no_pin_on_dir_creation_failure() {
         // Given a regular file where the plan's parent directory would have
         // to be created — create_dir_all fails on the existing file.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let blocking_file = dir.path().join("blocked");
+        let dir = jinn_testutil::tempdir();
+        let blocking_file = dir
+            .path
+            .join("blocked")
+            .expect("temp root joins a bare name");
         std::fs::write(&blocking_file, "a file, not a directory").expect("create blocking file");
-        let file_path = blocking_file.join("plan.md");
+        let file_path = blocking_file
+            .join("plan.md")
+            .expect("blocked file joins a bare name");
 
         let call = ToolCall {
             id: "call_4".into(),
@@ -284,7 +291,7 @@ mod tests {
         };
 
         // When executing the save_plan tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result has no pin and is a failure.
         assert!(!result.success);
@@ -297,14 +304,19 @@ mod tests {
     async fn execute_no_pin_on_file_write_failure() {
         // Given a temp directory with a read-only subdirectory so that
         // create_dir_all succeeds but the file write fails.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let readonly = dir.path().join("readonly");
+        let dir = jinn_testutil::tempdir();
+        let readonly = dir
+            .path
+            .join("readonly")
+            .expect("temp root joins a bare name");
         std::fs::create_dir_all(&readonly).expect("create readonly dir");
         let _perms = std::fs::set_permissions(
             &readonly,
             std::os::unix::fs::PermissionsExt::from_mode(0o555),
         );
-        let file_path = readonly.join("plan.md");
+        let file_path = readonly
+            .join("plan.md")
+            .expect("readonly dir joins a bare name");
 
         let call = ToolCall {
             id: "call_4b".into(),
@@ -317,7 +329,7 @@ mod tests {
         };
 
         // When executing the save_plan tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result has no pin and is a failure.
         assert!(!result.success, "expected failure, got: {}", result.content);
@@ -328,8 +340,11 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_path_not_content() {
         // Given a temp directory.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("plan.md");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join("plan.md")
+            .expect("temp root joins a bare name");
         let plan_body = "# My Secret Plan\nStep 1: Do the thing.";
 
         let call = ToolCall {
@@ -343,7 +358,7 @@ mod tests {
         };
 
         // When executing the save_plan tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result contains the path and byte count but not the plan body.
         assert!(result.success);
@@ -368,8 +383,11 @@ mod tests {
     #[tokio::test]
     async fn execute_creates_parent_dirs() {
         // Given a nested path like .plans/my-task/plan.md.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
-        let file_path = dir.path().join(".plans").join("my-task").join("plan.md");
+        let dir = jinn_testutil::tempdir();
+        let file_path = dir
+            .path
+            .join_all([".plans", "my-task", "plan.md"])
+            .expect("temp root joins a bare name");
 
         let call = ToolCall {
             id: "call_6".into(),
@@ -382,7 +400,7 @@ mod tests {
         };
 
         // When executing the save_plan tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the file was created with parent directories.
         assert!(result.success, "expected success, got: {}", result.content);
@@ -394,9 +412,9 @@ mod tests {
     #[tokio::test]
     async fn execute_resolves_relative_path() {
         // Given a temp directory as CWD.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let ctx = ToolContext {
-            cwd: dir.path().to_owned(),
+            cwd: dir.path.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
             timeout: None,
@@ -431,7 +449,10 @@ mod tests {
 
         // Then the file is created via CWD resolution.
         assert!(result.success);
-        let file_path = dir.path().join("relative.md");
+        let file_path = dir
+            .path
+            .join("relative.md")
+            .expect("temp root joins a bare name");
         let content = std::fs::read_to_string(&file_path).expect("read written file");
         assert_eq!(content, "relative content");
     }
@@ -440,7 +461,7 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_on_bad_json() {
         // Given a save_plan call with invalid JSON.
-        let dir = jinn_testutil::tempdir().expect("create temp dir");
+        let dir = jinn_testutil::tempdir();
         let call = ToolCall {
             id: "call_8".into(),
             name: "save_plan".to_owned(),
@@ -448,7 +469,7 @@ mod tests {
         };
 
         // When executing the save_plan tool.
-        let result = execute(call, test_ctx(dir.path())).await;
+        let result = execute(call, test_ctx(&dir.path)).await;
 
         // Then the result indicates failure.
         assert!(!result.success);

@@ -24,9 +24,21 @@
 //! consumer reads: the bash tool, the PowerShell tool, the PTY, and the
 //! session-lifecycle command runner.
 
-use std::path::{Path, PathBuf};
+// The candidate chains build `ShellCandidate::Path` values from platform
+// literals and bare-name joins onto bases already typed `Absolute` (or
+// `%LOCALAPPDATA%`): neither construction can introduce a relative segment
+// or a drive prefix, so the typed constructions are infallible by
+// construction; the panics guard programmer error, not runtime state, and
+// the invariant is documented here once for the family.
+#![allow(
+    clippy::expect_used,
+    clippy::missing_panics_doc,
+    reason = "literal candidate paths and bare-name joins on typed absolute bases are infallible by construction"
+)]
 
-use marked_path::{Absolute, MarkedPathBuf};
+use std::path::Path;
+
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 use wherror::Error;
 
 /// The platform a resolution chain is built for.
@@ -202,7 +214,7 @@ impl Default for Shells {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShellCandidate {
     /// A concrete path — usable when the file exists.
-    Path(PathBuf),
+    Path(MarkedPathBuf<Absolute>),
     /// A bare command name, resolved against `PATH`.
     Command(String),
 }
@@ -214,26 +226,36 @@ pub enum ShellCandidate {
 /// a VM. `local_app_data` is the user's `%LOCALAPPDATA%` — the third
 /// standard Git for Windows install location — and is ignored elsewhere.
 #[must_use]
-pub fn bash_candidates(platform: Platform, local_app_data: Option<&Path>) -> Vec<ShellCandidate> {
+pub fn bash_candidates(
+    platform: Platform,
+    local_app_data: Option<&MarkedPathBuf<Absolute>>,
+) -> Vec<ShellCandidate> {
     match platform {
         Platform::Windows => {
             let mut candidates = vec![
-                ShellCandidate::Path(PathBuf::from(r"C:\Program Files\Git\bin\bash.exe")),
-                ShellCandidate::Path(PathBuf::from(r"C:\Program Files (x86)\Git\bin\bash.exe")),
+                ShellCandidate::Path(
+                    MarkedPathBuf::<Absolute>::new(r"C:\Program Files\Git\bin\bash.exe")
+                        .expect("literal candidate path is absolute"),
+                ),
+                ShellCandidate::Path(
+                    MarkedPathBuf::<Absolute>::new(r"C:\Program Files (x86)\Git\bin\bash.exe")
+                        .expect("literal candidate path is absolute"),
+                ),
             ];
             if let Some(local) = local_app_data {
                 candidates.push(ShellCandidate::Path(
                     local
-                        .join("Programs")
-                        .join("Git")
-                        .join("bin")
-                        .join("bash.exe"),
+                        .join_all(["Programs", "Git", "bin", "bash.exe"])
+                        .expect("name joins keep the base absolute"),
                 ));
             }
             candidates
         }
         Platform::Unix => vec![
-            ShellCandidate::Path(PathBuf::from("/bin/bash")),
+            ShellCandidate::Path(
+                MarkedPathBuf::<Absolute>::new("/bin/bash")
+                    .expect("literal candidate path is absolute"),
+            ),
             ShellCandidate::Command("bash".to_owned()),
         ],
     }
@@ -263,11 +285,12 @@ pub fn powershell_candidates(platform: Platform) -> Vec<ShellCandidate> {
 /// The resolver passes "is a file", because a directory is not an
 /// executable.
 #[must_use]
-pub fn first_existing<F>(paths: &[PathBuf], exists: F) -> Option<PathBuf>
+pub fn first_existing<T, F>(paths: &[T], exists: F) -> Option<T>
 where
+    T: AsRef<Path> + Clone,
     F: Fn(&Path) -> bool,
 {
-    paths.iter().find(|path| exists(path)).cloned()
+    paths.iter().find(|path| exists(path.as_ref())).cloned()
 }
 
 /// Resolves the POSIX shell jinn runs commands through.
@@ -291,7 +314,7 @@ pub fn resolve_shell(configured_bash_path: Option<&str>) -> Result<ResolvedShell
         return Ok(ResolvedShell::from_path(&path));
     }
     let platform = Platform::current();
-    let candidates = bash_candidates(platform, local_app_data().as_deref());
+    let candidates = bash_candidates(platform, local_app_data().as_ref());
     resolve_candidates(&candidates, "POSIX shell", bash_missing_hint(platform))
 }
 
@@ -326,7 +349,7 @@ pub fn resolve_powershell(
 /// relative spelling and a path written for the other OS both fail that
 /// construction — and the constructed path must name an existing file.
 /// Either failure is a configuration error the launch aborts on.
-fn configured_path(key: ShellPathKey, path: &str) -> Result<PathBuf, ShellError> {
+fn configured_path(key: ShellPathKey, path: &str) -> Result<MarkedPathBuf<Absolute>, ShellError> {
     // The construction is the check: `marked-path` accepts a string only
     // when it is absolute here, and rewrites separators to this
     // platform's own.
@@ -337,7 +360,7 @@ fn configured_path(key: ShellPathKey, path: &str) -> Result<PathBuf, ShellError>
         }
     })?;
     if constructed.is_file() {
-        Ok(constructed.into_inner())
+        Ok(constructed)
     } else {
         Err(ShellError::ConfiguredPathMissing {
             key: key.config_key(),
@@ -358,7 +381,7 @@ fn resolve_candidates(
         .collect::<Vec<_>>()
         .join(", ");
     let paths = candidate_paths(candidates);
-    match first_existing(&paths, Path::is_file) {
+    match first_existing(&paths, |path: &std::path::Path| path.is_file()) {
         Some(path) => Ok(ResolvedShell::from_path(&path)),
         None => Err(ShellError::NotFound {
             kind,
@@ -371,14 +394,14 @@ fn resolve_candidates(
 /// How a candidate is named in a "searched these places" message.
 fn describe_candidate(candidate: &ShellCandidate) -> String {
     match candidate {
-        ShellCandidate::Path(path) => path.display().to_string(),
+        ShellCandidate::Path(path) => path.to_string(),
         ShellCandidate::Command(name) => format!("{name} (on PATH)"),
     }
 }
 
 /// The concrete paths a candidate chain names, in order.
 #[must_use]
-pub fn candidate_paths(candidates: &[ShellCandidate]) -> Vec<PathBuf> {
+pub fn candidate_paths(candidates: &[ShellCandidate]) -> Vec<MarkedPathBuf<Absolute>> {
     candidates
         .iter()
         .filter_map(|candidate| match candidate {
@@ -389,17 +412,19 @@ pub fn candidate_paths(candidates: &[ShellCandidate]) -> Vec<PathBuf> {
 }
 
 /// The first `PATH` entry that holds a file named `name`.
-fn find_on_path(name: &str) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
+fn find_on_path(name: &str) -> Option<MarkedPathBuf<Absolute>> {
+    let path_env = std::env::var_os("PATH")?;
+    let candidate = std::env::split_paths(&path_env)
         .filter(|directory| !directory.as_os_str().is_empty())
         .map(|directory| directory.join(name))
-        .find(|candidate| candidate.is_file())
+        .find(|candidate| candidate.is_file())?;
+    MarkedPathBuf::<Absolute>::new(candidate).ok()
 }
 
 /// The user's `%LOCALAPPDATA%`, read at resolution time.
-fn local_app_data() -> Option<PathBuf> {
-    std::env::var_os("LOCALAPPDATA").map(PathBuf::from)
+fn local_app_data() -> Option<MarkedPathBuf<Absolute>> {
+    let raw = std::env::var_os("LOCALAPPDATA")?;
+    MarkedPathBuf::<Absolute>::new(raw).ok()
 }
 
 /// The guidance shown when no POSIX shell was found.
@@ -440,7 +465,7 @@ pub fn powershell_command_args(command: &str) -> Vec<String> {
 
 impl ResolvedShell {
     /// Names an already-resolved program.
-    fn from_path(path: &Path) -> Self {
+    fn from_path(path: &MarkedPathBuf<Absolute>) -> Self {
         Self {
             program: path.to_string_lossy().into_owned(),
         }
@@ -458,6 +483,7 @@ mod tests {
         Platform, ShellCandidate, Shells, bash_candidates, candidate_paths, first_existing,
         powershell_candidates, resolve_candidates, resolve_powershell, resolve_shell,
     };
+    use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
     use std::path::{Path, PathBuf};
 
     /// Creates a file that exists, for a candidate to win on.
@@ -475,8 +501,8 @@ mod tests {
     #[test]
     fn first_existing_picks_the_earliest_existing_candidate() {
         // Given two candidate paths where only the second exists.
-        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver").expect("temp dir");
-        let existing = existing_file(dir.path(), "second");
+        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver");
+        let existing = existing_file(dir.path.as_path(), "second");
         let missing = PathBuf::from("/definitely/not/here/shell");
         let candidates = vec![missing, existing.clone()];
 
@@ -502,6 +528,7 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
+    #[cfg(windows)]
     fn windows_bash_chain_never_offers_the_bare_bash_name() {
         // Given the Windows candidate chain.
         let candidates = bash_candidates(Platform::Windows, None);
@@ -520,6 +547,7 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
+    #[cfg(windows)]
     fn windows_bash_chain_prefers_the_program_files_install() {
         // Given the Windows candidate chain.
         let candidates = bash_candidates(Platform::Windows, None);
@@ -530,25 +558,28 @@ mod tests {
         // Then it is the standard 64-bit Git for Windows install.
         assert_eq!(
             first,
-            &ShellCandidate::Path(PathBuf::from(r"C:\Program Files\Git\bin\bash.exe"))
+            &ShellCandidate::Path(
+                MarkedPathBuf::<Absolute>::new(r"C:\Program Files\Git\bin\bash.exe")
+                    .expect("test path"),
+            )
         );
     }
 
     #[rstest::rstest]
     #[test]
+    #[cfg(windows)]
     fn windows_bash_chain_includes_the_local_app_data_install() {
         // Given a `%LOCALAPPDATA%` root.
-        let local = PathBuf::from(r"C:\Users\jinn\AppData\Local");
+        let local =
+            MarkedPathBuf::<Absolute>::new(r"C:\Users\jinn\AppData\Local").expect("test path");
 
         // When building the Windows candidate chain.
         let candidates = bash_candidates(Platform::Windows, Some(&local));
 
         // Then the per-user Git install is offered.
         let expected = local
-            .join("Programs")
-            .join("Git")
-            .join("bin")
-            .join("bash.exe");
+            .join_all(["Programs", "Git", "bin", "bash.exe"])
+            .expect("name joins keep the base absolute");
         assert!(
             candidates.contains(&ShellCandidate::Path(expected)),
             "the per-user Git install must be in the chain: {candidates:?}"
@@ -590,8 +621,8 @@ mod tests {
     fn candidate_paths_keeps_the_chain_order() {
         // Given a chain of two concrete paths.
         let candidates = vec![
-            ShellCandidate::Path(PathBuf::from("/first")),
-            ShellCandidate::Path(PathBuf::from("/second")),
+            ShellCandidate::Path(MarkedPathBuf::<Absolute>::new("/first").expect("test path")),
+            ShellCandidate::Path(MarkedPathBuf::<Absolute>::new("/second").expect("test path")),
         ];
 
         // When resolving the chain into concrete paths.
@@ -600,7 +631,10 @@ mod tests {
         // Then the order is preserved.
         assert_eq!(
             paths,
-            vec![PathBuf::from("/first"), PathBuf::from("/second")]
+            vec![
+                MarkedPathBuf::<Absolute>::new("/first").expect("test path"),
+                MarkedPathBuf::<Absolute>::new("/second").expect("test path"),
+            ]
         );
     }
 
@@ -608,8 +642,8 @@ mod tests {
     #[test]
     fn resolve_shell_uses_a_configured_path_that_exists() {
         // Given a configured bash path that names a real file.
-        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver").expect("temp dir");
-        let bash = existing_file(dir.path(), "bash-exe");
+        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver");
+        let bash = existing_file(dir.path.as_path(), "bash-exe");
         let configured = bash.to_string_lossy().into_owned();
 
         // When resolving the shell.
@@ -624,8 +658,11 @@ mod tests {
     #[test]
     fn resolve_shell_reports_a_configured_path_that_does_not_exist() {
         // Given an absolute configured bash path that names no file.
-        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver").expect("temp dir");
-        let missing = dir.path().join("no-such-dir").join("bash");
+        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver");
+        let missing = dir
+            .path
+            .join_all(["no-such-dir", "bash"])
+            .expect("name joins keep the base absolute");
         let configured = missing.to_string_lossy().into_owned();
 
         // When resolving the shell.
@@ -645,8 +682,11 @@ mod tests {
     #[test]
     fn a_missing_configured_path_is_a_configuration_error() {
         // Given an absolute configured bash path that names no file.
-        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver").expect("temp dir");
-        let missing = dir.path().join("no-such-dir").join("bash");
+        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver");
+        let missing = dir
+            .path
+            .join_all(["no-such-dir", "bash"])
+            .expect("name joins keep the base absolute");
         let configured = missing.to_string_lossy().into_owned();
 
         // When resolving the shell.
@@ -709,7 +749,9 @@ mod tests {
     fn a_failed_auto_detection_names_every_place_searched() {
         // Given a candidate chain where nothing exists.
         let candidates = vec![
-            ShellCandidate::Path(PathBuf::from("/nowhere/one")),
+            ShellCandidate::Path(
+                MarkedPathBuf::<Absolute>::new("/nowhere/one").expect("test path"),
+            ),
             ShellCandidate::Command("nowhere-two".to_owned()),
         ];
 
@@ -735,8 +777,8 @@ mod tests {
     #[test]
     fn a_configured_path_that_is_a_directory_is_rejected() {
         // Given a configured path that names a directory.
-        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver").expect("temp dir");
-        let configured = dir.path().to_string_lossy().into_owned();
+        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver");
+        let configured = dir.path.to_string();
 
         // When resolving the shell.
         let result = resolve_shell(Some(&configured));
@@ -775,8 +817,11 @@ mod tests {
     #[test]
     fn resolve_powershell_reports_a_configured_path_that_does_not_exist() {
         // Given an absolute configured PowerShell path that names no file.
-        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver").expect("temp dir");
-        let missing = dir.path().join("no-such-dir").join("pwsh");
+        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver");
+        let missing = dir
+            .path
+            .join_all(["no-such-dir", "pwsh"])
+            .expect("name joins keep the base absolute");
         let configured = missing.to_string_lossy().into_owned();
 
         // When resolving PowerShell.
@@ -825,8 +870,8 @@ mod tests {
     #[test]
     fn a_configured_path_is_used_verbatim_on_unix() {
         // Given a configured path whose backslashes are ordinary characters.
-        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver").expect("temp dir");
-        let bash = dir.path().join("bash");
+        let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver");
+        let bash = dir.path.join("bash").expect("temp root joins a bare name");
         std::fs::write(&bash, b"probe").expect("write probe");
         let configured = bash.to_string_lossy().into_owned();
 

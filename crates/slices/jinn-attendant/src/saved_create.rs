@@ -100,7 +100,7 @@ pub fn creation_messages(
     attendant: &ChatSessionState,
 ) -> IntentResult {
     let attendant_id = attendant.session_id().clone();
-    let cwd = attendant.cwd().to_path_buf();
+    let cwd = attendant.cwd().clone();
     IntentResult::empty()
         .with_message(PersistSession {
             session_id: parent_id.clone(),

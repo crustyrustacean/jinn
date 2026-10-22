@@ -3,6 +3,7 @@ name = "jinn-discord-msg"
 edition.workspace = true
 
 [dependencies]
+marked-path = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-slices = { workspace = true }
 rstest = { workspace = true }

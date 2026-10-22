@@ -16,8 +16,9 @@
 //!    job idempotently (upserts key on `(label, key)`).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::path::Path;
 use std::sync::Arc;
+
+use marked_path::{Absolute, MarkedPathBuf};
 
 use overgraph::DatabaseEngine;
 use overgraph::types::{EdgeInput, NodeInput, PropValue};
@@ -228,9 +229,9 @@ enum BatchLine {
 ///
 /// Returns an error naming the path if the file cannot be read; an empty
 /// file parses successfully into a zero-count [`BatchFile`].
-pub fn load_batch_file(path: &Path) -> Result<BatchFile, IngestFileError> {
+pub fn load_batch_file(path: &MarkedPathBuf<Absolute>) -> Result<BatchFile, IngestFileError> {
     let content = std::fs::read_to_string(path)
-        .map_err(|err| IngestFileError::new(format!("could not read {}: {err}", path.display())))?;
+        .map_err(|err| IngestFileError::new(format!("could not read {path}: {err}")))?;
     parse_batch_file(&content)
 }
 
@@ -758,6 +759,7 @@ fn resolve_node_id(
 )]
 mod tests {
     use super::*;
+    use marked_path::MarkedPathAccess;
 
     /// A two-line file: one bare node, one bare edge.
     const MINIMAL_FILE: &str = concat!(
@@ -1005,8 +1007,11 @@ mod tests {
     #[test]
     fn load_batch_file_names_the_path_when_it_cannot_read() {
         // Given a path no file exists at.
-        let root = jinn_testutil::tempdir().expect("temp dir");
-        let path = root.path().join("nonexistent").join("batch.jsonl");
+        let root = jinn_testutil::tempdir();
+        let path = root
+            .path
+            .join_all(["nonexistent", "batch.jsonl"])
+            .expect("name joins keep the base absolute");
         let path_text = path.to_string_lossy().to_string();
 
         // When loading the file.
@@ -1027,10 +1032,12 @@ mod tests {
         // Given a file whose own nodes cover alice, a database that covers
         // the platform team, and two endpoints that exist nowhere (bob is
         // referenced but never declared, Ghost:nobody is pure fiction).
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let db =
-            overgraph::DatabaseEngine::open(dir.path(), &overgraph::types::DbOptions::default())
-                .expect("engine opens");
+        let dir = jinn_testutil::tempdir();
+        let db = overgraph::DatabaseEngine::open(
+            dir.path.as_path(),
+            &overgraph::types::DbOptions::default(),
+        )
+        .expect("engine opens");
         db.upsert_node(
             "Team",
             "platform",
@@ -1071,10 +1078,12 @@ mod tests {
     #[test]
     fn missing_endpoints_deduplicates_repeated_references() {
         // Given a file where two edges reference the same missing node.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let db =
-            overgraph::DatabaseEngine::open(dir.path(), &overgraph::types::DbOptions::default())
-                .expect("engine opens");
+        let dir = jinn_testutil::tempdir();
+        let db = overgraph::DatabaseEngine::open(
+            dir.path.as_path(),
+            &overgraph::types::DbOptions::default(),
+        )
+        .expect("engine opens");
         let batch = parse_batch_file(concat!(
             r#"{"node": {"label": "Person", "key": "alice"}}"#,
             "\n",

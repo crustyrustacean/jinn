@@ -57,11 +57,11 @@ where
         ));
         lines.push(format!(
             "    <location>{}</location>",
-            escape_xml(&skill.file_path.to_string_lossy())
+            escape_xml(&skill.file_path.to_string())
         ));
         lines.push(format!(
             "    <base_dir>{}</base_dir>",
-            escape_xml(&skill.base_dir.to_string_lossy())
+            escape_xml(&skill.base_dir.to_string())
         ));
         lines.push("  </skill>".to_owned());
     }
@@ -88,7 +88,9 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
+
     use super::*;
+    use marked_path::{Absolute, MarkedPathBuf};
 
     /// The skill file name, as a typed relative path.
     fn skill_file_name() -> jinn_testutil::MarkedPathBuf<jinn_testutil::Relative> {
@@ -96,17 +98,17 @@ mod tests {
             .expect("skill file name")
     }
 
-    fn test_skill(root: &std::path::Path, name: &str, description: &str) -> Skill {
+    fn test_skill(root: &MarkedPathBuf<Absolute>, name: &str, description: &str) -> Skill {
         Skill {
             name: name.to_owned(),
             description: description.to_owned(),
             body: String::new(),
             file_path: root
-                .join(".agents")
-                .join("skills")
-                .join(name)
-                .join("SKILL.md"),
-            base_dir: root.join(".agents").join("skills").join(name),
+                .join_all([".agents", "skills", name, "SKILL.md"])
+                .expect("typed parent joins bare names"),
+            base_dir: root
+                .join_all([".agents", "skills", name])
+                .expect("typed parent joins bare names"),
             source: jinn_skills_msg::SkillSource::Global,
         }
     }
@@ -126,8 +128,8 @@ mod tests {
     #[rstest::rstest]
     fn format_produces_available_skills_block() {
         // Given one skill.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let skills = vec![test_skill(dir.path(), "my-skill", "A test skill")];
+        let dir = jinn_testutil::tempdir();
+        let skills = vec![test_skill(&dir.path, "my-skill", "A test skill")];
 
         // When formatting.
         let result = format_skills_for_prompt(&skills, &std::collections::HashSet::new());
@@ -137,20 +139,15 @@ mod tests {
         // carry the platform's native separators.
         let expected_location = format!(
             "<location>{}</location>",
-            dir.path()
-                .join(".agents")
-                .join("skills")
-                .join("my-skill")
-                .join("SKILL.md")
-                .display()
+            dir.path
+                .join_all([".agents", "skills", "my-skill", "SKILL.md"])
+                .expect("temp root joins bare names")
         );
         let expected_base_dir = format!(
             "<base_dir>{}</base_dir>",
-            dir.path()
-                .join(".agents")
-                .join("skills")
-                .join("my-skill")
-                .display()
+            dir.path
+                .join_all([".agents", "skills", "my-skill"])
+                .expect("temp root joins bare names")
         );
         assert!(result.contains("<available_skills>"));
         assert!(result.contains("</available_skills>"));
@@ -166,8 +163,8 @@ mod tests {
     #[rstest::rstest]
     fn format_includes_usage_instructions() {
         // Given one skill.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let skills = vec![test_skill(dir.path(), "test", "Test skill")];
+        let dir = jinn_testutil::tempdir();
+        let skills = vec![test_skill(&dir.path, "test", "Test skill")];
 
         // When formatting.
         let result = format_skills_for_prompt(&skills, &std::collections::HashSet::new());
@@ -187,17 +184,14 @@ mod tests {
     #[rstest::rstest]
     fn format_escapes_xml_characters() {
         // Given a skill with special characters.
-        let root = jinn_testutil::paths::TestRoot::new().expect("test root");
+        let root = jinn_testutil::paths::TestRoot::new();
         let base_dir = root.join_str("path/to").expect("base dir");
         let skills = vec![Skill {
             name: "xml-test".to_owned(),
             description: "Has <special> & \"chars\"".to_owned(),
             body: String::new(),
-            file_path: base_dir
-                .join_relative(&skill_file_name().as_marked_path())
-                .as_ref()
-                .to_path_buf(),
-            base_dir: base_dir.as_ref().to_path_buf(),
+            file_path: base_dir.join_relative(&skill_file_name().as_marked_path()),
+            base_dir: base_dir.clone(),
             source: jinn_skills_msg::SkillSource::Global,
         }];
 
@@ -213,18 +207,15 @@ mod tests {
     #[rstest::rstest]
     fn format_escapes_base_dir_special_chars() {
         // Given a skill whose base_dir path contains XML-special characters.
-        let root = jinn_testutil::paths::TestRoot::new().expect("test root");
+        let root = jinn_testutil::paths::TestRoot::new();
         let base_dir = root.join_str("a&b<c>").expect("base dir");
         let base_dir_str = base_dir.as_ref().to_string_lossy().into_owned();
         let skills = vec![Skill {
             name: "weird-path".to_owned(),
             description: "d".to_owned(),
             body: String::new(),
-            file_path: base_dir
-                .join_relative(&skill_file_name().as_marked_path())
-                .as_ref()
-                .to_path_buf(),
-            base_dir: base_dir.as_ref().to_path_buf(),
+            file_path: base_dir.join_relative(&skill_file_name().as_marked_path()),
+            base_dir: base_dir.clone(),
             source: jinn_skills_msg::SkillSource::Global,
         }];
 
@@ -253,8 +244,8 @@ mod tests {
     #[rstest::rstest]
     fn format_handles_multiple_skills() {
         // Given three skills.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let root = dir.path();
+        let dir = jinn_testutil::tempdir();
+        let root = &dir.path;
         let skills = vec![
             test_skill(root, "skill-a", "First skill"),
             test_skill(root, "skill-b", "Second skill"),
@@ -273,8 +264,8 @@ mod tests {
     #[rstest::rstest]
     fn format_returns_stable_skill_list() {
         // Given three skills.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let root = dir.path();
+        let dir = jinn_testutil::tempdir();
+        let root = &dir.path;
         let skills = vec![
             test_skill(root, "skill-a", "First skill"),
             test_skill(root, "skill-d", "4"),
@@ -299,8 +290,8 @@ mod tests {
     #[rstest::rstest]
     fn format_marks_loaded_skill_with_attribute() {
         // Given one loaded and one unloaded skill.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let root = dir.path();
+        let dir = jinn_testutil::tempdir();
+        let root = &dir.path;
         let skills = vec![
             test_skill(root, "loaded-skill", "A loaded skill"),
             test_skill(root, "unloaded-skill", "An unloaded skill"),
@@ -325,8 +316,8 @@ mod tests {
     #[rstest::rstest]
     fn format_loaded_instruction_only_appears_once() {
         // Given several skills.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let root = dir.path();
+        let dir = jinn_testutil::tempdir();
+        let root = &dir.path;
         let skills = vec![
             test_skill(root, "a", "A"),
             test_skill(root, "b", "B"),
@@ -350,8 +341,8 @@ mod tests {
     #[rstest::rstest]
     fn format_preamble_instruction_appears_exactly_once() {
         // Given several skills.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let root = dir.path();
+        let dir = jinn_testutil::tempdir();
+        let root = &dir.path;
         let skills = vec![
             test_skill(root, "a", "A"),
             test_skill(root, "b", "B"),
@@ -372,8 +363,8 @@ mod tests {
     #[rstest::rstest]
     fn format_empty_loaded_set_no_attributes() {
         // Given skills with no loaded set.
-        let dir = jinn_testutil::tempdir().expect("temp dir");
-        let skills = vec![test_skill(dir.path(), "foo", "Foo")];
+        let dir = jinn_testutil::tempdir();
+        let skills = vec![test_skill(&dir.path, "foo", "Foo")];
 
         // When formatting with empty loaded set.
         let result = format_skills_for_prompt(&skills, &std::collections::HashSet::new());

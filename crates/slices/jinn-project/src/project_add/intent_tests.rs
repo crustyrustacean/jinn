@@ -20,18 +20,20 @@ use jinn_slices::route::ActionCtx;
 use jinn_slices::route::BindSite;
 use jinn_slices::route::EditIntent;
 use jinn_slices::route::ScopeSignal;
+use marked_path::MarkedPathAccess;
 
 /// A minimal [`SliceActionState`] double that also carries kernel state
 /// for the optimistic-write downcast.
 struct FakeState {
-    cwd: std::path::PathBuf,
+    cwd: marked_path::MarkedPathBuf<marked_path::Absolute>,
     kernel: Option<jinn_kernel::AppState>,
 }
 
 impl Default for FakeState {
     fn default() -> Self {
         Self {
-            cwd: std::path::PathBuf::new(),
+            cwd: marked_path::MarkedPathBuf::<marked_path::Absolute>::new("/nonexistent-cwd")
+                .expect("rooted test path"),
             kernel: Some(jinn_kernel::AppState::default_with_scope_focus()),
         }
     }
@@ -53,14 +55,14 @@ impl SliceActionState for FakeState {
 
     fn push_session_error(&mut self, _message: &str) {}
 
-    fn active_session_cwd(&self) -> std::path::PathBuf {
+    fn active_session_cwd(&self) -> marked_path::MarkedPathBuf<marked_path::Absolute> {
         self.cwd.clone()
     }
 
     fn publish_session_cwd(
         &self,
         _session_id: jinn_core_types::SessionId,
-        _cwd: std::path::PathBuf,
+        _cwd: marked_path::MarkedPathBuf<marked_path::Absolute>,
     ) -> PublishClosure {
         Box::new(|_bus| {})
     }
@@ -133,8 +135,11 @@ fn rows_bind_confirm_and_leave_in_own_scope_and_open_in_picker_scope() {
 #[rstest::rstest]
 fn open_seeds_input_from_session_cwd_and_pushes_scope() {
     // Given a fake state whose session cwd is an absolute path.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let cwd = dir.path().join("some-project");
+    let dir = jinn_testutil::tempdir();
+    let cwd = dir
+        .path
+        .join("some-project")
+        .expect("temp root joins a bare name");
     let mut state = FakeState::default();
     state.cwd = cwd.clone();
     let (slices, cell) = cell();
@@ -159,10 +164,10 @@ fn open_seeds_input_from_session_cwd_and_pushes_scope() {
 fn confirm_valid_dir_appends_project_optimistically_and_emits_update() {
     // Given a real tempdir next to the session cwd, with the popup seeded
     // with the tempdir's basename.
-    let temp = jinn_testutil::tempdir().expect("tempdir");
-    let target = temp.path();
+    let temp = jinn_testutil::tempdir();
+    let target = temp.path;
     let mut state = FakeState::default();
-    state.cwd = target.parent().expect("parent").to_path_buf();
+    state.cwd = target.parent().expect("parent").to_owned();
     let (slices, cell) = cell();
     cell.update(|s| {
         s.text.set(
@@ -189,7 +194,9 @@ fn confirm_valid_dir_appends_project_optimistically_and_emits_update() {
     assert_eq!(projects.len(), 1);
     assert_eq!(
         projects.first().expect("one project").path,
-        jinn_common::canonicalize_display(target).expect("tempdir canonicalizes")
+        jinn_common::canonicalize_display(&target)
+            .expect("tempdir canonicalizes")
+            .as_path()
     );
     // And no message is published — the write is the effect.
     assert!(result.messages.is_empty());
@@ -202,9 +209,9 @@ fn confirm_valid_dir_appends_project_optimistically_and_emits_update() {
 #[rstest::rstest]
 fn confirm_invalid_dir_stays_open_without_publishing() {
     // Given a popup seeded with a path that is not a directory.
-    let temp = jinn_testutil::tempdir().expect("tempdir");
+    let temp = jinn_testutil::tempdir();
     let mut state = FakeState::default();
-    state.cwd = temp.path().to_path_buf();
+    state.cwd = temp.path.clone();
     let (slices, cell) = cell();
     cell.update(|s| s.text.set("no-such-dir".to_owned()));
     let mut cx = ctx(&mut state, &slices);
@@ -233,10 +240,13 @@ fn confirm_invalid_dir_stays_open_without_publishing() {
 #[rstest::rstest]
 fn leave_clears_the_cell() {
     // Given a popup with text.
-    let dir = jinn_testutil::tempdir().expect("temp dir");
-    let seeded = dir.path().join("some-project");
+    let dir = jinn_testutil::tempdir();
+    let seeded = dir
+        .path
+        .join("some-project")
+        .expect("temp root joins a bare name");
     let (_slices, cell) = cell();
-    cell.update(|s| s.text.set(seeded.to_string_lossy().to_string()));
+    cell.update(|s| s.text.set(seeded.to_string()));
 
     // When leaving.
     leave_project_add(&cell);

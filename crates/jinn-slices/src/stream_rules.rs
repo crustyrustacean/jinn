@@ -204,7 +204,10 @@ pub trait StreamRuleSet: fmt::Debug + Send + Sync {
     /// session, so the directory is bound here rather than carried into each
     /// match. A consumer holding a set derived this way needs no knowledge of
     /// globs, and there is no argument that skips the narrowing.
-    fn for_cwd(&self, cwd: Option<&std::path::Path>) -> std::sync::Arc<dyn StreamRuleSet>;
+    fn for_cwd(
+        &self,
+        cwd: Option<&marked_path::MarkedPathBuf<marked_path::Absolute>>,
+    ) -> std::sync::Arc<dyn StreamRuleSet>;
 }
 
 /// The cell payload: the installed matcher, or the absence of one.
@@ -280,7 +283,7 @@ impl StreamRules {
     /// the same reading it gives an uninstalled cell.
     pub fn for_cwd(
         &self,
-        cwd: Option<&std::path::Path>,
+        cwd: Option<&marked_path::MarkedPathBuf<marked_path::Absolute>>,
     ) -> Option<std::sync::Arc<dyn StreamRuleSet>> {
         let set = self.0.as_ref()?;
         Some(set.for_cwd(cwd))
@@ -340,7 +343,10 @@ mod tests {
             })
         }
 
-        fn for_cwd(&self, _cwd: Option<&std::path::Path>) -> std::sync::Arc<dyn StreamRuleSet> {
+        fn for_cwd(
+            &self,
+            _cwd: Option<&marked_path::MarkedPathBuf<marked_path::Absolute>>,
+        ) -> std::sync::Arc<dyn StreamRuleSet> {
             std::sync::Arc::new(Self { empty: self.empty })
         }
     }

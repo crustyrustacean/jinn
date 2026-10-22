@@ -6,7 +6,8 @@
 //! slice of [`CandidateSession`] so it is trivially testable and so a future
 //! session-picker impl can replace it without touching downstream consumers.
 
-use std::path::{Component, Path, PathBuf};
+use marked_path::{Absolute, MarkedPath, MarkedPathAccess, MarkedPathBuf};
+use std::path::Component;
 
 use jinn_core_types::SessionId;
 
@@ -28,7 +29,7 @@ pub trait ProjectScopeResolver {
 #[derive(Debug, Clone)]
 pub struct ScopeAnchor {
     /// The CWD of the anchor session.
-    pub cwd: PathBuf,
+    pub cwd: MarkedPathBuf<Absolute>,
     /// The id of the anchor session.
     pub session_id: SessionId,
     /// How far back to include sessions, in days.
@@ -46,7 +47,7 @@ pub struct ScopeAnchor {
 #[derive(Debug, Clone)]
 pub struct CandidateSession {
     pub id: SessionId,
-    pub cwd: PathBuf,
+    pub cwd: MarkedPathBuf<Absolute>,
     pub parent_session: Option<SessionId>,
     /// Wall-clock time of the session's last update, in Unix seconds.
     pub updated_at_unix: i64,
@@ -98,7 +99,9 @@ fn collect_in_tree(
     cutoff: i64,
 ) {
     for c in candidates {
-        if within_window(c.updated_at_unix, cutoff) && is_under(&c.cwd, &anchor.cwd) {
+        if within_window(c.updated_at_unix, cutoff)
+            && is_under(&c.cwd.as_marked_path(), &anchor.cwd.as_marked_path())
+        {
             acc.insert(c.id.clone());
         }
     }
@@ -142,7 +145,7 @@ fn build_id_index(
 /// Matches at path-component boundaries only, so `/a/jinn` is NOT considered
 /// under `/a/jinn-old`. No symlink resolution and no lexical normalization of
 /// the stored paths — raw stored CWDs are matched as-is.
-fn is_under(candidate: &Path, anchor: &Path) -> bool {
+fn is_under(candidate: &MarkedPath<'_, Absolute>, anchor: &MarkedPath<'_, Absolute>) -> bool {
     let c = components(candidate);
     let a = components(anchor);
     if a.len() > c.len() {
@@ -156,8 +159,9 @@ fn is_under(candidate: &Path, anchor: &Path) -> bool {
 
 /// Normalized component slice of a path (no `.` / `..` / prefix), as `OsString`
 /// comparisons.
-fn components(path: &Path) -> Vec<std::ffi::OsString> {
-    path.components()
+fn components(path: &MarkedPath<'_, Absolute>) -> Vec<std::ffi::OsString> {
+    path.as_path()
+        .components()
         .filter_map(|comp| match comp {
             Component::Normal(s) => Some(s.to_owned()),
             _ => None,
@@ -193,6 +197,8 @@ pub fn now_unix() -> i64 {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+
     use super::*;
     use jinn_core_types::SessionId;
 
@@ -205,7 +211,7 @@ mod tests {
     fn cand(id: &str, cwd: &str, parent: Option<&str>, updated_at_unix: i64) -> CandidateSession {
         CandidateSession {
             id: sid(id),
-            cwd: PathBuf::from(cwd),
+            cwd: MarkedPathBuf::<Absolute>::new(cwd).expect("test cwd"),
             parent_session: parent.map(sid),
             updated_at_unix,
         }
@@ -213,7 +219,7 @@ mod tests {
 
     fn anchor(cwd: &str, session_id: &str, window_days: u32) -> ScopeAnchor {
         ScopeAnchor {
-            cwd: PathBuf::from(cwd),
+            cwd: MarkedPathBuf::<Absolute>::new(cwd).expect("test cwd"),
             session_id: sid(session_id),
             window_days,
             now_unix: NOW,

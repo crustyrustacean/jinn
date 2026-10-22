@@ -91,7 +91,7 @@ pub struct Services {
     /// Production code passes `None` because [`AppPaths::default`] resolves
     /// real user dirs.
     #[debug(skip)]
-    pub tempdir: Option<Arc<tempfile::TempDir>>,
+    pub tempdir: Option<Arc<jinn_testutil::JinnTempDir>>,
 
     /// Message fabric for schema-based pub/sub routing.
     #[debug(skip)]
@@ -182,7 +182,7 @@ impl Services {
     pub async fn new_fake() -> Self {
         let handle = test_services::shared_test_handle();
 
-        let tempdir = Arc::new(jinn_testutil::retained_tempdir().expect("test temp dir"));
+        let tempdir = Arc::new(jinn_testutil::retained_tempdir());
 
         // Create the fabric once; the bus publishes through it and the
         // `Services` container carries it for actor spawns — one system.
@@ -194,7 +194,7 @@ impl Services {
         let bridge = crate::common::bridge::Bridge::new(bus.clone());
 
         Self {
-            paths: crate::common::app_paths::AppPaths::new_in(tempdir.path()),
+            paths: crate::common::app_paths::AppPaths::new_in(&tempdir.path.as_marked_path()),
             handle,
             llm_service: LlmServiceFactoryService::new(Arc::new(
                 jinn_provider_config::FakeLlmServiceFactory::new(vec![]),
@@ -255,14 +255,14 @@ impl Services {
     )]
     pub async fn new_fake_with_bus(bus: bus_service::BusService) -> Self {
         let handle = test_services::shared_test_handle();
-        let tempdir = Arc::new(jinn_testutil::retained_tempdir().expect("test temp dir"));
+        let tempdir = Arc::new(jinn_testutil::retained_tempdir());
 
         let bridge = crate::common::bridge::Bridge::new_for_test();
         let trouper_system =
             trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
 
         Self {
-            paths: crate::common::app_paths::AppPaths::new_in(tempdir.path()),
+            paths: crate::common::app_paths::AppPaths::new_in(&tempdir.path.as_marked_path()),
             handle,
             llm_service: LlmServiceFactoryService::new(Arc::new(
                 jinn_provider_config::FakeLlmServiceFactory::new(vec![]),
@@ -339,6 +339,7 @@ mod tests {
     #![allow(clippy::expect_used, reason = "test-only assertions")]
 
     use super::*;
+    use marked_path::MarkedPathAccess as _;
 
     #[rstest::rstest]
     #[tokio::test]
@@ -355,8 +356,8 @@ mod tests {
             .tempdir
             .as_ref()
             .expect("new_fake always carries a tempdir")
-            .path()
-            .to_path_buf();
+            .path
+            .clone();
         let root_name = root
             .file_name()
             .and_then(std::ffi::OsStr::to_str)
@@ -366,8 +367,10 @@ mod tests {
             "fixture root {root_name:?} lacks the jinn test prefix"
         );
         assert_eq!(
-            config_dir,
-            root.join("config"),
+            config_dir.as_path(),
+            root.join("config")
+                .expect("name join keeps the root absolute")
+                .as_path(),
             "config_dir must derive from the prefixed fixture root"
         );
     }

@@ -3,6 +3,7 @@ name = "jinn-cwd-msg"
 version.workspace = true
 edition.workspace = true
 [dependencies]
+marked-path = { workspace = true }
 dirs = { workspace = true }
 # Plain-form path canonicalization (`canonicalize_display`): resolved cwd
 # paths are stored as projects, published as session cwd, and shown in popup

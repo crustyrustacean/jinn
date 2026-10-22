@@ -7,6 +7,7 @@ use jinn_core_types::SessionId;
 use jinn_slices::BusMessage;
 
 use crate::TermExitInfo;
+use marked_path::{Absolute, MarkedPathBuf};
 
 /// Who may send input to the session right now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -42,7 +43,7 @@ pub struct SpawnTerm {
     /// Shell command to run (passed to `bash -c`).
     pub command: String,
     /// Working directory for the child.
-    pub cwd: std::path::PathBuf,
+    pub cwd: MarkedPathBuf<Absolute>,
     /// Requested pty size (rows, cols).
     pub size: (u16, u16),
     /// How long to wait for output to settle before replying.
