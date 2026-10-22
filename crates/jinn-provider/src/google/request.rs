@@ -39,8 +39,10 @@ pub fn build_request(
         })
     });
 
-    // All messages → contents array.
-    let contents: Vec<serde_json::Value> = messages.iter().map(message_to_json).collect();
+    // All messages → contents array. A message with attachments can expand to
+    // more than one content, so each message flattens into the array.
+    let contents: Vec<serde_json::Value> =
+        messages.iter().flat_map(message_to_json_values).collect();
 
     let gemini_tools = if tools.is_empty() {
         None
@@ -57,16 +59,21 @@ pub fn build_request(
     }
 }
 
-/// Convert an [`LlmMessage`] to a Gemini-format content JSON.
-fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
+/// Convert an [`LlmMessage`] to Gemini-format content JSON.
+///
+/// Most messages produce exactly one content, but a tool result carrying
+/// attachments produces two: the function response, then a synthesized user
+/// content carrying the images — a `functionResponse` part is text/JSON-only,
+/// so the images cannot ride inside it.
+fn message_to_json_values(msg: &LlmMessage) -> Vec<serde_json::Value> {
     match msg {
         LlmMessage::User {
             content,
             attachments,
-        } if attachments.is_empty() => serde_json::json!({
+        } if attachments.is_empty() => vec![serde_json::json!({
             "role": "user",
             "parts": [{"text": content}]
-        }),
+        })],
         LlmMessage::User {
             content,
             attachments,
@@ -77,48 +84,28 @@ fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
             if !content.is_empty() {
                 parts.push(serde_json::json!({"text": content}));
             }
-            serde_json::json!({
+            vec![serde_json::json!({
                 "role": "user",
                 "parts": parts,
-            })
+            })]
         }
         LlmMessage::Assistant {
             content,
             tool_calls: None,
-        } => serde_json::json!({
+        } => vec![serde_json::json!({
             "role": "model",
             "parts": [{"text": content}]
-        }),
+        })],
         LlmMessage::Assistant {
             content,
             tool_calls: Some(calls),
-        } => {
-            let mut parts: Vec<serde_json::Value> = Vec::new();
-
-            if !content.is_empty() {
-                parts.push(serde_json::json!({"text": content}));
-            }
-
-            for tc in calls {
-                parts.push(serde_json::json!({
-                    "functionCall": {
-                        "name": tc.name,
-                        "args": serde_json::from_str::<serde_json::Value>(&tc.arguments)
-                            .unwrap_or(serde_json::Value::Object(serde_json::Map::default()))
-                    }
-                }));
-            }
-
-            serde_json::json!({
-                "role": "model",
-                "parts": parts,
-            })
-        }
+        } => vec![assistant_with_calls_content(content, calls)],
         LlmMessage::Tool {
             tool_call_id: _,
             name,
             content,
-        } => serde_json::json!({
+            attachments,
+        } if attachments.is_empty() => vec![serde_json::json!({
             "role": "function",
             "parts": [{
                 "functionResponse": {
@@ -130,8 +117,67 @@ fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
                     }
                 }
             }],
-        }),
+        })],
+        LlmMessage::Tool {
+            tool_call_id,
+            name,
+            content,
+            attachments,
+        } => {
+            // The function response stays as before; the images follow in a
+            // synthesized ordinary user turn.
+            let function_response = serde_json::json!({
+                "role": "function",
+                "parts": [{
+                    "functionResponse": {
+                        "name": name,
+                        "response": {
+                            "name": name,
+                            "content": serde_json::from_str::<serde_json::Value>(content)
+                                .unwrap_or(serde_json::Value::String(content.clone()))
+                        }
+                    }
+                }],
+            });
+            let mut parts: Vec<serde_json::Value> =
+                attachments.iter().map(attachment_to_gemini_part).collect();
+            parts.push(serde_json::json!({
+                "text": format!("[Image attached from tool call {tool_call_id} ({name})]"),
+            }));
+            vec![
+                function_response,
+                serde_json::json!({
+                    "role": "user",
+                    "parts": parts,
+                }),
+            ]
+        }
     }
+}
+
+/// Builds the model content carrying text plus one `functionCall` part per
+/// pending tool call.
+fn assistant_with_calls_content(content: &str, calls: &[crate::ToolCall]) -> serde_json::Value {
+    let mut parts: Vec<serde_json::Value> = Vec::new();
+
+    if !content.is_empty() {
+        parts.push(serde_json::json!({"text": content}));
+    }
+
+    for tc in calls {
+        parts.push(serde_json::json!({
+            "functionCall": {
+                "name": tc.name,
+                "args": serde_json::from_str::<serde_json::Value>(&tc.arguments)
+                    .unwrap_or(serde_json::Value::Object(serde_json::Map::default()))
+            }
+        }));
+    }
+
+    serde_json::json!({
+        "role": "model",
+        "parts": parts,
+    })
 }
 
 /// Convert a [`ToolDefinition`] to Gemini-format function declaration.
@@ -229,7 +275,7 @@ mod tests {
         };
 
         // When converting it to the Gemini wire shape.
-        let json = message_to_json(&message);
+        let json = message_to_json_values(&message).remove(0);
 
         // Then its role is "user".
         assert_eq!(json["role"], "user");
@@ -244,7 +290,7 @@ mod tests {
         };
 
         // When converting it to the Gemini wire shape.
-        let json = message_to_json(&message);
+        let json = message_to_json_values(&message).remove(0);
 
         // Then its role is "model".
         assert_eq!(json["role"], "model");
@@ -257,10 +303,11 @@ mod tests {
             tool_call_id: "call_1".into(),
             name: "echo".into(),
             content: "result".into(),
+            attachments: Vec::new(),
         };
 
         // When converting it to the Gemini wire shape.
-        let json = message_to_json(&message);
+        let json = message_to_json_values(&message).remove(0);
 
         // Then its role is "function" and its first part is a functionResponse.
         assert_eq!(json["role"], "function");
@@ -305,7 +352,7 @@ mod tests {
         };
 
         // When converting it to the Gemini wire shape.
-        let json = message_to_json(&message);
+        let json = message_to_json_values(&message).remove(0);
 
         // Then its role is "model" and its first part is a functionCall.
         assert_eq!(json["role"], "model");
@@ -322,7 +369,7 @@ mod tests {
         };
 
         // When converting to Gemini JSON.
-        let json = message_to_json(&msg);
+        let json = message_to_json_values(&msg).remove(0);
 
         // Then parts contains an inline_data part followed by a text part.
         let parts = json["parts"].as_array().expect("array");
@@ -341,11 +388,45 @@ mod tests {
         };
 
         // When converting to Gemini JSON.
-        let json = message_to_json(&msg);
+        let json = message_to_json_values(&msg).remove(0);
 
         // Then parts is the single-text fast path (array of one text part).
         let parts = json["parts"].as_array().expect("array");
         assert_eq!(parts.len(), 1);
         assert_eq!(parts[0]["text"], "hello");
+    }
+
+    #[rstest::rstest]
+    fn tool_result_with_attachments_emits_function_response_then_synthesized_user() {
+        // Given a tool result message carrying an image attachment.
+        let message = LlmMessage::Tool {
+            tool_call_id: "call_1".into(),
+            name: "read_image".into(),
+            content: "screenshot.png".into(),
+            attachments: vec![Attachment::image("image/png".to_owned(), vec![1, 2, 3])],
+        };
+
+        // When building the request.
+        let req = build_request(None, &[message], &[]);
+
+        // Then two contents are produced: the function response, then a
+        // synthesized user content.
+        assert_eq!(req.contents.len(), 2);
+        assert_eq!(req.contents[0]["role"], "function");
+        assert!(
+            req.contents[0]["parts"][0]
+                .get("functionResponse")
+                .is_some()
+        );
+        // And the synthesized user content carries the inline image then attribution.
+        assert_eq!(req.contents[1]["role"], "user");
+        let parts = req.contents[1]["parts"].as_array().expect("array");
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0]["inlineData"]["mimeType"], "image/png");
+        assert_eq!(parts[0]["inlineData"]["data"], "AQID");
+        assert_eq!(
+            parts[1]["text"],
+            "[Image attached from tool call call_1 (read_image)]"
+        );
     }
 }

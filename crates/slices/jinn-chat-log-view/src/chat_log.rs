@@ -45,8 +45,31 @@ pub use scroll_indicator::render_scroll_indicator;
 pub use shared::{GUTTER_WIDTH, RenderContext, strip_ansi};
 pub use viewport::{ScrollState, compute_scroll, find_visible_indices};
 
+use jinn_core_types::attachment::Attachment;
 use jinn_core_types::{ChatEntry, ChatEntryKind};
+use jinn_tools_msg::truncation::format_size;
 use ratatui::text::Line;
+
+/// One-line placeholder summary for a tool result's image attachments
+/// (`🖼 shot.png — image/png, 2.0KB`), or `None` when there are none.
+/// Carries names and sizes only — never bytes.
+fn attachments_summary(attachments: &[Attachment]) -> Option<String> {
+    let images: Vec<&Attachment> = attachments.iter().filter(|a| a.is_image()).collect();
+    if images.is_empty() {
+        return None;
+    }
+    let parts: Vec<String> = images
+        .iter()
+        .map(|a| {
+            format!(
+                "🖼 image — {}, {}",
+                a.media_type(),
+                format_size(a.data().len())
+            )
+        })
+        .collect();
+    Some(parts.join(", "))
+}
 
 /// Convert a chat entry into one or more visual lines, splitting on `\n`.
 ///
@@ -70,8 +93,17 @@ pub fn entry_to_lines(entry: &ChatEntry, ctx: &RenderContext) -> Vec<Line<'stati
             status,
             truncation,
             is_alert,
+            attachments,
             ..
-        } => tool_result::to_lines(name, content, *status, truncation.as_ref(), *is_alert, ctx),
+        } => tool_result::to_lines(
+            name,
+            content,
+            *status,
+            truncation.as_ref(),
+            *is_alert,
+            attachments_summary(attachments),
+            ctx,
+        ),
         ChatEntryKind::Thinking(text) => thinking::to_lines(text, ctx),
         ChatEntryKind::Annotation { citations } => annotation::to_lines(citations, ctx),
 

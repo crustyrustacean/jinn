@@ -234,6 +234,7 @@ fn format_exit_result(
                 full_content: Some(content),
                 truncation: Some(meta),
                 pin_position: None,
+                attachments: Vec::new(),
             }
         } else {
             // truncated but no meta - return unformatted truncated content
@@ -245,6 +246,7 @@ fn format_exit_result(
                 full_content: Some(content),
                 truncation: None,
                 pin_position: None,
+                attachments: Vec::new(),
             }
         }
     } else {
@@ -256,6 +258,7 @@ fn format_exit_result(
             full_content: None,
             truncation: None,
             pin_position: None,
+            attachments: Vec::new(),
         }
     }
 }

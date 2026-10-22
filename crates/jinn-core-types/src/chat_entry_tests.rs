@@ -156,6 +156,7 @@ fn tool_result_entry_has_tool_result_kind() {
             truncation: None,
             pin_position: None,
             is_alert: false,
+            attachments: Vec::new(),
         }
     );
 }
@@ -495,6 +496,7 @@ fn tool_result_deserializes_old_success_true_format() {
             truncation: None,
             pin_position: None,
             is_alert: false,
+            attachments: Vec::new(),
         }
     );
 }
@@ -519,6 +521,7 @@ fn tool_result_deserializes_old_success_false_format() {
             truncation: None,
             pin_position: None,
             is_alert: false,
+            attachments: Vec::new(),
         }
     );
 }

@@ -245,6 +245,9 @@ pub enum ChatEntryKind {
         /// custom serde impls write it as `"is_alert"` and default it to
         /// `false` for old persisted sessions.
         is_alert: bool,
+        /// Non-text attachments the tool produced (e.g. images returned by
+        /// `read_image`). Empty for plain-text results.
+        attachments: Vec<crate::attachment::Attachment>,
     },
 
     /// A transient UI-only message (not sent to the LLM).
@@ -706,6 +709,7 @@ impl ChatEntry {
                 content,
                 status,
                 truncation,
+                attachments,
                 ..
             } => {
                 name.hash(&mut hasher);
@@ -714,6 +718,9 @@ impl ChatEntry {
                 // Include truncation presence so the line count cache
                 // invalidates when the indicator line is added or removed.
                 truncation.is_some().hash(&mut hasher);
+                // Same for attachment placeholders (e.g. images from
+                // `read_image`), which render as an extra line.
+                attachments.len().hash(&mut hasher);
             }
 
             ChatEntryKind::Compaction {
@@ -789,12 +796,14 @@ impl ChatEntry {
                 content,
                 status,
                 truncation,
+                attachments,
                 ..
             } => {
                 name.len().hash(&mut hasher);
                 status.hash(&mut hasher);
                 content.len().hash(&mut hasher);
                 truncation.is_some().hash(&mut hasher);
+                attachments.len().hash(&mut hasher);
             }
             ChatEntryKind::Compaction {
                 summary,
@@ -1017,6 +1026,116 @@ mod tests {
         assert!(attachments[0].is_image());
         assert_eq!(attachments[0].media_type(), "image/png");
         assert_eq!(attachments[0].data(), &[1, 2, 3]);
+    }
+
+    fn tool_result_entry_with_attachments() -> ChatEntry {
+        let mut entry = ChatEntry::user("placeholder");
+        entry.kind = ChatEntryKind::ToolResult {
+            id: crate::ToolCallId::from("call_1"),
+            name: "read_image".to_owned(),
+            content: "screenshot.png (image/png, 2 KiB)".to_owned(),
+            status: ToolResultStatus::Success,
+            full_content: None,
+            truncation: None,
+            pin_position: None,
+            is_alert: false,
+            attachments: vec![crate::attachment::Attachment::image(
+                "image/png".to_owned(),
+                vec![1, 2, 3],
+            )],
+        };
+        entry
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn tool_result_entry_with_attachments_roundtrips() {
+        // Given a tool result entry carrying an image attachment.
+        let entry = tool_result_entry_with_attachments();
+
+        // When serializing and deserializing.
+        let json = serde_json::to_string(&entry).expect("serialize");
+        let loaded: ChatEntry = serde_json::from_str(&json).expect("deserialize");
+
+        // Then the attachment roundtrips.
+        let ChatEntryKind::ToolResult { attachments, .. } = &loaded.kind else {
+            panic!("expected ToolResult kind")
+        };
+        assert_eq!(attachments.len(), 1);
+        assert_eq!(attachments[0].media_type(), "image/png");
+        assert_eq!(attachments[0].data(), &[1, 2, 3]);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn tool_result_without_attachments_omits_the_field_in_json() {
+        // Given a tool result entry with no attachments.
+        let entry = {
+            let mut e = tool_result_entry_with_attachments();
+            if let ChatEntryKind::ToolResult { attachments, .. } = &mut e.kind {
+                attachments.clear();
+            }
+            e
+        };
+
+        // When serializing.
+        let json = serde_json::to_string(&entry).expect("serialize");
+
+        // Then the attachments key is absent from the JSON.
+        assert!(!json.contains("attachments"), "json was: {json}");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn old_tool_result_json_without_attachments_loads_with_empty_attachments() {
+        // Given a tool result entry serialized to JSON, then stripped of its
+        // attachments key to simulate a session saved by an older version.
+        let entry = tool_result_entry_with_attachments();
+        let mut json = serde_json::to_value(&entry).expect("serialize");
+        let kind = json
+            .get_mut("kind")
+            .and_then(|k| k.get_mut("ToolResult"))
+            .and_then(|k| k.as_object_mut())
+            .expect("kind object");
+        kind.remove("attachments");
+
+        // When deserializing the legacy JSON.
+        let loaded: ChatEntry = serde_json::from_value(json).expect("deserialize legacy");
+
+        // Then the entry loads with empty attachments.
+        let ChatEntryKind::ToolResult { attachments, .. } = &loaded.kind else {
+            panic!("expected ToolResult kind")
+        };
+        assert!(attachments.is_empty());
+        // And the rest of the entry is preserved.
+        assert_eq!(loaded.text(), entry.text());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn old_success_bool_tool_result_json_loads_with_empty_attachments() {
+        // Given oldest-format ToolResult JSON (success: bool, no status).
+        let json = r#"{"ToolResult": {
+            "id": "call_1",
+            "name": "read",
+            "content": "file contents",
+            "success": true
+        }}"#;
+
+        // When deserializing.
+        let kind: ChatEntryKind = serde_json::from_str(json).expect("deserialize old format");
+
+        // Then it produces a success ToolResult with empty attachments.
+        let ChatEntryKind::ToolResult {
+            status,
+            attachments,
+            ..
+        } = kind
+        else {
+            panic!("expected ToolResult kind")
+        };
+        assert_eq!(status, ToolResultStatus::Success);
+        assert!(attachments.is_empty());
     }
 }
 

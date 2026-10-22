@@ -1020,25 +1020,31 @@ fn persistable_entries(
         .collect()
 }
 
-/// Extracts a user entry's attachments, leaving the kind shape otherwise intact.
+/// Extracts an entry's attachments, leaving the kind shape otherwise intact.
 ///
-/// Non-user entries (and user entries with no attachments) return an empty vec.
-/// The attachments are persisted separately in `entry_blobs` so the `kind` JSON
-/// column stays lean — see [`serialize_lean_kind`].
-fn extract_attachments(kind: &ChatEntryKind) -> Vec<Attachment> {
+/// User entries (from `@path` sends) and tool-result entries (from tools like
+/// `read_image`) can both carry attachments. Entries with none return an empty
+/// vec. The attachments are persisted separately in `entry_blobs` so the
+/// `kind` JSON column stays lean — see [`serialize_lean_kind`].
+pub(super) fn extract_attachments(kind: &ChatEntryKind) -> Vec<Attachment> {
+    // User entries (from `@path` sends) and tool-result entries (from tools
+    // like `read_image`) are the attachment carriers; every other kind has
+    // none, whatever shape it takes.
     match kind {
-        ChatEntryKind::User { attachments, .. } => attachments.clone(),
+        ChatEntryKind::User { attachments, .. } | ChatEntryKind::ToolResult { attachments, .. } => {
+            attachments.clone()
+        }
         _ => Vec::new(),
     }
 }
 
-/// Serializes a kind to JSON with any user attachments stripped out.
+/// Serializes a kind to JSON with any attachments stripped out.
 ///
 /// The persisted `kind` blob must not carry raw image bytes (base64), which
 /// would bloat the `entries.kind` column on every context re-read. Attachments
-/// live in the `entry_blobs` table and are rehydrated on load by
-/// [`hydrate_attachments`].
-fn serialize_lean_kind(kind: &ChatEntryKind) -> String {
+/// (user-entry and tool-result alike) live in the `entry_blobs` table and are
+/// rehydrated on load by [`hydrate_attachments`].
+pub(super) fn serialize_lean_kind(kind: &ChatEntryKind) -> String {
     match kind {
         ChatEntryKind::User {
             display,
@@ -1051,6 +1057,30 @@ fn serialize_lean_kind(kind: &ChatEntryKind) -> String {
                 expanded: expanded.clone(),
                 attachments: Vec::new(),
                 outcome: outcome.clone(),
+            };
+            serde_json::to_string(&lean).unwrap_or_else(|_| "{}".to_owned())
+        }
+        ChatEntryKind::ToolResult {
+            id,
+            name,
+            content,
+            status,
+            full_content,
+            truncation,
+            pin_position,
+            is_alert,
+            attachments,
+        } if !attachments.is_empty() => {
+            let lean = ChatEntryKind::ToolResult {
+                id: id.clone(),
+                name: name.clone(),
+                content: content.clone(),
+                status: *status,
+                full_content: full_content.clone(),
+                truncation: truncation.clone(),
+                pin_position: *pin_position,
+                is_alert: *is_alert,
+                attachments: Vec::new(),
             };
             serde_json::to_string(&lean).unwrap_or_else(|_| "{}".to_owned())
         }
@@ -1427,6 +1457,49 @@ fn summary_from_row(row: SessionRow) -> Result<SessionSummary, Report<SessionSto
     })
 }
 
+/// Puts persisted attachment blobs back into the kinds that carry them.
+///
+/// User entries (from `@path` sends) and tool-result entries (e.g. images
+/// from `read_image`) were persisted with empty attachment lists; the blobs
+/// live in `entry_blobs` and ride back in through this function on load.
+fn hydrate_kind_attachments(kind: ChatEntryKind, attachments: Vec<Attachment>) -> ChatEntryKind {
+    match kind {
+        ChatEntryKind::User {
+            display,
+            expanded,
+            outcome,
+            ..
+        } => ChatEntryKind::User {
+            display,
+            expanded,
+            attachments,
+            outcome,
+        },
+        ChatEntryKind::ToolResult {
+            id,
+            name,
+            content,
+            status,
+            full_content,
+            truncation,
+            pin_position,
+            is_alert,
+            ..
+        } => ChatEntryKind::ToolResult {
+            id,
+            name,
+            content,
+            status,
+            full_content,
+            truncation,
+            pin_position,
+            is_alert,
+            attachments,
+        },
+        other => other,
+    }
+}
+
 /// Reconstructs a `ChatEntry` from a joined entry/junction row.
 ///
 /// # Errors
@@ -1440,20 +1513,7 @@ fn entry_from_joined(
         tracing::warn!(entry_id = %joined.entry_id, error = %e, "failed to deserialize entry kind");
         ChatEntryKind::Error(format!("corrupt entry: {e}"))
     });
-    if let ChatEntryKind::User {
-        display,
-        expanded,
-        outcome,
-        ..
-    } = &kind
-    {
-        kind = ChatEntryKind::User {
-            display: display.clone(),
-            expanded: expanded.clone(),
-            attachments,
-            outcome: outcome.clone(),
-        };
-    }
+    kind = hydrate_kind_attachments(kind, attachments);
     let pin_position = joined.pin_position.as_deref().and_then(|s| match s {
         "TOP" => Some(jinn_core_types::PinPosition::Top),
         "BOTTOM" => Some(jinn_core_types::PinPosition::Bottom),

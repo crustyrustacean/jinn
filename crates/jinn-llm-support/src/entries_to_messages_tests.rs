@@ -289,6 +289,39 @@ fn tool_loop_produces_four_messages() {
 }
 
 #[rstest::rstest]
+fn tool_result_attachments_carry_into_the_tool_message() {
+    // Given a tool result entry carrying an image attachment, inside a valid tool loop.
+    let entries = vec![
+        ChatEntry::assistant(""),
+        ChatEntry::tool_call("call_1", "read_image", r#"{"file_path":"a.png"}"#),
+        ChatEntry::tool_result_with_attachments(
+            "call_1",
+            "read_image",
+            "screenshot.png (image/png, 2 KiB)",
+            ToolResultStatus::Success,
+            vec![jinn_provider::Attachment::image(
+                "image/png".to_owned(),
+                vec![1, 2, 3],
+            )],
+        ),
+    ];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then the tool message carries the attachment through.
+    let Some(LlmMessage::Tool { attachments, .. }) = messages
+        .iter()
+        .find(|m| matches!(m, LlmMessage::Tool { .. }))
+    else {
+        panic!("expected a Tool message, got: {messages:?}");
+    };
+    assert_eq!(attachments.len(), 1);
+    assert_eq!(attachments[0].media_type(), "image/png");
+    assert_eq!(attachments[0].data(), &[1, 2, 3]);
+}
+
+#[rstest::rstest]
 fn multiple_tool_calls_without_results_keep_assistant_text() {
     // Given an assistant entry followed by multiple incomplete tool calls.
     let entries = vec![
@@ -1693,6 +1726,7 @@ fn tool_msg(id: &str, content: &str) -> LlmMessage {
         tool_call_id: id.to_owned().into(),
         name: "echo".to_owned(),
         content: content.to_owned(),
+        attachments: Vec::new(),
     }
 }
 

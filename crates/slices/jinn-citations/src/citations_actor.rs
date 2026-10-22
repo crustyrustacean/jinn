@@ -256,6 +256,7 @@ mod tests {
             full_content: None,
             truncation: None,
             pin_position: None,
+            attachments: Vec::new(),
         }
     }
 

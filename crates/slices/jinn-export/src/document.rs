@@ -206,12 +206,27 @@ pub fn project_entry(entry: &ChatEntry) -> Option<ExportEntry> {
             let summary = format!("{name} · {}", summarize_arguments(arguments, 72));
             (arguments.clone(), Some(summary), true, Vec::new(), None)
         }
-        ChatEntryKind::ToolResult { name, status, .. } => {
+        ChatEntryKind::ToolResult {
+            name,
+            status,
+            attachments,
+            ..
+        } => {
             let body = entry.yank_text();
             let status = ExportToolStatus::from(status);
             let lines = line_count(&body);
             let summary = format!("{name} · {} · {lines} lines", status.as_str());
-            (body, Some(summary), true, Vec::new(), Some(status))
+            let images = attachments
+                .iter()
+                .filter(|a| a.is_image())
+                .map(|a| match a {
+                    Attachment::Image { media_type, data } => ExportImage {
+                        media_type: media_type.clone(),
+                        data: data.clone(),
+                    },
+                })
+                .collect();
+            (body, Some(summary), true, images, Some(status))
         }
         ChatEntryKind::Thinking(_) => {
             let body = entry.yank_text();
@@ -316,6 +331,7 @@ mod tests {
             truncation: None,
             pin_position: None,
             is_alert: false,
+            attachments: Vec::new(),
         });
 
         // When projecting it.
@@ -337,6 +353,7 @@ mod tests {
             truncation: None,
             pin_position: None,
             is_alert: false,
+            attachments: Vec::new(),
         });
 
         // When projecting it.

@@ -4586,6 +4586,8 @@ dependencies = [
  "jinn-mcp-msg",
  "jinn-picker",
  "jinn-preferences-config",
+ "jinn-provider",
+ "jinn-provider-config",
  "jinn-selection-widget",
  "jinn-session-history-msg",
  "jinn-session-init-msg",

@@ -132,6 +132,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             full_content: None,
             truncation: None,
             pin_position: None,
+            attachments: Vec::new(),
         }
     }
     .boxed()

@@ -948,6 +948,7 @@ fn failure_result(tool_call: &ToolCall, message: impl Into<String>) -> ToolResul
         full_content: None,
         truncation: None,
         pin_position: None,
+        attachments: Vec::new(),
     }
 }
 
@@ -1002,6 +1003,7 @@ fn build_result(
         full_content: truncated.truncated.then(|| content.to_owned()),
         truncation: truncated.meta,
         pin_position: None,
+        attachments: Vec::new(),
     }
 }
 

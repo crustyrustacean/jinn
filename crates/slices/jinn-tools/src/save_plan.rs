@@ -91,6 +91,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 full_content: None,
                 truncation: None,
                 pin_position: Some(ToolResultPinPosition::Relative),
+                attachments: Vec::new(),
             },
             Err(e) => unprefixed_failure(
                 &call,

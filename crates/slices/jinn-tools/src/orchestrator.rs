@@ -335,6 +335,7 @@ impl ToolOrchestratorActor {
                         full_content: None,
                         truncation: None,
                         pin_position: None,
+                        attachments: Vec::new(),
                     }))
                 },
             },
@@ -806,6 +807,7 @@ impl ToolOrchestratorActor {
             full_content: None,
             truncation: None,
             pin_position: None,
+            attachments: Vec::new(),
         };
 
         self.publish(ToolExecutionCompleted { session_id, result })
@@ -930,6 +932,7 @@ impl ToolOrchestratorActor {
             full_content: None,
             truncation: None,
             pin_position: None,
+            attachments: Vec::new(),
         };
 
         self.publish(ToolExecutionCompleted { session_id, result })
@@ -1056,6 +1059,7 @@ fn panicked_tool_result(tool_call_id: &ToolCallId, name: &str) -> ToolResult {
         full_content: None,
         truncation: None,
         pin_position: None,
+        attachments: Vec::new(),
     }
 }
 
@@ -1084,6 +1088,7 @@ fn rejected_mcp_result(tool_call: &ToolCall, reason: &str) -> ToolResult {
         full_content: None,
         truncation: None,
         pin_position: None,
+        attachments: Vec::new(),
     }
 }
 
@@ -1140,6 +1145,7 @@ async fn run_builtin_with_timeout(
                 full_content: None,
                 truncation: None,
                 pin_position: None,
+                attachments: Vec::new(),
             },
         },
         None => execute_fn(tool_call, tool_ctx).await,
@@ -1203,6 +1209,7 @@ mod timeout_tests {
                 full_content: None,
                 truncation: None,
                 pin_position: None,
+                attachments: Vec::new(),
             }
         })
     }
@@ -1218,6 +1225,7 @@ mod timeout_tests {
                 full_content: None,
                 truncation: None,
                 pin_position: None,
+                attachments: Vec::new(),
             }
         })
     }

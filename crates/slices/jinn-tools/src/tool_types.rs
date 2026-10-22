@@ -40,6 +40,7 @@ pub fn failed_result(tool_call_id: &ToolCallId, name: &str, msg: &str) -> ToolRe
         full_content: None,
         truncation: None,
         pin_position: None,
+        attachments: Vec::new(),
     }
 }
 
@@ -84,6 +85,7 @@ pub fn failed(
         full_content: None,
         truncation: None,
         pin_position: None,
+        attachments: Vec::new(),
     }
 }
 

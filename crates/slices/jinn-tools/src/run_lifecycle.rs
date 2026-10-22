@@ -774,6 +774,7 @@ fn succeeded(call: ToolCall, content: &str) -> ToolResult {
         full_content: None,
         truncation: None,
         pin_position: None,
+        attachments: Vec::new(),
     }
 }
 
@@ -787,5 +788,6 @@ fn failed(call: ToolCall, content: &str) -> ToolResult {
         full_content: None,
         truncation: None,
         pin_position: None,
+        attachments: Vec::new(),
     }
 }

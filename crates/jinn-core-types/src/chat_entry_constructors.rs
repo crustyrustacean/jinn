@@ -246,6 +246,26 @@ impl ChatEntry {
         S2: Into<String>,
         S3: Into<String>,
     {
+        Self::tool_result_with_attachments(id, name, content, status, Vec::new())
+    }
+
+    /// Create a new tool result entry carrying non-text attachments.
+    ///
+    /// This is the constructor a tool result that produced images (e.g.
+    /// `read_image`) goes through; plain results use [`Self::tool_result`].
+    #[must_use]
+    pub fn tool_result_with_attachments<S1, S2, S3>(
+        id: S1,
+        name: S2,
+        content: S3,
+        status: ToolResultStatus,
+        attachments: Vec<crate::attachment::Attachment>,
+    ) -> Self
+    where
+        S1: Into<crate::ToolCallId>,
+        S2: Into<String>,
+        S3: Into<String>,
+    {
         Self {
             id: ChatEntryId::new(),
             timing: crate::entry_timing::EntryTiming::instant_now(),
@@ -258,6 +278,7 @@ impl ChatEntry {
                 truncation: None,
                 is_alert: false,
                 pin_position: None,
+                attachments,
             },
             pin_position: None,
             context_override: ContextOverride::Default,
@@ -335,6 +356,7 @@ impl ChatEntry {
                 truncation: Some(truncation),
                 is_alert: false,
                 pin_position: None,
+                attachments: Vec::new(),
             },
             pin_position: None,
             context_override: ContextOverride::Default,

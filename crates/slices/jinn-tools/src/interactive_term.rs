@@ -292,6 +292,7 @@ pub(crate) fn success_result(
         full_content,
         truncation: truncated.meta,
         pin_position: None,
+        attachments: Vec::new(),
     }
 }
 
@@ -313,6 +314,7 @@ pub(crate) fn failure_result(tool_call_id: &ToolCallId, tool_name: &str, msg: &s
         full_content: None,
         truncation: None,
         pin_position: None,
+        attachments: Vec::new(),
     }
 }
 

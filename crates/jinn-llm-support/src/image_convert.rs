@@ -20,7 +20,8 @@ pub use converter::{
     UnavailableConverter,
 };
 pub use resolve::{
-    ImageResolveError, ResolveOutcome, format_attachment_error, resolve_attachments_blocking,
+    ImageFileError, ImageResolveError, ResolveOutcome, ResolvedImage, format_attachment_error,
+    resolve_attachments_blocking, resolve_image_file_blocking,
 };
 
 #[cfg(test)]

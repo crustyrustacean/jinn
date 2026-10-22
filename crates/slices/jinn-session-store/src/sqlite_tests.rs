@@ -6,6 +6,7 @@
     reason = "test code"
 )]
 
+use super::sqlite::{extract_attachments, serialize_lean_kind};
 use crate::sqlite::SqliteSessionStore;
 use jinn_core_types::ToolResultStatus;
 use jinn_core_types::{ChatEntry, ChatEntryKind, EntryTiming, SessionId};
@@ -2017,6 +2018,85 @@ const TINY_PNG: &[u8] = &[
     0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
     0x89,
 ];
+
+#[rstest::rstest]
+#[tokio::test]
+async fn tool_result_image_attachment_roundtrips_through_sqlite() {
+    // Given a session whose read_image ToolResult carries a PNG attachment.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut entry = ChatEntry::tool_result(
+        jinn_core_types::ToolCallId::from("call_img"),
+        "read_image",
+        "shot.png (image/png, 2 KiB)",
+        ToolResultStatus::Success,
+    );
+    if let ChatEntryKind::ToolResult { attachments, .. } = &mut entry.kind {
+        attachments.push(jinn_provider::Attachment::image(
+            "image/png".to_owned(),
+            TINY_PNG.to_vec(),
+        ));
+    }
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("Tool Image Session".to_owned());
+    session.push_entry(entry);
+
+    // When saving and reloading the session.
+    store.save(&session.capture_snapshot()).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load_session")
+        .expect("session should exist");
+
+    // Then the reloaded tool result carries the image attachment read from disk.
+    let entry = &loaded.history()[0];
+    let ChatEntryKind::ToolResult {
+        id,
+        name,
+        attachments,
+        ..
+    } = &entry.kind
+    else {
+        panic!("expected a ToolResult entry");
+    };
+    assert_eq!(id.as_str(), "call_img");
+    assert_eq!(name, "read_image");
+    assert_eq!(attachments.len(), 1);
+    assert!(attachments[0].is_image());
+    assert_eq!(attachments[0].data(), TINY_PNG);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn tool_result_kind_json_stays_lean_of_attachment_bytes() {
+    // Given a tool result entry carrying an image attachment.
+    let mut entry = ChatEntry::tool_result(
+        jinn_core_types::ToolCallId::from("call_lean"),
+        "read_image",
+        "pic.png (image/png, 1 KiB)",
+        ToolResultStatus::Success,
+    );
+    if let ChatEntryKind::ToolResult { attachments, .. } = &mut entry.kind {
+        attachments.push(jinn_provider::Attachment::image(
+            "image/png".to_owned(),
+            TINY_PNG.to_vec(),
+        ));
+    }
+
+    // When extracting attachments and serializing the lean kind.
+    let attachments = extract_attachments(&entry.kind);
+    let kind_json = serialize_lean_kind(&entry.kind);
+
+    // Then the lean kind JSON holds no base64 while the attachments list does.
+    assert!(
+        !kind_json.contains("iVBOR"),
+        "kind JSON must not carry base64 image bytes: {kind_json}"
+    );
+    assert_eq!(attachments.len(), 1);
+    assert_eq!(attachments[0].data(), TINY_PNG);
+}
 
 #[rstest::rstest]
 fn legacy_flat_lifecycle_blob_loads_after_group_composition() {

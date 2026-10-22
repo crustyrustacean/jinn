@@ -133,9 +133,10 @@ fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
         }
         LlmMessage::Tool {
             tool_call_id,
+            name: _,
             content,
-            ..
-        } => serde_json::json!({
+            attachments,
+        } if attachments.is_empty() => serde_json::json!({
             "role": "user",
             "content": [{
                 "type": "tool_result",
@@ -143,6 +144,32 @@ fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
                 "content": content,
             }],
         }),
+        LlmMessage::Tool {
+            tool_call_id,
+            name: _,
+            content,
+            attachments,
+        } => {
+            // Anthropic's tool_result accepts a content array, so images ride
+            // nested inside the result block they came from. When the tool
+            // also produced text, it leads as the result's text part.
+            let mut result_content: Vec<serde_json::Value> = Vec::new();
+            if !content.is_empty() {
+                result_content.push(serde_json::json!({
+                    "type": "text",
+                    "text": content,
+                }));
+            }
+            result_content.extend(attachments.iter().map(attachment_to_anthropic_block));
+            serde_json::json!({
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": tool_call_id,
+                    "content": result_content,
+                }],
+            })
+        }
     }
 }
 
@@ -216,6 +243,7 @@ mod tests {
             tool_call_id: "toolu_1".into(),
             name: "echo".into(),
             content: "result".into(),
+            attachments: Vec::new(),
         };
 
         // When converting it to the Anthropic wire shape.
@@ -307,5 +335,56 @@ mod tests {
 
         // Then content stays a plain string (fast path unchanged).
         assert_eq!(json["content"], "hello");
+    }
+
+    #[rstest::rstest]
+    fn tool_result_with_attachments_nests_image_blocks_in_the_result() {
+        // Given a tool result message carrying an image attachment.
+        let message = LlmMessage::Tool {
+            tool_call_id: "toolu_1".into(),
+            name: "read_image".into(),
+            content: "screenshot.png (image/png, 2 KiB)".into(),
+            attachments: vec![Attachment::image("image/png".to_owned(), vec![1, 2, 3])],
+        };
+
+        // When converting it to the Anthropic wire shape.
+        let json = message_to_json(&message);
+
+        // Then the message is a user message holding one tool_result block.
+        assert_eq!(json["role"], "user");
+        let content = json["content"].as_array().expect("array");
+        assert_eq!(content.len(), 1);
+        assert_eq!(content[0]["type"], "tool_result");
+        assert_eq!(content[0]["tool_use_id"], "toolu_1");
+        // And the result's content is an array: the text part, then the image block.
+        let result_content = content[0]["content"].as_array().expect("array");
+        assert_eq!(result_content.len(), 2);
+        assert_eq!(result_content[0]["type"], "text");
+        assert_eq!(
+            result_content[0]["text"],
+            "screenshot.png (image/png, 2 KiB)"
+        );
+        assert_eq!(result_content[1]["type"], "image");
+        assert_eq!(result_content[1]["source"]["media_type"], "image/png");
+        assert_eq!(result_content[1]["source"]["type"], "base64");
+    }
+
+    #[rstest::rstest]
+    fn tool_result_with_attachments_and_empty_text_omits_the_text_part() {
+        // Given a tool result message with an image and no text content.
+        let message = LlmMessage::Tool {
+            tool_call_id: "toolu_1".into(),
+            name: "read_image".into(),
+            content: String::new(),
+            attachments: vec![Attachment::image("image/png".to_owned(), vec![1, 2, 3])],
+        };
+
+        // When converting it to the Anthropic wire shape.
+        let json = message_to_json(&message);
+
+        // Then the result content holds only the image block.
+        let result_content = json["content"][0]["content"].as_array().expect("array");
+        assert_eq!(result_content.len(), 1);
+        assert_eq!(result_content[0]["type"], "image");
     }
 }

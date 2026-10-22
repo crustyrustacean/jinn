@@ -147,6 +147,7 @@ impl Serialize for ChatEntryKind {
                 truncation,
                 pin_position,
                 is_alert,
+                attachments,
             } => {
                 #[derive(Serialize)]
                 struct ToolResultData {
@@ -162,6 +163,8 @@ impl Serialize for ChatEntryKind {
                     pin_position: Option<PinPosition>,
                     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
                     is_alert: bool,
+                    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+                    attachments: Vec<crate::attachment::Attachment>,
                 }
                 let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry(
@@ -175,6 +178,7 @@ impl Serialize for ChatEntryKind {
                         truncation: truncation.clone(),
                         pin_position: *pin_position,
                         is_alert: *is_alert,
+                        attachments: attachments.clone(),
                     },
                 )?;
                 map.end()
@@ -361,6 +365,8 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             truncation: Option<crate::tool_types::TruncationMeta>,
                             #[serde(default)]
                             pin_position: Option<PinPosition>,
+                            #[serde(default)]
+                            attachments: Vec<crate::attachment::Attachment>,
                         }
                         // Try new format first, fall back to old format.
                         #[derive(Deserialize)]
@@ -381,6 +387,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                                 truncation: data.truncation,
                                 pin_position: data.pin_position,
                                 is_alert: false,
+                                attachments: data.attachments,
                             })
                             .or_else(|_| {
                                 serde_json::from_value::<ToolResultDataOld>(value).map(|data| {
@@ -397,6 +404,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                                         full_content: None,
                                         truncation: None,
                                         pin_position: None,
+                                        attachments: Vec::new(),
                                     }
                                 })
                             })

@@ -1717,11 +1717,13 @@ mod tests {
             tool_call_id: "call-1".into(),
             name: String::new(),
             content: "some tool output".to_owned(),
+            attachments: Vec::new(),
         }];
         let named = vec![LlmMessage::Tool {
             tool_call_id: "call-1".into(),
             name: "bash".to_owned(),
             content: "some tool output".to_owned(),
+            attachments: Vec::new(),
         }];
 
         // When counting tokens for each message list.

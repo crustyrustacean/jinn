@@ -111,6 +111,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     full_content: Some(content),
                     truncation: Some(meta),
                     pin_position: None,
+                    attachments: Vec::new(),
                 }
             } else {
                 // truncated but no meta - return unformatted truncated content
@@ -122,6 +123,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     full_content: Some(content),
                     truncation: None,
                     pin_position: None,
+                    attachments: Vec::new(),
                 }
             }
         } else {
@@ -133,6 +135,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 full_content: Some(content),
                 truncation: None,
                 pin_position: None,
+                attachments: Vec::new(),
             }
         }
     })

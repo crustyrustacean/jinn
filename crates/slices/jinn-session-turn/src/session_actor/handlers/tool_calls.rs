@@ -80,7 +80,7 @@ impl SessionPersistenceActor {
                     );
                     return false;
                 }
-                session.finalize_tool_result(
+                session.finalize_tool_result_with_attachments(
                     &event.result.tool_call_id,
                     &event.result.name,
                     &event.result.content,
@@ -88,6 +88,7 @@ impl SessionPersistenceActor {
                     event.result.full_content.clone(),
                     event.result.truncation.clone(),
                     event.result.pin_position.map(PinPosition::from),
+                    event.result.attachments.clone(),
                 );
                 true
             });
@@ -597,6 +598,7 @@ mod tests {
             full_content: None,
             truncation: None,
             pin_position: None,
+            attachments: Vec::new(),
         }
     }
 
@@ -1049,6 +1051,7 @@ mod tests {
                 full_content: None,
                 truncation: None,
                 pin_position: None,
+                attachments: Vec::new(),
             }]);
         }
 
@@ -1198,6 +1201,7 @@ mod tests {
                 full_content: None,
                 truncation: None,
                 pin_position: None,
+                attachments: Vec::new(),
             },
         };
         actor.on_tool_execution_completed(&event).await;
@@ -1253,6 +1257,7 @@ mod tests {
                 full_content: None,
                 truncation: None,
                 pin_position: None,
+                attachments: Vec::new(),
             }],
         };
 

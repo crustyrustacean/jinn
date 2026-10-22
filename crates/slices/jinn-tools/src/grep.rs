@@ -106,6 +106,7 @@ fn format_output(
                 full_content: Some(content.to_owned()),
                 truncation: Some(meta),
                 pin_position: None,
+                attachments: Vec::new(),
             }
         } else {
             ToolResult {
@@ -116,6 +117,7 @@ fn format_output(
                 full_content: Some(content.to_owned()),
                 truncation: None,
                 pin_position: None,
+                attachments: Vec::new(),
             }
         }
     } else {
@@ -127,6 +129,7 @@ fn format_output(
             full_content: None,
             truncation: None,
             pin_position: None,
+            attachments: Vec::new(),
         }
     }
 }

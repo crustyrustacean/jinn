@@ -53,6 +53,7 @@ pub mod load_attendant;
 /// cannot run.
 pub mod powershell;
 pub mod read;
+pub mod read_image;
 pub mod registry;
 pub mod restart_mcp;
 pub mod run_lifecycle;

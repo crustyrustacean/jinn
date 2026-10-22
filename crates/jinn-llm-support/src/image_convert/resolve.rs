@@ -147,6 +147,72 @@ fn convert_via_imagemagick(
     Ok(Attachment::image(String::from("image/png"), png_bytes))
 }
 
+/// The classified, (possibly) transcoded contents of one image file.
+///
+/// The single-file counterpart of [`ResolveOutcome`]: unlike the batch
+/// resolver — which silently degrades missing and non-image files — the
+/// single-file resolver reports every condition as a typed outcome so a
+/// caller (the `read_image` tool) can fail loudly with a reason.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedImage {
+    /// The resolved media type (the native type, or `image/png` after
+    /// transcoding).
+    pub media_type: String,
+    /// The image bytes.
+    pub bytes: Vec<u8>,
+}
+
+/// Why a single file could not be resolved to an image.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImageFileError {
+    /// The path does not exist or could not be read.
+    Missing,
+    /// The file exists but its bytes are not a recognized image.
+    NotAnImage,
+    /// The file is a recognizable image but ImageMagick is unavailable or
+    /// the transcode failed.
+    ConversionUnavailable,
+}
+
+/// Resolves one file to an image, reporting every failure mode as a typed
+/// outcome instead of degrading.
+///
+/// This is the single-file counterpart of [`resolve_attachments_blocking`]:
+/// the batch resolver degrades silently because a `@word` that is not a file
+/// is usually prose, while `read_image` was called *because* the model
+/// believed the path held an image — every failure is worth naming.
+///
+/// # Errors
+///
+/// Returns [`ImageFileError::Missing`] when the path cannot be read,
+/// [`ImageFileError::NotAnImage`] when the bytes are not a recognized image,
+/// and [`ImageFileError::ConversionUnavailable`] when a transcode-needing
+/// file cannot be converted (ImageMagick missing or the conversion failed).
+///
+/// Blocking; callers must run it inside `spawn_blocking`.
+pub fn resolve_image_file_blocking(
+    path: &Path,
+    converter: &ImageConverterService,
+) -> Result<ResolvedImage, ImageFileError> {
+    let bytes = std::fs::read(path).map_err(|_io| ImageFileError::Missing)?;
+    match classify_image_bytes(&bytes) {
+        ImageKind::Native { media_type } => Ok(ResolvedImage {
+            media_type: media_type.to_owned(),
+            bytes,
+        }),
+        ImageKind::NeedsConversion => {
+            let png_bytes = converter
+                .convert_to_png(path)
+                .map_err(|_conv| ImageFileError::ConversionUnavailable)?;
+            Ok(ResolvedImage {
+                media_type: String::from("image/png"),
+                bytes: png_bytes,
+            })
+        }
+        ImageKind::NotAnImage => Err(ImageFileError::NotAnImage),
+    }
+}
+
 /// Renders a resolution-failure [`Report`] into a user-facing message.
 ///
 /// Joins the error's context chain (the top-level message plus attached

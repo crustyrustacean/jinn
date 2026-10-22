@@ -47,6 +47,10 @@ unicode-segmentation = { workspace = true }
 # precedent for a slice consuming kernel vocabulary at execution time.
 jinn-kernel = { workspace = true }
 jinn-llm-support = { workspace = true }
+# `read_image` attaches through the shared `Attachment` type and resolves its
+# vision gate against models.dev reference data.
+jinn-provider = { workspace = true }
+jinn-provider-config = { workspace = true }
 jinn-context-assembly = { workspace = true }
 jinn-session-turn = { workspace = true }
 

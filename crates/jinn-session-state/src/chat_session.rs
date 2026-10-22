@@ -1858,6 +1858,7 @@ impl ChatSessionState {
         full_content: Option<String>,
         truncation: Option<jinn_core_types::tool_types::TruncationMeta>,
         pin_position: Option<PinPosition>,
+        attachments: Vec<jinn_core_types::attachment::Attachment>,
     ) -> bool {
         let tracked_index = self
             .core
@@ -1874,6 +1875,7 @@ impl ChatSessionState {
                 truncation: entry_truncation,
                 pin_position: entry_kind_pin,
                 is_alert,
+                attachments: entry_attachments,
                 ..
             } = &mut entry.kind
             {
@@ -1885,6 +1887,7 @@ impl ChatSessionState {
                 // The alert styling is pending-state only — a finished result
                 // renders with its normal success/failure look.
                 *is_alert = false;
+                *entry_attachments = attachments;
                 // Entry-level pin mirrors the kind-level pin so assembly,
                 // compaction, and UI consumers read a single field.
                 entry.pin_position = pin_position;
@@ -1906,10 +1909,6 @@ impl ChatSessionState {
         }
     }
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "mirrors begin_tool_result + pin_position; struct-builder would ripple to all tool actors"
-    )]
     pub fn finalize_tool_result(
         &mut self,
         tool_call_id: &ToolCallId,
@@ -1919,6 +1918,35 @@ impl ChatSessionState {
         full_content: Option<String>,
         truncation: Option<jinn_core_types::tool_types::TruncationMeta>,
         pin_position: Option<PinPosition>,
+    ) {
+        self.finalize_tool_result_with_attachments(
+            tool_call_id,
+            name,
+            content,
+            success,
+            full_content,
+            truncation,
+            pin_position,
+            Vec::new(),
+        );
+    }
+
+    /// [`Self::finalize_tool_result`] for results that produced non-text
+    /// attachments (e.g. an image returned by `read_image`).
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "mirrors finalize_tool_result; struct-builder would ripple to all tool actors"
+    )]
+    pub fn finalize_tool_result_with_attachments(
+        &mut self,
+        tool_call_id: &ToolCallId,
+        name: &str,
+        content: &str,
+        success: bool,
+        full_content: Option<String>,
+        truncation: Option<jinn_core_types::tool_types::TruncationMeta>,
+        pin_position: Option<PinPosition>,
+        attachments: Vec<jinn_core_types::attachment::Attachment>,
     ) {
         let status = if success {
             ToolResultStatus::Success
@@ -1934,6 +1962,7 @@ impl ChatSessionState {
             full_content.clone(),
             truncation.clone(),
             pin_position,
+            attachments.clone(),
         );
 
         if !finalized {
@@ -1949,7 +1978,13 @@ impl ChatSessionState {
                     meta,
                 )
             } else {
-                ChatEntry::tool_result(tool_call_id.clone(), name, content, status)
+                ChatEntry::tool_result_with_attachments(
+                    tool_call_id.clone(),
+                    name,
+                    content,
+                    status,
+                    attachments,
+                )
             };
             // Propagate tool-requested pin onto both the kind variant and
             // the entry-level field so assembly/compaction read a single source.

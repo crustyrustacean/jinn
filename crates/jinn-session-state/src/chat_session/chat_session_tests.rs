@@ -897,6 +897,85 @@ fn append_tool_call_delta_accumulates_arguments() {
 }
 
 #[rstest::rstest]
+fn finalize_tool_result_with_attachments_stamps_the_entry() {
+    // Given a session in streaming state with a pending tool result.
+    let mut session = attached_session();
+    session.begin_sending();
+    session.begin_streaming();
+    session.begin_tool_result(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "read_image",
+        jiff::Timestamp::now(),
+    );
+
+    // When finalizing it with an image attachment.
+    let attachments = vec![jinn_core_types::attachment::Attachment::image(
+        "image/png".to_owned(),
+        vec![1, 2, 3],
+    )];
+    session.finalize_tool_result_with_attachments(
+        &jinn_core_types::ToolCallId::from("call_1"),
+        "read_image",
+        "shot.png (image/png, 2 KiB)",
+        true,
+        None,
+        None,
+        None,
+        attachments,
+    );
+
+    // Then the finalized entry carries the attachment.
+    match &session.history()[0].kind {
+        ChatEntryKind::ToolResult {
+            attachments,
+            status,
+            ..
+        } => {
+            assert_eq!(attachments.len(), 1);
+            assert_eq!(attachments[0].media_type(), "image/png");
+            assert_eq!(*status, ToolResultStatus::Success);
+        }
+        other => panic!("expected ToolResult, got {other:?}"),
+    }
+}
+
+#[rstest::rstest]
+fn finalize_tool_result_with_attachments_pushes_a_new_entry_when_not_pending() {
+    // Given a streaming session with no pending tool result for the id.
+    let mut session = attached_session();
+    session.begin_sending();
+    session.begin_streaming();
+
+    // When finalizing a result with an attachment that was never begun.
+    let attachments = vec![jinn_core_types::attachment::Attachment::image(
+        "image/png".to_owned(),
+        vec![7, 8, 9],
+    )];
+    session.finalize_tool_result_with_attachments(
+        &jinn_core_types::ToolCallId::from("call_9"),
+        "read_image",
+        "pic.png (image/png, 1 KiB)",
+        true,
+        None,
+        None,
+        None,
+        attachments,
+    );
+
+    // Then a new ToolResult entry is pushed carrying the attachment.
+    match &session.history()[0].kind {
+        ChatEntryKind::ToolResult {
+            id, attachments, ..
+        } => {
+            assert_eq!(id.as_str(), "call_9");
+            assert_eq!(attachments.len(), 1);
+            assert_eq!(attachments[0].data(), &[7, 8, 9]);
+        }
+        other => panic!("expected ToolResult, got {other:?}"),
+    }
+}
+
+#[rstest::rstest]
 fn finalize_tool_call_overwrites_arguments() {
     // Given a streaming session with a tool call that has partial arguments.
     let mut session = attached_session();

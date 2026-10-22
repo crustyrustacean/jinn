@@ -93,6 +93,7 @@ fn sample_tool_result() -> ToolResult {
         full_content: None,
         truncation: None,
         pin_position: None,
+        attachments: Vec::new(),
     }
 }
 

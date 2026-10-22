@@ -147,6 +147,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     full_content: None,
                     truncation: None,
                     pin_position: None,
+                    attachments: Vec::new(),
                 }
             }
             Err(content) => ToolResult {
@@ -157,6 +158,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 full_content: None,
                 truncation: None,
                 pin_position: None,
+                attachments: Vec::new(),
             },
         }
     })

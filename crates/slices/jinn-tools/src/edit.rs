@@ -32,6 +32,7 @@ fn ok_result(call: &ToolCall, content: String) -> ToolResult {
         full_content: None,
         truncation: None,
         pin_position: None,
+        attachments: Vec::new(),
     }
 }
 

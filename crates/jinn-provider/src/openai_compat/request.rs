@@ -113,7 +113,7 @@ fn coalesce_messages(messages: &[&LlmMessage]) -> Vec<serde_json::Value> {
     let mut result: Vec<serde_json::Value> = Vec::new();
 
     for msg in messages {
-        let json = message_to_json(msg);
+        let values = message_to_json_values(msg);
         let can_coalesce = matches!(msg, LlmMessage::User { attachments, .. } if attachments.is_empty())
             || matches!(
                 msg,
@@ -123,38 +123,49 @@ fn coalesce_messages(messages: &[&LlmMessage]) -> Vec<serde_json::Value> {
                 }
             );
 
-        if can_coalesce && let Some(last) = result.last_mut() {
-            // Only merge if the previous message is also a plain user or
-            // assistant (no tool_calls, no tool_call_id) and has the same role.
-            let last_is_coalescable = (last["role"] == "user" || last["role"] == "assistant")
-                && last.get("tool_calls").is_none()
-                && last.get("tool_call_id").is_none();
+        for json in values {
+            if can_coalesce && let Some(last) = result.last_mut() {
+                // Only merge if the previous message is also a plain user or
+                // assistant (no tool_calls, no tool_call_id) and has the same
+                // role. Array-content messages (image carriers, synthesized or
+                // not) never absorb text: merging would drop their parts.
+                let last_is_coalescable = (last["role"] == "user" || last["role"] == "assistant")
+                    && last.get("tool_calls").is_none()
+                    && last.get("tool_call_id").is_none()
+                    && last["content"].is_string();
 
-            if last_is_coalescable && last["role"] == json["role"] {
-                // Append content to the previous message of the same role.
-                let existing = last["content"].as_str().unwrap_or("");
-                let incoming = json["content"].as_str().unwrap_or("");
-                last["content"] = serde_json::Value::String(format!("{existing}\n\n{incoming}"));
-                continue;
+                if last_is_coalescable && last["role"] == json["role"] {
+                    // Append content to the previous message of the same role.
+                    let existing = last["content"].as_str().unwrap_or("");
+                    let incoming = json["content"].as_str().unwrap_or("");
+                    last["content"] =
+                        serde_json::Value::String(format!("{existing}\n\n{incoming}"));
+                    continue;
+                }
             }
-        }
 
-        result.push(json);
+            result.push(json);
+        }
     }
 
     result
 }
 
-/// Convert an [`LlmMessage`] to an OpenAI-format JSON object.
-fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
+/// Convert an [`LlmMessage`] to OpenAI-format message JSON.
+///
+/// Most messages produce exactly one wire object, but a tool result carrying
+/// attachments produces two: the result itself, then a synthesized user
+/// message carrying the images — OpenAI's tool message content is text-only,
+/// so the images cannot ride inside it.
+fn message_to_json_values(msg: &LlmMessage) -> Vec<serde_json::Value> {
     match msg {
         LlmMessage::User {
             content,
             attachments,
-        } if attachments.is_empty() => serde_json::json!({
+        } if attachments.is_empty() => vec![serde_json::json!({
             "role": "user",
             "content": content,
-        }),
+        })],
         LlmMessage::User {
             content,
             attachments,
@@ -168,38 +179,66 @@ fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
                     "text": content,
                 }));
             }
-            serde_json::json!({
+            vec![serde_json::json!({
                 "role": "user",
                 "content": parts,
-            })
+            })]
         }
         LlmMessage::Assistant {
             content,
             tool_calls: None,
-        } => serde_json::json!({
+        } => vec![serde_json::json!({
             "role": "assistant",
             "content": content,
-        }),
+        })],
         LlmMessage::Assistant {
             content,
             tool_calls: Some(calls),
         } => {
             let json_calls: Vec<serde_json::Value> = calls.iter().map(tool_call_to_json).collect();
-            serde_json::json!({
+            vec![serde_json::json!({
                 "role": "assistant",
                 "content": content,
                 "tool_calls": json_calls,
-            })
+            })]
         }
         LlmMessage::Tool {
             tool_call_id,
+            name: _,
             content,
-            ..
-        } => serde_json::json!({
+            attachments,
+        } if attachments.is_empty() => vec![serde_json::json!({
             "role": "tool",
             "tool_call_id": tool_call_id,
             "content": content,
-        }),
+        })],
+        LlmMessage::Tool {
+            tool_call_id,
+            name,
+            content,
+            attachments,
+        } => {
+            // The tool message keeps its plain-string content exactly as
+            // before; the images follow in a synthesized ordinary user turn.
+            let tool_msg = serde_json::json!({
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": content,
+            });
+            let mut parts: Vec<serde_json::Value> =
+                attachments.iter().map(attachment_to_openai_block).collect();
+            parts.push(serde_json::json!({
+                "type": "text",
+                "text": format!("[Image attached from tool call {tool_call_id} ({name})]"),
+            }));
+            vec![
+                tool_msg,
+                serde_json::json!({
+                    "role": "user",
+                    "content": parts,
+                }),
+            ]
+        }
     }
 }
 
@@ -362,10 +401,11 @@ mod tests {
             tool_call_id: "call_1".into(),
             name: "echo".into(),
             content: "result".into(),
+            attachments: Vec::new(),
         };
 
         // When converting it to the OpenAI wire shape.
-        let json = message_to_json(&message);
+        let json = message_to_json_values(&message).remove(0);
 
         // Then it is a tool message carrying the call id and content.
         assert_eq!(json["role"], "tool");
@@ -401,7 +441,7 @@ mod tests {
         };
 
         // When converting it to the OpenAI wire shape.
-        let json = message_to_json(&message);
+        let json = message_to_json_values(&message).remove(0);
 
         // Then it is an assistant message whose `tool_calls` names the tool.
         assert_eq!(json["role"], "assistant");
@@ -497,11 +537,13 @@ mod tests {
                 tool_call_id: "call_1".into(),
                 name: "echo".into(),
                 content: "result1".into(),
+                attachments: Vec::new(),
             },
             LlmMessage::Tool {
                 tool_call_id: "call_2".into(),
                 name: "ls".into(),
                 content: "result2".into(),
+                attachments: Vec::new(),
             },
         ];
 
@@ -584,6 +626,7 @@ mod tests {
                 tool_call_id: "call_1".into(),
                 name: "bash".into(),
                 content: "ok".into(),
+                attachments: Vec::new(),
             },
             LlmMessage::User {
                 content: "now do another thing".into(),
@@ -692,6 +735,7 @@ mod tests {
                 tool_call_id: "call_1".into(),
                 name: "get_weather".into(),
                 content: "72°F sunny".into(),
+                attachments: Vec::new(),
             },
             LlmMessage::Assistant {
                 content: "It's 72°F and sunny in SF.".into(),
@@ -888,7 +932,7 @@ mod tests {
         };
 
         // When converting to OpenAI JSON.
-        let json = message_to_json(&msg);
+        let json = message_to_json_values(&msg).remove(0);
 
         // Then content is an array with an image_url block followed by text.
         let content = json["content"].as_array().expect("array");
@@ -913,7 +957,7 @@ mod tests {
         };
 
         // When converting to OpenAI JSON.
-        let json = message_to_json(&msg);
+        let json = message_to_json_values(&msg).remove(0);
 
         // Then content stays a plain string (fast path unchanged).
         assert_eq!(json["content"], "hello");
@@ -942,5 +986,73 @@ mod tests {
         assert_eq!(req.messages[1]["role"], "user");
         assert_eq!(req.messages[0]["content"], "first");
         assert!(req.messages[1]["content"].is_array());
+    }
+
+    #[rstest::rstest]
+    fn tool_result_with_attachments_emits_tool_message_then_synthesized_user() {
+        // Given a tool result message carrying an image attachment.
+        let messages = vec![LlmMessage::Tool {
+            tool_call_id: "call_1".into(),
+            name: "read_image".into(),
+            content: "screenshot.png (image/png, 2 KiB)".into(),
+            attachments: vec![Attachment::image("image/png".to_owned(), vec![1, 2, 3])],
+        }];
+
+        // When building request.
+        let req = build_request("gpt-4", None, &messages, &[], &serde_json::Map::new());
+
+        // Then two wire messages are produced: the tool message unchanged, then
+        // a synthesized user message.
+        assert_eq!(req.messages.len(), 2);
+        assert_eq!(req.messages[0]["role"], "tool");
+        assert_eq!(req.messages[0]["tool_call_id"], "call_1");
+        assert_eq!(
+            req.messages[0]["content"],
+            "screenshot.png (image/png, 2 KiB)"
+        );
+        // And the synthesized user message carries the image part then attribution text.
+        assert_eq!(req.messages[1]["role"], "user");
+        let parts = req.messages[1]["content"].as_array().expect("array");
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0]["type"], "image_url");
+        assert!(
+            parts[0]["image_url"]["url"]
+                .as_str()
+                .unwrap()
+                .starts_with("data:image/png;base64,")
+        );
+        assert_eq!(parts[1]["type"], "text");
+        assert_eq!(
+            parts[1]["text"],
+            "[Image attached from tool call call_1 (read_image)]"
+        );
+    }
+
+    #[rstest::rstest]
+    fn synthesized_user_message_after_tool_result_is_not_coalesced() {
+        // Given a tool result with an image followed by a plain user message.
+        let messages = vec![
+            LlmMessage::Tool {
+                tool_call_id: "call_1".into(),
+                name: "read_image".into(),
+                content: "ok".into(),
+                attachments: vec![Attachment::image("image/png".to_owned(), vec![1])],
+            },
+            LlmMessage::User {
+                content: "now zoom in".into(),
+                attachments: Vec::new(),
+            },
+        ];
+
+        // When building request.
+        let req = build_request("gpt-4", None, &messages, &[], &serde_json::Map::new());
+
+        // Then the synthesized user message and the real user message stay
+        // separate (array content never absorbs string content).
+        assert_eq!(req.messages.len(), 3);
+        assert_eq!(req.messages[1]["role"], "user");
+        assert!(req.messages[1]["content"].is_array());
+        assert_eq!(req.messages[2]["role"], "user");
+        assert_eq!(req.messages[2]["content"], "now zoom in");
     }
 }

@@ -293,6 +293,7 @@ pub fn query_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             full_content: None,
             truncation: None,
             pin_position: None,
+            attachments: Vec::new(),
         }
     })
 }
@@ -381,6 +382,7 @@ pub fn apply_execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             full_content: None,
             truncation: None,
             pin_position: None,
+            attachments: Vec::new(),
         }
     })
 }

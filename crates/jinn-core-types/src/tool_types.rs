@@ -154,6 +154,10 @@ pub struct ToolResult {
     /// leaves the entry in normal working history.
     #[serde(default)]
     pub pin_position: Option<ToolResultPinPosition>,
+    /// Non-text attachments the tool produced (e.g. images returned by
+    /// `read_image`). Empty for plain-text results.
+    #[serde(default)]
+    pub attachments: Vec<crate::attachment::Attachment>,
 }
 
 #[cfg(test)]
@@ -223,6 +227,7 @@ mod tests {
             full_content: None,
             truncation: None,
             pin_position: None,
+            attachments: Vec::new(),
         };
 
         // When serializing and deserializing.
@@ -250,6 +255,7 @@ mod tests {
                 output_bytes: 9,
             }),
             pin_position: None,
+            attachments: Vec::new(),
         };
 
         // When serializing and deserializing.

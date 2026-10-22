@@ -396,6 +396,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             full_content: truncation_result.truncated.then_some(full_content),
             truncation: truncation_result.meta,
             pin_position: None,
+            attachments: Vec::new(),
         }
     })
 }

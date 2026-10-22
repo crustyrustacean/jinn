@@ -48,6 +48,7 @@ pub fn to_lines(
     status: ToolResultStatus,
     truncation: Option<&TruncationMeta>,
     is_alert: bool,
+    attachment_summary: Option<String>,
     ctx: &RenderContext,
 ) -> Vec<Line<'static>> {
     if name == SPAWN_SUBAGENT_TOOL_NAME {
@@ -63,10 +64,23 @@ pub fn to_lines(
     if is_alert {
         return alert_lines(content, ctx);
     }
-    if ctx.is_expanded {
-        return to_lines_expanded(content, truncation, ctx);
+    let mut lines = if ctx.is_expanded {
+        to_lines_expanded(content, truncation, ctx)
+    } else {
+        to_lines_collapsed(content, truncation, ctx)
+    };
+    if let Some(summary) = attachment_summary {
+        lines.push(attachment_placeholder_line(&summary, ctx));
     }
-    to_lines_collapsed(content, truncation, ctx)
+    lines
+}
+
+/// One-line placeholder for a tool result's image attachments
+/// (`🖼 image — image/png, 2.0KB`). Never renders bytes; styled like
+/// the user block's attached `@path` tokens.
+fn attachment_placeholder_line(summary: &str, ctx: &RenderContext) -> Line<'static> {
+    let text = truncate_to_width(summary, ctx.content_width as usize);
+    Line::from(Span::styled(text, Style::default().fg(ctx.theme.success)))
 }
 
 /// `spawn_subagent` result: content on the subagent block background, closed by a
@@ -337,6 +351,7 @@ mod tests {
             ToolResultStatus::Success,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -368,6 +383,7 @@ mod tests {
             ToolResultStatus::Success,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -405,6 +421,7 @@ mod tests {
             ToolResultStatus::Success,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -429,6 +446,7 @@ mod tests {
             ToolResultStatus::Success,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -460,6 +478,7 @@ mod tests {
             ToolResultStatus::Success,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -493,6 +512,7 @@ mod tests {
             ToolResultStatus::Pending,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -535,6 +555,7 @@ mod tests {
             ToolResultStatus::Success,
             Some(&meta),
             false,
+            None,
             &ctx,
         );
 
@@ -563,6 +584,7 @@ mod tests {
             ToolResultStatus::Success,
             Some(&meta),
             false,
+            None,
             &ctx,
         );
 
@@ -604,6 +626,7 @@ mod tests {
             ToolResultStatus::Success,
             Some(&meta),
             false,
+            None,
             &ctx,
         );
 
@@ -639,6 +662,7 @@ mod tests {
             ToolResultStatus::Success,
             Some(&meta),
             false,
+            None,
             &ctx,
         );
 
@@ -670,6 +694,7 @@ mod tests {
             ToolResultStatus::Success,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -702,6 +727,7 @@ mod tests {
             ToolResultStatus::Success,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -731,6 +757,7 @@ mod tests {
             ToolResultStatus::Success,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -759,6 +786,7 @@ mod tests {
             ToolResultStatus::Success,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -788,6 +816,7 @@ mod tests {
             ToolResultStatus::Success,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -818,6 +847,7 @@ mod tests {
             ToolResultStatus::Success,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -845,6 +875,7 @@ mod tests {
             ToolResultStatus::Failure,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -868,6 +899,7 @@ mod tests {
             ToolResultStatus::Success,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -898,6 +930,7 @@ mod tests {
             ToolResultStatus::Success,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -937,6 +970,7 @@ mod tests {
             ToolResultStatus::Success,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -970,6 +1004,7 @@ mod tests {
             ToolResultStatus::Success,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -994,6 +1029,7 @@ mod tests {
             ToolResultStatus::Success,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -1022,6 +1058,7 @@ mod tests {
             ToolResultStatus::Success,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -1049,6 +1086,7 @@ mod tests {
             ToolResultStatus::Pending,
             None,
             true,
+            None,
             &ctx,
         );
 
@@ -1078,6 +1116,7 @@ mod tests {
             ToolResultStatus::Pending,
             None,
             true,
+            None,
             &ctx,
         );
 
@@ -1104,6 +1143,7 @@ mod tests {
             ToolResultStatus::Success,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -1153,6 +1193,7 @@ mod tests {
             ToolResultStatus::Failure,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -1186,6 +1227,7 @@ mod tests {
             ToolResultStatus::Pending,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -1218,6 +1260,7 @@ mod tests {
             ToolResultStatus::Success,
             None,
             false,
+            None,
             &ctx,
         );
 
@@ -1233,6 +1276,63 @@ mod tests {
                 .iter()
                 .any(|s| s.style.bg == Some(theme.subagent_bg))),
             "non-spawn_subagent result should not use subagent_bg"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn tool_result_with_image_attachment_renders_placeholder_line() {
+        // Given a tool result with an image attachment summary.
+        let ctx = render_context(5, false);
+
+        // When converting to lines.
+        let lines = to_lines(
+            "read_image",
+            "shot.png (image/png, 2.0KB)",
+            ToolResultStatus::Success,
+            None,
+            false,
+            Some("\u{1f5bc} image \u{2014} image/png, 2.0KB".to_owned()),
+            &ctx,
+        );
+
+        // Then the last line is the placeholder, and it carries no base64.
+        let text = line_text(lines.last().expect("at least one line"));
+        assert!(
+            text.contains('\u{1f5bc}'),
+            "placeholder line should render: {text}"
+        );
+        assert!(
+            text.contains("image/png"),
+            "placeholder should name the media type: {text}"
+        );
+        assert!(
+            !lines.iter().any(|l| line_text(l).contains("iVBOR")),
+            "no base64 bytes may be rendered"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn tool_result_without_attachments_renders_no_placeholder() {
+        // Given a tool result with no attachment summary.
+        let ctx = render_context(5, false);
+
+        // When converting to lines.
+        let lines = to_lines(
+            "bash",
+            "output line",
+            ToolResultStatus::Success,
+            None,
+            false,
+            None,
+            &ctx,
+        );
+
+        // Then no line mentions the placeholder icon.
+        assert!(
+            !lines.iter().any(|l| line_text(l).contains('\u{1f5bc}')),
+            "no placeholder line without attachments"
         );
     }
 }

@@ -647,5 +647,6 @@ fn forward(call: ToolCall, success: bool, content: String) -> ToolResult {
         full_content: None,
         truncation: None,
         pin_position: None,
+        attachments: Vec::new(),
     }
 }

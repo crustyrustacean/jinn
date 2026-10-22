@@ -123,12 +123,17 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                 push_tool_call_message(&mut messages, tool_call);
             }
             ChatEntryKind::ToolResult {
-                id, name, content, ..
+                id,
+                name,
+                content,
+                attachments,
+                ..
             } => {
                 messages.push(LlmMessage::Tool {
                     tool_call_id: id.clone(),
                     name: name.clone(),
                     content: content.clone(),
+                    attachments: attachments.clone(),
                 });
             }
             // System entries ride as a prefixed User message when in context
@@ -233,6 +238,7 @@ pub(super) fn enforce_valid_tool_sequences(messages: &mut Vec<LlmMessage>) {
                 tool_call_id,
                 name,
                 content,
+                attachments,
             } => match &mut open_batch {
                 Some((_, remaining, resolved)) => {
                     if remaining.remove(&tool_call_id) {
@@ -240,6 +246,7 @@ pub(super) fn enforce_valid_tool_sequences(messages: &mut Vec<LlmMessage>) {
                             tool_call_id,
                             name,
                             content,
+                            attachments,
                         });
                         if remaining.is_empty() {
                             // Batch fully resolved: commit the held results.

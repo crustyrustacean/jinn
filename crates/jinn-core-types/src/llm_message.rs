@@ -35,6 +35,10 @@ pub enum LlmMessage {
         name: String,
         /// The output content.
         content: String,
+        /// Non-text attachments the tool produced (e.g. images returned by
+        /// `read_image`). Empty for plain-text results.
+        #[serde(default)]
+        attachments: Vec<crate::attachment::Attachment>,
     },
 }
 
@@ -86,6 +90,7 @@ mod tests {
             tool_call_id: "call_1".into(),
             name: "echo".to_owned(),
             content: "result text".to_owned(),
+            attachments: Vec::new(),
         };
 
         // When serializing and deserializing.
@@ -93,6 +98,47 @@ mod tests {
         let back: LlmMessage = serde_json::from_str(&json).expect("deserialize");
 
         // Then it roundtrips.
+        assert_eq!(back, msg);
+    }
+
+    #[rstest::rstest]
+    fn backward_compat_tool_deserialization_without_attachments() {
+        // Given old-format JSON for a tool message with no attachments field.
+        let json = r#"{"role":"tool","tool_call_id":"call_1","name":"echo","content":"ok"}"#;
+
+        // When deserializing.
+        let msg: LlmMessage = serde_json::from_str(json).expect("deserialize");
+
+        // Then it produces the expected variant with empty attachments.
+        assert_eq!(
+            msg,
+            LlmMessage::Tool {
+                tool_call_id: "call_1".into(),
+                name: "echo".to_owned(),
+                content: "ok".to_owned(),
+                attachments: Vec::new(),
+            }
+        );
+    }
+
+    #[rstest::rstest]
+    fn tool_message_with_attachments_roundtrips() {
+        // Given a tool message with an image attachment.
+        let msg = LlmMessage::Tool {
+            tool_call_id: "call_1".into(),
+            name: "read_image".to_owned(),
+            content: "screenshot.png (image/png, 2 KiB)".to_owned(),
+            attachments: vec![crate::attachment::Attachment::image(
+                "image/png".to_owned(),
+                vec![1, 2, 3],
+            )],
+        };
+
+        // When serializing and deserializing.
+        let json = serde_json::to_string(&msg).expect("serialize");
+        let back: LlmMessage = serde_json::from_str(&json).expect("deserialize");
+
+        // Then it roundtrips including the attachment.
         assert_eq!(back, msg);
     }
 

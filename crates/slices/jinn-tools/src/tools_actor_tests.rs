@@ -101,6 +101,7 @@ impl trouper::actor::MsgHandler<jinn_tools_msg::ExecuteTool> for StubProvider {
                 full_content: None,
                 truncation: None,
                 pin_position: None,
+                attachments: Vec::new(),
             },
         })
         .await;

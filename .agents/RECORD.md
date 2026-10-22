@@ -563,3 +563,7 @@ Entries are added or amended **only with human approval**.
 - (graph) The overgraph server's bge-small-en-v1.5 embeddings are CLS-token pooled and L2 normalized, verified against fastembed reference vectors by the feature-gated embedding-parity test.
 - (model-market) A model-market refresh publishes one command (`RefreshAll`, handled by the models actor) that ends by emitting `MarketModelsRefreshed`; the epoch actor subscribes to that event and forces its own refresh, so no message in the refresh path is declared by two actors.
 - (arch) A schema's declared kind decides its transport on the erased publish path (a route action's closure): an Event broadcasts to every declarant, a Command routes to one handler and rotates between them when a second actor declares the same schema; a direct typed publish always broadcasts, so the two paths disagree only for a Command with more than one declarant.
+- (tools) The `read_image` built-in tool attaches a local image file to its own tool result, so a model sees a picture mid-tool-loop without a user send.
+- (tools) A `read_image` call under a model not confirmed vision-capable succeeds with text-only guidance instead of attaching.
+- (tools) Tool-result images ride provider-specific transports: Anthropic nests image blocks in the `tool_result`, and every other backend receives a synthesized user message carrying the image, both built at request time from provider-neutral stored data.
+- (storage) Tool-result attachments persist in `entry_blobs` like user attachments and are rehydrated on load.
