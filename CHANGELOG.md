@@ -1,6 +1,6 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
-## 2026-10-22 v1.10.1
+## 2026-10-22 v1.10.2
 
 - Add `read_image` tool so image-capable models can view images. (Previously images could only be read via user providing an `@path` shortcut).
 - (dev) Switch `Path` types to `MarkedPath`
