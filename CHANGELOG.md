@@ -1,6 +1,6 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
-## (development)
+## 2026-10-22 v1.10.0
 
 - Add `read_image` tool so image-capable models can view images. (Previously images could only be read via user providing an `@path` shortcut).
 - `stream_rules` `project` values are now whole-path anchored globs with no single-segment fallback.
