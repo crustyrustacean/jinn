@@ -40,7 +40,7 @@ You are the orchestrator. Read top to bottom, then loop.
 
 ### 0. Startup (once per run)
 
-1. Confirm your seat: your session must live inside an open checkout of the target repo. Record in the run ledger (`.autodev.ledger.md` at your checkout root): the checkout root, your **branch** (the branch all work lands on), the repo id, and this workflow's own directory (from your session's workflow list). Not inside a checkout? Stop and tell the human in one message.
+1. Confirm your checkout: your session must live inside an open checkout of the target repo. Record in the run ledger (`.autodev.ledger.md` at your checkout root): the checkout root, your **branch** (the branch all work lands on), the repo id, and this workflow's own directory (from your session's workflow list). Not inside a checkout? Stop and tell the human in one message.
 2. Ignore the run state: append `.issues/`, `.plans/`, and `.autodev.ledger.md` to the repo's ignore mechanism if absent — fossil: `.fossil-settings/ignore-glob` (one glob per line, file may not exist yet); git: `.git/info/exclude` (per-clone, untracked). These paths must never be committable: teardown requires a clean status, and run state is never work. Skip lines already present.
 3. Goal known? If the human's message was only "start autodev workflow", ask for the goal in one message and end your turn — the only time you wait besides the QA brief.
 4. File the goal as issue 001 (Appendix A), status `triage`. Issues left in the tracker by an earlier cycle are first-class work: triage them too.
@@ -55,7 +55,7 @@ planning, or triaged. Then do the QA brief (step 5).
 1. **Triage** — read `steps/01-triage.md`. For each `triage` issue: one planner dispatch (it decides PLAN or DECOMPOSE — never split an issue yourself). PLAN → mark `open`. DECOMPOSE → transcribe the children, mark this issue `parent`, and route each child the same way. Update the task list.
 2. **Attach** — read `steps/02-dispatch.md`. For each execution-plan-ready, claimable issue: `load_attendant` the implementor seed (never `spawn_subagent` — Appendix C) with `set_name` = `implementor-<issue-number>` (e.g. `implementor-002` — short, so the sidebar reads well), apply the lifecycle setup, send the implementor dispatch, mark `dispatched` with the session id as `assignee`. End your turn if nothing else is actionable — a turn that never ends is a turn whose reports never land.
 3. **Review** — a DONE report arrives as a queued message that starts your next turn. Read `steps/03-integrate.md`, dispatch the reviewer (Appendix D), end your turn. APPROVE → teardown. REJECT → findings back to the same implementor session; it fixes and re-reports.
-4. **Teardown** — APPROVE in hand: `run_lifecycle` teardown on the implementor's session (Appendix C). Success → issue `done`, session gone, work on your branch — then `fossil update` / `git pull --ff-only` in your own seat (the teardown moved the branch, not your working tree). `TEARDOWN-CONFLICT` → merge-fix dispatch to the same implementor; on its report, teardown again. Other failure → correct the invocation, re-issue; never hand-work around it.
+4. **Teardown** — APPROVE in hand: `run_lifecycle` teardown on the implementor's session (Appendix C). Success → issue `done`, session gone, work on your branch — then refresh your checkout: `fossil update` (the fossil merge landed in the repository file, not your tree; git's merge-back already updated your working tree). `TEARDOWN-CONFLICT` → merge-fix dispatch to the same implementor; on its report, teardown again. Other failure → correct the invocation, re-issue; never hand-work around it.
 5. **QA brief** — nothing claimable, nothing in flight: read `steps/04-qa.md`, write the brief, end your turn. The human's reply resumes the loop (defects → issues).
 
 **Ending the turn is the whole waiting mechanism.** A dispatch with
@@ -122,10 +122,12 @@ run state is never work.
 
 `lifecycle.toml` in this workflow defines one script per SCM
 (`autodev implementor (fossil)` / `(git)`). Setup branches **your
-branch** (the `<parent>` arg), opens the implementor's checkout, and
-moves the session there. Teardown merges the work back onto your
-branch, commits, closes the checkout, deletes the branch — the merge
-is the landing; there is no integration branch.
+branch** (the `<parent>` arg; git also takes `<orchestrator_dir>` =
+your checkout's absolute path, asserted and recorded — SETUP-BAD-PARENT
+if your checkout is not on `<parent>`), opens the implementor's
+checkout, and moves the session there. Teardown merges the work back
+onto your branch, commits, closes the checkout, deletes the branch —
+the merge is the landing; there is no integration branch.
 
 Spawn procedure, per issue (steps/02-dispatch.md carries the full
 payload lists):

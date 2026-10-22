@@ -38,7 +38,7 @@ One session per issue. The procedure, in order:
    - `branch` = the issue's branch: `<your-branch>-issue-<id>` (derived from your branch — never a fixed prefix. Branches named after the workflow collide across runs and with a run's own leftovers; a branch named after its parent cannot collide),
    - `parent` = your branch (the one recorded in the ledger at startup). The runner moves the session into its checkout.
    - fossil only: `repo` = the repository file's base name (`jinn` for `jinn.fossil`), `dir` = a fresh checkout directory beside your own, named for the issue: `<your-root>-issue-<id>`.
-   - git: no `repo` and no `dir` — the script works from your own checkout and names the worktree itself. The only args are `branch` and `parent`.
+   - git: no `repo` and no `dir` — the script names and creates the worktree itself. Args are `branch`, `parent`, and `orchestrator_dir` = your own checkout's absolute path (setup asserts your checkout has `<parent>` — the orchestrator's branch — checked out, SETUP-BAD-PARENT otherwise, and records the path; the teardown's merge-back runs there).
 3. Send the dispatch via `tell_session`.
 
 Paste every path; never retype one — long paths type badly under

@@ -34,7 +34,7 @@ fossil branch current              # git: git branch --show-current
 
 An implementor session should always be inside its own checkout
 (`<dir>`, on `<your-branch>-issue-<id>`); the orchestrator is inside
-its own seat, on the parent branch.
+its own checkout, on the parent branch.
 
 ## Repository identity
 
@@ -50,12 +50,12 @@ startup.
 Every implementor branches from the orchestrator's branch and merges
 back onto it at teardown. The dispatch names the parent; an implementor
 never guesses it. The parent is recorded in the run ledger at startup
-— it is the branch the seat has checked out, which is the feature
-branch the human started the run on. The git teardown finds the seat
-by that branch: git allows a branch to be checked out in only one
-worktree, so the worktree holding `<parent>` is the one the merge
-lands in
-and passed to the lifecycle setup as the `<parent>` argument.
+— it is the branch your checkout has checked out, which is the feature
+branch the human started the run on. The git setup asserts that before
+it creates anything (`SETUP-BAD-PARENT`), and the teardown lands the
+merge-back in your checkout — passed to the setup as the
+`<orchestrator_dir>` argument (your checkout's absolute path), recorded
+and replayed, never discovered.
 
 ## Committing (implementor, in its own checkout)
 
@@ -104,10 +104,10 @@ scope vs. files-to-touch.
 
 ## Conflicts
 
-`fossil merge` and `git merge` both **exit 0 on conflict** — the
-failure is in the output and the files, never the exit code.
+Conflict signals differ by SCM:
 
-- The primary signal is the merge output itself: fossil prints `WARNING: N merge conflicts` and prefixes conflicted files with `MERGE`; git prints `CONFLICT` lines and leaves the index conflicted (`git diff --name-only --diff-filter=U` lists them).
+- **fossil merge exits 0 on conflict** — the failure is in the output and the files, never the exit code: it prints `WARNING: N merge conflicts` and prefixes conflicted files with `MERGE` (which is why the fossil teardown greps for markers).
+- **git merge exits 1 on conflict** — the exit code itself stops the chain. It prints `CONFLICT` lines and leaves the index conflicted (`git diff --name-only --diff-filter=U` lists them).
 - For confirmation, grep **only the files the merge named**. A naive tree-wide `grep -rl '<<<<<<<' .` matches build artifacts (`target/`, minutes of scanning) and this repo's own documented marker text.
 - The lifecycle teardown script performs this check itself and exits `TEARDOWN-CONFLICT` before any irreversible step. When a manual merge (not teardown) hits a conflict: `fossil undo` restores the tree (git: `git merge --abort`). Never commit markers.
 
@@ -121,19 +121,23 @@ not branch surgery.
 
 ## Refreshing your own checkout (orchestrator, after every teardown)
 
-A teardown merges the implementor's branch in the **repository** — your
-session's checkout does not move by itself. Its working files are stale
-the moment a teardown succeeds; update before you read, review, or QA
-anything:
+A fossil teardown merges the implementor's branch in the **repository
+file** — your session's checkout does not move by itself. Its working
+files are stale the moment a teardown succeeds; update before you read,
+review, or QA anything:
 
 ```sh
-fossil update                       # git: git pull --ff-only
+fossil update
 ```
+
+Git needs no refresh: its teardown merge-back runs **in your
+checkout**, so the working tree already holds the landed work the
+moment teardown succeeds.
 
 Fast, idempotent, and safe at any time on a clean tree. If it reports
 nothing to do, nothing landed since your last update. Do this once per
-successful teardown as part of the teardown step — the issue is not
-`done` in your tree until your checkout shows the work. Never `fossil
-update --force` / `git reset --hard` to "fix" a stale checkout: a dirty
+successful fossil teardown as part of the teardown step — the issue is
+not `done` in your tree until your checkout shows the work. Never
+`fossil update --force` / `git reset --hard` to "fix" a stale checkout: a dirty
 tree means uncommitted run state or real work; resolve that first (see
 "Clean status before teardown").

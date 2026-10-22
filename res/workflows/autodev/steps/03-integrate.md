@@ -26,12 +26,12 @@ no teardown before the reviewer speaks.
 ## The teardown
 
 One `run_lifecycle` teardown call on the implementor's session — no
-arguments; the session's recorded coordinates (`dir`, `branch`,
-`parent`) drive it. The script merges the parent in, gates on
-conflicts, then merges the work back onto your branch, commits, closes
-the checkout, and removes it. Then refresh your own checkout (`fossil
-update` / `git pull --ff-only` — steps/scm.md's refresh section); the
-teardown moved the branch, not your working files. The issue is `done`
+arguments; the session's recorded coordinates (fossil's `dir`, git's
+`orchestrator_dir`, plus `branch` and `parent`) drive it. The script merges the
+parent in, gates on conflicts, then merges the work back onto your
+branch, commits, closes the checkout, and removes it. Then refresh
+your checkout (`fossil update` — steps/scm.md's refresh section; git needs
+no refresh, the merge-back already updated your tree). The issue is `done`
 the moment this
 succeeds: the work is on your branch, the session is gone, the branch
 is closed.
@@ -49,14 +49,15 @@ Do not fix conflicts yourself, do not file them as tracker issues, and
 do not abandon the session over one: the implementor knows the code it
 wrote, which is why it is preserve.
 
-### Teardown success — refresh your own seat
+### Teardown success — refresh your own checkout
 
-After every successful teardown: `fossil update` (git:
-`git pull --ff-only`) in your own checkout. The merge happened in the
-repository; your working tree stays stale until you update, and every
-later action (reviewing another diff, writing the QA brief, answering
-questions about current code) reads that tree. Skip the refresh and
-you will review and QA against yesterday's code.
+After every successful fossil teardown: `fossil update` in your own
+checkout. The merge happened in the repository file; your working tree
+stays stale until you update, and every later action (reviewing another
+diff, writing the QA brief, answering questions about current code)
+reads that tree. Git needs no refresh: the merge-back runs in your
+checkout, so your tree is already current. Skip the refresh and you
+will review and QA against yesterday's code.
 
 ### Teardown failure that is NOT a conflict
 
