@@ -48,9 +48,12 @@ tool_filter = { mode = "deny", names = ["grep"] }
 # > - `tool`: any tool call
 # > - `tool:<name>(<glob>)`: specific tool call with optional parameter matching.
 # > `project` confines a rule to matching the session's working directory —
-# > a single glob against the path, with no association to the projects
+# > a single glob against the whole path, with no association to the projects
 # > feature or any other state; absent means every directory, and a global
-# > rule is a floor a project-scoped one can add to but never lift.
+# > rule is a floor a project-scoped one can add to but never lift. A glob
+# > that cannot anchor to a working directory — one starting with neither
+# > `**/`, an absolute `/`, nor a drive prefix — or one the glob engine
+# > rejects stops jinn at startup with an error naming the rule and the fix.
 #
 # > Use single-quoted strings so regex metacharacters survive without escape
 # > processing. A pattern the regex engine cannot compile is inert (logged, no
@@ -60,15 +63,22 @@ tool_filter = { mode = "deny", names = ["grep"] }
 # > start is anchored on the envelope head, not `^`.
 #
 # > The `project` field is a single glob matched against the session's
-# > working directory: the rule triggers when the glob matches that directory
-# > and does not trigger otherwise (it follows later working-directory
-# > changes). A session whose working directory cannot be read runs under the
-# > global rules only.
+# > working directory as a whole path: the rule triggers when the glob
+# > matches that directory and does not trigger otherwise (it follows later
+# > working-directory changes). A session whose working directory cannot be
+# > read runs under the global rules only.
+# >
+# > Spelling:
+# > - `**/foo`       — a `foo` directory at any depth; matches only when the
+# >                    session runs in that directory itself
+# > - `**/foo/**`    — the same, plus everything below it (`/**` also covers
+# >                    the directory itself)
+# > - `**/a/b`       — multi-segment projects are named directly
+# > - `/path/to/foo` — absolute; add `/**` for subdirectories
 #
 # > Examples:
-# project = "/path/to/project"  # must have at least these components
-# project = "/workspace/*"      # glob
-# project = "stuff"             # any path containing `stuff`
+# project = "**/jinn/image-tilth/**"  # that nested project and everything below it
+# project = "/workspace/*"            # glob
 #
 # > Example — a project-local rule that cannot fire anywhere else:
 #
@@ -77,7 +87,7 @@ tool_filter = { mode = "deny", names = ["grep"] }
 # description = "the release script must run from the main checkout"
 # conditions = ['npm\s+run\s+release']
 # scopes = ['tool:bash']
-# project = "myapp"
+# project = "**/myapp/**"
 # body = "Run the release from the main checkout, not this worktree."
 
 # ###########################################################################
