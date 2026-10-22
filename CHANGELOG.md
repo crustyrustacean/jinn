@@ -2,6 +2,7 @@
 
 ## (development)
 
+- Add `read_image` tool so image-capable models can view images. (Previously images could only be read via user providing an `@path` shortcut).
 - Add custom path for `bash`
 
 ```toml
