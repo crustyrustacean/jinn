@@ -3,7 +3,13 @@
 ## (development)
 
 - Add `read_image` tool so image-capable models can view images. (Previously images could only be read via user providing an `@path` shortcut).
-- Add custom path for `bash`
+- `stream_rules` `project` values are now whole-path anchored globs with no single-segment fallback.
+  - `project` entries that are not valid globs will hard-error on `jinn` startup.
+  - If you used a single term like `foo`, convert to:
+    - `**/foo/**`: `foo` at any depth; applies in `foo` itself and everything below it, or
+    - `**/foo`: `foo` at any depth; applies only when the session runs in `foo` itself, or
+    - `/path/to/foo` (add `/**` for its subdirectories): an absolute path instead of a depth search.
+- Add custom path for `bash` (see snippet below)
 
 ```toml
 [shell]
