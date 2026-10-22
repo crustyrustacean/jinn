@@ -277,6 +277,7 @@ mod tests {
         clippy::expect_used,
         reason = "test code: a failed expect aborts the test loudly, which is the desired mode"
     )]
+    #[cfg(unix)]
     use marked_path::MarkedPathAccess;
 
     use super::{exit_command, idle_command, is_alive, shell_or_skip, success_command};

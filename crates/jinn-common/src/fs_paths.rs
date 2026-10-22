@@ -16,21 +16,6 @@ use std::io;
 
 use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
-/// The classic Win32 path limit, in UTF-16 code units, including the
-/// terminating NUL. Plain (non-verbatim) paths of 260 or more units cannot be
-/// addressed by non-verbatim-aware APIs, so stripping the prefix there would
-/// produce a path nothing can reopen.
-#[cfg(windows)]
-const MAX_CLASSIC_PATH: usize = 260;
-
-/// The verbatim prefix Windows canonicalization produces.
-#[cfg(windows)]
-const VERBATIM_PREFIX: &str = r"\\?\";
-
-/// Marker following the verbatim prefix for network-share paths.
-#[cfg(windows)]
-const UNC_MARKER: &str = r"UNC\";
-
 /// Canonicalizes `path` into jinn's plain path form.
 ///
 /// Equivalent to [`std::fs::canonicalize`] on non-Windows platforms. On
@@ -100,6 +85,10 @@ mod tests {
 
     #[cfg(windows)]
     mod windows {
+
+        use std::path::PathBuf;
+
+        use marked_path::MarkedPathAccess;
 
         use super::super::{canonicalize_display, strip_verbatim_prefix};
 

@@ -805,8 +805,6 @@ mod tests {
     #[rstest::rstest]
     #[test]
     #[cfg(windows)]
-    #[rstest::rstest]
-    #[test]
     fn panic_log_path_falls_back_to_root_when_log_has_no_parent_windows() {
         // Given the drive root as the log path (no parent on Windows).
         let log_path = MarkedPathBuf::<Absolute>::new(r"C:\").expect("drive root types");

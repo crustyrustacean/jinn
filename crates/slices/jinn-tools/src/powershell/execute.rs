@@ -16,6 +16,7 @@ use jinn_tools_msg::ToolExecutionStarted;
 use jinn_tools_msg::truncation::{
     DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, format_size, truncate_tail,
 };
+use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 use tokio::sync::mpsc;
 
 use crate::BoxedToolFuture;

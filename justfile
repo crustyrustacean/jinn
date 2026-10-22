@@ -67,6 +67,7 @@ test-one FILTER:
 # Fast compile check of the whole workspace (no codegen).
 check:
     cargo check --workspace
+    cargo xwin check --workspace --all-targets --target x86_64-pc-windows-msvc
 
 # Report release-binary size and per-crate .text breakdown
 size-report:
@@ -107,6 +108,7 @@ size-report:
 # Run clippy across the workspace.
 clippy:
     cargo clippy --workspace --all-targets
+    cargo xwin clippy --workspace --all-targets --target x86_64-pc-windows-msvc
 
 # Check formatting without writing changes.
 fmt:
@@ -118,19 +120,10 @@ fmt-fix:
 
 # Run all linters (check + clippy + fmt check + test-attr guard)
 lint:
-    cargo check --workspace
+    just check
     just clippy
     cargo fmt -- --check
     just lint-testattr
-
-# Cross-compile the workspace for Windows and type-check every target.
-#
-# The Windows suite is never *run* here — only compiled. That is the
-# strongest gate available without a Windows host, and it turns a
-# platform-specific API misuse (a POSIX-only libc call outside a cfg
-# gate) into a compile error rather than a runtime surprise.
-check-windows:
-    cargo xwin check --workspace --all-targets --target x86_64-pc-windows-msvc
 
 [doc("Fail on bare test attributes missing their rstest companion.")]
 lint-testattr:

@@ -656,7 +656,10 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
-    use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
+
+    #[cfg(unix)]
+    use marked_path::MarkedPathAccess;
+    use marked_path::{Absolute, MarkedPathBuf};
 
     /// Snapshot a session's mirror from the term/tabs cell.
     fn test_mirror(
