@@ -113,13 +113,23 @@ pub struct StreamRuleConfig {
     pub scopes: Vec<String>,
     /// The markdown guidance injected when the rule fires.
     pub body: String,
-    /// A path glob selecting the projects this rule applies in.
+    /// A path glob selecting the projects this rule applies in, anchored to
+    /// the whole working directory.
     ///
     /// Absent or empty means every project, which is what a rule about a
     /// footgun in a shell needs — those habits are not repository-specific.
-    /// Naming a glob confines the rule to sessions whose project association
-    /// matches it, so a rule about one codebase's layout does not fire in
-    /// another's.
+    /// A present value is tested whole-path against the session's working
+    /// directory (with its trailing slash, so a `/**` suffix also covers the
+    /// project directory itself), never against one path segment:
+    ///
+    /// - `**/myapp` — the `myapp` directory, exactly;
+    /// - `**/myapp/**` — `myapp` itself and everything below it;
+    /// - `**/jinn/image-tilth` — a nested project, named directly.
+    ///
+    /// A glob that cannot anchor to an absolute path — one starting with
+    /// neither `**/`, an absolute `/`, nor a drive prefix — or one the glob
+    /// engine rejects stops jinn at startup with an error naming the rule
+    /// and the pattern. It would otherwise compile and then never fire.
     ///
     /// Bound once per stream, when the session's rule set is minted, rather
     /// than per delta: the project's stamp does not move under a running
@@ -218,7 +228,8 @@ pub struct StreamRuleFileEntry {
     /// The guidance injected when the rule fires.
     #[serde(default)]
     pub body: String,
-    /// A path glob selecting the projects this rule applies in.
+    /// Same field as [`StreamRuleConfig::project`] — see there for the
+    /// anchored-glob spelling rules and the fatal-at-boot policy.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
     /// Command strings that MUST trip this rule. Ignored by the runtime.

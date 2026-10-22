@@ -903,6 +903,14 @@ async fn handle_done_event_publishes_stream_completed_before_execute_tool_batch(
 // Stream-rule interception
 // ------------------------------------------------------------------
 
+/// Compiles through the production build, panicking on a project-glob
+/// failure — these fixtures all feed compiling configs.
+fn compiled_set(
+    configs: &[jinn_preferences_config::schemas::StreamRuleConfig],
+) -> jinn_stream_rules::matcher::CompiledSet {
+    jinn_stream_rules::matcher::CompiledSet::build(configs).expect("a test config compiles")
+}
+
 /// Builds a rule set whose single rule fires on `condition`.
 fn rule_set(condition: &str) -> std::sync::Arc<dyn jinn_slices::StreamRuleSet> {
     rule_set_for(condition, "text")
@@ -910,7 +918,7 @@ fn rule_set(condition: &str) -> std::sync::Arc<dyn jinn_slices::StreamRuleSet> {
 
 /// Builds a rule set whose single rule fires on `condition` for `scope`.
 fn rule_set_for(condition: &str, scope: &str) -> std::sync::Arc<dyn jinn_slices::StreamRuleSet> {
-    std::sync::Arc::new(jinn_stream_rules::matcher::CompiledSet::build(&[
+    std::sync::Arc::new(compiled_set(&[
         jinn_preferences_config::schemas::StreamRuleConfig {
             name: "test-rule".to_owned(),
             description: "a rule the test tripped".to_owned(),
@@ -1636,7 +1644,7 @@ fn project_scoped_rule_set(
     condition: &str,
     project: Option<&str>,
 ) -> std::sync::Arc<dyn jinn_slices::StreamRuleSet> {
-    std::sync::Arc::new(jinn_stream_rules::matcher::CompiledSet::build(&[
+    std::sync::Arc::new(compiled_set(&[
         jinn_preferences_config::schemas::StreamRuleConfig {
             name: "scoped-rule".to_owned(),
             description: "a rule bound to one project".to_owned(),
@@ -1685,7 +1693,7 @@ async fn a_rule_scoped_to_a_project_fires_for_a_cli_session_in_its_launch_direct
     // CLI-started session whose cwd is that checkout — the boot session's
     // shape: cwd is the launch directory, and no project association exists.
     let (actor, session_id) = actor_with_session_cwd(
-        project_scoped_rule_set("FORBIDDEN", Some("jinn")),
+        project_scoped_rule_set("FORBIDDEN", Some("**/jinn")),
         "/mnt/zed/repos/jinn",
     )
     .await;
@@ -1786,10 +1794,7 @@ async fn a_rule_with_no_project_still_fires_for_any_session() {
 #[tokio::test]
 async fn a_configuration_with_no_usable_rule_mints_no_session() {
     // Given a rule set that compiled to nothing.
-    let actor = actor_with_rule_set(std::sync::Arc::new(
-        jinn_stream_rules::matcher::CompiledSet::build(&[]),
-    ))
-    .await;
+    let actor = actor_with_rule_set(std::sync::Arc::new(compiled_set(&[]))).await;
 
     // When a session's rule state is resolved.
     let session = actor.resolve_rule_session(&SessionId::new()).await;
@@ -1808,7 +1813,7 @@ async fn a_configuration_with_no_usable_rule_mints_no_session() {
 /// An actor whose rule set always matches `FORBIDDEN`, so every response it
 /// streams is intercepted and resumed.
 async fn looping_actor(harness: &TestHarness) -> InferenceActor {
-    let set = std::sync::Arc::new(jinn_stream_rules::matcher::CompiledSet::build(&[
+    let set = std::sync::Arc::new(compiled_set(&[
         jinn_preferences_config::schemas::StreamRuleConfig {
             name: "always-fires".to_owned(),
             description: "a rule that matches every response".to_owned(),

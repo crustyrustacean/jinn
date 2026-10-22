@@ -665,7 +665,7 @@ mod tests {
             name = 'myapp-rule'
             conditions = ['npm\s+run\s+release']
             scopes = ['tool:bash']
-            project = 'myapp'
+            project = '**/myapp'
             body = 'Run the checked-in script instead.'
         "#,
         )
@@ -685,6 +685,6 @@ mod tests {
         let global = rules.iter().find(|r| r.name == "global-rule");
         assert_eq!(global.and_then(|r| r.project.as_deref()), None);
         let scoped = rules.iter().find(|r| r.name == "myapp-rule");
-        assert_eq!(scoped.and_then(|r| r.project.as_deref()), Some("myapp"));
+        assert_eq!(scoped.and_then(|r| r.project.as_deref()), Some("**/myapp"));
     }
 }

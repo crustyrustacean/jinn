@@ -20,6 +20,15 @@
 //! picker's confirm) so a confirmed toggle reaches the live matcher without
 //! a restart.
 //!
+//! One compile failure is not a skip: a `project` glob that cannot anchor
+//! to a working directory, or that the glob engine rejects, would install a
+//! matcher that can never fire for the rule it names. Activation fails the
+//! launch instead — composition turns the returned error into a fatal boot
+//! failure naming the rule and the pattern — and a refresh arriving with
+//! such a glob is refused: the actor logs it and the previously installed
+//! matcher stays live, since a broken file will fail at the next start
+//! anyway.
+//!
 //! # What the slice does *not* do
 //!
 //! It does not intercept the stream itself. Interruption is the inference
@@ -35,23 +44,31 @@ use std::sync::Arc;
 
 use jinn_slices::{RenderFacts, SliceHost, StreamRules};
 
-use crate::matcher::CompiledSet;
+use crate::matcher::{CompiledSet, ProjectGlobError};
 use crate::rules::read_rules;
 
 /// Compiles `rules` and installs the matcher into the slice's cell.
 ///
 /// Every configured rule that fails to compile is warned and skipped by the
 /// compile; a configuration with no usable rule installs an empty set, which
-/// the stream loop treats as "no rules" and costs nothing per delta.
+/// the stream loop treats as "no rules" and costs nothing per delta. A
+/// `project` glob that cannot anchor or does not compile is the one failure
+/// that is not skipped: the cell is left untouched.
 ///
 /// Shared by activation (the first install) and the matcher actor (every
 /// refresh), so the two moments cannot drift apart.
+///
+/// # Errors
+///
+/// Any rule's `project` glob failing the compile step; on that path the
+/// cell is not written.
 fn install_compiled_matcher(
     cell: &jinn_slices::cell::TypedCell<StreamRules>,
     rules: &[jinn_preferences_config::schemas::StreamRuleConfig],
-) {
-    let set = Arc::new(CompiledSet::build(rules));
+) -> Result<(), error_stack::Report<ProjectGlobError>> {
+    let set = Arc::new(CompiledSet::build(rules)?);
     cell.update(|payload| payload.install(set));
+    Ok(())
 }
 
 /// Activates the slice: assembles the rule set (embedded shipped set,
@@ -67,6 +84,13 @@ fn install_compiled_matcher(
 /// registers at spawn, and the picker cannot publish a refresh before the
 /// user confirms a toggle, which is long after boot.
 ///
+/// # Errors
+///
+/// A rule's `project` glob that cannot anchor to a working directory or
+/// that the glob engine rejects stops the launch: composition propagates
+/// this to a fatal boot failure naming the rule and the pattern. The cell
+/// is not written and the matcher actor does not spawn on that path.
+///
 /// # Panics
 ///
 /// Panics if the catalog has not run — the cell was minted there, so a
@@ -79,7 +103,7 @@ pub fn activate(
     host: &mut SliceHost<'_, RenderFacts>,
     config: &jinn_config::ConfigLayer,
     preferences_path: &Path,
-) {
+) -> Result<(), error_stack::Report<ProjectGlobError>> {
     // Read at the point of use rather than cached, matching the rules
     // themselves: a reload is observed by the next refresh or launch.
     let rules = read_rules(config, preferences_path);
@@ -91,7 +115,7 @@ pub fn activate(
         .reader::<StreamRules>(&jinn_slices::stream_rules_slot())
         .expect("the cell catalog registers the stream-rules slot before any slice activates");
 
-    install_compiled_matcher(&cell, &rules);
+    install_compiled_matcher(&cell, &rules)?;
 
     // The refresh listener: the same cell, config, and path, handed to the
     // actor that re-runs this install when a confirm publishes its command.
@@ -101,6 +125,7 @@ pub fn activate(
         config.clone(),
         preferences_path.to_path_buf(),
     );
+    Ok(())
 }
 
 #[cfg(test)]
@@ -148,7 +173,7 @@ mod tests {
                 &system,
             );
 
-            crate::activate(&mut host, &config, &prefs);
+            crate::activate(&mut host, &config, &prefs).expect("a valid config activates");
 
             (cell, config, prefs, system, prefs_dir)
         };
@@ -187,6 +212,61 @@ mod tests {
         assert_eq!(
             fired, None,
             "a confirmed disable must disarm the live matcher"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn activate_fails_on_a_prefix_less_project_glob_and_installs_nothing() {
+        // Given the registry seeded like production boot seeds it, and a
+        // config layer holding one rule whose project glob cannot anchor.
+        let slices = jinn_slices::Slices::new();
+        jinn_cell_catalog::register_all_cells(&slices);
+        let cell: jinn_slices::cell::TypedCell<StreamRules> = slices
+            .reader(&jinn_slices::stream_rules_slot())
+            .expect("the catalog registers the stream-rules slot");
+        let config = jinn_config::testutil::config_layer(
+            r#"
+            [[stream_rules.entry]]
+            name = "broken"
+            conditions = ['BROKEN-MARKER']
+            scopes = ['text']
+            body = 'Finish it.'
+            project = 'broken-proj'
+            "#,
+        );
+        let prefs_dir = jinn_testutil::tempdir().expect("temp dir");
+        let prefs = prefs_dir.path().join("jinn.toml");
+        let system = trouper::system::ActorSystem::new(trouper::system::SystemConfig::production());
+
+        // When the slice activates over the same view state boot hands it.
+        let result = {
+            let mut viewport = jinn_slices::view::Viewport::new();
+            let overlay_views = jinn_slices::OverlayViews::new();
+            let key_routes = jinn_slices::KeyRoutes::new();
+            let mut host = jinn_slices::SliceHost::new(
+                &slices,
+                &mut viewport,
+                &overlay_views,
+                &key_routes,
+                &system,
+            );
+            crate::activate(&mut host, &config, &prefs)
+        };
+
+        // Then activation fails naming the rule and the pattern, and the
+        // matcher cell holds nothing — a broken glob must stop the launch
+        // rather than arm a matcher that can never fire the rule.
+        let report = result.expect_err("a prefix-less project glob fails activation");
+        let printed = format!("{report:?}");
+        assert!(printed.contains("broken"), "the report names the rule");
+        assert!(
+            printed.contains("broken-proj"),
+            "the report names the pattern"
+        );
+        assert!(
+            cell.read().installed().is_none(),
+            "a failed activation must not install a matcher"
         );
     }
 }

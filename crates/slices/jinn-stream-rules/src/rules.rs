@@ -58,6 +58,12 @@ mod tests {
 
     use super::read_rules;
     use crate::matcher::CompiledSet;
+
+    /// Compiles through the production build, panicking on a project-glob
+    /// failure — these tests all feed compiling configs.
+    fn compiled(configs: &[super::super::rules::StreamRuleConfig]) -> CompiledSet {
+        CompiledSet::build(configs).expect("a test config compiles")
+    }
     use jinn_config::ConfigLayer;
     use jinn_preferences_config::STREAM_RULES_FILE_NAME;
     use jinn_slices::{StreamContext, StreamRuleSet};
@@ -118,7 +124,7 @@ mod tests {
 
         // When the rule is compiled and the offending command streams.
         let (_prefs_dir, prefs) = temp_prefs();
-        let set = CompiledSet::build(&read_rules(&config, &prefs));
+        let set = compiled(&read_rules(&config, &prefs));
         let mut session = set.new_session(&jinn_core_types::SessionId::new());
         let fired = session
             .check(
@@ -146,7 +152,7 @@ mod tests {
             name = 'myapp-rule'
             conditions = ['npm\s+run\s+release']
             scopes = ['tool:bash']
-            project = 'myapp'
+            project = '**/myapp'
             body = 'Run the checked-in script instead.'
         "#,
         )
@@ -160,7 +166,7 @@ mod tests {
         let dir = jinn_testutil::tempdir().expect("temp dir");
         let myapp_cwd = dir.path().join("dev/code/myapp");
         let (_prefs_dir, prefs) = temp_prefs();
-        let set = CompiledSet::build(&read_rules(&mixed_project_config(), &prefs))
+        let set = compiled(&read_rules(&mixed_project_config(), &prefs))
             .for_cwd(Some(myapp_cwd.as_path()));
 
         // When each command's arguments stream in that project.
@@ -197,7 +203,7 @@ mod tests {
         let dir = jinn_testutil::tempdir().expect("temp dir");
         let other_cwd = dir.path().join("dev/code/other");
         let (_prefs_dir, prefs) = temp_prefs();
-        let set = crate::matcher::CompiledSet::build(&read_rules(&mixed_project_config(), &prefs))
+        let set = compiled(&read_rules(&mixed_project_config(), &prefs))
             .for_cwd(Some(other_cwd.as_path()));
 
         // When the global rule's command's arguments stream there.
@@ -236,7 +242,7 @@ mod tests {
         // When the rules are read and compiled.
         let (_prefs_dir, prefs) = temp_prefs();
         let rules = read_rules(&config, &prefs);
-        let set = crate::matcher::CompiledSet::build(&rules);
+        let set = compiled(&rules);
 
         // Then both are live: the legacy one fires on the tool stream, the
         // stream one fires on prose.
@@ -286,8 +292,7 @@ mod tests {
 
         // When the rules are read and compiled for that project.
         let (_prefs_dir, prefs) = temp_prefs();
-        let set = crate::matcher::CompiledSet::build(&read_rules(&config, &prefs))
-            .for_cwd(Some(myapp_cwd.as_path()));
+        let set = compiled(&read_rules(&config, &prefs)).for_cwd(Some(myapp_cwd.as_path()));
 
         // Then both fire: the project rule adds its block beside the global.
         let mut session = set.new_session(&jinn_core_types::SessionId::new());
@@ -497,7 +502,7 @@ mod tests {
         // When the assembled set is compiled and prose matching its
         // pattern streams.
         let (_prefs_dir, prefs) = temp_prefs();
-        let set = CompiledSet::build(&read_rules(&config, &prefs));
+        let set = compiled(&read_rules(&config, &prefs));
         let mut session = set.new_session(&jinn_core_types::SessionId::new());
         let fired = session
             .check("leave a TODO here", StreamContext::text())
@@ -534,7 +539,7 @@ mod tests {
         // production probes it: `check` per delta, then `finalize` at the
         // stream's end, the pair a real response always performs.
         let (_prefs_dir, prefs) = temp_prefs();
-        let set = CompiledSet::build(&read_rules(&config, &prefs));
+        let set = compiled(&read_rules(&config, &prefs));
         let mut session = set.new_session(&jinn_core_types::SessionId::new());
         let fired = session
             .check("TODO", StreamContext::text())

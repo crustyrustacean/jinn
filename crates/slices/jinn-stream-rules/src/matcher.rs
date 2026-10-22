@@ -32,9 +32,16 @@
 //! completion signal an interrupt already publishes, and which can be tested
 //! for its whole policy without compiling a regex.
 //!
-//! Everything a malformed rule could do — a regex the engine rejects, a
-//! scope token outside the grammar, a glob that will not compile — is a
-//! warning and a skip. A typo in one rule must not be able to break a turn.
+//! Most of what a malformed rule could do — a regex the engine rejects, a
+//! scope token outside the grammar — is a warning and a skip. A typo in one
+//! rule must not be able to break a turn.
+//!
+//! The `project` glob is the deliberate exception. A glob that cannot anchor
+//! to a working directory, or that the engine rejects, would compile and then
+//! never fire — the silent-never-matches defect this matcher once shipped —
+//! so it fails the install instead: at startup that stops the launch, and
+//! mid-session it refuses a refresh, leaving the previously installed
+//! matcher live.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -212,12 +219,20 @@ fn is_path_key(key: &str) -> bool {
 /// Compiles one configured rule, or `None` when it is unusable.
 ///
 /// Returns `None` — after warning — for an empty body, no compiling
-/// condition, or a scope that admits nothing.
+/// condition, or a scope that admits nothing. A `project` glob that cannot
+/// anchor or does not compile is not a skip: it propagates as
+/// [`ProjectGlobError`] and fails the whole install.
 ///
 /// Disabled rules never reach here: the name array that switches a rule
 /// off is applied to the assembled set in `read_rules`, before anything
 /// compiles.
-fn compile_rule(config: &StreamRuleConfig) -> Option<CompiledRule> {
+///
+/// # Errors
+///
+/// A `project` glob that fails [`compile_project`].
+fn compile_rule(
+    config: &StreamRuleConfig,
+) -> Result<Option<CompiledRule>, error_stack::Report<ProjectGlobError>> {
     let conditions: Vec<Regex> = config
         .conditions
         .iter()
@@ -240,7 +255,7 @@ fn compile_rule(config: &StreamRuleConfig) -> Option<CompiledRule> {
             rule = %config.name,
             "stream rule has no usable condition, skipping the rule"
         );
-        return None;
+        return Ok(None);
     }
 
     if config.body.trim().is_empty() {
@@ -248,7 +263,7 @@ fn compile_rule(config: &StreamRuleConfig) -> Option<CompiledRule> {
             rule = %config.name,
             "stream rule has an empty body, skipping the rule"
         );
-        return None;
+        return Ok(None);
     }
 
     let scope = build_scope(&config.name, &config.scopes);
@@ -258,19 +273,19 @@ fn compile_rule(config: &StreamRuleConfig) -> Option<CompiledRule> {
             scopes = ?config.scopes,
             "stream rule's scopes admit no stream, skipping the rule"
         );
-        return None;
+        return Ok(None);
     }
 
-    let project = compile_project(&config.name, config.project.as_deref().unwrap_or(""));
+    let project = compile_project(&config.name, config.project.as_deref().unwrap_or(""))?;
 
-    Some(CompiledRule {
+    Ok(Some(CompiledRule {
         name: config.name.clone(),
         description: config.description.clone(),
         body: config.body.clone(),
         conditions,
         scope,
         project,
-    })
+    }))
 }
 
 impl Scope {
@@ -407,43 +422,91 @@ pub struct CompiledSet {
     rules: Arc<[CompiledRule]>,
 }
 
-/// Compiles a `project` glob, warning and returning `None` for a pattern the
-/// glob engine rejects.
+/// A rule's `project` glob could not be compiled into a usable matcher.
 ///
-/// `None` is the global case, and a rejected pattern degrades to it: the rule
-/// applies everywhere rather than nowhere, because a rule the user meant to
-/// restrict is far more useful over-broad than silently disarmed.
-fn compile_project(rule_name: &str, pattern: &str) -> Option<GlobMatcher> {
+/// Carries no payload: the report's attachments at the raise site name the
+/// rule, the pattern, and the fix.
+#[derive(Debug, wherror::Error)]
+#[error(debug)]
+pub struct ProjectGlobError;
+
+/// Whether a `project` glob can anchor to an absolute working directory.
+///
+/// The matcher tests the glob against the cwd whole-path, and a cwd is
+/// absolute, so the pattern must be able to match a leading `/` — which
+/// means it must start with a `**/` that spans the root, an absolute `/`,
+/// or a Windows drive prefix (`C:/Users/...`, which matches the normalized
+/// candidate literally). Anything else compiles fine and then can never
+/// match: that is exactly the silent-never-matches shape, and it is
+/// rejected before the engine ever sees it.
+fn project_glob_anchors(pattern: &str) -> bool {
+    let bytes = pattern.as_bytes();
+    let drive_prefix = matches!(
+        (bytes.first(), bytes.get(1), bytes.get(2)),
+        (Some(first), Some(colon), Some(slash))
+            if first.is_ascii_alphabetic() && *colon == b':' && *slash == b'/'
+    );
+    pattern.starts_with("**/") || pattern.starts_with('/') || drive_prefix
+}
+
+/// Compiles a rule's `project` glob, failing the install for a pattern that
+/// cannot anchor or that the glob engine rejects.
+///
+/// `Ok(None)` is the global case: an absent or empty `project` scopes the
+/// rule to every project. A present pattern is an anchor check first —
+/// `jinn*/**` would compile and then never match a whole absolute path —
+/// and an engine compile second; both failures are [`ProjectGlobError`].
+///
+/// # Errors
+///
+/// A non-empty pattern that neither starts with `**/`, an absolute `/`, nor
+/// a drive prefix, or one the glob engine rejects.
+fn compile_project(
+    rule_name: &str,
+    pattern: &str,
+) -> Result<Option<GlobMatcher>, error_stack::Report<ProjectGlobError>> {
     let trimmed = pattern.trim();
     if trimmed.is_empty() {
-        return None;
+        return Ok(None);
+    }
+    if !project_glob_anchors(trimmed) {
+        return Err(error_stack::Report::new(ProjectGlobError)
+            .attach(format!(
+                "rule {rule_name:?}: project glob {trimmed:?} cannot anchor to a working \
+                 directory"
+            ))
+            .attach(format!(
+                "a `project` glob must start with `**/` (a directory at any depth), an \
+                 absolute `/`, or a drive prefix; did you mean `**/{trimmed}`?"
+            )));
     }
     match Glob::new(trimmed) {
-        Ok(glob) => Some(glob.compile_matcher()),
-        Err(error) => {
-            tracing::warn!(
-                rule = %rule_name,
-                pattern = %trimmed,
-                error = %error,
-                "stream rule project glob does not compile, applying the rule to every project"
-            );
-            None
-        }
+        Ok(glob) => Ok(Some(glob.compile_matcher())),
+        Err(error) => Err(error_stack::Report::new(ProjectGlobError)
+            .attach(format!(
+                "rule {rule_name:?}: project glob {trimmed:?} does not compile: {error}"
+            ))
+            .attach(format!(
+                "the glob engine rejected the pattern; did you mean `**/{trimmed}`?"
+            ))),
     }
 }
 
-/// Whether `dir` matches `glob`.
+/// Whether a session's working directory falls under a rule's `project` glob.
 ///
-/// Tested against the full path and its tail components, so a rule written
-/// `**/myapp` matches a session rooted at `/home/someone/code/myapp` without
-/// the user having to spell out their absolute home directory.
+/// The glob is anchored to the whole path, never to a single segment. The
+/// candidates are the normalized directory (`\` folded to `/`) and the same
+/// path with a trailing `/` appended. The padded candidate is what lets a
+/// `/**` suffix mean "this directory and everything below it": `**/myapp/**`
+/// only reads as a full match when something follows the project segment, and
+/// at the project's own root that something is the trailing slash. Patterns
+/// are whole-path glob vocabulary — `**/myapp` is the directory exactly,
+/// `**/myapp/**` is it and everything below, and a two-segment value like
+/// `**/jinn/image-tilth` names a nested project directly.
 fn project_matches(glob: &GlobMatcher, dir: &std::path::Path) -> bool {
     let normalized = dir.to_string_lossy().replace('\\', "/");
-    glob.is_match(&normalized)
-        || normalized
-            .split('/')
-            .filter(|segment| !segment.is_empty())
-            .any(|segment| glob.is_match(segment))
+    let padded = format!("{normalized}/");
+    glob.is_match(&normalized) || glob.is_match(&padded)
 }
 
 impl std::fmt::Debug for CompiledSet {
@@ -458,15 +521,29 @@ impl CompiledSet {
     /// Compiles every configured rule, dropping the unusable ones with a
     /// warning. A later duplicate name replaces an earlier one, warning, so
     /// the file's last word on a name is the one that fires.
-    pub fn build(configs: &[StreamRuleConfig]) -> Self {
-        Self::from_rules(Self::compile_all(configs))
+    ///
+    /// # Errors
+    ///
+    /// Any rule whose `project` glob cannot anchor or does not compile.
+    pub fn build(
+        configs: &[StreamRuleConfig],
+    ) -> Result<Self, error_stack::Report<ProjectGlobError>> {
+        let rules = Self::compile_all(configs)?;
+        Ok(Self::from_rules(rules))
     }
 
     /// Compiles and dedupes every configured rule, dropping the unusable ones.
-    fn compile_all(configs: &[StreamRuleConfig]) -> Vec<CompiledRule> {
+    ///
+    /// # Errors
+    ///
+    /// Any rule whose `project` glob cannot anchor or does not compile; the
+    /// dedupe below only runs once every rule compiled.
+    fn compile_all(
+        configs: &[StreamRuleConfig],
+    ) -> Result<Vec<CompiledRule>, error_stack::Report<ProjectGlobError>> {
         let mut rules: Vec<CompiledRule> = Vec::new();
         for config in configs {
-            let Some(compiled) = compile_rule(config) else {
+            let Some(compiled) = compile_rule(config)? else {
                 continue;
             };
             if let Some(existing) = rules.iter_mut().find(|r| r.name == compiled.name) {
@@ -479,7 +556,7 @@ impl CompiledSet {
                 rules.push(compiled);
             }
         }
-        rules
+        Ok(rules)
     }
 
     /// Wraps compiled rules into the shared, immutable set.
@@ -832,6 +909,13 @@ mod tests {
         }
     }
 
+    /// Compiles `configs` through the production build, panicking on a
+    /// project-glob failure — tests that feed a broken glob assert the
+    /// failure directly and do not come through here.
+    fn compiled(configs: &[StreamRuleConfig]) -> CompiledSet {
+        CompiledSet::build(configs).expect("a test config compiles")
+    }
+
     /// The rule a session fires on its first delta of `ctx`, checked the way
     /// production checks it: the delta runs through `check`, and the stream's
     /// end runs `finalize` — the pair a real response always performs.
@@ -843,7 +927,7 @@ mod tests {
         delta: &str,
         ctx: StreamContext<'_>,
     ) -> Option<String> {
-        let set = CompiledSet::build(configs);
+        let set = compiled(configs);
         let mut session = set.new_session(&SessionId::new());
         session
             .check(delta, ctx)
@@ -920,7 +1004,7 @@ mod tests {
     #[rstest::rstest]
     fn a_prose_match_does_not_see_a_tool_stream_buffer() {
         // Given a rule scoped to every stream, on a session.
-        let set = CompiledSet::build(&[rule("bad", "secret")]);
+        let set = compiled(&[rule("bad", "secret")]);
         let mut session = set.new_session(&SessionId::new());
 
         // When tool arguments carry the offending text and prose does not.
@@ -937,7 +1021,7 @@ mod tests {
     #[rstest::rstest]
     fn two_tool_calls_buffer_separately() {
         // Given a rule on every stream, on a session.
-        let set = CompiledSet::build(&[rule("bad", "secret")]);
+        let set = compiled(&[rule("bad", "secret")]);
         let mut session = set.new_session(&SessionId::new());
 
         // When one tool call streams an argument and a second streams prose.
@@ -991,7 +1075,7 @@ mod tests {
         // a scope that selects the file by name.
         let mut config = rule("ts-no-any", ": any");
         config.scopes = vec!["tool:edit(*.ts)".to_owned()];
-        let set = CompiledSet::build(&[config]);
+        let set = compiled(&[config]);
         let mut session = set.new_session(&SessionId::new());
 
         // When the edit writes the forbidden text into a .ts file.
@@ -1013,7 +1097,7 @@ mod tests {
         // Given the same content-targeted rule.
         let mut config = rule("ts-no-any", ": any");
         config.scopes = vec!["tool:edit(*.ts)".to_owned()];
-        let set = CompiledSet::build(&[config]);
+        let set = compiled(&[config]);
         let mut session = set.new_session(&SessionId::new());
 
         // When the same text is written into a file outside the glob.
@@ -1048,7 +1132,7 @@ mod tests {
         // Given a rule scoped to `edit` on TypeScript.
         let mut configs = [rule("ts", ": any")];
         configs[0].scopes = vec!["tool:edit(*.ts)".to_owned()];
-        let set = CompiledSet::build(&configs);
+        let set = compiled(&configs);
         let mut session = set.new_session(&SessionId::new());
 
         // When the path arrives before the JSON value closes.
@@ -1083,7 +1167,7 @@ mod tests {
         // Given a rule with one valid and one invalid scope token.
         let mut configs = [rule("todo", "TODO")];
         configs[0].scopes = vec!["text".to_owned(), "not-a-scope!!".to_owned()];
-        let set = CompiledSet::build(&configs);
+        let set = compiled(&configs);
 
         // When the set is built and prose trips it.
         let mut session = set.new_session(&SessionId::new());
@@ -1105,7 +1189,7 @@ mod tests {
         configs[0].scopes = vec!["!!!".to_owned(), "###".to_owned()];
 
         // When the set is built.
-        let set = CompiledSet::build(&configs);
+        let set = compiled(&configs);
 
         // Then the rule did not survive.
         assert!(set.is_empty());
@@ -1116,7 +1200,7 @@ mod tests {
         // Given a rule with one bad and one good pattern.
         let mut configs = [rule("todo", "TODO")];
         configs[0].conditions = vec!["(".to_owned(), "TODO".to_owned()];
-        let set = CompiledSet::build(&configs);
+        let set = compiled(&configs);
 
         // When prose trips the surviving pattern.
         let mut session = set.new_session(&SessionId::new());
@@ -1135,7 +1219,7 @@ mod tests {
         // Given a rule whose only pattern is invalid.
         let mut configs = [rule("dead", "(")];
         configs[0].conditions = vec!["(".to_owned()];
-        let set = CompiledSet::build(&configs);
+        let set = compiled(&configs);
 
         // When the set is built.
         let empty = set.is_empty();
@@ -1149,7 +1233,7 @@ mod tests {
         // Given a rule with nothing to inject.
         let mut configs = [rule("silent", "TODO")];
         configs[0].body = "   ".to_owned();
-        let set = CompiledSet::build(&configs);
+        let set = compiled(&configs);
 
         // When the set is built.
         let empty = set.is_empty();
@@ -1164,7 +1248,7 @@ mod tests {
         // Given a rule with no patterns at all.
         let mut configs = [rule("vacuous", "TODO")];
         configs[0].conditions = Vec::new();
-        let set = CompiledSet::build(&configs);
+        let set = compiled(&configs);
 
         // When the set is built.
         let empty = set.is_empty();
@@ -1194,7 +1278,7 @@ mod tests {
         let first = rule("dup", "alpha");
         let mut second = rule("dup", "beta");
         second.body = "the later body".to_owned();
-        let set = CompiledSet::build(&[first, second]);
+        let set = compiled(&[first, second]);
         let mut session = set.new_session(&SessionId::new());
 
         // When the earlier entry's condition is tripped.
@@ -1212,7 +1296,7 @@ mod tests {
     #[rstest::rstest]
     fn a_set_with_no_rules_reports_itself_empty() {
         // Given an empty configuration.
-        let set = CompiledSet::build(&[]);
+        let set = compiled(&[]);
 
         // When emptiness is consulted.
         let empty = set.is_empty();
@@ -1224,7 +1308,7 @@ mod tests {
     #[rstest::rstest]
     fn a_rule_keeps_firing_rather_than_going_silent() {
         // Given a rule and one session's response.
-        let set = CompiledSet::build(&[rule("todo", "TODO")]);
+        let set = compiled(&[rule("todo", "TODO")]);
         let mut session = set.new_session(&SessionId::new());
 
         // When it is tripped well past any plausible budget.
@@ -1250,7 +1334,7 @@ mod tests {
     #[rstest::rstest]
     fn each_response_of_one_turn_matches_independently() {
         // Given a rule on a session, and two responses of that turn.
-        let set = CompiledSet::build(&[rule("todo", "TODO")]);
+        let set = compiled(&[rule("todo", "TODO")]);
         let id = SessionId::new();
         let mut first = set.new_session(&id);
         first.check("TODO", StreamContext::text());
@@ -1269,7 +1353,7 @@ mod tests {
     #[rstest::rstest]
     fn each_response_of_a_turn_starts_with_empty_buffers() {
         // Given a rule, on two responses of one turn.
-        let set = CompiledSet::build(&[rule("multi", "alpha")]);
+        let set = compiled(&[rule("multi", "alpha")]);
         let id = SessionId::new();
         let mut first = set.new_session(&id);
         first.check("alpha", StreamContext::text());
@@ -1344,7 +1428,7 @@ mod tests {
         // When the same arguments arrive whole, and again one character at a time.
         let whole = fired_on(&configs, arguments, StreamContext::tool(0, "bash"));
         let piecemeal = {
-            let set = CompiledSet::build(&configs);
+            let set = compiled(&configs);
             let mut session = set.new_session(&SessionId::new());
             arguments
                 .chars()
@@ -1409,6 +1493,14 @@ mod tests {
         assert!(fired.is_none());
     }
 
+    /// A rule scoped to a `project` glob, admitting every stream.
+    fn project_rule(project: &str, condition: &str) -> StreamRuleConfig {
+        StreamRuleConfig {
+            project: Some(project.to_owned()),
+            ..rule("scoped", condition)
+        }
+    }
+
     #[rstest::rstest]
     #[test]
     fn a_rule_with_no_project_applies_in_every_project() {
@@ -1418,7 +1510,7 @@ mod tests {
         // When the set is built for a project it names nothing about.
         let dir = jinn_testutil::tempdir().expect("temp dir");
         let anywhere_cwd = dir.path().join("anywhere/at/all");
-        let set = CompiledSet::build(&configs).for_cwd(Some(anywhere_cwd.as_path()));
+        let set = compiled(&configs).for_cwd(Some(anywhere_cwd.as_path()));
 
         // Then the rule is live there.
         assert!(!set.is_empty());
@@ -1426,18 +1518,15 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn a_project_scoped_rule_applies_in_a_matching_project() {
-        // Given a rule scoped to one project by name.
-        let configs = [StreamRuleConfig {
-            project: Some("myapp".to_owned()),
-            ..rule("scoped", "rm -rf")
-        }];
+    fn an_exact_project_glob_applies_at_its_directory() {
+        // Given a rule scoped to a project by whole-path glob.
+        let configs = [project_rule("**/myapp", "rm -rf")];
 
-        // When the set is built for that project: a cwd whose last segment is
-        // the project name, rooted in a tempdir.
+        // When the set is built for a cwd that is exactly that directory,
+        // rooted in a tempdir.
         let dir = jinn_testutil::tempdir().expect("temp dir");
         let myapp_cwd = dir.path().join("dev/code/myapp");
-        let set = CompiledSet::build(&configs).for_cwd(Some(myapp_cwd.as_path()));
+        let set = compiled(&configs).for_cwd(Some(myapp_cwd.as_path()));
 
         // Then the rule is live.
         assert!(!set.is_empty());
@@ -1445,18 +1534,30 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn a_project_scoped_rule_is_inactive_in_another_project() {
-        // Given a rule scoped to one project by name.
-        let configs = [StreamRuleConfig {
-            project: Some("myapp".to_owned()),
-            ..rule("scoped", "rm -rf")
-        }];
+    fn an_exact_project_glob_is_inactive_below_its_directory() {
+        // Given a rule scoped to a project by exact glob.
+        let configs = [project_rule("**/myapp", "rm -rf")];
 
-        // When the set is built for a different project: a sibling directory
-        // under the same tempdir root.
+        // When the set is built for a cwd one level below that directory.
+        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let below_cwd = dir.path().join("dev/code/myapp/submodule");
+        let set = compiled(&configs).for_cwd(Some(below_cwd.as_path()));
+
+        // Then the rule is not there: exact means exact, and self-or-below is
+        // the `/**` spelling.
+        assert!(set.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn an_exact_project_glob_is_inactive_in_another_project() {
+        // Given a rule scoped to one project by exact glob.
+        let configs = [project_rule("**/myapp", "rm -rf")];
+
+        // When the set is built for a sibling directory under the same root.
         let dir = jinn_testutil::tempdir().expect("temp dir");
         let other_cwd = dir.path().join("dev/code/other");
-        let set = CompiledSet::build(&configs).for_cwd(Some(other_cwd.as_path()));
+        let set = compiled(&configs).for_cwd(Some(other_cwd.as_path()));
 
         // Then the rule is not there at all.
         assert!(set.is_empty());
@@ -1464,15 +1565,184 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
+    fn a_self_or_below_glob_applies_at_the_project_root() {
+        // Given a rule scoped to a project and everything below it.
+        let configs = [project_rule("**/myapp/**", "rm -rf")];
+
+        // When the set is built for the project directory itself, where the
+        // `/**` suffix has no path left to consume.
+        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let root_cwd = dir.path().join("dev/code/myapp");
+        let set = compiled(&configs).for_cwd(Some(root_cwd.as_path()));
+
+        // Then the rule is live: the matcher also tests the cwd with a
+        // trailing slash, giving the suffix its match.
+        assert!(!set.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_self_or_below_glob_applies_deep_below_the_project() {
+        // Given a rule scoped to a project and everything below it.
+        let configs = [project_rule("**/myapp/**", "rm -rf")];
+
+        // When the set is built for a cwd several levels below the project.
+        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let deep_cwd = dir.path().join("dev/code/myapp/crates/app/src");
+        let set = compiled(&configs).for_cwd(Some(deep_cwd.as_path()));
+
+        // Then the rule is live.
+        assert!(!set.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_self_or_below_glob_is_inactive_outside_the_project() {
+        // Given a rule scoped to a project and everything below it.
+        let configs = [project_rule("**/myapp/**", "rm -rf")];
+
+        // When the set is built for a directory that merely contains the
+        // project's name inside its own.
+        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let lookalike_cwd = dir.path().join("dev/code/myapp-old");
+        let set = compiled(&configs).for_cwd(Some(lookalike_cwd.as_path()));
+
+        // Then the rule is not there: `**/myapp/` cannot swallow a different
+        // segment name.
+        assert!(set.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_star_suffix_after_the_project_matches_arbitrarily_deep_paths() {
+        // Given a rule scoped with a single `*` after the project segment.
+        let configs = [project_rule("**/myapp/*", "rm -rf")];
+
+        // When the set is built for a cwd several levels below the project —
+        // globset collapses `**/` before a single `*`, so one `*` is not one
+        // level.
+        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let deep_cwd = dir.path().join("dev/code/myapp/crates/app/src");
+        let set = compiled(&configs).for_cwd(Some(deep_cwd.as_path()));
+
+        // Then the rule is live there, as it is at the project root itself.
+        assert!(!set.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_name_prefix_glob_admits_directories_starting_with_the_name() {
+        // Given a rule scoped with a wildcard inside the project segment.
+        let configs = [project_rule("**/myapp*/**", "rm -rf")];
+
+        // When the set is built for a directory whose name extends the stem.
+        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let fork_cwd = dir.path().join("dev/code/myapp-fork");
+        let set = compiled(&configs).for_cwd(Some(fork_cwd.as_path()));
+
+        // Then the rule is live.
+        assert!(!set.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_name_prefix_glob_rejects_a_name_it_does_not_extend() {
+        // Given a rule scoped with a wildcard inside the project segment.
+        let configs = [project_rule("**/myapp*/**", "rm -rf")];
+
+        // When the set is built for a directory that only contains the stem.
+        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let lookalike_cwd = dir.path().join("dev/code/xmyapp");
+        let set = compiled(&configs).for_cwd(Some(lookalike_cwd.as_path()));
+
+        // Then the rule is not there: `myapp*` anchors at the start of the
+        // segment, it is not a substring test.
+        assert!(set.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_two_segment_glob_names_a_nested_project_directly() {
+        // Given a rule whose project glob carries a directory separator.
+        let configs = [project_rule("**/jinn/image-tilth", "rm -rf")];
+
+        // When the set is built for that nested directory.
+        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let nested_cwd = dir.path().join("work/jinn/image-tilth");
+        let set = compiled(&configs).for_cwd(Some(nested_cwd.as_path()));
+
+        // Then the rule is live — multi-segment values work, which the old
+        // whole-path-or-one-segment predicate could never deliver.
+        assert!(!set.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_two_segment_glob_is_inactive_above_its_directory() {
+        // Given a rule whose project glob carries a directory separator.
+        let configs = [project_rule("**/jinn/image-tilth", "rm -rf")];
+
+        // When the set is built for the parent of that nested directory.
+        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let parent_cwd = dir.path().join("work/jinn");
+        let set = compiled(&configs).for_cwd(Some(parent_cwd.as_path()));
+
+        // Then the rule is not there: the glob names the nested directory,
+        // not anything that contains it.
+        assert!(set.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_nested_self_or_below_glob_applies_at_and_below_its_directory_and_nowhere_else() {
+        // Given a rule scoped to a nested project and everything below it —
+        // the two-segment glob joined to the `/**` suffix.
+        let configs = [project_rule("**/jinn/image-tilth/**", "rm -rf")];
+
+        // When the set is built for the nested directory itself, a directory
+        // deep below it, and a sibling of it.
+        let dir = jinn_testutil::tempdir().expect("temp dir");
+        let at =
+            compiled(&configs).for_cwd(Some(dir.path().join("work/jinn/image-tilth").as_path()));
+        let below = compiled(&configs).for_cwd(Some(
+            dir.path()
+                .join("work/jinn/image-tilth/crates/app")
+                .as_path(),
+        ));
+        let beside =
+            compiled(&configs).for_cwd(Some(dir.path().join("work/jinn/other-tilth").as_path()));
+
+        // Then the rule is live at the directory and below it, and nowhere
+        // beside it: both glob features compose, which the AC's literal shape
+        // is here to pin.
+        assert!(!at.is_empty(), "live at the nested directory itself");
+        assert!(!below.is_empty(), "live below the nested directory");
+        assert!(beside.is_empty(), "silent in a sibling of it");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_project_glob_matches_a_backslash_shaped_cwd() {
+        // Given a rule scoped to a project by whole-path glob.
+        let configs = [project_rule("**/myapp", "rm -rf")];
+
+        // When the set is built for a cwd whose separators are backslashes —
+        // the shape Windows reports.
+        let set = compiled(&configs).for_cwd(Some(std::path::Path::new("C:\\dev\\code\\myapp")));
+
+        // Then the rule is live: separators are folded to `/` before the
+        // candidates are built.
+        assert!(!set.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
     fn a_project_scoped_rule_is_inactive_when_the_cwd_is_unknown() {
-        // Given a rule scoped to one project by name.
-        let configs = [StreamRuleConfig {
-            project: Some("myapp".to_owned()),
-            ..rule("scoped", "rm -rf")
-        }];
+        // Given a rule scoped to one project by whole-path glob.
+        let configs = [project_rule("**/myapp", "rm -rf")];
 
         // When the set is built for a session whose cwd cannot be read.
-        let set = CompiledSet::build(&configs).for_cwd(None);
+        let set = compiled(&configs).for_cwd(None);
 
         // Then the rule is not there: an unknown cwd must not read as
         // "every directory".
@@ -1483,16 +1753,10 @@ mod tests {
     #[test]
     fn a_global_rule_survives_narrowing_when_the_cwd_is_unknown() {
         // Given a global rule beside one scoped to a single project.
-        let configs = [
-            rule("global", "rm -rf"),
-            StreamRuleConfig {
-                project: Some("myapp".to_owned()),
-                ..rule("scoped", "curl")
-            },
-        ];
+        let configs = [rule("global", "rm -rf"), project_rule("**/myapp", "curl")];
 
         // When the set is built for a session whose cwd cannot be read.
-        let set = CompiledSet::build(&configs).for_cwd(None);
+        let set = compiled(&configs).for_cwd(None);
 
         // Then the global rule still fires and the scoped one does not: an
         // unknown cwd narrows to the global floor.
@@ -1515,18 +1779,12 @@ mod tests {
     #[test]
     fn a_global_rule_stays_live_where_a_project_rule_is_scoped_out() {
         // Given a global rule beside one scoped to a single project.
-        let configs = [
-            rule("global", "rm -rf"),
-            StreamRuleConfig {
-                project: Some("myapp".to_owned()),
-                ..rule("scoped", "curl")
-            },
-        ];
+        let configs = [rule("global", "rm -rf"), project_rule("**/myapp", "curl")];
 
         // When the set is built for the project the scoped rule excludes.
         let dir = jinn_testutil::tempdir().expect("temp dir");
         let other_cwd = dir.path().join("dev/other");
-        let set = CompiledSet::build(&configs).for_cwd(Some(other_cwd.as_path()));
+        let set = compiled(&configs).for_cwd(Some(other_cwd.as_path()));
 
         // Then the global rule still fires there and the scoped one does not.
         let mut session = set.new_session(&SessionId::new());
@@ -1546,19 +1804,69 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn a_project_glob_that_does_not_compile_applies_everywhere() {
-        // Given a rule whose project glob the engine rejects.
-        let configs = [StreamRuleConfig {
-            project: Some("***[".to_owned()),
-            ..rule("bad-glob", "rm -rf")
-        }];
+    fn a_prefix_less_project_glob_fails_the_install() {
+        // Given a rule whose project glob is a bare name — it compiles, but
+        // can never match a whole absolute path.
+        let configs = [project_rule("myapp", "rm -rf")];
 
-        // When the set is built for an unrelated project.
+        // When the set is built.
+        let result = CompiledSet::build(&configs);
+
+        // Then the build fails, naming the rule, the pattern, and the fix —
+        // an install that would silently arm nothing is worse than a loud one.
+        let report = result.expect_err("a prefix-less glob cannot anchor");
+        let printed = format!("{report:?}");
+        assert!(printed.contains("myapp"), "the report names the pattern");
+        assert!(
+            printed.contains("did you mean `**/myapp`"),
+            "the report suggests the fix, got: {printed}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn an_engine_rejected_project_glob_fails_the_install() {
+        // Given a rule whose project glob anchors but the engine rejects.
+        let configs = [project_rule("**/[a-", "rm -rf")];
+
+        // When the set is built.
+        let result = CompiledSet::build(&configs);
+
+        // Then the build fails rather than degrading to "applies everywhere".
+        let report = result.expect_err("an engine-rejected glob cannot install");
+        let printed = format!("{report:?}");
+        assert!(printed.contains("**/[a-"), "the report names the pattern");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_drive_prefixed_project_glob_anchors() {
+        // Given a rule whose project glob is a Windows drive path.
+        let configs = [project_rule("C:/Users/me/myapp", "rm -rf")];
+
+        // When the set is built.
+        let result = CompiledSet::build(&configs);
+
+        // Then the glob installs: the matcher folds a Windows cwd's
+        // backslashes to `/`, and the drive prefix matches the normalized
+        // candidate literally.
+        assert!(result.is_ok());
+        assert!(!compiled(&configs).is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn an_empty_project_glob_stays_global() {
+        // Given a rule whose project is the empty string.
+        let configs = [project_rule("   ", "rm -rf")];
+
+        // When the set is built for an unrelated directory.
         let dir = jinn_testutil::tempdir().expect("temp dir");
-        let other_cwd = dir.path().join("dev/other");
-        let set = CompiledSet::build(&configs).for_cwd(Some(other_cwd.as_path()));
+        let anywhere_cwd = dir.path().join("anywhere/at/all");
+        let set = compiled(&configs).for_cwd(Some(anywhere_cwd.as_path()));
 
-        // Then the rule applies over-broad rather than being disarmed.
+        // Then the rule is live: blank means global, the most common config
+        // shape, and must not read as a broken anchor check.
         assert!(!set.is_empty());
     }
 
@@ -1575,7 +1883,7 @@ mod tests {
             .iter()
             .map(jinn_preferences_config::schemas::StreamRuleFileEntry::live_rule)
             .collect();
-        CompiledSet::build(&configs)
+        compiled(&configs)
     }
 
     /// The name of the rule that fires when `command` streams into one
@@ -1926,7 +2234,7 @@ mod tests {
         // Given a rule whose evidence completes at the edge of the first
         // delta — the shape that fired on every intermediate buffer before
         // the edge hold.
-        let set = CompiledSet::build(&[rule("tail-word", "FORBIDDEN")]);
+        let set = compiled(&[rule("tail-word", "FORBIDDEN")]);
         let mut session = set.new_session(&SessionId::new());
 
         // When the offending text arrives with nothing after it.
@@ -1941,7 +2249,7 @@ mod tests {
     #[test]
     fn a_match_held_at_the_edge_fires_when_the_next_delta_proves_it_complete() {
         // Given a rule whose first delta ended in an edge-held match.
-        let set = CompiledSet::build(&[rule("tail-word", "FORBIDDEN")]);
+        let set = compiled(&[rule("tail-word", "FORBIDDEN")]);
         let mut session = set.new_session(&SessionId::new());
         session.check("say FORBIDDEN", StreamContext::text());
 
@@ -1959,7 +2267,7 @@ mod tests {
     #[test]
     fn a_match_held_at_the_edge_dies_when_the_next_delta_destroys_it() {
         // Given the same end-anchored rule.
-        let set = CompiledSet::build(&[rule("ends-here", "ls -R /$")]);
+        let set = compiled(&[rule("ends-here", "ls -R /$")]);
         let mut session = set.new_session(&SessionId::new());
         session.check("ls -R /", StreamContext::tool(0, "bash"));
 
@@ -1982,7 +2290,7 @@ mod tests {
     fn a_match_ending_strictly_inside_the_buffer_fires_on_its_first_delta() {
         // Given a rule whose evidence completes mid-buffer — the shape the
         // path-glob scopes rely on for their first-delta fire.
-        let set = CompiledSet::build(&[rule("mid-buffer", "FORBIDDEN")]);
+        let set = compiled(&[rule("mid-buffer", "FORBIDDEN")]);
         let mut session = set.new_session(&SessionId::new());
 
         // When the offending text arrives with trailing bytes in one delta.
@@ -2000,7 +2308,7 @@ mod tests {
     fn finalize_releases_a_match_whose_evidence_is_the_whole_buffer() {
         // Given a rule whose match ends at the buffer's final byte — the case
         // no further delta can ever resolve, because none is coming.
-        let set = CompiledSet::build(&[rule("ends-here", "ls -R /$")]);
+        let set = compiled(&[rule("ends-here", "ls -R /$")]);
         let mut session = set.new_session(&SessionId::new());
         session.check("ls -R /", StreamContext::tool(0, "bash"));
 
@@ -2015,7 +2323,7 @@ mod tests {
     #[test]
     fn finalize_respects_scopes_through_the_stored_context() {
         // Given a bash-scoped end-anchored rule, and prose that matches it.
-        let set = CompiledSet::build(&[scoped_rule("no-bash", "ls -R /$", "tool:bash")]);
+        let set = compiled(&[scoped_rule("no-bash", "ls -R /$", "tool:bash")]);
         let mut session = set.new_session(&SessionId::new());
         session.check("ls -R /", StreamContext::text());
         session.check("ls -R /", StreamContext::thinking());
@@ -2044,7 +2352,7 @@ mod tests {
             rule("the-text-rule", "TODO"),
             rule("the-thinking-rule", "TODO"),
         ];
-        let set = CompiledSet::build(&configs);
+        let set = compiled(&configs);
         let mut session = set.new_session(&SessionId::new());
         session.check("TODO", StreamContext::tool(1, "bash"));
         session.check("TODO", StreamContext::thinking());

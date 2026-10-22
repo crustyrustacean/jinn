@@ -84,9 +84,25 @@ impl StreamRuleMatcherActor {
     /// rebuilt set observes every configuration write that landed before
     /// the command was published — including the picker's own, which is
     /// why the confirm publishes only after its writes succeed.
+    ///
+    /// A rebuild whose `project` globs cannot all anchor or compile is
+    /// **refused**: the error is logged and the previously installed matcher
+    /// stays live. A refresh must never leave the cell empty — that would
+    /// disarm every rule mid-session for one bad glob — and the bad file
+    /// will stop the next start anyway.
     pub fn handle_refresh(&self) {
         let rules = crate::rules::read_rules(&self.config, &self.preferences_path);
-        crate::install_compiled_matcher(&self.cell, &rules);
+        match crate::install_compiled_matcher(&self.cell, &rules) {
+            Ok(()) => {}
+            Err(report) => {
+                tracing::error!(
+                    error = ?report,
+                    "stream-rule matcher refresh refused; the previously installed matcher \
+                     stays live. Fix the project glob in the rules file; it will fail at the \
+                     next start"
+                );
+            }
+        }
     }
 }
 
@@ -220,6 +236,46 @@ mod tests {
         assert_eq!(
             fires(&cell, "REBUILD-MARKER-rebuildable"),
             Some("rebuildable".to_owned())
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_failing_refresh_keeps_the_previously_installed_matcher() {
+        // Given a cell whose matcher holds a working set.
+        let (actor, cell, _prefs_dir) = actor();
+        actor.handle_refresh();
+        assert_eq!(
+            fires(&cell, "REBUILD-MARKER-rebuildable"),
+            Some("rebuildable".to_owned())
+        );
+
+        // When the configuration gains a rule whose project glob cannot
+        // anchor — the shape a broken hand-edit produces — and a refresh
+        // runs over it.
+        let poisoned = jinn_config::testutil::config_layer(
+            r#"
+            [[stream_rules.entry]]
+            name = "rebuildable"
+            conditions = ['REBUILD-MARKER-rebuildable']
+            scopes = ['text']
+            body = 'Finish it.'
+            project = 'broken-proj'
+            "#,
+        );
+        let actor = StreamRuleMatcherActor {
+            cell: cell.clone(),
+            config: poisoned,
+            preferences_path: actor.preferences_path,
+        };
+        actor.handle_refresh();
+
+        // Then the refresh is refused: the old set still fires, and the
+        // broken config never reached the live matcher. The failure will
+        // stop the next start instead.
+        assert_eq!(
+            fires(&cell, "REBUILD-MARKER-rebuildable"),
+            Some("rebuildable".to_owned()),
+            "a refused refresh must leave the previous matcher live"
         );
     }
 }

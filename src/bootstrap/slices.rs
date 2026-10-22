@@ -192,7 +192,12 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
     // interactive, so boot order covers it.
     let config_snapshot = ctx.services().config.clone();
     let prefs_snapshot = ctx.services().paths.preferences_path();
-    jinn_stream_rules::activate(&mut ctx.host(), &config_snapshot, &prefs_snapshot);
+    // Can fail the launch: a stream rule's `project` glob that cannot anchor
+    // to a working directory (or that the glob engine rejects) would install
+    // a matcher that silently never fires the rule, so a bad glob is a boot
+    // error, not a warn-and-skip.
+    jinn_stream_rules::activate(&mut ctx.host(), &config_snapshot, &prefs_snapshot)
+        .map_err(ActivateError::StreamRules)?;
     let services_snapshot = ctx.services().clone();
     let state_snapshot = ctx.state().clone();
     jinn_session_init::activate(&services_snapshot, state_snapshot)
@@ -440,4 +445,12 @@ pub enum ActivateError {
     /// a runtime condition.
     #[error(debug)]
     MissingCell(&'static str),
+    /// A stream rule's `project` glob could not anchor to a working
+    /// directory, or the glob engine rejected it.
+    ///
+    /// Deliberately fatal: the glob would compile and then never fire, so
+    /// the report names the rule, the pattern, and the fix, and the launch
+    /// stops rather than arming a matcher that can never match.
+    #[error(debug)]
+    StreamRules(error_stack::Report<jinn_stream_rules::matcher::ProjectGlobError>),
 }
