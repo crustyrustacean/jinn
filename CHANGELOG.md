@@ -1,8 +1,12 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
+## 2026-10-22 v1.11.2
+
+- Test suite now passes on Windows.
+
 ## 2026-10-22 v1.11.1
 
-- Update `marked-path` to 0.5.0
+- Update `marked-path` to 0.5.0.
 
 ## 2026-10-22 v1.11.0
 
