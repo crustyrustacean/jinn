@@ -1,8 +1,9 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
-## (development)
+## 2026-10-22 v1.11.0
 
 - Fix `git` lifecycle script in `autodev` workflow.
+- Add `image` crate to convert BMP & TIFF images for image models. Shelling out `imagemagick` is now a fallback.
 
 ## 2026-10-22 v1.10.2
 
