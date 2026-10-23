@@ -1,5 +1,9 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
+## 2026-10-22 v1.11.1
+
+- Update `marked-path` to 0.5.0
+
 ## 2026-10-22 v1.11.0
 
 - Fix `git` lifecycle script in `autodev` workflow.
