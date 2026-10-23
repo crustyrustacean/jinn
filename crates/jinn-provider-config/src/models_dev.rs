@@ -1,9 +1,9 @@
 //! models.dev reference data loader.
 //!
-//! Loads a models.dev JSON dump from disk (user cache or system fallback),
-//! parses it into a flat lookup table of model ID → context length, and
-//! provides efficient lookup for filling in missing `context_length` values
-//! during model discovery and cache merge.
+//! Loads a models.dev JSON dump from the user cache, parses it into a flat
+//! lookup table of model ID → context length, and provides efficient lookup
+//! for filling in missing `context_length` values during model discovery and
+//! cache merge.
 
 use error_stack::ResultExt as _;
 use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
@@ -40,19 +40,15 @@ impl ModelsDevData {
         Self::default()
     }
 
-    /// Loads models.dev reference data from disk.
+    /// Loads models.dev reference data from the user cache.
     ///
-    /// Checks the user cache path first, then falls back to the system path.
-    /// If neither file exists, returns an empty lookup. If the user file is
-    /// corrupted (invalid JSON), falls back to the system file with a warning.
+    /// If the file does not exist, returns an empty lookup. If the file is
+    /// corrupted (invalid JSON), logs a warning and returns an empty lookup.
     ///
     /// This never returns an error - missing or unreadable files result in
     /// an empty lookup table.
-    pub fn load(
-        user_path: &MarkedPathBuf<Absolute>,
-        system_path: &MarkedPathBuf<Absolute>,
-    ) -> Self {
-        // Try user path first.
+    pub fn load(user_path: &MarkedPathBuf<Absolute>) -> Self {
+        // User cache only.
         if user_path.exists() {
             match Self::parse_file(user_path) {
                 Ok(data) => return data,
@@ -60,27 +56,13 @@ impl ModelsDevData {
                     tracing::warn!(
                         path = %user_path,
                         err = %e,
-                        "corrupted models.dev user file, trying system fallback"
+                        "corrupted models.dev user file"
                     );
                 }
             }
         }
 
-        // Fall back to system path.
-        if system_path.exists() {
-            match Self::parse_file(system_path) {
-                Ok(data) => return data,
-                Err(e) => {
-                    tracing::warn!(
-                        path = %system_path,
-                        err = %e,
-                        "corrupted models.dev system file"
-                    );
-                }
-            }
-        }
-
-        // Neither file exists or both corrupted - return empty.
+        // No file or corrupted - return empty.
         Self::new()
     }
 
@@ -263,7 +245,7 @@ mod tests {
         let user_path = write_json(&dir.path, "models.dev.json", minimal_models_dev_json());
 
         // When loading.
-        let data = ModelsDevData::load(&user_path, &missing_file("system"));
+        let data = ModelsDevData::load(&user_path);
 
         // Then all model IDs map to correct context lengths.
         assert_eq!(data.get("gpt-4o"), Some(128_000));
@@ -274,54 +256,10 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn load_prefers_user_over_system() {
-        // Given different data in user and system files.
-        let user_dir = jinn_testutil::tempdir();
-        let system_dir = jinn_testutil::tempdir();
-        let user_path = write_json(
-            &user_dir.path,
-            "models.dev.json",
-            r#"{"openai":{"models":{"gpt-4o":{"limit":{"context":100}}}}}"#,
-        );
-        write_json(
-            &system_dir.path,
-            "models.dev.json",
-            r#"{"openai":{"models":{"gpt-4o":{"limit":{"context":200}}}}}"#,
-        );
-
-        // When loading.
-        let system = system_dir
-            .path
-            .join("models.dev.json")
-            .expect("temp root joins a bare name");
-        let data = ModelsDevData::load(&user_path, &system);
-
-        // Then the user file value wins.
-        assert_eq!(data.get("gpt-4o"), Some(100));
-    }
-
-    #[rstest::rstest]
-    fn load_falls_back_to_system_when_user_missing() {
-        // Given only a system file.
-        let system_dir = jinn_testutil::tempdir();
-        let system_path = write_json(
-            &system_dir.path,
-            "models.dev.json",
-            r#"{"openai":{"models":{"gpt-4o":{"limit":{"context":200}}}}}"#,
-        );
-
-        // When loading with no user file.
-        let data = ModelsDevData::load(&missing_file("user"), &system_path);
-
-        // Then system data is used.
-        assert_eq!(data.get("gpt-4o"), Some(200));
-    }
-
-    #[rstest::rstest]
-    fn load_returns_empty_when_neither_exists() {
-        // Given no files at either path.
-        // When loading from those paths.
-        let data = ModelsDevData::load(&missing_file("user"), &missing_file("system"));
+    fn load_returns_empty_when_file_missing() {
+        // Given a path that names no file.
+        // When loading from that path.
+        let data = ModelsDevData::load(&missing_file("models.dev.json"));
 
         // Then the lookup is empty (no panic, no error).
         assert!(data.is_empty());
@@ -339,7 +277,7 @@ mod tests {
         );
 
         // When loading.
-        let data = ModelsDevData::load(&user_path, &missing_file("system"));
+        let data = ModelsDevData::load(&user_path);
 
         // Then the model ID is absent from the lookup table.
         assert_eq!(data.get("gpt-4o"), None);
@@ -357,7 +295,7 @@ mod tests {
         );
 
         // When loading.
-        let data = ModelsDevData::load(&user_path, &missing_file("system"));
+        let data = ModelsDevData::load(&user_path);
 
         // Then get() returns Some(0) - not None.
         assert_eq!(data.get("text-embedding-3-large"), Some(0));
@@ -365,25 +303,19 @@ mod tests {
 
     #[rstest::rstest]
     fn load_handles_corrupted_user_file() {
-        // Given garbage in user path and valid data in system path.
+        // Given garbage in the user cache file.
         let user_dir = jinn_testutil::tempdir();
-        let system_dir = jinn_testutil::tempdir();
         let user_path = user_dir
             .path
             .join("models.dev.json")
             .expect("temp root joins a bare name");
         std::fs::write(&user_path, "NOT VALID JSON!!!").expect("write garbage");
-        let system_path = write_json(
-            &system_dir.path,
-            "models.dev.json",
-            r#"{"openai":{"models":{"gpt-4o":{"limit":{"context":200}}}}}"#,
-        );
 
         // When loading.
-        let data = ModelsDevData::load(&user_path, &system_path);
+        let data = ModelsDevData::load(&user_path);
 
-        // Then system data is used.
-        assert_eq!(data.get("gpt-4o"), Some(200));
+        // Then the lookup is empty (warn and continue).
+        assert!(data.is_empty());
     }
 
     #[rstest::rstest]
@@ -408,7 +340,7 @@ mod tests {
         );
 
         // When loading.
-        let data = ModelsDevData::load(&user_path, &missing_file("system"));
+        let data = ModelsDevData::load(&user_path);
 
         // Then the first provider's value is used (insert wins).
         assert_eq!(data.get("glm-5.1"), Some(200_000));
@@ -438,7 +370,7 @@ mod tests {
         );
 
         // When loading it.
-        let data = ModelsDevData::load(&user_path, &missing_file("system"));
+        let data = ModelsDevData::load(&user_path);
 
         // Then the data reports itself non-empty and serves the model.
         assert!(
@@ -453,7 +385,7 @@ mod tests {
         // Given a models.dev file with a vision-capable model.
         let dir = jinn_testutil::tempdir();
         let user_path = write_json(&dir.path, "models.dev.json", minimal_models_dev_json());
-        let data = ModelsDevData::load(&user_path, &missing_file("system"));
+        let data = ModelsDevData::load(&user_path);
 
         // When looking up image support for gpt-4o.
         // Then it returns Some(true).
@@ -465,7 +397,7 @@ mod tests {
         // Given a models.dev file with a text-only model.
         let dir = jinn_testutil::tempdir();
         let user_path = write_json(&dir.path, "models.dev.json", minimal_models_dev_json());
-        let data = ModelsDevData::load(&user_path, &missing_file("system"));
+        let data = ModelsDevData::load(&user_path);
 
         // When looking up image support for gpt-3.5-turbo.
         // Then it returns Some(false).
@@ -477,7 +409,7 @@ mod tests {
         // Given a models.dev file.
         let dir = jinn_testutil::tempdir();
         let user_path = write_json(&dir.path, "models.dev.json", minimal_models_dev_json());
-        let data = ModelsDevData::load(&user_path, &missing_file("system"));
+        let data = ModelsDevData::load(&user_path);
 
         // When looking up a model not in the reference data.
         // Then None is returned (unknown model treated as "allow" by the gate).

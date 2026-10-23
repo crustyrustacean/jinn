@@ -70,38 +70,31 @@ pub fn scan_skills(dir: &MarkedPathBuf<Absolute>) -> Vec<Skill> {
     skills
 }
 
-/// Scans system, global, and project skill dirs, merging by name
-/// with most-local-wins precedence.
+/// Scans global and project skill dirs, merging by name with
+/// most-local-wins precedence.
 ///
 /// Precedence (lowest to highest):
 ///
-/// 1. `system` — system-installed skills (e.g. `/usr/share/jinn/skills`).
-/// 2. `global` — user-global skills (`~/.agents/skills`).
-/// 3. `project_dirs` — project-local `.agents/skills` directories.
+/// 1. `global` — user-global skills (`~/.agents/skills`).
+/// 2. `project_dirs` — project-local `.agents/skills` directories.
 ///
 /// `project_dirs` are ordered least-local → most-local (i.e. from the root
 /// of the bounded walk down to the cwd). Each entry is an already-suffixed
 /// `<root>/.agents/skills` directory (as returned by
 /// the session-init slice's ancestor walk (its `project_skills_dirs`));
 /// it is scanned directly. Later entries in `project_dirs` override earlier
-/// ones, and all project skills override the global and system ones.
+/// ones, and all project skills override the global ones.
 ///
 /// Each project skill is tagged with [`SkillSource::Project { dir }`] where
 /// `dir` is the walked ancestor (the project root, not the
 /// `.agents/skills` subdirectory).
 pub fn scan_skills_merged(
-    system: &MarkedPathBuf<Absolute>,
     global: &MarkedPathBuf<Absolute>,
     project_dirs: &[MarkedPathBuf<Absolute>],
 ) -> Vec<Skill> {
     let mut by_name: std::collections::HashMap<String, Skill> = std::collections::HashMap::new();
 
-    // System skills first (lowest priority).
-    for skill in scan_skills(system) {
-        by_name.insert(skill.name.clone(), skill);
-    }
-
-    // Global skills override system.
+    // Global skills are the base layer.
     for skill in scan_skills(global) {
         by_name.insert(skill.name.clone(), skill);
     }
@@ -393,7 +386,7 @@ mod tests {
         .expect("write SKILL.md");
 
         // When merging with no project dirs.
-        let skills = scan_skills_merged(&missing_dir("system"), &global.path, &[]);
+        let skills = scan_skills_merged(&global.path, &[]);
 
         // Then the global skill is present with Global source.
         assert_eq!(skills.len(), 1);
@@ -435,7 +428,6 @@ mod tests {
 
         // When merging with the project dir.
         let skills = scan_skills_merged(
-            &missing_dir("system"),
             &global.path,
             &[project
                 .path
@@ -487,7 +479,6 @@ mod tests {
 
         // When merging with ancestor first (least-local), local last (most-local).
         let skills = scan_skills_merged(
-            &missing_dir("system"),
             &missing_dir("global"),
             &[
                 ancestor
@@ -510,75 +501,5 @@ mod tests {
                 dir: local.path.clone()
             }
         );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn scan_skills_merged_system_only() {
-        // Given a system dir with one skill, no global, no project dirs.
-        let system = jinn_testutil::tempdir();
-        let skill_dir = system
-            .path
-            .join("sys-skill")
-            .expect("temp root joins a bare name");
-        std::fs::create_dir_all(&skill_dir).expect("create skill dir");
-        std::fs::write(
-            skill_dir
-                .join("SKILL.md")
-                .expect("typed parent joins a bare name"),
-            "---\nname: sys-skill\ndescription: A system skill\n---\n\n# System",
-        )
-        .expect("write SKILL.md");
-
-        // When merging with nonexistent global and no project dirs.
-        let skills = scan_skills_merged(&system.path, &missing_dir("global"), &[]);
-
-        // Then the system skill is found with Global source.
-        assert_eq!(skills.len(), 1);
-        assert_eq!(skills[0].name, "sys-skill");
-        assert_eq!(skills[0].body, "# System");
-        assert_eq!(skills[0].source, SkillSource::Global);
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn scan_skills_merged_global_overrides_system() {
-        // Given a system dir and a global dir with same-named skill.
-        let system = jinn_testutil::tempdir();
-        let sys_skill = system
-            .path
-            .join("shared")
-            .expect("temp root joins a bare name");
-        std::fs::create_dir_all(&sys_skill).expect("create sys skill dir");
-        std::fs::write(
-            sys_skill
-                .join("SKILL.md")
-                .expect("typed parent joins a bare name"),
-            "---\nname: shared\ndescription: System version\n---\n\n# System body",
-        )
-        .expect("write system SKILL.md");
-
-        let global = jinn_testutil::tempdir();
-        let g_skill = global
-            .path
-            .join("shared")
-            .expect("temp root joins a bare name");
-        std::fs::create_dir_all(&g_skill).expect("create global skill dir");
-        std::fs::write(
-            g_skill
-                .join("SKILL.md")
-                .expect("typed parent joins a bare name"),
-            "---\nname: shared\ndescription: Global version\n---\n\n# Global body",
-        )
-        .expect("write global SKILL.md");
-
-        // When merging with no project dirs.
-        let skills = scan_skills_merged(&system.path, &global.path, &[]);
-
-        // Then the global version wins (overrides system).
-        assert_eq!(skills.len(), 1);
-        assert_eq!(skills[0].name, "shared");
-        assert_eq!(skills[0].body, "# Global body");
-        assert_eq!(skills[0].source, SkillSource::Global);
     }
 }

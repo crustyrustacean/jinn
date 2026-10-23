@@ -64,11 +64,7 @@ impl Wired {
             let dir =
                 marked_path::MarkedPathBuf::<marked_path::Absolute>::new("/nonexistent-themes-dir")
                     .expect("rooted test path");
-            let system = marked_path::MarkedPathBuf::<marked_path::Absolute>::new(
-                "/nonexistent-system-themes-dir",
-            )
-            .expect("rooted test path");
-            crate::activate(&mut host, &dir.as_marked_path(), &system.as_marked_path());
+            crate::activate(&mut host, &dir.as_marked_path());
             crate::activate_picker(&mut host);
         }
         slices

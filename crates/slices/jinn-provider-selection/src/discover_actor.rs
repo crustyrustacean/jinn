@@ -118,7 +118,6 @@ impl DiscoverActor {
         // Load models.dev reference data for context length fallback.
         let models_dev = jinn_provider_config::ModelsDevData::load(
             &self.deps.services.paths.models_dev_user_path(),
-            &self.deps.services.paths.models_dev_system_path(),
         );
 
         for (name, entry) in &entries {

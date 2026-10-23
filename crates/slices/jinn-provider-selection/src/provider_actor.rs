@@ -285,7 +285,6 @@ impl ProviderActor {
         }
         let models_dev = jinn_provider_config::ModelsDevData::load(
             &self.deps.services.paths.models_dev_user_path(),
-            &self.deps.services.paths.models_dev_system_path(),
         );
         merge_models_dev_data(&mut cache, &models_dev);
         // Config overrides apply last so explicit per-model values beat
@@ -315,7 +314,6 @@ impl ProviderActor {
         }
         let models_dev = jinn_provider_config::ModelsDevData::load(
             &self.deps.services.paths.models_dev_user_path(),
-            &self.deps.services.paths.models_dev_system_path(),
         );
         merge_models_dev_data(&mut cache, &models_dev);
         // Config overrides apply last so explicit per-model values beat

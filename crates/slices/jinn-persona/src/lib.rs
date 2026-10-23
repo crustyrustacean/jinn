@@ -1,8 +1,8 @@
 //! The persona slice — persona discovery and selection state.
 //!
 //! Owns one cell ([`personas_slot`]) holding [`jinn_persona_msg::Personas`]:
-//! the markdown personas scanned from the user and system persona
-//! directories at activation. Activation also hands the scanned set back
+//! the markdown personas scanned from the user persona directory at
+//! activation. Activation also hands the scanned set back
 //! to composition, which publishes the kernel's `PersonasLoaded` event —
 //! the same contract the retired `persona-loader` component fulfilled over
 //! the wire — so the session actor's consumer code is unchanged.
@@ -26,7 +26,7 @@ pub use parse::PersonaParseError;
 pub use parse::parse_persona_content;
 pub use parse::parse_persona_file;
 
-/// Activates the slice: scans both persona directories, re-seeds the
+/// Activates the slice: scans the persona directory, re-seeds the
 /// catalog-registered personas cell with the result, and returns the
 /// scanned set for composition to publish as `PersonasLoaded` after the
 /// session actor has subscribed.
@@ -39,8 +39,7 @@ pub use parse::parse_persona_file;
 ///
 /// Scan semantics (the inherited ones): `.md` files only, one
 /// unparseable file is noted on stderr and skipped — a single bad file
-/// never drops the batch — and the user directory shadows the system
-/// directory for same-name personas.
+/// never drops the batch.
 ///
 /// # Panics
 ///
@@ -109,12 +108,10 @@ pub fn activate_picker(host: &mut SliceHost<'_, jinn_slices::RenderFacts>) {
     persona_picker_routes::register_persona_picker_enter_hook(host.key_routes(), &cell);
 }
 
-/// Scans both directories into the name-sorted persona set.
+/// Scans the persona directory into the name-sorted persona set.
 ///
-/// The user directory shadows the system directory for same-name
-/// personas (matching `load_theme`'s user-first rule), so the system dir
-/// is merged first and the user dir's personas overwrite them. Failures
-/// are noted on stderr (host-side diagnostics) and never abort the batch.
+/// Failures are noted on stderr (host-side diagnostics) and never abort
+/// the batch.
 #[must_use]
 pub fn scan(personas_dir: &MarkedPathBuf<Absolute>) -> Vec<Persona> {
     let mut defs = std::collections::BTreeMap::new();

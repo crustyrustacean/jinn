@@ -223,7 +223,6 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
     jinn_theme_slice::activate(
         &mut ctx.host(),
         &services_snapshot.paths.themes_dir().as_marked_path(),
-        &services_snapshot.paths.system_themes_dir().as_marked_path(),
     );
     jinn_theme_slice::activate_picker(&mut ctx.host());
 

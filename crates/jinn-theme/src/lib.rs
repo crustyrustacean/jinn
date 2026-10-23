@@ -36,9 +36,7 @@ pub mod theme_entry;
 pub use color::ThemeColor;
 pub use default_theme::default_theme;
 pub use loader::ThemeError;
-pub use loader::{
-    discover_themes, load_theme, load_theme_from_dir, resolve_theme, resolve_theme_from_dir,
-};
+pub use loader::{discover_themes, load_theme, load_theme_from_file, resolve_theme};
 pub use theme::Theme;
 #[cfg(feature = "entry")]
 pub use theme_entry::ThemeEntry;

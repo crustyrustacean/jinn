@@ -256,51 +256,6 @@ fn scan_dir_skips_underscore_prefixed_files() {
 }
 
 #[rstest::rstest]
-fn load_from_dirs_user_override_skips_underscore_prefixed() {
-    // Given a user dir with an underscore-prefixed file and a system dir with a normal template.
-    let user_dir = jinn_testutil::tempdir();
-    let system_dir = jinn_testutil::tempdir();
-    write_template(
-        &user_dir.path,
-        "_compaction.md",
-        "+++\nname = \"_compaction\"\ndescription = \"Compaction\"\n+++\nBody.",
-    );
-    write_template(
-        &system_dir.path,
-        "review.md",
-        "+++\nname = \"review\"\ndescription = \"Review\"\n+++\nBody.",
-    );
-
-    // When loading from both dirs.
-    let store =
-        PromptTemplateStore::load_from_dirs(&user_dir.path, &system_dir.path).expect("load");
-
-    // Then only the non-prefixed template is loaded.
-    assert_eq!(store.len(), 1);
-    assert!(store.find_by_name("review").is_some());
-    assert!(store.find_by_name("_compaction").is_none());
-}
-
-#[rstest::rstest]
-fn fuzzy_search_never_returns_underscore_prefixed_templates() {
-    // Given a store built directly (bypassing scan) that includes an underscore-prefixed name.
-    // This verifies that even if somehow a _-prefixed template got into the store,
-    // the search would still return it - confirming the filter must happen at scan time.
-    let store = PromptTemplateStore::from_vec(vec![PromptTemplate {
-        name: "_compaction".to_owned(),
-        description: "System".to_owned(),
-        body: String::new(),
-    }]);
-
-    // When searching with a broad query.
-    let results = store.fuzzy_search("compaction");
-
-    // Then the _-prefixed template is returned (because it's in the store).
-    // This confirms the real protection is at scan time, not search time.
-    assert_eq!(results.len(), 1);
-}
-
-#[rstest::rstest]
 fn load_from_dirs_ordered_project_adds_net_new_template() {
     // Given a user dir with one template and a project dir with a different one.
     let user_dir = jinn_testutil::tempdir();
@@ -309,7 +264,6 @@ fn load_from_dirs_ordered_project_adds_net_new_template() {
         "hello.md",
         "+++\nname = \"hello\"\ndescription = \"User hello\"\n+++\nBody hello",
     );
-    let system_dir = jinn_testutil::tempdir();
     let project_dir = jinn_testutil::tempdir();
     write_template(
         &project_dir.path,
@@ -320,7 +274,6 @@ fn load_from_dirs_ordered_project_adds_net_new_template() {
     // When loading with the project dir.
     let store = PromptTemplateStore::load_from_dirs_ordered(
         &user_dir.path,
-        &system_dir.path,
         std::slice::from_ref(&project_dir.path),
     )
     .expect("load");
@@ -340,7 +293,6 @@ fn load_from_dirs_ordered_project_overrides_user() {
         "shared.md",
         "+++\nname = \"shared\"\ndescription = \"User version\"\n+++\nUser body",
     );
-    let system_dir = jinn_testutil::tempdir();
     let project_dir = jinn_testutil::tempdir();
     write_template(
         &project_dir.path,
@@ -351,7 +303,6 @@ fn load_from_dirs_ordered_project_overrides_user() {
     // When loading with the project dir as the highest-priority layer.
     let store = PromptTemplateStore::load_from_dirs_ordered(
         &user_dir.path,
-        &system_dir.path,
         std::slice::from_ref(&project_dir.path),
     )
     .expect("load");
@@ -367,7 +318,6 @@ fn load_from_dirs_ordered_project_overrides_user() {
 fn load_from_dirs_ordered_most_local_ancestor_wins() {
     // Given two project ancestors each with a template of the same name.
     let user_dir = jinn_testutil::tempdir();
-    let system_dir = jinn_testutil::tempdir();
     let ancestor = jinn_testutil::tempdir();
     write_template(
         &ancestor.path,
@@ -384,7 +334,6 @@ fn load_from_dirs_ordered_most_local_ancestor_wins() {
     // When loading with ancestor first (least-local), local last (most-local).
     let store = PromptTemplateStore::load_from_dirs_ordered(
         &user_dir.path,
-        &system_dir.path,
         &[ancestor.path.clone(), local.path.clone()],
     )
     .expect("load");

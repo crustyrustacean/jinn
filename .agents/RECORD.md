@@ -571,3 +571,4 @@ Entries are added or amended **only with human approval**.
 - (tools) A `read_image` call under a model not confirmed vision-capable succeeds with text-only guidance instead of attaching.
 - (tools) Tool-result images ride provider-specific transports: Anthropic nests image blocks in the `tool_result`, and every other backend receives a synthesized user message carrying the image, both built at request time from provider-neutral stored data.
 - (storage) Tool-result attachments persist in `entry_blobs` like user attachments and are rehydrated on load.
+- (arch) AppPaths carries no system-wide data dir; themes, prompts, skills, personas, and the models.dev cache are read from user directories alone.

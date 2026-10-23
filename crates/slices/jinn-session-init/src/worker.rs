@@ -107,14 +107,10 @@ pub struct SessionDiscoveryWorker {
     run: Arc<AtomicU64>,
     /// The user's home dir.
     home: MarkedPathBuf<Absolute>,
-    /// The system-installed skills dir.
-    system_skills_dir: MarkedPathBuf<Absolute>,
     /// The user-global skills dir.
     global_skills_dir: MarkedPathBuf<Absolute>,
     /// The user prompts dir.
     user_prompts_dir: MarkedPathBuf<Absolute>,
-    /// The system-installed prompts dir.
-    system_prompts_dir: MarkedPathBuf<Absolute>,
     /// The workflows dir (launch-global: the config dir's workflows folder).
     workflows_dir: MarkedPathBuf<Absolute>,
     /// How long a discovery run waits for all three scans. The
@@ -134,14 +130,10 @@ pub struct WorkerDeps {
     pub state: State,
     /// The user's home dir.
     pub home: MarkedPathBuf<Absolute>,
-    /// The system-installed skills dir.
-    pub system_skills_dir: MarkedPathBuf<Absolute>,
     /// The user-global skills dir.
     pub global_skills_dir: MarkedPathBuf<Absolute>,
     /// The user prompts dir.
     pub user_prompts_dir: MarkedPathBuf<Absolute>,
-    /// The system-installed prompts dir.
-    pub system_prompts_dir: MarkedPathBuf<Absolute>,
     /// The workflows dir (launch-global: the config dir's workflows folder).
     pub workflows_dir: MarkedPathBuf<Absolute>,
     /// The settle budget (production default unless overridden).
@@ -167,10 +159,8 @@ impl WorkerDeps {
             system: system.clone(),
             state: state.clone(),
             home: paths.home_dir().clone(),
-            system_skills_dir: paths.system_skills_dir(),
             global_skills_dir: paths.skills_dir(),
             user_prompts_dir: paths.prompts_dir(),
-            system_prompts_dir: paths.system_prompts_dir(),
             workflows_dir: paths.workflows_dir(),
             settle_budget: settle_budget.unwrap_or(SETTLE_BUDGET),
         }
@@ -220,10 +210,8 @@ impl SessionDiscoveryWorker {
                         session_id,
                         state,
                         home,
-                        system_skills_dir,
                         global_skills_dir,
                         user_prompts_dir,
-                        system_prompts_dir,
                         workflows_dir,
                         system,
                         settle_budget,
@@ -234,10 +222,8 @@ impl SessionDiscoveryWorker {
                         state,
                         run: Arc::new(AtomicU64::new(0)),
                         home,
-                        system_skills_dir,
                         global_skills_dir,
                         user_prompts_dir,
-                        system_prompts_dir,
                         workflows_dir,
                         settle_budget,
                     })
@@ -311,11 +297,10 @@ impl SessionDiscoveryWorker {
         let system = self.system.clone();
         let state = self.state.clone();
         let session_id = self.session_id.clone();
-        let system_dir = self.system_skills_dir.clone();
         let global_dir = self.global_skills_dir.clone();
         tokio::spawn(async move {
             let joined = tokio::task::spawn_blocking(move || {
-                scans::scan_skills_merged(&system_dir, &global_dir, &project_dirs)
+                scans::scan_skills_merged(&global_dir, &project_dirs)
             })
             .await;
             match joined {
@@ -361,12 +346,10 @@ impl SessionDiscoveryWorker {
         let state = self.state.clone();
         let session_id = self.session_id.clone();
         let user_dir = self.user_prompts_dir.clone();
-        let system_dir = self.system_prompts_dir.clone();
         tokio::spawn(async move {
-            let joined = tokio::task::spawn_blocking(move || {
-                scans::load_prompts(&user_dir, &system_dir, &project_dirs)
-            })
-            .await;
+            let joined =
+                tokio::task::spawn_blocking(move || scans::load_prompts(&user_dir, &project_dirs))
+                    .await;
             match joined {
                 Ok(Ok(store)) => {
                     tracing::info!(count = store.len(), "rescanned prompt templates");
@@ -590,10 +573,8 @@ struct SessionDiscoveryWorkerDepsBuilder {
     session_id: SessionId,
     state: State,
     home: MarkedPathBuf<Absolute>,
-    system_skills_dir: MarkedPathBuf<Absolute>,
     global_skills_dir: MarkedPathBuf<Absolute>,
     user_prompts_dir: MarkedPathBuf<Absolute>,
-    system_prompts_dir: MarkedPathBuf<Absolute>,
     workflows_dir: MarkedPathBuf<Absolute>,
     system: ActorSystem,
     settle_budget: std::time::Duration,
@@ -606,10 +587,8 @@ impl WorkerDeps {
             session_id: self.session_id.clone(),
             state: self.state.clone(),
             home: self.home.clone(),
-            system_skills_dir: self.system_skills_dir.clone(),
             global_skills_dir: self.global_skills_dir.clone(),
             user_prompts_dir: self.user_prompts_dir.clone(),
-            system_prompts_dir: self.system_prompts_dir.clone(),
             workflows_dir: self.workflows_dir.clone(),
             system: system.clone(),
             settle_budget: self.settle_budget,

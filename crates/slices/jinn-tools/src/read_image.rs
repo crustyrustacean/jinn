@@ -246,10 +246,7 @@ fn session_model_supports_images(ctx: &ToolContext) -> bool {
         .and_then(|cell| cell.read().model_cache.clone());
     drop(guard);
 
-    let models_dev = ModelsDevData::load(
-        &ctx.app_paths.models_dev_user_path(),
-        &ctx.app_paths.models_dev_system_path(),
-    );
+    let models_dev = ModelsDevData::load(&ctx.app_paths.models_dev_user_path());
     resolve_model_supports_images(&models_dev, model_cache.as_ref(), &model_id)
 }
 
@@ -737,11 +734,7 @@ mod tests {
             .join("models.dev.json")
             .expect("temp root joins a bare name");
         std::fs::write(&user_path, json.to_string()).expect("write fixture");
-        let none_path = dir
-            .path
-            .join("none.json")
-            .expect("temp root joins a bare name");
-        let models_dev = ModelsDevData::load(&user_path, &none_path);
+        let models_dev = ModelsDevData::load(&user_path);
 
         // When asking models.dev about both.
         // Then only the image-capable one is positively confirmed.

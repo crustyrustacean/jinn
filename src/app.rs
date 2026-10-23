@@ -176,7 +176,6 @@ impl App {
                         let app_paths = jinn_kernel::AppPaths::default();
                         let compaction_prompt = jinn_tui::load_compaction_prompt(
                             &app_paths.prompts_dir().as_marked_path(),
-                            &app_paths.system_prompts_dir().as_marked_path(),
                         )
                         .change_context(AppError)?;
                         let (core, services, discord_activated) = self
@@ -231,7 +230,6 @@ impl App {
                         let app_paths = jinn_kernel::AppPaths::default();
                         let compaction_prompt = jinn_tui::load_compaction_prompt(
                             &app_paths.prompts_dir().as_marked_path(),
-                            &app_paths.system_prompts_dir().as_marked_path(),
                         )
                         .change_context(AppError)?;
                         let (core, services, _discord_activated) = self
@@ -267,7 +265,6 @@ impl App {
                         jinn_tui::load_theme(
                             &core.state,
                             &services.paths.themes_dir().as_marked_path(),
-                            &services.paths.system_themes_dir().as_marked_path(),
                         );
                         let mut headless = HeadlessApp::new(core, services);
                         match command {
@@ -433,8 +430,7 @@ mod tests {
 
     #[rstest::rstest]
     fn load_compaction_prompt_populates_state() {
-        // Given a user dir with a compaction prompt file, and an empty
-        // system dir.
+        // Given a user dir with a compaction prompt file.
         let dir = jinn_testutil::tempdir();
         std::fs::write(
             dir.path
@@ -444,12 +440,8 @@ mod tests {
         )
         .expect("write compaction prompt");
 
-        let empty = jinn_testutil::tempdir();
-
         // When loading the compaction prompt.
-        let prompt =
-            load_compaction_prompt(&dir.path.as_marked_path(), &empty.path.as_marked_path())
-                .expect("load");
+        let prompt = load_compaction_prompt(&dir.path.as_marked_path()).expect("load");
 
         // Then the loader returns the prompt text.
         assert_eq!(prompt, "test compaction prompt");
@@ -457,15 +449,11 @@ mod tests {
 
     #[rstest::rstest]
     fn load_compaction_prompt_returns_err_when_missing() {
-        // Given empty user and system dirs.
+        // Given an empty user dir.
         let user_dir = jinn_testutil::tempdir();
-        let system_dir = jinn_testutil::tempdir();
 
         // When loading the compaction prompt with no file present.
-        let result = load_compaction_prompt(
-            &user_dir.path.as_marked_path(),
-            &system_dir.path.as_marked_path(),
-        );
+        let result = load_compaction_prompt(&user_dir.path.as_marked_path());
 
         // Then an error is returned (hard-fail semantics).
         assert!(
@@ -499,12 +487,7 @@ mod tests {
         let initial_focus = state.read().frontend.theme.focus_accent;
 
         // When loading the theme.
-        let empty = jinn_testutil::tempdir();
-        load_theme(
-            &state,
-            &dir.path.as_marked_path(),
-            &empty.path.as_marked_path(),
-        );
+        load_theme(&state, &dir.path.as_marked_path());
 
         // Then the theme in state was updated (focus_accent changed to magenta).
         // This kills: replace load_theme with ().
@@ -517,21 +500,16 @@ mod tests {
 
     #[rstest::rstest]
     fn load_theme_falls_back_gracefully_on_missing() {
-        // Given a state with a theme name that doesn't exist, and empty
-        // user and system dirs.
+        // Given a state with a theme name that doesn't exist, and an empty
+        // user themes dir.
         let state = State::new(AppState::default());
         state.write().frontend.app_state.theme_name = Some("nonexistent".to_owned());
 
         let user = jinn_testutil::tempdir();
-        let system = jinn_testutil::tempdir();
 
         // When loading the theme (no matching file).
         // Then it should not panic - the function logs a warning and returns.
-        load_theme(
-            &state,
-            &user.path.as_marked_path(),
-            &system.path.as_marked_path(),
-        );
+        load_theme(&state, &user.path.as_marked_path());
     }
 
     #[rstest::rstest]

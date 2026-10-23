@@ -8,7 +8,7 @@
 //! - [`vcs`] — marker-based VCS-root detection.
 //! - [`walk`] — the bounded cwd→ancestor walk (exclusive `$HOME`,
 //!   inclusive VCS root) plus per-resource dir/file resolution.
-//! - [`skills`] — per-dir skill scanning and the system→global→project
+//! - [`skills`] — per-dir skill scanning and the global→project
 //!   merged result (project overrides, most-local wins).
 //! - [`workflows`] — the launch-global workflows dir scan, delegating to
 //!   the workflows slice's exported kernel.
@@ -80,7 +80,7 @@ fn read_one_context_file(path: &MarkedPathBuf<Absolute>) -> Option<ContextFile> 
     })
 }
 
-/// Loads the prompt-template store from the user/system/project dirs.
+/// Loads the prompt-template store from the user/project dirs.
 ///
 /// # Errors
 ///
@@ -88,8 +88,7 @@ fn read_one_context_file(path: &MarkedPathBuf<Absolute>) -> Option<ContextFile> 
 /// description identical to the published summary.
 pub fn load_prompts(
     user_dir: &MarkedPathBuf<Absolute>,
-    system_dir: &MarkedPathBuf<Absolute>,
     project_dirs: &[MarkedPathBuf<Absolute>],
 ) -> Result<PromptTemplateStore, error_stack::Report<jinn_context::PromptTemplateStoreError>> {
-    PromptTemplateStore::load_from_dirs_ordered(user_dir, system_dir, project_dirs)
+    PromptTemplateStore::load_from_dirs_ordered(user_dir, project_dirs)
 }

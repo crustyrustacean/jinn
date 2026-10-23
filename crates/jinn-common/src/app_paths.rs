@@ -9,7 +9,7 @@
 //! `AppPaths` instance - never from `dirs::*` free functions directly.
 
 use crate::app_info::APP_NAME;
-use marked_path::{Absolute, MarkedPath, MarkedPathAccess, MarkedPathBuf};
+use marked_path::{Absolute, MarkedPath, MarkedPathBuf};
 use std::path::PathBuf;
 
 /// Browser profile mode: one persistent profile per mode.
@@ -60,10 +60,6 @@ pub struct AppPaths {
     state_dir: MarkedPathBuf<Absolute>,
     /// `~/` - home directory (skills live at `~/.agents/skills`)
     home_dir: MarkedPathBuf<Absolute>,
-    /// `/usr/share/jinn` - system-wide defaults (themes, personas, prompts).
-    ///
-    /// User files in `~/.config/jinn/` override system files of the same name.
-    system_data_dir: MarkedPathBuf<Absolute>,
 }
 
 /// Environment variable that, when set, rebinds every [`AppPaths`] base
@@ -72,8 +68,7 @@ pub struct AppPaths {
 /// Read once, at construction of [`AppPaths::default()`]; no other code in
 /// the workspace reads the environment for path derivation. When set, the
 /// layout matches [`AppPaths::new_in`] exactly: `config/`, `data/`,
-/// `cache/`, `state/` subdirectories, `home` is the root itself, and
-/// system data lives at `root/share`.
+/// `cache/`, `state/` subdirectories, with `home` as the root itself.
 ///
 /// Its purpose is test isolation: integration tests that spawn the `jinn`
 /// binary point this at a temp root so no run ever writes to the real
@@ -81,14 +76,6 @@ pub struct AppPaths {
 /// already honors `XDG_CONFIG_HOME`/`XDG_DATA_HOME`, the override wins
 /// there too, keeping one behavior across platforms.
 pub const PATHS_ROOT_ENV: &str = "JINN_PATHS_ROOT";
-
-/// The system-wide data directory of the platform layout.
-///
-/// The platform layout installs jinn's shipped defaults (themes, personas,
-/// prompts, skills) here; the [`PATHS_ROOT_ENV`] override layout puts them
-/// under the override root instead. Named once so the production default
-/// and the tests that assert it name the same location.
-const SYSTEM_DATA_DIR: &str = "/usr/share/jinn";
 
 impl Default for AppPaths {
     // The env override is a test hook read once at startup; a malformed value
@@ -165,8 +152,6 @@ impl AppPaths {
             cache_dir: typed(dirs::cache_dir()),
             state_dir: typed(dirs::state_dir().or_else(dirs::data_dir)),
             home_dir: typed(dirs::home_dir()),
-            system_data_dir: MarkedPathBuf::<Absolute>::new(SYSTEM_DATA_DIR)
-                .expect("SYSTEM_DATA_DIR constant is absolute"),
         }
     }
 
@@ -188,7 +173,6 @@ impl AppPaths {
             cache_dir: dir("cache"),
             state_dir: dir("state"),
             home_dir: root.to_owned(),
-            system_data_dir: dir("share"),
         }
     }
 
@@ -336,17 +320,6 @@ impl AppPaths {
             .expect("name joins keep the base absolute")
     }
 
-    // -- System data directories (XDG fallback) -----------------------------
-
-    /// System data directory (`/usr/share/jinn`).
-    ///
-    /// Used as a fallback source for themes, personas, and prompts
-    /// when user-specific files are not found.
-    #[must_use]
-    pub fn system_data_dir(&self) -> &MarkedPathBuf<Absolute> {
-        &self.system_data_dir
-    }
-
     /// Config directory (`~/.config/jinn`).
     #[must_use]
     pub fn app_config_dir(&self) -> MarkedPathBuf<Absolute> {
@@ -376,32 +349,6 @@ impl AppPaths {
             .expect("name join keeps the base absolute")
     }
 
-    /// System themes directory (`/usr/share/jinn/themes`).
-    #[must_use]
-    pub fn system_themes_dir(&self) -> MarkedPathBuf<Absolute> {
-        self.system_data_dir
-            .join("themes")
-            .expect("name join keeps the base absolute")
-    }
-
-    /// System prompts directory (`/usr/share/jinn/prompts`).
-    #[must_use]
-    pub fn system_prompts_dir(&self) -> MarkedPathBuf<Absolute> {
-        self.system_data_dir
-            .join("prompts")
-            .expect("name join keeps the base absolute")
-    }
-    /// System skills directory (`/usr/share/jinn/skills`).
-    ///
-    /// Installed by the system package. Used as a fallback source for
-    /// skills when user-global skills are not found.
-    #[must_use]
-    pub fn system_skills_dir(&self) -> MarkedPathBuf<Absolute> {
-        self.system_data_dir
-            .join("skills")
-            .expect("name join keeps the base absolute")
-    }
-
     /// User's models.dev reference file (`~/.cache/jinn/models.dev.json`).
     ///
     /// Written by `jinn fetch models`. Contains the full models.dev API
@@ -411,17 +358,6 @@ impl AppPaths {
         self.cache_dir
             .join_all([APP_NAME, "models.dev.json"])
             .expect("name joins keep the base absolute")
-    }
-
-    /// System models.dev reference file (`/usr/share/jinn/models.dev.json`).
-    ///
-    /// Installed by the system package. Used as a fallback when no
-    /// user-level file exists.
-    #[must_use]
-    pub fn models_dev_system_path(&self) -> MarkedPathBuf<Absolute> {
-        self.system_data_dir
-            .join("models.dev.json")
-            .expect("name join keeps the base absolute")
     }
 
     /// Epoch benchmark cache directory (`~/.cache/jinn/epoch`).
@@ -457,69 +393,6 @@ impl AppPaths {
             .join_all([APP_NAME, "embed-models"])
             .expect("name joins keep the base absolute")
     }
-
-    // -- Merged resource paths (system + user) ---------------------------------
-
-    /// Returns merged theme file paths from system and user directories.
-    ///
-    /// System themes are listed first. If a user theme has the same filename
-    /// as a system theme, the user version replaces the system one in the result.
-    /// The returned list is sorted by filename stem.
-    #[must_use]
-    pub fn resolve_theme_paths(&self) -> Vec<(String, MarkedPathBuf<Absolute>)> {
-        resolve_resource_paths(&self.system_themes_dir(), &self.themes_dir(), "toml")
-    }
-
-    /// Returns merged prompt template file paths from system and user directories.
-    ///
-    /// Same merge semantics as [`resolve_theme_paths`].
-    #[must_use]
-    pub fn resolve_prompt_paths(&self) -> Vec<(String, MarkedPathBuf<Absolute>)> {
-        resolve_resource_paths(&self.system_prompts_dir(), &self.prompts_dir(), "md")
-    }
-}
-
-/// Scans two directories for files with the given extension, merging by filename stem.
-///
-/// System files are listed first. User files with the same stem replace system ones.
-/// Results are sorted by stem.
-fn resolve_resource_paths(
-    system_dir: &MarkedPathBuf<Absolute>,
-    user_dir: &MarkedPathBuf<Absolute>,
-    extension: &str,
-) -> Vec<(String, MarkedPathBuf<Absolute>)> {
-    use std::collections::BTreeMap;
-
-    let mut map = BTreeMap::new();
-
-    // System files first (lower priority).
-    scan_dir_into(&mut map, system_dir, extension);
-    // User files override system files of the same name.
-    scan_dir_into(&mut map, user_dir, extension);
-
-    map.into_iter().collect()
-}
-
-/// Scans a directory for files with the given extension and inserts into the map by stem.
-fn scan_dir_into(
-    map: &mut std::collections::BTreeMap<String, MarkedPathBuf<Absolute>>,
-    dir: &MarkedPathBuf<Absolute>,
-    extension: &str,
-) {
-    let Ok(entries) = std::fs::read_dir(dir.as_path()) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Ok(typed) = MarkedPathBuf::<Absolute>::new(&path) else {
-            continue;
-        };
-        if typed.extension().is_some_and(|ext| ext == extension)
-            && let Some(name) = typed.file_stem().and_then(|s| s.to_str())
-        {
-            map.insert(name.to_owned(), typed);
-        }
-    }
 }
 
 #[cfg(test)]
@@ -532,6 +405,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+    use marked_path::MarkedPathAccess;
 
     /// Serializes every test that mutates [`PATHS_ROOT_ENV`], and restores the
     /// prior value on drop so one test's override never leaks into another.
@@ -600,8 +474,7 @@ mod tests {
         let paths = AppPaths::default();
 
         // Then every base rebinds under the root with the new_in layout:
-        // config/data/cache/state subdirs, home as the root, share for
-        // system data.
+        // config/data/cache/state subdirs, home as the root.
         assert_eq!(
             paths.config_dir(),
             &root.path.join("config").expect("root joins a bare name")
@@ -627,10 +500,6 @@ mod tests {
             Some(state_parent.as_marked_path())
         );
         assert_eq!(paths.home_dir(), &root.path);
-        assert_eq!(
-            paths.system_data_dir(),
-            &root.path.join("share").expect("root joins a bare name")
-        );
     }
 
     #[rstest::rstest]
@@ -647,50 +516,6 @@ mod tests {
         // Then they are identical — the override is exactly the new_in
         // layout, not a variant of it.
         assert_eq!(via_env, via_new_in);
-    }
-
-    #[rstest::rstest]
-    fn default_without_paths_root_env_uses_platform_dirs() {
-        // Given no JINN_PATHS_ROOT in the environment (set then clear, both
-        // under the lock, so the test is hermetic against ambient env).
-        let root = jinn_testutil::tempdir();
-        let _guard = PathsRootEnvGuard::set(&root.path);
-        let _cleared = ClearPathsRootGuard::new();
-
-        // When constructing the default AppPaths.
-        let paths = AppPaths::default();
-
-        // Then the system data dir keeps its platform default (the marker
-        // that distinguishes the platform layout from the override layout).
-        assert_eq!(
-            paths.system_data_dir(),
-            &MarkedPathBuf::<Absolute>::new(SYSTEM_DATA_DIR)
-                .expect("SYSTEM_DATA_DIR constant is absolute")
-        );
-    }
-
-    /// Guard that clears [`PATHS_ROOT_ENV`] for its lifetime, restoring on
-    /// drop. The PATHS_ROOT lock must already be held by the caller.
-    struct ClearPathsRootGuard {
-        /// The value to restore (None leaves the variable cleared).
-        previous: Option<std::ffi::OsString>,
-    }
-
-    impl ClearPathsRootGuard {
-        fn new() -> Self {
-            let previous = std::env::var_os(PATHS_ROOT_ENV);
-            // SAFETY: the caller holds PATHS_ROOT_LOCK across this guard's
-            // lifetime, serializing env mutation against other tests.
-            unsafe { std::env::remove_var(PATHS_ROOT_ENV) };
-            Self { previous }
-        }
-    }
-
-    impl Drop for ClearPathsRootGuard {
-        fn drop(&mut self) {
-            // The outer PathsRootEnvGuard's lock is still held here.
-            restore_paths_root_env(self.previous.as_deref());
-        }
     }
 
     #[rstest::rstest]
@@ -711,225 +536,6 @@ mod tests {
         );
         // And it is a sibling of the personas dir.
         assert_eq!(dir.parent(), paths.personas_dir().parent());
-    }
-
-    #[rstest::rstest]
-    fn resolve_theme_paths_returns_empty_when_both_dirs_missing() {
-        // Given an AppPaths with nonexistent system and user dirs.
-        let root = jinn_testutil::tempdir();
-        let paths = AppPaths::new_in(&root.path.as_marked_path());
-
-        // When resolving theme paths.
-        let result = paths.resolve_theme_paths();
-
-        // Then the result is empty.
-        assert_eq!(
-            result,
-            [] as [(std::string::String, MarkedPathBuf<Absolute>); 0]
-        );
-    }
-
-    #[rstest::rstest]
-    fn resolve_theme_paths_finds_system_files() {
-        // Given an AppPaths with a system themes dir containing one theme.
-        let root = jinn_testutil::tempdir();
-        let system_dir = root
-            .path
-            .join("share/themes")
-            .expect("temp root joins a bare name");
-        std::fs::create_dir_all(&system_dir).expect("create dir");
-        std::fs::write(
-            system_dir
-                .join("ocean.toml")
-                .expect("typed parent joins a bare name"),
-            "focus_accent = \"blue\"",
-        )
-        .expect("write");
-
-        let paths = AppPaths::new_in(&root.path.as_marked_path());
-
-        // When resolving theme paths.
-        let result = paths.resolve_theme_paths();
-
-        // Then the system theme is found.
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].0, "ocean");
-    }
-
-    #[rstest::rstest]
-    fn resolve_theme_paths_finds_user_files() {
-        // Given an AppPaths with a user themes dir containing one theme.
-        let root = jinn_testutil::tempdir();
-        let user_dir = root
-            .path
-            .join("config/jinn/themes")
-            .expect("temp root joins a bare name");
-        std::fs::create_dir_all(&user_dir).expect("create dir");
-        std::fs::write(
-            user_dir
-                .join("forest.toml")
-                .expect("typed parent joins a bare name"),
-            "focus_accent = \"green\"",
-        )
-        .expect("write");
-
-        let paths = AppPaths::new_in(&root.path.as_marked_path());
-
-        // When resolving theme paths.
-        let result = paths.resolve_theme_paths();
-
-        // Then the user theme is found.
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].0, "forest");
-    }
-
-    #[rstest::rstest]
-    fn resolve_theme_paths_user_overrides_system() {
-        // Given system and user dirs both with a theme named "ocean".
-        let root = jinn_testutil::tempdir();
-
-        let system_dir = root
-            .path
-            .join("share/themes")
-            .expect("temp root joins a bare name");
-        std::fs::create_dir_all(&system_dir).expect("create dir");
-        std::fs::write(
-            system_dir
-                .join("ocean.toml")
-                .expect("typed parent joins a bare name"),
-            "focus_accent = \"blue\"",
-        )
-        .expect("write");
-
-        let user_dir = root
-            .path
-            .join("config/jinn/themes")
-            .expect("temp root joins a bare name");
-        std::fs::create_dir_all(&user_dir).expect("create dir");
-        std::fs::write(
-            user_dir
-                .join("ocean.toml")
-                .expect("typed parent joins a bare name"),
-            "focus_accent = \"red\"",
-        )
-        .expect("write");
-
-        let paths = AppPaths::new_in(&root.path.as_marked_path());
-
-        // When resolving theme paths.
-        let result = paths.resolve_theme_paths();
-
-        // Then only one "ocean" entry exists (user version).
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].0, "ocean");
-        // And it points to the user directory.
-        assert!(result[0].1.starts_with(user_dir));
-    }
-
-    #[rstest::rstest]
-    fn resolve_theme_paths_merges_both_dirs() {
-        // Given system has "ocean", user has "forest".
-        let root = jinn_testutil::tempdir();
-
-        let system_dir = root
-            .path
-            .join("share/themes")
-            .expect("temp root joins a bare name");
-        std::fs::create_dir_all(&system_dir).expect("create dir");
-        std::fs::write(
-            system_dir
-                .join("ocean.toml")
-                .expect("typed parent joins a bare name"),
-            "focus_accent = \"blue\"",
-        )
-        .expect("write");
-
-        let user_dir = root
-            .path
-            .join("config/jinn/themes")
-            .expect("temp root joins a bare name");
-        std::fs::create_dir_all(&user_dir).expect("create dir");
-        std::fs::write(
-            user_dir
-                .join("forest.toml")
-                .expect("typed parent joins a bare name"),
-            "focus_accent = \"green\"",
-        )
-        .expect("write");
-
-        let paths = AppPaths::new_in(&root.path.as_marked_path());
-
-        // When resolving theme paths.
-        let result = paths.resolve_theme_paths();
-
-        // Then both themes are found, sorted by name.
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0].0, "forest");
-        assert_eq!(result[1].0, "ocean");
-    }
-
-    #[rstest::rstest]
-    fn resolve_prompt_paths_uses_md_extension() {
-        // Given a system prompts dir with a .md file.
-        let root = jinn_testutil::tempdir();
-        let system_dir = root
-            .path
-            .join("share/prompts")
-            .expect("temp root joins a bare name");
-        std::fs::create_dir_all(&system_dir).expect("create dir");
-        std::fs::write(
-            system_dir
-                .join("example.md")
-                .expect("typed parent joins a bare name"),
-            "content",
-        )
-        .expect("write");
-
-        let paths = AppPaths::new_in(&root.path.as_marked_path());
-
-        // When resolving prompt paths.
-        let result = paths.resolve_prompt_paths();
-
-        // Then the .md file is found.
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].0, "example");
-    }
-
-    #[rstest::rstest]
-    fn default_system_data_dir_is_usr_share() {
-        // Given a default AppPaths, constructed with no ambient override —
-        // the lock is held so a parallel test's transient JINN_PATHS_ROOT
-        // cannot leak into this construction.
-        let root = jinn_testutil::tempdir();
-        let _guard = PathsRootEnvGuard::set(&root.path);
-        let _cleared = ClearPathsRootGuard::new();
-        let paths = AppPaths::default();
-
-        // When reading the system data dir.
-        let system_data_dir = paths.system_data_dir();
-
-        // Then it is /usr/share/jinn.
-        assert_eq!(
-            system_data_dir,
-            &MarkedPathBuf::<Absolute>::new(SYSTEM_DATA_DIR)
-                .expect("SYSTEM_DATA_DIR constant is absolute")
-        );
-    }
-
-    #[rstest::rstest]
-    fn new_in_system_data_dir_is_under_root() {
-        // Given an AppPaths created with new_in.
-        let root = jinn_testutil::tempdir();
-        let paths = AppPaths::new_in(&root.path.as_marked_path());
-
-        // When reading the system data dir.
-        let system_data_dir = paths.system_data_dir();
-
-        // Then it is root/share.
-        assert_eq!(
-            system_data_dir,
-            &root.path.join("share").expect("root joins a bare name")
-        );
     }
 
     #[rstest::rstest]
@@ -973,29 +579,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn default_system_skills_dir_is_usr_share() {
-        // Given a default AppPaths, constructed with no ambient override —
-        // the lock is held so a parallel test's transient JINN_PATHS_ROOT
-        // cannot leak into this construction.
-        let root = jinn_testutil::tempdir();
-        let _guard = PathsRootEnvGuard::set(&root.path);
-        let _cleared = ClearPathsRootGuard::new();
-        let paths = AppPaths::default();
-
-        // When reading the system skills dir.
-        let system_skills_dir = paths.system_skills_dir();
-
-        // Then it is /usr/share/jinn/skills.
-        assert_eq!(
-            system_skills_dir,
-            MarkedPathBuf::<Absolute>::new(SYSTEM_DATA_DIR)
-                .expect("SYSTEM_DATA_DIR constant is absolute")
-                .join("skills")
-                .expect("typed parent joins a bare name")
-        );
-    }
-
-    #[rstest::rstest]
     fn new_in_embed_models_dir_is_under_root_cache() {
         // Given an AppPaths created with new_in.
         let root = jinn_testutil::tempdir();
@@ -1012,24 +595,6 @@ mod tests {
                 .expect("root joins bare names")
                 .join("embed-models")
                 .expect("typed parent joins a bare name"),
-        );
-    }
-
-    #[rstest::rstest]
-    fn new_in_system_skills_dir_is_under_root() {
-        // Given an AppPaths created with new_in.
-        let root = jinn_testutil::tempdir();
-        let paths = AppPaths::new_in(&root.path.as_marked_path());
-
-        // When reading the system skills dir.
-        let system_skills_dir = paths.system_skills_dir();
-
-        // Then it is root/share/skills.
-        assert_eq!(
-            system_skills_dir,
-            root.path
-                .join("share/skills")
-                .expect("temp root joins a bare name")
         );
     }
 
