@@ -591,18 +591,19 @@ mod tests {
     }
 
     /// The shell these tests run their commands through — the same shared
-    /// resolver production uses.
+    /// resolver production uses. The gate is the point: a machine without
+    /// a POSIX shell has no bash tool, so the tests fail naming the missing
+    /// dependency instead of spawning a shell that does not exist.
     #[cfg(unix)]
     fn shell_for_tests() -> String {
-        jinn_common::shell::Shells::default()
-            .bash()
-            .map(|shell| shell.program().to_owned())
-            .unwrap_or_else(|_| "bash".to_owned())
+        jinn_testutil::shell_required()
     }
 
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_returns_stdout() {
+        jinn_testutil::shell_required();
+
         // Given a bash tool call that echoes text.
         let dir = jinn_testutil::tempdir();
         let call = ToolCall {
@@ -626,6 +627,8 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_runs_through_bash_not_fish_or_dash() {
+        jinn_testutil::shell_required();
+
         // Given a bash tool call using brace expansion (rejected by fish and dash).
         let dir = jinn_testutil::tempdir();
         let call = ToolCall {
@@ -649,6 +652,8 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_captures_stderr() {
+        jinn_testutil::shell_required();
+
         // Given a bash tool call that writes to stderr.
         let dir = jinn_testutil::tempdir();
         let call = ToolCall {
@@ -671,6 +676,8 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_reports_nonzero_exit() {
+        jinn_testutil::shell_required();
+
         // Given a bash tool call that exits with code 1.
         let dir = jinn_testutil::tempdir();
         let call = ToolCall {
@@ -693,6 +700,8 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_resolves_cwd() {
+        jinn_testutil::shell_required();
+
         // Given a bash tool call that prints the working directory.
         //
         // git-bash (the Windows shell resolution) reports cwd in MSYS mount
@@ -857,6 +866,8 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_no_timeout_when_default_is_none_and_no_per_call() {
+        jinn_testutil::shell_required();
+
         // Given no timeout in the context.
         let dir = jinn_testutil::tempdir();
         let ctx = test_ctx(&dir.path); // timeout: None

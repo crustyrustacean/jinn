@@ -156,14 +156,14 @@ mod tests {
     )]
     use super::*;
     use jinn_theme::default_theme;
-    use marked_path::{Absolute, MarkedPathBuf};
 
     fn workflow(name: &str, description: &str) -> Workflow {
         Workflow {
             name: name.to_owned(),
             description: description.to_owned(),
-            dir: MarkedPathBuf::<Absolute>::new(format!("/cfg/workflows/{name}"))
-                .expect("absolute literal"),
+            dir: jinn_testutil::volume_root()
+                .join_all(["cfg", "workflows", name])
+                .expect("bare-name join keeps the root absolute"),
         }
     }
 

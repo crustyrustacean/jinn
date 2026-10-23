@@ -28,11 +28,10 @@ use marked_path::{Absolute, MarkedPathBuf};
 
 /// The shell the actor under test runs commands through — the same shared
 /// resolver production wiring uses, so the tests exercise the platform's
-/// real POSIX shell instead of a Unix-only absolute path.
+/// real POSIX shell. A machine without one fails the test naming the
+/// missing dependency; there are no fallbacks.
 fn shell_for_tests() -> String {
-    jinn_common::shell::Shells::default()
-        .bash()
-        .map_or_else(|_| "bash".to_owned(), |shell| shell.program().to_owned())
+    jinn_testutil::shell_required()
 }
 
 struct ActorFixture {

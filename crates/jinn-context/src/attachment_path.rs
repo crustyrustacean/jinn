@@ -617,12 +617,25 @@ mod tests {
 
     #[rstest::rstest]
     fn mixed_degraded_and_attachable_tokens_split_correctly() {
-        // Given text with one attachable @path and one degraded @path.
+        // Given text with one attachable @path and one degraded @path. The
+        // attachable token names a real file the test creates in its temp
+        // dir, so it is attachable by construction; the degraded token is a
+        // volume-rooted path naming nothing on disk. Both raw spellings come
+        // from their constructed paths, and the file:// needle is built the
+        // same way production builds the rewrite.
         let dir = jinn_testutil::tempdir();
-        let attachable = "/abs/real.png";
-        let degraded_raw = "/abs/whatever";
-        let text = format!("see @{attachable} and @{degraded_raw}");
-        let degraded = vec![degraded_raw.to_owned()];
+        let image = dir
+            .path
+            .join_all(["real.png"])
+            .expect("bare-name joins keep the base absolute");
+        std::fs::write(&image, b"png").expect("write fixture file");
+        let attachable_raw = image.to_string();
+        let degraded_path = jinn_testutil::volume_root()
+            .join_all(["abs", "whatever"])
+            .expect("bare-name joins keep the base absolute");
+        let degraded_raw = degraded_path.to_string();
+        let text = format!("see @{attachable_raw} and @{degraded_raw}");
+        let degraded = vec![degraded_raw.clone()];
 
         // When scanning with the degraded set.
         let result =
@@ -630,9 +643,7 @@ mod tests {
 
         // Then only the attachable token is rewritten and collected.
         assert!(
-            result
-                .rewritten_text
-                .contains(&format!("(file://{attachable})")),
+            result.rewritten_text.contains(&format!("(file://{image})")),
             "attachable token should be rewritten: {}",
             result.rewritten_text
         );
@@ -647,7 +658,7 @@ mod tests {
                 .iter()
                 .map(|p| p.abs.clone())
                 .collect::<Vec<_>>(),
-            vec![MarkedPathBuf::<Absolute>::new(attachable).expect("absolute literal")]
+            vec![image]
         );
     }
 

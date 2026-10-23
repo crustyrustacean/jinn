@@ -12,7 +12,8 @@ use jinn_core_types::SessionId;
 use jinn_slices::Mode;
 use jinn_slices::PickerKind;
 use jinn_slices::{FocusScope, ScopeStack};
-use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
+use jinn_testutil::volume_root;
+use marked_path::MarkedPathAccess;
 
 #[rstest::rstest]
 fn push_entry_adds_to_history() {
@@ -236,9 +237,10 @@ fn focus_scope_display(#[case] scope: FocusScope, #[case] expected: &str) {
 fn session_mut_or_create_sets_cwd_from_default_cwd() {
     // Given an AppState with a custom default CWD.
     let mut state = AppState::default_with_scope_focus();
-    state
-        .session
-        .set_default_cwd(MarkedPathBuf::<Absolute>::new("/custom/cwd").expect("absolute literal"));
+    let cwd = volume_root()
+        .join_all(["custom", "cwd"])
+        .expect("bare-name join keeps the root absolute");
+    state.session.set_default_cwd(cwd.clone());
 
     let session_id = SessionId::new();
 
@@ -246,7 +248,7 @@ fn session_mut_or_create_sets_cwd_from_default_cwd() {
     let session = state.session_mut_or_create(&session_id);
 
     // Then the session's CWD is the default CWD.
-    assert_eq!(session.cwd().as_path(), std::path::Path::new("/custom/cwd"));
+    assert_eq!(session.cwd().as_path(), cwd.as_path());
 }
 
 #[rstest::rstest]
@@ -284,14 +286,20 @@ fn len_increases_after_push() {
 fn session_mut_or_create_does_not_overwrite_existing_session_cwd() {
     // Given an AppState with a session that has a specific CWD.
     let mut state = AppState::default_with_scope_focus();
-    state
-        .session
-        .set_default_cwd(MarkedPathBuf::<Absolute>::new("/new/default").expect("absolute literal"));
+    state.session.set_default_cwd(
+        volume_root()
+            .join_all(["new", "default"])
+            .expect("bare-name join keeps the root absolute"),
+    );
 
     let session_id = SessionId::new();
     {
         let session = state.session_mut_or_create(&session_id);
-        session.set_cwd(MarkedPathBuf::<Absolute>::new("/existing/cwd").expect("absolute literal"));
+        session.set_cwd(
+            volume_root()
+                .join_all(["existing", "cwd"])
+                .expect("bare-name join keeps the root absolute"),
+        );
     }
 
     // When accessing the same session via session_mut_or_create.
@@ -300,6 +308,9 @@ fn session_mut_or_create_does_not_overwrite_existing_session_cwd() {
     // Then the CWD is unchanged.
     assert_eq!(
         session.cwd().as_path(),
-        std::path::Path::new("/existing/cwd")
+        volume_root()
+            .join_all(["existing", "cwd"])
+            .expect("bare-name join keeps the root absolute")
+            .as_path()
     );
 }

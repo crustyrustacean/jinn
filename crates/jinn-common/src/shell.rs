@@ -483,7 +483,11 @@ mod tests {
         Platform, ShellCandidate, Shells, bash_candidates, candidate_paths, first_existing,
         powershell_candidates, resolve_candidates, resolve_powershell, resolve_shell,
     };
-    use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
+    use jinn_testutil::volume_root;
+    use marked_path::MarkedPathAccess;
+    // Only the Windows-gated chain tests construct typed literals.
+    #[cfg(windows)]
+    use marked_path::{Absolute, MarkedPathBuf};
     use std::path::{Path, PathBuf};
 
     /// Creates a file that exists, for a candidate to win on.
@@ -503,7 +507,11 @@ mod tests {
         // Given two candidate paths where only the second exists.
         let dir = jinn_testutil::tempdir_with_prefix("jinn-test-shell-resolver");
         let existing = existing_file(dir.path.as_path(), "second");
-        let missing = PathBuf::from("/definitely/not/here/shell");
+        let missing = volume_root()
+            .join_all(["definitely", "not", "here", "shell"])
+            .expect("bare-name joins keep the base absolute")
+            .as_path()
+            .to_path_buf();
         let candidates = vec![missing, existing.clone()];
 
         // When picking the first existing one.
@@ -517,7 +525,18 @@ mod tests {
     #[test]
     fn first_existing_returns_none_when_no_candidate_exists() {
         // Given candidates that name no file.
-        let candidates = vec![PathBuf::from("/nope/one"), PathBuf::from("/nope/two")];
+        let candidates = vec![
+            volume_root()
+                .join_all(["nope", "one"])
+                .expect("bare-name joins keep the base absolute")
+                .as_path()
+                .to_path_buf(),
+            volume_root()
+                .join_all(["nope", "two"])
+                .expect("bare-name joins keep the base absolute")
+                .as_path()
+                .to_path_buf(),
+        ];
 
         // When picking the first existing one.
         let picked = first_existing(&candidates, Path::exists);
@@ -586,6 +605,12 @@ mod tests {
         );
     }
 
+    // Gated: the Unix chain is only ever built on Unix, and its leading
+    // candidate names the POSIX-rooted `/bin/bash`, which cannot construct
+    // on a Windows host (drive-relative there). Building the chain on
+    // Windows would panic in production-shaped code, so the assertion runs
+    // where the chain itself is reachable.
+    #[cfg(unix)]
     #[rstest::rstest]
     #[test]
     fn unix_bash_chain_falls_back_to_the_path_lookup() {
@@ -620,22 +645,22 @@ mod tests {
     #[test]
     fn candidate_paths_keeps_the_chain_order() {
         // Given a chain of two concrete paths.
+        let first = volume_root()
+            .join_all(["first"])
+            .expect("bare-name joins keep the base absolute");
+        let second = volume_root()
+            .join_all(["second"])
+            .expect("bare-name joins keep the base absolute");
         let candidates = vec![
-            ShellCandidate::Path(MarkedPathBuf::<Absolute>::new("/first").expect("test path")),
-            ShellCandidate::Path(MarkedPathBuf::<Absolute>::new("/second").expect("test path")),
+            ShellCandidate::Path(first.clone()),
+            ShellCandidate::Path(second.clone()),
         ];
 
         // When resolving the chain into concrete paths.
         let paths = candidate_paths(&candidates);
 
         // Then the order is preserved.
-        assert_eq!(
-            paths,
-            vec![
-                MarkedPathBuf::<Absolute>::new("/first").expect("test path"),
-                MarkedPathBuf::<Absolute>::new("/second").expect("test path"),
-            ]
-        );
+        assert_eq!(paths, vec![first, second]);
     }
 
     #[rstest::rstest]
@@ -748,10 +773,11 @@ mod tests {
     #[test]
     fn a_failed_auto_detection_names_every_place_searched() {
         // Given a candidate chain where nothing exists.
+        let nowhere = volume_root()
+            .join_all(["nowhere", "one"])
+            .expect("bare-name joins keep the base absolute");
         let candidates = vec![
-            ShellCandidate::Path(
-                MarkedPathBuf::<Absolute>::new("/nowhere/one").expect("test path"),
-            ),
+            ShellCandidate::Path(nowhere.clone()),
             ShellCandidate::Command("nowhere-two".to_owned()),
         ];
 
@@ -763,8 +789,9 @@ mod tests {
             panic!("a chain with nothing usable must not resolve");
         };
         let message = error.to_string();
+        let needle = nowhere.to_string();
         assert!(
-            message.contains("/nowhere/one"),
+            message.contains(&needle),
             "the failure must name the searched path: {message}"
         );
         assert!(
@@ -887,11 +914,16 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn a_configured_path_is_normalized_to_native_separators() {
-        // Given a configured path written with forward slashes.
-        let configured = r"C:/Program Files/Git/bin/bash.exe";
+        // Given a configured path written with forward slashes. It is built
+        // from the volume root — absolute on this machine, naming no file —
+        // so its existence is never a fact about the dev box.
+        let native = volume_root()
+            .join_all(["nowhere", "bash.exe"])
+            .expect("bare-name joins keep the base absolute");
+        let configured = native.as_path().to_string_lossy().replace('\\', "/");
 
         // When resolving the shell.
-        let result = resolve_shell(Some(configured));
+        let result = resolve_shell(Some(&configured));
 
         // Then the path is looked up in its native spelling, and the
         // failure names it in the constructed, native spelling.
@@ -901,6 +933,12 @@ mod tests {
         assert!(
             matches!(error, super::ShellError::ConfiguredPathMissing { .. }),
             "the failure must be a missing configured path: {error}"
+        );
+        assert!(
+            error
+                .to_string()
+                .contains(native.as_path().to_string_lossy().as_ref()),
+            "the failure must name the native-spelling path: {error}"
         );
     }
 }

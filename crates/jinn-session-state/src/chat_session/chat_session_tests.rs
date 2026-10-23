@@ -17,7 +17,7 @@ use jinn_token_count_msg::TokenRecord;
 use jinn_core_types::{
     ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, EntryTiming, PinPosition, SessionId,
 };
-use marked_path::{Absolute, MarkedPathAccess as _, MarkedPathBuf};
+use marked_path::MarkedPathAccess as _;
 
 use super::*;
 use jinn_core_types::model_selection::ModelSelection;
@@ -2257,8 +2257,10 @@ fn serde_lifecycle_group_remains_flat() {
     // Given a session with lifecycle fields set.
     let mut session = ChatSessionState::new();
     session.set_title("Lifecycle title".to_owned());
-    session
-        .set_cwd(MarkedPathBuf::<Absolute>::new("/workspace/project").expect("absolute literal"));
+    let cwd = jinn_testutil::volume_root()
+        .join_all(["workspace", "project"])
+        .expect("bare-name join keeps the root absolute");
+    session.set_cwd(cwd.clone());
     session.set_lifecycle_name(Some("dev".to_owned()));
     session.set_lifecycle_args(LifecycleArgs::from_pairs([(
         "$1".to_owned(),
@@ -2279,7 +2281,12 @@ fn serde_lifecycle_group_remains_flat() {
     );
     assert_eq!(
         object.get("cwd"),
-        Some(&serde_json::json!({"path": "/workspace/project", "marker": "absolute"}))
+        // A Value-to-Value comparison: both sides are decoded strings, so the
+        // path goes in raw — `json!` escapes when the Value is serialized.
+        Some(&serde_json::json!({
+            "path": cwd.as_path().to_string_lossy(),
+            "marker": "absolute"
+        }))
     );
     assert_eq!(
         object.get("lifecycle_name"),
@@ -2304,8 +2311,9 @@ fn composed_five_group_core() -> SessionCore {
     core.identity.parent_session = Some(SessionId::new());
     core.identity.origin = SessionOrigin::Fork;
     core.identity.has_interacted = true;
-    core.lifecycle.cwd =
-        MarkedPathBuf::<Absolute>::new("/workspace/project").expect("absolute literal");
+    core.lifecycle.cwd = jinn_testutil::volume_root()
+        .join_all(["workspace", "project"])
+        .expect("bare-name join keeps the root absolute");
     core.lifecycle.lifecycle_name = Some("release".to_owned());
     core.lifecycle.lifecycle_args = LifecycleArgs::from_pairs([("$1", "--verbose")]);
     core.lifecycle.lifecycle_script_state = LifecycleScriptState::SetupRan;
@@ -2351,7 +2359,12 @@ fn session_core_five_group_serialization_remains_flat() {
     );
     assert_eq!(
         object.get("cwd"),
-        Some(&serde_json::json!({"path": "/workspace/project", "marker": "absolute"}))
+        // A Value-to-Value comparison: both sides are decoded strings, so the
+        // path goes in raw — `json!` escapes when the Value is serialized.
+        Some(&serde_json::json!({
+            "path": core.lifecycle.cwd.as_path().to_string_lossy(),
+            "marker": "absolute"
+        }))
     );
     assert_eq!(
         object
@@ -2382,28 +2395,48 @@ fn session_core_five_group_serialization_remains_flat() {
 #[rstest::rstest]
 fn session_core_loads_legacy_flat_fields_into_broad_groups() {
     // Given a hand-written legacy flat session snapshot containing all five groups.
-    let legacy = concat!(
-        r#"{"session_id":"10000000-0000-0000-0000-000000000071","#,
-        r#""updated_at":"2024-01-01T00:00:00Z","created_at":"2024-01-01T00:00:00Z","#,
-        r#""title":"Legacy composed","parent_session":"10000000-0000-0000-0000-000000000070","#,
-        r#""fork_ordinal":2,"origin":"fork","project":"/legacy/project","has_interacted":true,"#,
-        r#""cwd":"/legacy/repo","lifecycle_name":"release","lifecycle_args":["--verbose"],"#,
-        r#""lifecycle_script_state":"setup_ran","history":[],"token_ledger":[],"#,
-        r#""task_list":{"phases":[]},"profile":{"model":{"single":"ollama/llama3"},"#,
-        r#""persona_name":"coding-assistant","disabled_tools":[],"disabled_skills":[],"#,
-        r#""reasoning_effort":null,"endpoint":null},"blobs":{"future":true},"#,
-        r#""enabled_mcp_servers":["files"],"session_state":"archived","persist":false}"#
-    );
+    // The paths are built from the volume root so they are absolute on every
+    // platform; `json!` escapes them for the JSON text (a no-op on Unix).
+    let cwd = jinn_testutil::volume_root()
+        .join_all(["legacy", "repo"])
+        .expect("bare-name join keeps the root absolute");
+    let project = jinn_testutil::volume_root()
+        .join_all(["legacy", "project"])
+        .expect("bare-name join keeps the root absolute");
+    let legacy = serde_json::json!({
+        "session_id": "10000000-0000-0000-0000-000000000071",
+        "updated_at": "2024-01-01T00:00:00Z",
+        "created_at": "2024-01-01T00:00:00Z",
+        "title": "Legacy composed",
+        "parent_session": "10000000-0000-0000-0000-000000000070",
+        "fork_ordinal": 2,
+        "origin": "fork",
+        "project": project.as_path().to_string_lossy(),
+        "has_interacted": true,
+        "cwd": cwd.as_path().to_string_lossy(),
+        "lifecycle_name": "release",
+        "lifecycle_args": ["--verbose"],
+        "lifecycle_script_state": "setup_ran",
+        "history": [],
+        "token_ledger": [],
+        "task_list": {"phases": []},
+        "profile": {"model": {"single": "ollama/llama3"},
+            "persona_name": "coding-assistant",
+            "disabled_tools": [], "disabled_skills": [],
+            "reasoning_effort": null, "endpoint": null},
+        "blobs": {"future": true},
+        "enabled_mcp_servers": ["files"],
+        "session_state": "archived",
+        "persist": false,
+    });
+    let legacy = serde_json::to_string(&legacy).expect("legacy fixture serializes");
 
     // When deserializing the flat snapshot.
-    let core: SessionCore = serde_json::from_str(legacy).expect("deserialize legacy core");
+    let core: SessionCore = serde_json::from_str(&legacy).expect("deserialize legacy core");
 
     // Then every representative field is restored into its broad group.
     assert_eq!(core.identity.title.as_deref(), Some("Legacy composed"));
-    assert_eq!(
-        core.lifecycle.cwd,
-        MarkedPathBuf::<Absolute>::new("/legacy/repo").expect("absolute literal")
-    );
+    assert_eq!(core.lifecycle.cwd, cwd);
     assert!(core.history_work.history.is_empty());
     assert_eq!(
         core.integrations.profile.model,
@@ -5656,20 +5689,24 @@ fn discovered_sets_are_independent_between_sessions() {
         name: "session-a-only".into(),
         description: String::new(),
         body: String::new(),
-        file_path: MarkedPathBuf::<Absolute>::new("/skills/session-a-only/SKILL.md")
-            .expect("absolute literal"),
-        base_dir: MarkedPathBuf::<Absolute>::new("/skills/session-a-only")
-            .expect("absolute literal"),
+        file_path: jinn_testutil::volume_root()
+            .join_all(["skills", "session-a-only", "SKILL.md"])
+            .expect("bare-name join keeps the root absolute"),
+        base_dir: jinn_testutil::volume_root()
+            .join_all(["skills", "session-a-only"])
+            .expect("bare-name join keeps the root absolute"),
         source: jinn_skills_msg::SkillSource::Global,
     }]);
     b.set_discovered_skills(vec![jinn_skills_msg::Skill {
         name: "session-b-only".into(),
         description: String::new(),
         body: String::new(),
-        file_path: MarkedPathBuf::<Absolute>::new("/skills/session-b-only/SKILL.md")
-            .expect("absolute literal"),
-        base_dir: MarkedPathBuf::<Absolute>::new("/skills/session-b-only")
-            .expect("absolute literal"),
+        file_path: jinn_testutil::volume_root()
+            .join_all(["skills", "session-b-only", "SKILL.md"])
+            .expect("bare-name join keeps the root absolute"),
+        base_dir: jinn_testutil::volume_root()
+            .join_all(["skills", "session-b-only"])
+            .expect("bare-name join keeps the root absolute"),
         source: jinn_skills_msg::SkillSource::Global,
     }]);
 
@@ -5686,7 +5723,9 @@ fn discovered_context_files_round_trip_empty_after_serialization() {
     // Given a session with discovered context files populated in ephemeral state.
     let mut session = ChatSessionState::new();
     session.set_discovered_context_files(vec![jinn_context::ContextFile {
-        path: MarkedPathBuf::<Absolute>::new("/nonexistent/AGENTS.md").expect("absolute literal"),
+        path: jinn_testutil::volume_root()
+            .join_all(["nonexistent", "AGENTS.md"])
+            .expect("bare-name join keeps the root absolute"),
         content: "should not persist".into(),
     }]);
 

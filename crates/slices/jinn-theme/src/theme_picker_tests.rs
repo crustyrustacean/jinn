@@ -29,6 +29,7 @@
 use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{EditIntent, RouteOutcome, ScopeSignal};
 use jinn_slices::{KeyRoutes, SliceHost, Slices};
+use jinn_testutil::volume_root;
 use jinn_theme_msg::{ThemePickerState, theme_entries_slot, theme_picker_scope};
 
 /// The slice wired exactly as composition wires it.
@@ -61,9 +62,9 @@ impl Wired {
             // the catalog seeded is re-seeded with the scan's result), but the
             // tests seed the entries they need rather than depending on the
             // loader.
-            let dir =
-                marked_path::MarkedPathBuf::<marked_path::Absolute>::new("/nonexistent-themes-dir")
-                    .expect("rooted test path");
+            let dir = volume_root()
+                .join_all(["nonexistent-themes-dir"])
+                .expect("rooted test path");
             crate::activate(&mut host, &dir.as_marked_path());
             crate::activate_picker(&mut host);
         }

@@ -590,13 +590,12 @@ mod tests {
     }
 
     /// The shell these tests spawn their pty children through — the same
-    /// shared resolver production uses.
+    /// shared resolver production uses. The gate is the point: a machine
+    /// without a POSIX shell has no pty terminals at all, so the tests fail
+    /// naming the missing dependency instead of spawning a nonexistent one.
     #[cfg(unix)]
     fn shell_for_tests() -> String {
-        jinn_common::shell::Shells::default()
-            .bash()
-            .map(|shell| shell.program().to_owned())
-            .unwrap_or_else(|_| "bash".to_owned())
+        jinn_testutil::shell_required()
     }
 
     #[cfg(unix)]

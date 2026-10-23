@@ -224,6 +224,7 @@ mod tests {
     use jinn_slices::KeyRoutes;
     use jinn_slices::SliceActionState;
     use jinn_slices::route::ActionCtx;
+    use jinn_testutil::volume_root;
     use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
     /// A minimal kernel-free [`SliceActionState`] double.
@@ -245,9 +246,7 @@ mod tests {
         fn push_session_error(&mut self, _message: &str) {}
 
         fn active_session_cwd(&self) -> MarkedPathBuf<Absolute> {
-            self.cwd
-                .clone()
-                .unwrap_or_else(|| MarkedPathBuf::<Absolute>::new("/").expect("absolute"))
+            self.cwd.clone().unwrap_or_else(volume_root)
         }
 
         fn publish_session_cwd(

@@ -143,6 +143,7 @@ mod tests {
     use jinn_slices::DynamicIntent;
     use jinn_slices::KeyRoutes;
     use jinn_slices::RouteOutcome;
+    use jinn_testutil::volume_root;
 
     #[rstest::rstest]
     #[case::up("nav-up")]
@@ -237,7 +238,7 @@ mod tests {
         }
 
         fn active_session_cwd(&self) -> MarkedPathBuf<Absolute> {
-            MarkedPathBuf::<Absolute>::new("/").expect("test cwd")
+            volume_root()
         }
 
         fn publish_session_cwd(

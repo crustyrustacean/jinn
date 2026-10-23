@@ -4,7 +4,10 @@
 //! `\\?\C:\users\jeff\…` for drive paths, `\\?\UNC\server\share\…` for
 //! network shares. Those forms are what Win32 APIs want, but they are not
 //! what anything else wants: they never compare equal to user-built paths,
-//! they must not be persisted, and they are confusing to display.
+//! they must not be persisted, and they are confusing to display. The
+//! verbatim *disk* form is rewritten to its classic equivalent whenever the
+//! classic form is addressable; network shares and over-limit paths keep
+//! the verbatim form (there is no classic form that other APIs can open).
 //!
 //! [`canonicalize_display`] is the one shared wrapper every production site
 //! uses when canonicalizing a path for storage, comparison, or display. The
@@ -20,9 +23,10 @@ use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 ///
 /// Equivalent to [`std::fs::canonicalize`] on non-Windows platforms. On
 /// Windows, the verbatim prefix the std canonicalization produces is stripped
-/// first (see [`strip_verbatim_prefix`]), so the result is directly comparable
-/// to user-built paths (`C:\…`, `\\server\share\…`) and safe to store or
-/// display.
+/// first (see [`strip_verbatim_prefix`]), so a drive-path result is directly
+/// comparable to a user-built path (`C:\…`) and safe to store or display.
+/// Network shares keep the verbatim `\\?\UNC\…` form — the strip never
+/// fabricates the classic `\\server\share` spelling.
 ///
 /// # Errors
 ///
@@ -124,15 +128,17 @@ mod tests {
 
         #[rstest::rstest]
         #[test]
-        fn unc_verbatim_form_strips_to_network_path() {
+        fn unc_verbatim_form_is_kept_verbatim() {
             // Given a verbatim network-share path.
             let verbatim = PathBuf::from(r"\\?\UNC\server\share\file.txt");
 
             // When stripping the prefix.
-            let out = strip_verbatim_prefix(verbatim);
+            let out = strip_verbatim_prefix(verbatim.clone());
 
-            // Then it becomes the classic network form.
-            assert_eq!(out, PathBuf::from(r"\\server\share\file.txt"));
+            // Then it is kept: the strip simplifies only the verbatim *disk*
+            // form (dunce leaves network shares verbatim, so the classic
+            // `\\server\share` form is never fabricated).
+            assert_eq!(out, verbatim);
         }
 
         #[rstest::rstest]
@@ -162,14 +168,16 @@ mod tests {
         }
 
         #[rstest::rstest]
-        #[case(256, true)]
-        #[case(257, false)]
+        #[case(253, true)]
+        #[case(254, false)]
         fn plain_form_at_the_classic_limit_boundary_decides_stripping(
             #[case] tail_len: usize,
             #[case] stripped: bool,
         ) {
-            // Given a verbatim drive path whose plain form is 259 chars (259 = 3 + 256)
-            // or 260 chars (260 = 3 + 257) — straddling the classic MAX_PATH limit.
+            // Given a verbatim drive path whose full form is 260 units
+            // (260 = 7 + 253) or 261 units (261 = 7 + 254) — straddling the
+            // classic MAX_PATH limit as dunce counts it, on the *whole*
+            // verbatim path (`\\?\C:\` is 7 units) in both bytes and UTF-16.
             let verbatim = PathBuf::from(format!(r"\\?\C:\{}", "a".repeat(tail_len)));
 
             // When stripping the prefix.

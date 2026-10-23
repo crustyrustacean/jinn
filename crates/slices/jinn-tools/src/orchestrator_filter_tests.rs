@@ -112,6 +112,10 @@ async fn a_filtered_tool_is_reported_as_withheld_not_unknown() {
 #[rstest::rstest]
 #[tokio::test]
 async fn an_unfiltered_builtin_still_dispatches() {
+    // The gate is here, not in `spawn`/`call_bash`: the refusal tests above
+    // withhold tools before shell resolution and never need a shell.
+    jinn_testutil::shell_required();
+
     // Given a session with no filter configured.
     let (state, session_id) = state_filtering(NameFilter::default());
     let harness = TestHarness::new().await;
@@ -157,6 +161,8 @@ async fn an_allow_filter_refuses_a_tool_it_does_not_name() {
 #[rstest::rstest]
 #[tokio::test]
 async fn an_allow_filter_still_admits_the_tool_it_names() {
+    jinn_testutil::shell_required();
+
     // Given a session permitted exactly bash.
     let (state, session_id) = state_filtering(NameFilter {
         mode: FilterMode::Allow,
@@ -247,6 +253,8 @@ async fn a_withheld_skill_does_not_admit_a_withheld_tool() {
 #[rstest::rstest]
 #[tokio::test]
 async fn a_session_absent_from_state_does_not_withhold_tools() {
+    jinn_testutil::shell_required();
+
     // Given an orchestrator whose state holds no session at all.
     let harness = TestHarness::new().await;
     spawn(&harness, State::new(jinn_kernel::AppState::default())).await;

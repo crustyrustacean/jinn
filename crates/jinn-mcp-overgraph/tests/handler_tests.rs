@@ -597,10 +597,9 @@ async fn graph_docs_serves_with_a_closed_engine() {
 #[test]
 fn resolve_db_dir_prefers_the_explicit_override() {
     // Given an explicit --db path.
-    let requested = MarkedPathBuf::<Absolute>::new(
-        std::path::Path::new(std::path::MAIN_SEPARATOR_STR).join("explicit/db"),
-    )
-    .expect("rooted override is absolute");
+    let requested = jinn_testutil::volume_root()
+        .join_all(["explicit", "db"])
+        .expect("bare-name join keeps the root absolute");
 
     // When resolving the database directory.
     let resolved = jinn_mcp_overgraph::resolve_db_dir(Some(requested.to_path_buf()));

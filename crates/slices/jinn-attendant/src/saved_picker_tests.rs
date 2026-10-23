@@ -12,7 +12,7 @@
     reason = "test code"
 )]
 
-use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
+use marked_path::MarkedPathAccess;
 use std::sync::Arc;
 
 use jinn_app_state::AppState;
@@ -29,6 +29,7 @@ use jinn_session_state::ChatSessionState;
 use jinn_slices::KeyRoutes;
 use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{ActionCtx, DynamicIntent, ScopeSignal};
+use jinn_testutil::volume_root;
 
 use crate::saved_picker_actions as actions;
 use crate::saved_picker_routes::{attach_saved_picker_rows, register_saved_picker_input_hook};
@@ -542,12 +543,15 @@ fn a_created_attendant_inherits_an_unconfigured_model_from_its_parent() {
 #[test]
 fn a_created_attendant_inherits_the_parents_cwd() {
     // Given a parent whose cwd is somewhere specific.
+    let cwd = volume_root()
+        .join_all(["srv", "the-project"])
+        .expect("rooted test path");
     let mut fx = PickerFixture::new(&[configured_entry("nightly")]);
     fx.state
         .session
         .get_mut(&fx.parent_id)
         .expect("parent")
-        .set_cwd(MarkedPathBuf::<Absolute>::new("/srv/the-project").expect("rooted test path"));
+        .set_cwd(cwd.clone());
     fx.open();
 
     // When confirming.
@@ -555,10 +559,7 @@ fn a_created_attendant_inherits_the_parents_cwd() {
 
     // Then the attendant works there, because cwd is environment and the
     // entry cannot carry it.
-    assert_eq!(
-        fx.created().cwd().as_path(),
-        std::path::Path::new("/srv/the-project")
-    );
+    assert_eq!(fx.created().cwd().as_path(), cwd.as_path());
 }
 
 #[rstest::rstest]

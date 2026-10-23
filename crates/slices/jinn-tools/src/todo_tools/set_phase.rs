@@ -181,11 +181,11 @@ mod tests {
     use jinn_tools_msg::{PhaseInput, TaskStatus};
 
     use super::*;
-    use marked_path::{Absolute, MarkedPathBuf};
+    use jinn_testutil::volume_root;
 
     fn make_context(state: Option<State>, session_id: Option<SessionId>) -> ToolContext {
         ToolContext {
-            cwd: MarkedPathBuf::<Absolute>::new("/").expect("absolute literal"),
+            cwd: volume_root(),
             timeout: None,
             state,
             session_id,

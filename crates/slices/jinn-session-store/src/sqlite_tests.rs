@@ -12,7 +12,7 @@ use jinn_core_types::ToolResultStatus;
 use jinn_core_types::{ChatEntry, ChatEntryKind, EntryTiming, SessionId};
 use jinn_session_state::ChatSessionState;
 use jinn_session_state::SessionStore;
-use marked_path::{Absolute, MarkedPathAccess as _, MarkedPathBuf};
+use marked_path::MarkedPathAccess as _;
 
 /// Creates a minimal `ChatSessionState` for testing.
 fn make_session(id: &SessionId, title: &str) -> ChatSessionState {
@@ -75,15 +75,21 @@ async fn degraded_token_expanded_survives_save_and_reload() {
     // Given a session with a resolved degraded user entry (marker set, expanded literal).
     let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
-    let token = "@/nonexistent/whatever";
+    let raw = jinn_testutil::volume_root()
+        .join_all(["nonexistent", "whatever"])
+        .expect("bare-name join keeps the root absolute");
+    let raw = raw.as_path().to_string_lossy().into_owned();
+    let token = format!("@{raw}");
     let mut session = ChatSessionState::new();
     session.set_session_id(session_id.clone());
     let mut entry = ChatEntry::user(format!("describe {token}"));
     // Simulate the post-resolution state: outcome set, expanded still containing the literal.
     if let jinn_core_types::ChatEntryKind::User { outcome, .. } = &mut entry.kind {
         outcome.degraded.push(jinn_core_types::ResolvedToken {
-            raw: "/nonexistent/whatever".to_owned(),
-            abs: MarkedPathBuf::<Absolute>::new("/nonexistent/whatever").expect("absolute literal"),
+            raw: raw.clone(),
+            abs: jinn_testutil::volume_root()
+                .join_all(["nonexistent", "whatever"])
+                .expect("bare-name join keeps the root absolute"),
         });
     }
     session.push_entry(entry);
@@ -107,7 +113,7 @@ async fn degraded_token_expanded_survives_save_and_reload() {
         })
         .expect("user entry");
     assert!(
-        expanded.contains(token),
+        expanded.contains(token.as_str()),
         "reloaded expanded must keep literal token: {expanded}"
     );
     assert!(
@@ -128,11 +134,15 @@ async fn attachment_outcome_survives_save_and_reload() {
     if let ChatEntryKind::User { outcome, .. } = &mut entry.kind {
         outcome.attached.push(jinn_core_types::ResolvedToken {
             raw: "real.png".to_owned(),
-            abs: MarkedPathBuf::<Absolute>::new("/abs/real.png").expect("absolute literal"),
+            abs: jinn_testutil::volume_root()
+                .join_all(["abs", "real.png"])
+                .expect("bare-name join keeps the root absolute"),
         });
         outcome.degraded.push(jinn_core_types::ResolvedToken {
             raw: "whatever".to_owned(),
-            abs: MarkedPathBuf::<Absolute>::new("/abs/whatever").expect("absolute literal"),
+            abs: jinn_testutil::volume_root()
+                .join_all(["abs", "whatever"])
+                .expect("bare-name join keeps the root absolute"),
         });
     }
     session.push_entry(entry);
@@ -1213,14 +1223,21 @@ async fn save_updates_cwd_on_existing_session() {
     session.set_session_id(session_id.clone());
     session.set_title("CWD Update".to_owned());
     session.push_entry(ChatEntry::user("hello"));
-    session.set_cwd(MarkedPathBuf::<Absolute>::new("/old/path").expect("absolute literal"));
+    session.set_cwd(
+        jinn_testutil::volume_root()
+            .join_all(["old", "path"])
+            .expect("bare-name join keeps the root absolute"),
+    );
     store
         .save(&session.capture_snapshot())
         .await
         .expect("save v1");
 
     // When saving with an updated cwd.
-    session.set_cwd(MarkedPathBuf::<Absolute>::new("/new/path").expect("absolute literal"));
+    let new_cwd = jinn_testutil::volume_root()
+        .join_all(["new", "path"])
+        .expect("bare-name join keeps the root absolute");
+    session.set_cwd(new_cwd.clone());
     store
         .save(&session.capture_snapshot())
         .await
@@ -1232,10 +1249,7 @@ async fn save_updates_cwd_on_existing_session() {
         .await
         .expect("load")
         .expect("should exist");
-    assert_eq!(
-        loaded.cwd(),
-        &MarkedPathBuf::<Absolute>::new("/new/path").expect("absolute literal")
-    );
+    assert_eq!(loaded.cwd(), &new_cwd);
 }
 
 #[rstest::rstest]
@@ -1837,8 +1851,10 @@ fn metadata_blob_is_unchanged_by_group_composition() {
     session.restore_created_at(timestamp);
     session.set_title("Lifecycle title".to_owned());
     let dir = jinn_testutil::tempdir();
-    session
-        .set_cwd(MarkedPathBuf::<Absolute>::new("/workspace/project").expect("absolute literal"));
+    let cwd = jinn_testutil::volume_root()
+        .join_all(["workspace", "project"])
+        .expect("bare-name join keeps the root absolute");
+    session.set_cwd(cwd.clone());
     session.set_home(
         dir.path
             .join("home/developer")
@@ -1862,24 +1878,26 @@ fn metadata_blob_is_unchanged_by_group_composition() {
     // row-backed session state still absent. The attendant group appends four
     // defaulted keys (activation, trigger, seed_template, reports) — flat, as
     // with every group; a blob written before attendants lacks them and
-    // deserializes to the same defaults.
-    assert_eq!(
-        blob,
+    // deserializes to the same defaults. The cwd is spliced in from the
+    // constructed fixture path, escaped for JSON (a no-op on Unix).
+    let expected_blob = format!(
         concat!(
-            r#"{"session_id":"10000000-0000-0000-0000-000000000067","#,
+            r#"{{"session_id":"10000000-0000-0000-0000-000000000067","#,
             r#""title":"Lifecycle title","updated_at":"2024-01-01T00:00:00Z","#,
-            r#""created_at":"2024-01-01T00:00:00Z","profile":{"model":{"single":"__no_provider__"},"#,
+            r#""created_at":"2024-01-01T00:00:00Z","profile":{{"model":{{"single":"__no_provider__"}},"#,
             r#""persona_name":"coding-assistant","#,
-            r#""reasoning_effort":null},"cwd":{"path":"/workspace/project","marker":"absolute"},"#,
+            r#""reasoning_effort":null}},"cwd":{{"path":"{}","marker":"absolute"}},"#,
             r#""parent_session":null,"fork_ordinal":null,"origin":"user","project":null,"#,
-            r#""blobs":{},"lifecycle_name":"dev","lifecycle_args":[["$1","--fast"]],"#,
-            r#""lifecycle_script_state":"setup_ran","task_list":{"phases":[]},"#,
+            r#""blobs":{{}},"lifecycle_name":"dev","lifecycle_args":[["$1","--fast"]],"#,
+            r#""lifecycle_script_state":"setup_ran","task_list":{{"phases":[]}},"#,
             r#""enabled_mcp_servers":[],"persist":false,"#,
             r#""behavior":"reset","prep_mode":true,"trigger":"manual","#,
             r#""seed_template":"The previous run of this attendant reported: <prior report>.","#,
-            r#""reports":[]}"#
-        )
+            r#""reports":[]}}"#
+        ),
+        cwd.as_path().to_string_lossy().replace('\\', "\\\\")
     );
+    assert_eq!(blob, expected_blob);
 }
 
 /// A pre-v8 session (no metadata blob) must still load after v20 backfills its
@@ -2155,30 +2173,43 @@ async fn tool_result_kind_json_stays_lean_of_attachment_bytes() {
 
 #[rstest::rstest]
 fn legacy_flat_lifecycle_blob_loads_after_group_composition() {
-    // Given a metadata blob in the pre-group flat shape.
-    let legacy_blob = concat!(
-        r#"{"session_id":"10000000-0000-0000-0000-000000000068","#,
-        r#""title":"Legacy lifecycle","updated_at":"2024-01-01T00:00:00Z","#,
-        r#""created_at":"2024-01-01T00:00:00Z","profile":{"model":{"single":"ollama/llama3"},"#,
-        r#""persona_name":"coding-assistant","#,
-        r#""reasoning_effort":null,"endpoint":null},"cwd":"/legacy/project","#,
-        r#""parent_session":null,"fork_ordinal":null,"origin":"fork","project":null,"#,
-        r#""blobs":{},"lifecycle_name":"release","lifecycle_args":["--verbose"],"#,
-        r#""lifecycle_script_state":"teardown_ran","task_list":{"phases":[]},"#,
-        r#""enabled_mcp_servers":[],"persist":false}"#
-    );
+    // Given a metadata blob in the pre-group flat shape. The cwd is built
+    // from the volume root so it is absolute on every platform; `json!`
+    // escapes it for the JSON text (a no-op on Unix).
+    let cwd = jinn_testutil::volume_root()
+        .join_all(["legacy", "project"])
+        .expect("bare-name join keeps the root absolute");
+    let legacy_blob = serde_json::json!({
+        "session_id": "10000000-0000-0000-0000-000000000068",
+        "title": "Legacy lifecycle",
+        "updated_at": "2024-01-01T00:00:00Z",
+        "created_at": "2024-01-01T00:00:00Z",
+        "profile": {"model": {"single": "ollama/llama3"},
+            "persona_name": "coding-assistant",
+            "reasoning_effort": null, "endpoint": null},
+        "cwd": cwd.as_path().to_string_lossy(),
+        "parent_session": null,
+        "fork_ordinal": null,
+        "origin": "fork",
+        "project": null,
+        "blobs": {},
+        "lifecycle_name": "release",
+        "lifecycle_args": ["--verbose"],
+        "lifecycle_script_state": "teardown_ran",
+        "task_list": {"phases": []},
+        "enabled_mcp_servers": [],
+        "persist": false,
+    });
+    let legacy_blob = serde_json::to_string(&legacy_blob).expect("legacy blob serializes");
 
     // When deserializing and restoring it into a session core.
     let persistable: crate::sqlite::PersistableCore =
-        serde_json::from_str(legacy_blob).expect("deserialize legacy blob");
+        serde_json::from_str(&legacy_blob).expect("deserialize legacy blob");
     let metadata: jinn_session_state::SessionSnapshotMetadata = persistable.into();
 
     // Then every persisted lifecycle value is restored into snapshot metadata.
     assert_eq!(metadata.title.as_deref(), Some("Legacy lifecycle"));
-    assert_eq!(
-        metadata.cwd,
-        MarkedPathBuf::<Absolute>::new("/legacy/project").expect("absolute literal")
-    );
+    assert_eq!(metadata.cwd, cwd);
     assert_eq!(metadata.lifecycle_name.as_deref(), Some("release"));
     assert_eq!(
         metadata.lifecycle_args.as_pairs(),

@@ -693,9 +693,7 @@ mod tests {
         // The script runs through the resolved shell, so the test works on
         // a machine whose shell is not named `sh`; the <port> token is
         // unused by the script but must expand without error.
-        let Some(shell) = jinn_testutil::platform::shell_or_skip() else {
-            return; // the helper already printed why
-        };
+        let shell = jinn_testutil::shell_required();
         let args = vec![
             "-c".to_owned(),
             "echo stdout-line; echo stderr-line >&2; sleep 1".to_owned(),

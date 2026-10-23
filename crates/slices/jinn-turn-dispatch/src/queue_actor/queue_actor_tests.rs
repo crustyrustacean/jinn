@@ -47,7 +47,7 @@ use jinn_session_msg::phase_command::PhaseCommand;
 use jinn_session_store_msg::PersistSession;
 use jinn_turn_dispatch_msg::DispatchTurn;
 use jinn_turn_dispatch_msg::QueueItem;
-use marked_path::{Absolute, MarkedPathBuf};
+use marked_path::MarkedPathAccess as _;
 
 /// The model the endpoint-pin tests configure, as a full provider id.
 const PINNED_MODEL: &str = "openrouter/anthropic/claude-sonnet-4";
@@ -553,13 +553,19 @@ async fn dispatch_user_message_keeps_degraded_token_literal_through_re_expand() 
     // Given a resolved-but-queued entry carrying the degraded marker and a literal token.
     let (actor, state, _audit) = create_actor().await;
     let sid = session_id();
-    let token = "@/nonexistent/whatever";
+    let raw = jinn_testutil::volume_root()
+        .join_all(["nonexistent", "whatever"])
+        .expect("bare-name join keeps the root absolute");
+    let raw = raw.as_path().to_string_lossy().into_owned();
+    let token = format!("@{raw}");
     let mut entry = ChatEntry::user(format!("describe {token}"));
     // Simulate the post-resolution state: outcome set, expanded still containing the literal.
     if let jinn_kernel::protocol::ChatEntryKind::User { outcome, .. } = &mut entry.kind {
         outcome.degraded.push(jinn_kernel::protocol::ResolvedToken {
-            raw: "/nonexistent/whatever".to_owned(),
-            abs: MarkedPathBuf::<Absolute>::new("/nonexistent/whatever").expect("test path"),
+            raw: raw.clone(),
+            abs: jinn_testutil::volume_root()
+                .join_all(["nonexistent", "whatever"])
+                .expect("bare-name join keeps the root absolute"),
         });
     }
 
@@ -581,7 +587,7 @@ async fn dispatch_user_message_keeps_degraded_token_literal_through_re_expand() 
         })
         .expect("user entry");
     assert!(
-        expanded.contains(token),
+        expanded.contains(token.as_str()),
         "queue drain must keep degraded token literal: {expanded}"
     );
     assert!(

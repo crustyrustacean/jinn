@@ -10,6 +10,7 @@ jinn-core-types = { workspace = true }
 jinn-slices = { workspace = true }
 serde = { workspace = true }
 trouper = { workspace = true }
+dirs = { workspace = true }
 
 [dev-dependencies]
 jinn-testutil = { workspace = true }

@@ -87,7 +87,10 @@ fn map_keyed_provider_table_can_be_removed_by_key() {
 #[test]
 fn round_trip_preserves_comments_with_crlf_line_endings() {
     // Given the shipped default providers.toml rewritten with CRLF endings.
-    let crlf = FIXTURE.replace('\n', "\r\n");
+    // Normalize first: an autocrlf checkout already carries CRLF bytes, and
+    // a plain `\n -> \r\n` pass over those would double every carriage
+    // return into `\r\r\n`.
+    let crlf = FIXTURE.replace("\r\n", "\n").replace('\n', "\r\n");
 
     // When it is parsed and one field is patched.
     let mut doc: DocumentMut = crlf.parse().expect("parse crlf fixture");

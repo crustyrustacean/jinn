@@ -147,6 +147,10 @@ async fn register_stub_tool(harness: &TestHarness, session_id: &jinn_core_types:
 #[rstest::rstest]
 #[tokio::test]
 async fn orchestrator_completes_builtin_bash_batch_dispatched_over_the_bus() {
+    // The bash builtin runs a real shell command, so the suite's shell
+    // requirement is asserted here: the failure names the missing
+    // dependency instead of surfacing as a tool-result assertion.
+    jinn_testutil::shell_required();
     // Given a spawned orchestrator with the bash builtin registered.
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<ToolBatchCompleted>().await;

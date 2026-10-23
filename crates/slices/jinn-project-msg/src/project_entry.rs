@@ -144,7 +144,9 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+    use jinn_testutil::volume_root;
     use jinn_theme::default_theme;
+    use marked_path::MarkedPathAccess;
 
     #[rstest::rstest]
     fn display_label_is_tilde_compressed_path() {
@@ -204,16 +206,22 @@ mod tests {
     #[rstest::rstest]
     fn project_entries_sorted_by_display() {
         // Given projects in a non-alphabetical order. Their paths are
-        // rooted at the platform's own filesystem root, so the display
-        // strings keep the order the paths name without spelling a POSIX
-        // literal.
-        let root = std::path::Path::new(std::path::MAIN_SEPARATOR_STR);
+        // built from the platform's volume root by joining bare names,
+        // so the display strings keep the order the paths name without
+        // spelling a POSIX literal.
+        let root = volume_root();
         let projects = vec![
             ProjectConfig {
-                path: root.join("zzz").clone(),
+                path: root
+                    .join_all(["zzz"])
+                    .expect("rooted test path")
+                    .into_inner(),
             },
             ProjectConfig {
-                path: root.join("aaa").clone(),
+                path: root
+                    .join_all(["aaa"])
+                    .expect("rooted test path")
+                    .into_inner(),
             },
         ];
 
@@ -221,8 +229,18 @@ mod tests {
         let entries = project_entries(&projects, &default_theme());
 
         // Then they are sorted by display string.
-        let aaa = root.join("aaa").to_string_lossy().to_string();
-        let zzz = root.join("zzz").to_string_lossy().to_string();
+        let aaa = root
+            .join_all(["aaa"])
+            .expect("rooted test path")
+            .as_path()
+            .to_string_lossy()
+            .to_string();
+        let zzz = root
+            .join_all(["zzz"])
+            .expect("rooted test path")
+            .as_path()
+            .to_string_lossy()
+            .to_string();
         assert_eq!(entries[0].display, aaa);
         assert_eq!(entries[1].display, zzz);
     }

@@ -350,15 +350,6 @@ fn shell_escape(s: &str) -> String {
 ///
 /// Routing through the [`Bridge`] is what makes the selection actually
 /// reach the session actor.
-///
-/// # Panics
-///
-/// Panics if the canonicalized path is not absolute, which cannot happen:
-/// `canonicalize` of an existing absolute path is absolute.
-#[expect(
-    clippy::expect_used,
-    reason = "a canonicalized absolute path stays absolute by construction"
-)]
 fn apply_selected_cwd(
     bridge: &jinn_kernel::common::bridge::Bridge,
     session_id: jinn_core_types::SessionId,
@@ -371,10 +362,8 @@ fn apply_selected_cwd(
         );
         return false;
     }
-    let canonical = match std::fs::canonicalize(path) {
-        Ok(c) => {
-            MarkedPathBuf::<Absolute>::new(c).expect("a canonicalized absolute path stays absolute")
-        }
+    let canonical = match jinn_common::fs_paths::canonicalize_display(path) {
+        Ok(canonical) => canonical,
         Err(e) => {
             tracing::warn!(
                 path = %path,
@@ -405,7 +394,6 @@ mod tests {
     use jinn_kernel::common::bridge::Bridge;
     use jinn_session_lifecycle_msg::SetSessionCwd;
     use jinn_testutil::barrier::Barrier;
-    use marked_path::strip_verbatim_prefix;
     use std::sync::{Arc, Mutex};
 
     /// A trouper service actor that records decoded `SetSessionCwd`
@@ -595,10 +583,11 @@ mod tests {
                 spawn_system_with_recorder(&tokio::runtime::Handle::current());
 
             let dir = jinn_testutil::tempdir();
-            let expected = MarkedPathBuf::<Absolute>::new(strip_verbatim_prefix(
-                std::fs::canonicalize(dir.path.as_path()).expect("canonicalize"),
-            ))
-            .expect("canonicalized temp path is absolute");
+            // The expectation travels the same canonicalization path as the
+            // production code, so it holds identically on every platform
+            // (verbatim prefixes stripped on Windows by both sides).
+            let expected =
+                jinn_common::fs_paths::canonicalize_display(&dir.path).expect("canonicalize");
 
             // When applying a real directory path.
             let session_id = jinn_core_types::SessionId::new();

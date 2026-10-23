@@ -11,64 +11,83 @@
 //! This module is the test-side counterpart: one implementation of each
 //! question, with the platform differences handled in one place.
 //!
-//! Every helper that can fail on some machine **skips visibly** — it prints a
-//! `SKIP:` line naming the reason and returns an empty result. A test that
-//! cannot run says so; it never passes silently.
+//! Some helpers answer a question on every machine; the ones that cannot
+//! (e.g. the process scan on Windows) return an empty result and say so in
+//! their docs. The shell and ripgrep helpers are different: they are
+//! **required dependencies** of the product itself — no POSIX shell means no
+//! bash tool, no lifecycle scripts, and no pty terminals; no ripgrep means
+//! no grep tool. A test that needs one of them does not skip on a machine
+//! missing the dependency; it fails loudly naming what to install. A skip
+//! would silently ship untested code to a machine that *has* the
+//! dependency — the exact machine the test exists for.
 #![allow(
     clippy::print_stderr,
     reason = "skip notes go to captured test output — a skip must be visible"
 )]
+#![allow(
+    clippy::panic,
+    reason = "the required-dependency gates fail loudly on a dep-less machine; \
+              the panic message naming the missing dependency is the helper's \
+              entire purpose"
+)]
 
 use std::process::Command;
 
-/// Resolves the shell to run test scripts through.
+/// Resolves the shell test scripts must run through, or panics naming the
+/// missing dependency.
 ///
 /// Uses the same shared resolver production uses
 /// (`jinn_common::shell::Shells`), so a test and the code it exercises
-/// agree on what "the shell" means.
+/// agree on what "the shell" means, and a candidate that resolved was
+/// already existence-checked by the resolver.
 ///
-/// An absolute resolved path was already existence-checked by the
-/// resolver; the bare `bash` fallback is probed once, because it only
-/// resolves if a POSIX bash is actually on `PATH`. When nothing usable
-/// resolves, this prints a `SKIP:` line and returns `None`, so the caller
-/// can skip the test loudly rather than fail it for an environmental
-/// reason.
+/// Calling it purely for the gate — discarding the name — is a normal use:
+/// the panic on a dep-less machine is the point, not the return value.
 ///
-/// # Example
+/// # Panics
 ///
-/// ```
-/// # fn main() {
-/// let Some(shell) = jinn_testutil::platform::shell_or_skip() else {
-///     return; // the helper already printed why
-/// };
-/// // ... use `shell` ...
-/// # }
-/// ```
-#[must_use]
-pub fn shell_or_skip() -> Option<String> {
-    let shell = jinn_common::shell::Shells::default()
-        .bash()
-        .ok()
-        .map(|shell| shell.program().to_owned())?;
-    if shell != "bash" {
-        return Some(shell);
-    }
-    let probe = Command::new(&shell)
-        .arg("-c")
-        .arg("true")
+/// Panics when this machine has no POSIX shell — a product dependency, not
+/// a test nicety: jinn's bash tool, session lifecycle scripts, and every
+/// pty terminal run through one. The panic message names the install path
+/// (Git for Windows on Windows) and the `shell.bash_path` escape hatch.
+pub fn shell_required() -> String {
+    jinn_common::shell::Shells::default().bash().map_or_else(
+        |error| {
+            panic!(
+                "REQUIRED DEPENDENCY MISSING: a POSIX shell (bash). jinn runs its bash tool, \
+                     lifecycle scripts, and pty terminals through one, so these tests require it. \
+                     Install Git for Windows (provides bash.exe), or set `shell.bash_path` in \
+                     jinn.toml. Resolver said: {error}"
+            )
+        },
+        |shell| shell.program().to_owned(),
+    )
+}
+
+/// Probes ripgrep and panics naming the missing dependency when it cannot
+/// be executed.
+///
+/// The probe is an actual spawn (`rg --version`), not a `PATH` lookup: a
+/// name can resolve while execution still fails, and the tests this gates
+/// need execution.
+///
+/// # Panics
+///
+/// Panics when `rg` cannot be executed — a product dependency, not a test
+/// nicety: jinn's grep tool spawns `rg` directly. The panic message names
+/// the install.
+pub fn rg_required() {
+    let probe = Command::new("rg")
+        .arg("--version")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status();
-    match probe {
-        Ok(_) => Some(shell),
-        Err(err) => {
-            eprintln!(
-                "SKIP: no usable POSIX shell resolved for tests \
-                 (bare 'bash' probe failed: {err})"
-            );
-            None
-        }
-    }
+    assert!(
+        probe.is_ok(),
+        "REQUIRED DEPENDENCY MISSING: ripgrep (rg). jinn's grep tool spawns rg directly, \
+         so these tests require it. Install it with your package manager, or \
+         `cargo install ripgrep`."
+    );
 }
 
 /// Every live process whose command line carries `marker`.
@@ -280,7 +299,7 @@ mod tests {
     #[cfg(unix)]
     use marked_path::MarkedPathAccess;
 
-    use super::{exit_command, idle_command, is_alive, shell_or_skip, success_command};
+    use super::{exit_command, idle_command, is_alive, shell_required, success_command};
 
     /// The orphan scan reads `/proc` on Linux and `pgrep`/`ps` on the other
     /// Unixes, so it only exists where those are available.
@@ -289,17 +308,15 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn shell_or_skip_returns_a_shell_or_skips_visibly() {
-        // Given any platform.
+    fn shell_required_returns_the_resolved_shell() {
+        // Given a machine provisioned with jinn's product dependencies
+        // (on one without them, the gate panics naming the missing
+        // dependency — the intended behavior, not a failure to avoid).
         // When resolving the test shell.
-        let shell = shell_or_skip();
+        let shell = shell_required();
 
-        // Then a shell is returned, or the helper printed why it skipped.
-        // A `None` here means the machine has no POSIX shell at all, which
-        // the helper has already reported on stderr.
-        if let Some(shell) = shell {
-            assert!(!shell.is_empty(), "a resolved shell must name a command");
-        }
+        // Then a non-empty program name comes back.
+        assert!(!shell.is_empty(), "a resolved shell must name a command");
     }
 
     #[rstest::rstest]
@@ -369,6 +386,12 @@ mod tests {
         assert!(still_running);
     }
 
+    // Unix-only: on Windows `is_alive` is a stub that reports every pid
+    // alive (Windows PTY liveness is driven by observed child exit, and
+    // nothing on the Windows path consumes the pid probe), so the "unused
+    // pid is dead" property is not implemented there and the test could
+    // never pass.
+    #[cfg(unix)]
     #[rstest::rstest]
     #[test]
     fn is_alive_reports_an_unused_pid_as_dead() {

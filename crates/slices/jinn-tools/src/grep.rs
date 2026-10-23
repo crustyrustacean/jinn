@@ -302,6 +302,8 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_returns_matching_lines() {
+        jinn_testutil::rg_required();
+
         // Given a directory with a file containing known text.
         let dir = jinn_testutil::tempdir();
         std::fs::write(
@@ -327,6 +329,8 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_with_path_searches_specific_dir() {
+        jinn_testutil::rg_required();
+
         // Given two directories with different files.
         let dir = jinn_testutil::tempdir();
         let sub_a = dir.path.join("a").expect("temp root joins a bare name");
@@ -359,6 +363,8 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_with_glob_filters_files() {
+        jinn_testutil::rg_required();
+
         // Given a directory with .rs and .txt files.
         let dir = jinn_testutil::tempdir();
         std::fs::write(
@@ -391,6 +397,8 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_with_file_type_filters_by_language() {
+        jinn_testutil::rg_required();
+
         // Given a directory with .rs files.
         let dir = jinn_testutil::tempdir();
         std::fs::write(
@@ -416,6 +424,8 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_returns_empty_on_no_matches() {
+        jinn_testutil::rg_required();
+
         // Given a directory with a file.
         let dir = jinn_testutil::tempdir();
         std::fs::write(
@@ -505,6 +515,8 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_truncates_large_output() {
+        jinn_testutil::rg_required();
+
         // Given a file with many matching lines.
         let dir = jinn_testutil::tempdir();
         let content: String = (0..3000).fold(String::new(), |mut s, i| {

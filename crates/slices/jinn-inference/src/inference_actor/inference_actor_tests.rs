@@ -149,14 +149,11 @@ fn test_llm_actor_with_services(
 /// that session's own id — the shape rule resolution reads.
 async fn actor_with_session_cwd(
     set: std::sync::Arc<dyn jinn_slices::StreamRuleSet>,
-    cwd: &str,
+    cwd: &marked_path::MarkedPathBuf<marked_path::Absolute>,
 ) -> (InferenceActor, SessionId) {
     let mut app = jinn_kernel::AppState::default();
     let mut session = jinn_session_state::ChatSessionState::new();
-    session.set_cwd(
-        marked_path::MarkedPathBuf::<marked_path::Absolute>::new(cwd)
-            .expect("test cwd literals are absolute"),
-    );
+    session.set_cwd(cwd.clone());
     let session_id = session.session_id().clone();
     app.session.insert(session);
     let services = actor_services_with_rule_set(set).await;
@@ -1669,11 +1666,8 @@ async fn a_rule_scoped_to_a_project_fires_for_a_session_in_that_project() {
         .path
         .join("someone/code/myapp")
         .expect("temp root joins a bare name");
-    let (actor, session_id) = actor_with_session_cwd(
-        project_scoped_rule_set("FORBIDDEN", Some("**/myapp")),
-        &cwd.to_string(),
-    )
-    .await;
+    let (actor, session_id) =
+        actor_with_session_cwd(project_scoped_rule_set("FORBIDDEN", Some("**/myapp")), &cwd).await;
 
     // When that session is given a rule session.
     let mut session = actor
@@ -1698,11 +1692,13 @@ async fn a_rule_scoped_to_a_project_fires_for_a_cli_session_in_its_launch_direct
     // Given a rule whose `project` glob names one codebase, and a
     // CLI-started session whose cwd is that checkout — the boot session's
     // shape: cwd is the launch directory, and no project association exists.
-    let (actor, session_id) = actor_with_session_cwd(
-        project_scoped_rule_set("FORBIDDEN", Some("**/jinn")),
-        "/mnt/zed/repos/jinn",
-    )
-    .await;
+    // The checkout is built from the volume root, never spelled out, so the
+    // fixture holds on every platform.
+    let cwd = jinn_testutil::volume_root()
+        .join_all(["code", "jinn"])
+        .expect("name joins keep the base absolute");
+    let (actor, session_id) =
+        actor_with_session_cwd(project_scoped_rule_set("FORBIDDEN", Some("**/jinn")), &cwd).await;
 
     // When that session is given a rule session.
     let mut session = actor

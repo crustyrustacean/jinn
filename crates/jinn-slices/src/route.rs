@@ -787,6 +787,7 @@ mod tests {
     use super::SliceActionState;
     use crate::SliceScopeId;
     use crate::slices::Slices;
+    use jinn_testutil::volume_root;
     use marked_path::{Absolute, MarkedPathBuf};
 
     fn scope() -> SliceScopeId {
@@ -846,13 +847,12 @@ mod tests {
         }
 
         fn active_session_cwd(&self) -> marked_path::MarkedPathBuf<marked_path::Absolute> {
-            // Rooted at the platform's own filesystem root, so the double
-            // hands out an absolute path on every platform without naming a
-            // POSIX literal.
-            marked_path::MarkedPathBuf::<marked_path::Absolute>::new(std::path::MAIN_SEPARATOR_STR)
-                .expect("root separator is absolute")
+            // The volume root of the platform temp dir, so the double hands
+            // out an absolute path on every platform without naming a POSIX
+            // literal.
+            volume_root()
                 .join_all(["test", "cwd"])
-                .expect("name joins keep the base absolute")
+                .expect("bare-name join keeps the root absolute")
         }
 
         fn publish_session_cwd(
@@ -879,7 +879,7 @@ mod tests {
         fn push_session_error(&mut self, _message: &str) {}
 
         fn active_session_cwd(&self) -> MarkedPathBuf<Absolute> {
-            MarkedPathBuf::<Absolute>::new("/").expect("test cwd")
+            volume_root()
         }
 
         fn publish_session_cwd(

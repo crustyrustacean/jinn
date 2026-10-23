@@ -201,6 +201,7 @@ mod tests {
 
     use super::*;
     use jinn_core_types::SessionId;
+    use jinn_testutil::volume_root;
 
     /// Deterministically maps a mnemonic tag (e.g. "s-a", "s-child") to a valid
     /// `SessionId` (a `Uuid` newtype).
@@ -208,18 +209,23 @@ mod tests {
         SessionId::new_v5_tag(tag)
     }
 
-    fn cand(id: &str, cwd: &str, parent: Option<&str>, updated_at_unix: i64) -> CandidateSession {
+    fn cand(
+        id: &str,
+        cwd: &[&str],
+        parent: Option<&str>,
+        updated_at_unix: i64,
+    ) -> CandidateSession {
         CandidateSession {
             id: sid(id),
-            cwd: MarkedPathBuf::<Absolute>::new(cwd).expect("test cwd"),
+            cwd: volume_root().join_all(cwd).expect("test cwd"),
             parent_session: parent.map(sid),
             updated_at_unix,
         }
     }
 
-    fn anchor(cwd: &str, session_id: &str, window_days: u32) -> ScopeAnchor {
+    fn anchor(cwd: &[&str], session_id: &str, window_days: u32) -> ScopeAnchor {
         ScopeAnchor {
-            cwd: MarkedPathBuf::<Absolute>::new(cwd).expect("test cwd"),
+            cwd: volume_root().join_all(cwd).expect("test cwd"),
             session_id: sid(session_id),
             window_days,
             now_unix: NOW,
@@ -232,8 +238,8 @@ mod tests {
     fn descendant_cwd_is_in_scope() {
         // Given an anchor at /proj and a descendant session.
         let resolver = CwdTreeScopeResolver;
-        let anchor = anchor("/proj", "s-anchor", 30);
-        let candidates = [cand("s-child", "/proj/sub", None, NOW)];
+        let anchor = anchor(&["proj"], "s-anchor", 30);
+        let candidates = [cand("s-child", &["proj", "sub"], None, NOW)];
 
         // When resolving.
         let ids = resolver.resolve(&anchor, &candidates);
@@ -246,8 +252,8 @@ mod tests {
     fn anchor_exact_cwd_is_in_scope() {
         // Given an anchor and a session at the exact same CWD.
         let resolver = CwdTreeScopeResolver;
-        let anchor = anchor("/proj", "s-anchor", 30);
-        let candidates = [cand("s-self", "/proj", None, NOW)];
+        let anchor = anchor(&["proj"], "s-anchor", 30);
+        let candidates = [cand("s-self", &["proj"], None, NOW)];
 
         // When resolving.
         let ids = resolver.resolve(&anchor, &candidates);
@@ -260,8 +266,8 @@ mod tests {
     fn sibling_cwd_is_excluded() {
         // Given an anchor at /proj and a sibling directory /other.
         let resolver = CwdTreeScopeResolver;
-        let anchor = anchor("/proj", "s-anchor", 30);
-        let candidates = [cand("s-other", "/other", None, NOW)];
+        let anchor = anchor(&["proj"], "s-anchor", 30);
+        let candidates = [cand("s-other", &["other"], None, NOW)];
 
         // When resolving.
         let ids = resolver.resolve(&anchor, &candidates);
@@ -274,8 +280,8 @@ mod tests {
     fn name_prefix_does_not_match_sibling() {
         // Given an anchor at /a/jinn and a path that merely shares a name prefix.
         let resolver = CwdTreeScopeResolver;
-        let anchor = anchor("/a/jinn", "s-anchor", 30);
-        let candidates = [cand("s-old", "/a/jinn-old", None, NOW)];
+        let anchor = anchor(&["a", "jinn"], "s-anchor", 30);
+        let candidates = [cand("s-old", &["a", "jinn-old"], None, NOW)];
 
         // When resolving.
         let ids = resolver.resolve(&anchor, &candidates);
@@ -288,11 +294,11 @@ mod tests {
     fn fork_ancestor_chain_is_in_scope() {
         // Given an anchor whose parent chain is in the candidate set.
         let resolver = CwdTreeScopeResolver;
-        let anchor = anchor("/proj", "s-c", 30);
+        let anchor = anchor(&["proj"], "s-c", 30);
         let candidates = [
-            cand("s-a", "/proj", None, NOW),
-            cand("s-b", "/proj", Some("s-a"), NOW),
-            cand("s-c", "/proj", Some("s-b"), NOW),
+            cand("s-a", &["proj"], None, NOW),
+            cand("s-b", &["proj"], Some("s-a"), NOW),
+            cand("s-c", &["proj"], Some("s-b"), NOW),
         ];
 
         // When resolving.
@@ -307,8 +313,8 @@ mod tests {
     fn fork_chain_stops_at_missing_parent() {
         // Given an anchor whose parent id is not present in the candidate set.
         let resolver = CwdTreeScopeResolver;
-        let anchor = anchor("/proj", "s-c", 30);
-        let candidates = [cand("s-c", "/proj", Some("s-missing"), NOW)];
+        let anchor = anchor(&["proj"], "s-c", 30);
+        let candidates = [cand("s-c", &["proj"], Some("s-missing"), NOW)];
 
         // When resolving.
         let ids = resolver.resolve(&anchor, &candidates);
@@ -324,9 +330,9 @@ mod tests {
         // Given a candidate older than the window.
         let resolver = CwdTreeScopeResolver;
         // window_days=1 → cutoff = NOW - 86400
-        let anchor = anchor("/proj", "s-anchor", 1);
+        let anchor = anchor(&["proj"], "s-anchor", 1);
         let stale = NOW - (SECONDS_PER_DAY * 10);
-        let candidates = [cand("s-old", "/proj", None, stale)];
+        let candidates = [cand("s-old", &["proj"], None, stale)];
 
         // When resolving.
         let ids = resolver.resolve(&anchor, &candidates);
@@ -339,11 +345,11 @@ mod tests {
     fn result_is_deduplicated() {
         // Given a candidate that is both an in-tree match and a fork ancestor.
         let resolver = CwdTreeScopeResolver;
-        let anchor = anchor("/proj", "s-c", 30);
+        let anchor = anchor(&["proj"], "s-c", 30);
         let candidates = [
-            cand("s-a", "/proj", None, NOW),
-            cand("s-b", "/proj", Some("s-a"), NOW),
-            cand("s-c", "/proj", Some("s-b"), NOW),
+            cand("s-a", &["proj"], None, NOW),
+            cand("s-b", &["proj"], Some("s-a"), NOW),
+            cand("s-c", &["proj"], Some("s-b"), NOW),
         ];
 
         // When resolving.
@@ -358,9 +364,9 @@ mod tests {
     fn zero_window_includes_all_in_tree() {
         // Given window_days=0 (meaning "no window").
         let resolver = CwdTreeScopeResolver;
-        let anchor = anchor("/proj", "s-anchor", 0);
+        let anchor = anchor(&["proj"], "s-anchor", 0);
         let ancient = NOW - (SECONDS_PER_DAY * 1000);
-        let candidates = [cand("s-old", "/proj", None, ancient)];
+        let candidates = [cand("s-old", &["proj"], None, ancient)];
 
         // When resolving.
         let ids = resolver.resolve(&anchor, &candidates);

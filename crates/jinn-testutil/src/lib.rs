@@ -22,8 +22,8 @@ pub mod temp;
 pub mod wait;
 
 pub use barrier::{Barrier, BarrierAck, DEFAULT_BARRIER_TIMEOUT};
-pub use paths::{TestRoot, canonicalize_display, strip_verbatim_prefix};
-pub use platform::{find_orphans, is_alive, shell_or_skip};
+pub use paths::{TestRoot, canonicalize_display, strip_verbatim_prefix, volume_root};
+pub use platform::{find_orphans, is_alive, rg_required, shell_required};
 pub use temp::{
     JinnTempDir, TEST_PREFIX, TestTempBuilder, builder, retained_tempdir, tempdir, tempdir_in,
     tempdir_with_prefix,

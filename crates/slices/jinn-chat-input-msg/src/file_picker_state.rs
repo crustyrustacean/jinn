@@ -103,7 +103,7 @@ impl FilePickerState {
 ///
 /// - Empty or relative path → `cwd`.
 /// - `~` / `~/...` → home.
-/// - `/...` → absolute.
+/// - Absolute-on-this-platform (the marker's verdict) → itself.
 /// - `foo/bar` → `cwd/foo` (the dir containing the path; we list the deepest
 ///   directory component that ends in `/`, or cwd if none).
 ///
@@ -111,28 +111,32 @@ impl FilePickerState {
 /// including the last `/`), so this is a join against the resolved root.
 /// The user's home directory, read once at program startup.
 ///
-/// `resolve_list_dir` resolves `~`, and `~` means whatever `$HOME` was when
-/// the program started. Reading it per keystroke would make the answer depend
+/// `resolve_list_dir` resolves `~`, and `~` means the user's home when the
+/// program started. Reading it per keystroke would make the answer depend
 /// on when it was asked rather than on the user's environment, and would put
 /// a process-global read in the middle of an intent handler — so this reads it
 /// once, at the boundary where the process environment legitimately belongs,
 /// and every later lookup reads this instead.
 ///
-/// Falls back to the current directory when `$HOME` is unset, which keeps the
-/// popup usable rather than failing a `@` insertion over a missing variable.
+/// `dirs::home_dir()` consults `$HOME` on Unix and the Windows profile
+/// directory (`FOLDERID_Profile`) on Windows — the plain-`std` read below the
+/// old shape only ever saw `$HOME`, which Windows does not set, silently
+/// making the picker's "home" fall back to the cwd there.
 #[must_use]
 pub fn home_dir() -> MarkedPathBuf<Absolute> {
-    let home = std::env::var_os("HOME").map_or_else(
-        || std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir()),
-        std::path::PathBuf::from,
-    );
-    MarkedPathBuf::<Absolute>::new(home).expect("$HOME and cwd are absolute")
+    let home =
+        dirs::home_dir().expect("the user home directory resolves on every supported platform");
+    MarkedPathBuf::<Absolute>::new(home).expect("the user home directory is absolute")
 }
 
 /// Resolves an autocomplete filter to the directory it names.
 ///
-/// The filter is model/user text: `~`-expansion and absolute detection are
-/// the std-boundary string checks; every produced path is absolute.
+/// The filter is model/user text. Which filters name an absolute directory
+/// is the marker's verdict on the running platform —
+/// [`MarkedPathBuf::new`] accepts exactly the texts that are absolute
+/// *here* (`/etc` on Unix, `C:\Windows` on Windows) — and everything it
+/// refuses is joined against the session cwd. Every produced path is
+/// absolute.
 #[must_use]
 pub fn resolve_list_dir(
     filter: &str,
@@ -150,8 +154,10 @@ pub fn resolve_list_dir(
     if filter == "~" {
         return home.clone();
     }
-    if filter.starts_with('/') {
-        return MarkedPathBuf::<Absolute>::new(filter).expect("a `/`-prefixed filter is absolute");
+    // The filter is user text: let the marker decide if it is absolute on
+    // this platform; anything it refuses is relative to the session cwd.
+    if let Ok(absolute) = MarkedPathBuf::<Absolute>::new(filter) {
+        return absolute;
     }
     cwd.join(filter)
         .expect("joining a relative filter keeps the cwd absolute")
@@ -167,7 +173,7 @@ mod tests {
         reason = "test code"
     )]
 
-    use marked_path::{Absolute, MarkedPathBuf};
+    use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
     use super::{FileEntry, FilePickerState, resolve_list_dir};
 
@@ -194,35 +200,71 @@ mod tests {
         assert_eq!(dir, cwd);
     }
 
-    /// The one path literal this module's tests spell out.
-    ///
-    /// The resolver recognizes an absolute filter by its leading `/` — that
-    /// is the *syntax* under test, not a location on disk. The filter names
-    /// nothing: it is never opened, and the expectation is built from the
-    /// same text, so the assertion holds identically on every platform.
-    const ABSOLUTE_FILTER: &str = "/etc";
+    /// Builds a cwd/home pair from a bare temp-root name, so every resolver
+    /// test starts from a portable absolute base.
+    fn cwd_and_home(
+        root: &jinn_testutil::JinnTempDir,
+    ) -> (MarkedPathBuf<Absolute>, MarkedPathBuf<Absolute>) {
+        let cwd = root.path.join("proj").expect("temp root joins a bare name");
+        let home = root.path.join("u").expect("temp root joins a bare name");
+        (cwd, home)
+    }
 
     #[rstest::rstest]
     #[test]
     fn resolve_absolute_filter_returns_path_as_is() {
-        // Given a cwd, home, and an absolute filter.
+        // Given a cwd, home, and a filter that names an absolute directory
+        // on this platform (`/etc` on Unix, `C:\etc` on Windows) — built
+        // from the volume root, never spelled out, so the same code holds
+        // on every platform.
         let home_root = jinn_testutil::tempdir();
-        let cwd = home_root
-            .path
-            .join("proj")
-            .expect("temp root joins a bare name");
-        let home = home_root
-            .path
-            .join("u")
-            .expect("temp root joins a bare name");
+        let (cwd, home) = cwd_and_home(&home_root);
+        let filter_path = jinn_testutil::volume_root()
+            .join_all(["etc"])
+            .expect("name joins keep the base absolute");
+        let filter_text = filter_path.to_string_lossy().into_owned();
 
-        // When resolving an absolute path.
-        let dir = resolve_list_dir(ABSOLUTE_FILTER, &cwd, &home);
+        // When resolving the absolute filter (the resolver takes text; the
+        // expectation is re-constructed from that same text).
+        let dir = resolve_list_dir(&filter_text, &cwd, &home);
 
-        // Then the result is the absolute path.
+        // Then the result is the absolute path the filter names.
         assert_eq!(
             dir,
-            MarkedPathBuf::<Absolute>::new(ABSOLUTE_FILTER).expect("absolute literal")
+            MarkedPathBuf::<Absolute>::new(&filter_text).expect("the filter is absolute here")
+        );
+    }
+
+    /// Pins the Windows resolution of a `/`-prefixed filter.
+    ///
+    /// `/etc` is *not* absolute on Windows — the marker refuses it — so the
+    /// filter joins against the cwd. Per marked-path join semantics an
+    /// absolute segment replaces the base, which drive-roots the result
+    /// (`D:\etc` for a cwd on `D:`). The pin asserts that resolved shape:
+    /// absolute, ending in the `etc` component, and never a panic (the
+    /// round-2 Windows-VM failure this module fixed).
+    #[cfg(windows)]
+    #[rstest::rstest]
+    #[test]
+    fn resolve_slash_prefixed_filter_joins_relative_on_windows() {
+        // Given a temp-rooted cwd/home and a `/`-prefixed filter.
+        let home_root = jinn_testutil::tempdir();
+        let (cwd, home) = cwd_and_home(&home_root);
+
+        // When resolving the `/`-prefixed filter.
+        let dir = resolve_list_dir("/etc", &cwd, &home);
+
+        // Then the result is absolute and drive-rooted into `etc`.
+        assert_eq!(
+            dir,
+            cwd.join("/etc")
+                .expect("the marked join of a `/` filter is absolute"),
+        );
+        // And the result ends with the `etc` component.
+        assert_eq!(
+            dir.file_name().and_then(|n| n.to_str()),
+            Some("etc"),
+            "a `/`-prefixed filter on Windows resolves to the drive-rooted `etc` directory"
         );
     }
 

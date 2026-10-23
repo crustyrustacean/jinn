@@ -687,7 +687,10 @@ mod tests {
     // Windows: ConPTY children are git-bash processes whose startup
     // (~250–300 ms) exceeds the 150 ms window the Unix tests tune for, so a
     // silent startup would settle as "quiet" before the program ever runs.
-    // 400 ms is the production default quiet window.
+    // 400 ms is the production default quiet window. A *cold* VM start —
+    // Defender scanning the MSYS DLLs on first execution — can still run
+    // whole seconds before bash prints anything, so tests that read a
+    // program's state back retry rather than trusting one snapshot.
     #[cfg(windows)]
     const QUIET: Duration = Duration::from_millis(400);
     #[cfg(not(windows))]
@@ -839,11 +842,11 @@ mod tests {
             // timing these tests check.
             config: term_layer(quiet, cap),
             // The shell the pty children run through — the same shared
-            // resolver production uses.
-            shell: jinn_common::shell::Shells::default()
-                .bash()
-                .map(|shell| shell.program().to_owned())
-                .unwrap_or_else(|_| "bash".to_owned()),
+            // resolver production uses. The gate is the point: a machine
+            // without a POSIX shell has no pty terminals at all, so every
+            // test here fails naming the missing dependency instead of
+            // spawning a shell that does not exist.
+            shell: jinn_testutil::shell_required(),
         };
         (deps, state)
     }
@@ -1133,20 +1136,28 @@ mod tests {
             panic!("expected Sent");
         };
 
-        // ...and reading it back in a *separate* call.
-        let mut msg = send_msg(chat);
-        msg.text = Some("echo val=$TERMVAR".to_owned());
-        msg.keys = vec!["enter".to_owned()];
-        let SendTermOutcome::Sent(screen) = actor.ask::<_, SendTermOutcome>(msg).await else {
-            panic!("expected Sent");
+        // ...and reading it back in a *separate* call. A cold git-bash on
+        // Windows can take seconds to echo, so the settle window may return
+        // a screen the echo has not reached yet; the read retries on the
+        // observed screen rather than trusting one snapshot.
+        let read_back = async {
+            loop {
+                let mut msg = send_msg(chat.clone());
+                msg.text = Some("echo val=$TERMVAR".to_owned());
+                msg.keys = vec!["enter".to_owned()];
+                if let SendTermOutcome::Sent(screen) = actor.ask::<_, SendTermOutcome>(msg).await {
+                    if plain_screen(&screen.screen).contains("val=inner-42") {
+                        return;
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
         };
+        tokio::time::timeout(Duration::from_secs(10), read_back)
+            .await
+            .expect("the variable to survive to a later read");
 
         // Then the variable survived — the same shell process served both calls.
-        assert!(
-            plain_screen(&screen.screen).contains("val=inner-42"),
-            "screen was: {:?}",
-            plain_screen(&screen.screen)
-        );
     }
 
     #[rstest::rstest]
@@ -1628,15 +1639,34 @@ mod tests {
         let (actor, _system) = spawn_coordinator(&harness, TermControls::default()).await;
         let chat = jinn_core_types::SessionId::new();
 
-        // When the spawn reply already observed the exit.
-        let SpawnTermOutcome::Started { screen, .. } =
-            actor.ask(spawn_msg(chat, "sh -c 'echo bye; exit 7'")).await
+        // When the spawn reply already observed the exit. A cold git-bash on
+        // Windows can still be starting when the spawn settle returns, so
+        // the first snapshot may predate the exit; the exit info is also
+        // carried by any later sync call, so the test polls there rather
+        // than trusting one snapshot.
+        let SpawnTermOutcome::Started { .. } = actor
+            .ask(spawn_msg(chat.clone(), "sh -c 'echo bye; exit 7'"))
+            .await
         else {
             panic!("expected Started");
         };
 
         // Then the exit info reports code 7.
-        let exited = screen.exited.expect("exit captured");
+        let poll_exit = async {
+            loop {
+                if let SendTermOutcome::Exited(screen) = actor
+                    .ask::<_, SendTermOutcome>(send_msg(chat.clone()))
+                    .await
+                    && let Some(exited) = screen.exited
+                {
+                    return exited;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        };
+        let exited = tokio::time::timeout(Duration::from_secs(10), poll_exit)
+            .await
+            .expect("the natural exit to be captured");
         assert_eq!(exited.code, 7);
     }
 

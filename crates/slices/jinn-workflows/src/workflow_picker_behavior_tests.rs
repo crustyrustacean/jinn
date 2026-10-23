@@ -18,6 +18,7 @@ use jinn_kernel::common::render_ctx::empty_config_layer;
 use jinn_slices::KeyRoutes;
 use jinn_slices::cell::TypedCell;
 use jinn_slices::route::EditIntent;
+use jinn_testutil::volume_root;
 use jinn_workflows_msg::{Workflow, WorkflowPickerState, workflows_picker_slot};
 
 use crate::workflow_picker_actions;
@@ -74,10 +75,9 @@ fn workflow(name: &str) -> Workflow {
     Workflow {
         name: name.to_owned(),
         description: format!("the {name} workflow"),
-        dir: marked_path::MarkedPathBuf::<marked_path::Absolute>::new(format!(
-            "/cfg/workflows/{name}"
-        ))
-        .expect("rooted test path"),
+        dir: volume_root()
+            .join_all(["cfg", "workflows", name])
+            .expect("rooted test path"),
     }
 }
 

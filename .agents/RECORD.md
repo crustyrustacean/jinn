@@ -572,3 +572,7 @@ Entries are added or amended **only with human approval**.
 - (tools) Tool-result images ride provider-specific transports: Anthropic nests image blocks in the `tool_result`, and every other backend receives a synthesized user message carrying the image, both built at request time from provider-neutral stored data.
 - (storage) Tool-result attachments persist in `entry_blobs` like user attachments and are rehydrated on load.
 - (arch) AppPaths carries no system-wide data dir; themes, prompts, skills, personas, and the models.dev cache are read from user directories alone.
+- (testing) An absolute test fixture path is built by joining bare names onto jinn-testutil's volume root, never from a path literal or the platform separator.
+- (paths) The file picker resolves a filter absolute when MarkedPathBuf<Absolute> accepts it on the running platform, and joins it against the session cwd otherwise.
+- (paths) Production canonicalization goes through fs_paths::canonicalize_display, which strips the Windows verbatim prefix; raw std::fs::canonicalize never crosses a published path.
+- (testing) The test suite requires a POSIX shell and ripgrep; dependency-absent tests fail loudly naming the dependency — there are no skips.

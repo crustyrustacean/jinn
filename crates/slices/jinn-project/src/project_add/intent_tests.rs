@@ -20,6 +20,7 @@ use jinn_slices::route::ActionCtx;
 use jinn_slices::route::BindSite;
 use jinn_slices::route::EditIntent;
 use jinn_slices::route::ScopeSignal;
+use jinn_testutil::volume_root;
 use marked_path::MarkedPathAccess;
 
 /// A minimal [`SliceActionState`] double that also carries kernel state
@@ -32,7 +33,8 @@ struct FakeState {
 impl Default for FakeState {
     fn default() -> Self {
         Self {
-            cwd: marked_path::MarkedPathBuf::<marked_path::Absolute>::new("/nonexistent-cwd")
+            cwd: volume_root()
+                .join_all(["nonexistent-cwd"])
                 .expect("rooted test path"),
             kernel: Some(jinn_kernel::AppState::default_with_scope_focus()),
         }

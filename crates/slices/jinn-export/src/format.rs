@@ -98,6 +98,7 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+    use jinn_testutil::volume_root;
 
     #[rstest::rstest]
     #[case("html", "html")]
@@ -107,10 +108,9 @@ mod tests {
     #[case("markdown", "md")]
     fn supported_extension_resolves_to_a_format(#[case] ext: &str, #[case] expected: &str) {
         // Given a path with a supported extension.
-        let path = MarkedPathBuf::<Absolute>::new(std::path::MAIN_SEPARATOR_STR)
-            .expect("root separator is absolute")
-            .join("out")
-            .expect("root joins a bare name")
+        let path = volume_root()
+            .join_all(["out"])
+            .expect("bare-name joins keep the base absolute")
             .with_extension(ext);
 
         // When resolving its format.
@@ -127,10 +127,9 @@ mod tests {
     #[case("rs")]
     fn unsupported_extension_resolves_to_none(#[case] ext: &str) {
         // Given a path with an extension this slice cannot write.
-        let path = MarkedPathBuf::<Absolute>::new(std::path::MAIN_SEPARATOR_STR)
-            .expect("root separator is absolute")
-            .join("out")
-            .expect("root joins a bare name")
+        let path = volume_root()
+            .join_all(["out"])
+            .expect("bare-name joins keep the base absolute")
             .with_extension(ext);
 
         // When resolving its format.
@@ -143,10 +142,9 @@ mod tests {
     #[rstest::rstest]
     fn extensionless_path_resolves_to_none() {
         // Given a path with no extension at all.
-        let path = MarkedPathBuf::<Absolute>::new(std::path::MAIN_SEPARATOR_STR)
-            .expect("root separator is absolute")
-            .join("chat-export")
-            .expect("root joins a bare name");
+        let path = volume_root()
+            .join_all(["chat-export"])
+            .expect("bare-name joins keep the base absolute");
 
         // When resolving its format.
         let format = format_for_path(&path);
@@ -158,10 +156,9 @@ mod tests {
     #[rstest::rstest]
     fn unsupported_error_names_the_extension_and_the_alternatives() {
         // Given a path the slice cannot write.
-        let path = MarkedPathBuf::<Absolute>::new(std::path::MAIN_SEPARATOR_STR)
-            .expect("root separator is absolute")
-            .join("out.pdf")
-            .expect("root joins a bare name");
+        let path = volume_root()
+            .join_all(["out.pdf"])
+            .expect("bare-name joins keep the base absolute");
 
         // When building the refusal error.
         let err = unsupported_extension_error(&path);
@@ -176,10 +173,9 @@ mod tests {
     #[rstest::rstest]
     fn extensionless_error_reports_none_found() {
         // Given a path with no extension.
-        let path = MarkedPathBuf::<Absolute>::new(std::path::MAIN_SEPARATOR_STR)
-            .expect("root separator is absolute")
-            .join("chat-export")
-            .expect("root joins a bare name");
+        let path = volume_root()
+            .join_all(["chat-export"])
+            .expect("bare-name joins keep the base absolute");
 
         // When building the refusal error.
         let err = unsupported_extension_error(&path);

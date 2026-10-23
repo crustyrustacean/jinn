@@ -170,18 +170,25 @@ async fn children_of_a_workflow_attendant_do_not_inherit_the_marker() {
 #[rstest::rstest]
 #[tokio::test]
 async fn missing_file_fails_naming_the_path() {
-    // Given a session and a path that does not exist.
+    // Given a session and a path that does not exist. It is anchored at the
+    // volume root, so it is absolute on every platform and the tool uses it
+    // as-is instead of joining it onto the session cwd.
     let harness = TestHarness::new().await;
     let (state, user_id) = fixture();
     let dir = jinn_testutil::tempdir();
     let tool_ctx = ctx(&harness, &state, user_id.clone(), &dir.path).await;
+    let missing = jinn_testutil::volume_root()
+        .join_all(["definitely", "not", "here.toml"])
+        .expect("bare-name joins keep the base absolute");
+    let raw_missing = missing.to_string();
 
     // When the tool loads the missing file.
-    let result = execute(call(r#"{"path":"/definitely/not/here.toml"}"#), tool_ctx).await;
+    let payload = serde_json::json!({ "path": raw_missing }).to_string();
+    let result = execute(call(&payload), tool_ctx).await;
 
     // Then the tool fails naming the path and nothing is created.
     assert!(!result.success);
-    assert!(result.content.contains("/definitely/not/here.toml"));
+    assert!(result.content.contains(&raw_missing));
     let guard = state.read();
     assert!(
         !guard.session.iter().any(|(_, s)| s.is_attendant()),

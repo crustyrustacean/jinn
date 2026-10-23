@@ -37,6 +37,7 @@ use jinn_slices::Persona;
 use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{EditIntent, RouteOutcome, ScopeSignal};
 use jinn_slices::{KeyRoutes, SliceHost, Slices};
+use jinn_testutil::volume_root;
 
 /// The slice wired exactly as composition wires it.
 struct Wired {
@@ -68,10 +69,9 @@ impl Wired {
             // cell the catalog seeded is re-seeded with the scan's result),
             // but the tests seed the entries they need rather than depending
             // on the loader.
-            let dir = marked_path::MarkedPathBuf::<marked_path::Absolute>::new(
-                "/nonexistent-personas-dir",
-            )
-            .expect("rooted test path");
+            let dir = volume_root()
+                .join_all(["nonexistent-personas-dir"])
+                .expect("rooted test path");
             crate::activate(&mut host, &dir);
             crate::activate_picker(&mut host);
         }

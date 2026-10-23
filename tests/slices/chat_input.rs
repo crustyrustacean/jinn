@@ -25,7 +25,7 @@ use jinn_kernel::protocol::ChatEntry;
 use jinn_slices::FocusScope;
 use jinn_theme::default_theme;
 use jinn_turn_dispatch_msg::QueueItem;
-use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
+use marked_path::MarkedPathAccess;
 
 use jinn_kernel::IntentHandler;
 use jinn_kernel::protocol::KernelIntent;
@@ -4701,13 +4701,15 @@ async fn actor_returns_empty_for_nonexistent_directory() {
         picker.expected_request_id = 1;
         picker.loading = true;
     });
-    let bogus = "/this/path/does/not/exist/jinn-test";
+    let bogus = jinn_testutil::volume_root()
+        .join_all(["this", "path", "does", "not", "exist", "jinn-test"])
+        .expect("name joins keep the base absolute");
 
     // When the actor lists the nonexistent directory.
     harness
         .publish(ListDirectory {
             session_id: SessionId::new(),
-            path: MarkedPathBuf::<Absolute>::new(bogus).expect("test path"),
+            path: bogus,
             request_id: 1,
         })
         .await;

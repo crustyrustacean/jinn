@@ -26,7 +26,6 @@
     reason = "test module, panics are acceptable"
 )]
 
-use marked_path::{Absolute, MarkedPathBuf};
 use std::collections::HashSet;
 
 use jinn_core_types::{ChatEntry, NameFilter};
@@ -34,6 +33,7 @@ use jinn_skills_msg::{Skill, SkillPickerState, SkillSource, skill_picker_slot};
 use jinn_slices::KeyRoutes;
 use jinn_slices::cell::TypedCell;
 use jinn_slices::route::{ActionCtx, EditIntent};
+use jinn_testutil::volume_root;
 
 use crate::skill_picker_actions;
 use crate::skill_picker_routes::{self, SKILL_PICKER_BINDINGS};
@@ -94,10 +94,12 @@ fn skill(name: &str) -> Skill {
     Skill {
         name: name.to_owned(),
         description: format!("the {name} skill"),
-        file_path: MarkedPathBuf::<Absolute>::new(format!("/skills/{name}/SKILL.md"))
+        file_path: volume_root()
+            .join_all(["skills", name, "SKILL.md"])
             .expect("rooted test path"),
         body: format!("body of {name}"),
-        base_dir: MarkedPathBuf::<Absolute>::new(format!("/skills/{name}"))
+        base_dir: volume_root()
+            .join_all(["skills", name])
             .expect("rooted test path"),
         source: SkillSource::Global,
     }
@@ -124,10 +126,12 @@ fn tall_skill(name: &str, lines: usize) -> Skill {
     Skill {
         name: name.to_owned(),
         description: format!("the {name} skill"),
-        file_path: MarkedPathBuf::<Absolute>::new(format!("/skills/{name}/SKILL.md"))
+        file_path: volume_root()
+            .join_all(["skills", name, "SKILL.md"])
             .expect("rooted test path"),
         body,
-        base_dir: MarkedPathBuf::<Absolute>::new(format!("/skills/{name}"))
+        base_dir: volume_root()
+            .join_all(["skills", name])
             .expect("rooted test path"),
         source: SkillSource::Global,
     }

@@ -328,7 +328,6 @@ mod tests {
     use jinn_llm_support::token_estimator::TiktokenCounter;
     use jinn_skills_msg::Skill;
     use jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME;
-    use marked_path::{Absolute, MarkedPathBuf};
 
     /// Test bridge: build inputs from an AppState the way production
     /// callers do (via the kernel snapshot builder) and run the pure
@@ -352,10 +351,12 @@ mod tests {
             name: name.to_owned(),
             description: format!("{name} skill"),
             body: String::new(),
-            file_path: MarkedPathBuf::<Absolute>::new(format!("/skills/{name}/SKILL.md"))
-                .expect("rooted test path"),
-            base_dir: MarkedPathBuf::<Absolute>::new(format!("/skills/{name}"))
-                .expect("rooted test path"),
+            file_path: jinn_testutil::volume_root()
+                .join_all(["skills", name, "SKILL.md"])
+                .expect("bare-name join keeps the root absolute"),
+            base_dir: jinn_testutil::volume_root()
+                .join_all(["skills", name])
+                .expect("bare-name join keeps the root absolute"),
             source: jinn_skills_msg::SkillSource::Global,
         }
     }

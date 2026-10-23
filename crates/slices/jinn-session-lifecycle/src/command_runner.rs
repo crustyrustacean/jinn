@@ -452,57 +452,13 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test code"
     )]
-    #![allow(
-        clippy::print_stderr,
-        reason = "the skip path must be visible, not silent"
-    )]
     use super::*;
     use jinn_common::fs_paths::canonicalize_display;
-
-    /// Resolves the shell these tests run their scripts through — the same
-    /// shared resolver production uses (`jinn_common::shell`).
-    ///
-    /// The bare `bash` fallback is probed once (it only resolves if a POSIX
-    /// bash is actually on `PATH`); an absolute resolved path was already
-    /// existence-checked by the resolver. When nothing usable resolves, the
-    /// caller prints a skip reason and returns — a visible skip, never a
-    /// silent pass.
-    fn shell_or_skip() -> Option<String> {
-        let Some(shell) = jinn_common::shell::Shells::default()
-            .bash()
-            .ok()
-            .map(|shell| shell.program().to_owned())
-        else {
-            eprintln!("SKIP: no usable POSIX shell resolved for command_runner tests");
-            return None;
-        };
-        if shell != "bash" {
-            return Some(shell);
-        }
-        let probe = std::process::Command::new(&shell)
-            .arg("-c")
-            .arg("true")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-        match probe {
-            Ok(_) => Some(shell),
-            Err(err) => {
-                eprintln!(
-                    "SKIP: no usable POSIX shell resolved for command_runner tests \
-                     (bare 'bash' probe failed: {err})"
-                );
-                None
-            }
-        }
-    }
 
     #[rstest::rstest]
     #[tokio::test]
     async fn setup_returns_canonicalized_directory_path() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given a command that echoes a directory path.
         let dir = jinn_testutil::tempdir();
         let path = dir.path.to_string();
@@ -519,9 +475,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn setup_canonicalizes_last_non_empty_line() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given a command that outputs multiple lines.
         let dir = jinn_testutil::tempdir();
         let path = dir.path.to_string();
@@ -539,9 +493,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn setup_trims_whitespace_before_canonicalizing() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given a command that echoes with trailing whitespace.
         let dir = jinn_testutil::tempdir();
         let path = dir.path.to_string();
@@ -558,9 +510,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn setup_returns_error_on_nonzero_exit() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given a command that exits with code 1.
         // When running it as the setup command.
         let result = run_setup_command("exit 1", &shell).await;
@@ -582,9 +532,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn setup_captures_stdout_and_stderr_on_failure() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given a command that writes to both stdout and stderr before failing.
         // When running it as the setup command.
         let result = run_setup_command(
@@ -611,9 +559,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn setup_returns_none_on_empty_stdout() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given a setup command that succeeds with no output (side-effect-only).
         // When running it.
         let result = run_setup_command("true", &shell).await;
@@ -626,9 +572,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn setup_canonicalizes_relative_path_to_absolute() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given a real subdirectory of the current working directory.
         let dir = jinn_testutil::tempdir_in(".");
         let dir_name = dir
@@ -655,9 +599,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn setup_returns_error_when_path_does_not_exist() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given a setup command that outputs a path under a temp root which
         // does not exist.
         let dir = jinn_testutil::tempdir();
@@ -687,9 +629,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn setup_returns_error_when_path_is_not_a_directory() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given a setup command that outputs a file path (not a directory).
         let dir = jinn_testutil::tempdir();
         let file_path = dir
@@ -730,9 +670,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn setup_canonicalizes_dot_to_actual_cwd() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given a setup command that outputs ".".
         let process_cwd = std::env::current_dir().expect("process cwd is readable");
         let cwd = MarkedPathBuf::<Absolute>::new(process_cwd).expect("process cwd is absolute");
@@ -749,9 +687,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn teardown_succeeds_with_empty_stdout() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given a teardown command that removes a marker file (no stdout).
         let dir = jinn_testutil::tempdir();
         let marker = dir
@@ -779,9 +715,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn teardown_returns_failure_on_nonzero_exit() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given a teardown command that fails.
         // When running it.
         let result = run_teardown_command("exit 42", &shell).await;
@@ -799,9 +733,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn teardown_commands_run_sequentially() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given two marker files.
         let dir = jinn_testutil::tempdir();
         let marker_a = dir.path.join("a").expect("typed parent joins a bare name");
@@ -829,9 +761,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn teardown_succeeds_with_any_stdout() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given a teardown command that produces stdout but exits 0.
         // When running it.
         let result = run_teardown_command("echo 'cleaning up...'", &shell).await;
@@ -849,9 +779,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn setup_script_runs_in_session_cwd() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given a tempdir used as the session CWD.
         // We observe the spawned shell's *own* working dir (printed by the
         // script itself), so the assertion is independent of where the jinn
@@ -879,9 +807,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn setup_side_effect_script_writes_file_in_session_cwd() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given a tempdir as the session CWD.
         let dir = jinn_testutil::tempdir();
         let out_file = dir
@@ -911,9 +837,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn setup_canonicalizes_relative_output_against_session_cwd() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given a tempdir (NOT in the process cwd) with a child subdir.
         // Using tempdir() rather than tempdir_in(".") guarantees the session
         // cwd differs from jinn's process cwd, so a relative echo can only
@@ -944,9 +868,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn teardown_script_runs_in_session_cwd() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given a tempdir as the session CWD.
         let dir = jinn_testutil::tempdir();
         let marker = dir
@@ -973,9 +895,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn aborting_reader_task_yields_cancelled_or_failed_outcome() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given a setup command that sleeps indefinitely.
         let (handle, join_handle) =
             spawn_setup_command("sleep 30", &shell, &process_cwd()).expect("spawn");
@@ -995,9 +915,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn cancel_handle_kills_and_aborts_without_panic() {
-        let Some(shell) = shell_or_skip() else {
-            return;
-        };
+        let shell = jinn_testutil::shell_required();
         // Given a setup command that sleeps, spawned on a multi-thread runtime
         // so the cancel runs on a WORKER thread (the original bug: blocking_lock
         // on a tokio worker thread panicked with SIGABRT).

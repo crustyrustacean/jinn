@@ -60,6 +60,7 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, reason = "test code")]
 
     use super::*;
+    use jinn_testutil::volume_root;
 
     #[rstest::rstest]
     #[test]
@@ -88,10 +89,14 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn deserializes_from_json_payload() {
-        // Given a JSON payload shaped like a bridge relay's deserialized body.
+        // Given a JSON payload shaped like a bridge relay's deserialized
+        // body, naming an absolute path built from the volume root.
+        let expected = volume_root()
+            .join_all(["tmp", "notes", "session.md"])
+            .expect("bare-name joins keep the base absolute");
         let payload = serde_json::json!({
             "session_id": "01933dc5-2b14-7e21-8f52-3d1d8f4e7f9a",
-            "path": "/tmp/notes/session.md"
+            "path": expected.to_string(),
         });
 
         // When deserializing into the command.
@@ -102,10 +107,7 @@ mod tests {
             msg.session_id.to_string(),
             "01933dc5-2b14-7e21-8f52-3d1d8f4e7f9a"
         );
-        assert_eq!(
-            msg.path,
-            MarkedPathBuf::<Absolute>::new("/tmp/notes/session.md").expect("absolute literal")
-        );
+        assert_eq!(msg.path, expected);
     }
 
     #[rstest::rstest]

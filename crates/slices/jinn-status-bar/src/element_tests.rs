@@ -6,7 +6,7 @@
     reason = "test code"
 )]
 
-use jinn_testutil::buffer_row;
+use jinn_testutil::{buffer_row, volume_root};
 
 use crate::element::StatusBarElement;
 use jinn_core_types::WorkingInterval;
@@ -625,14 +625,13 @@ fn render_shows_cwd_on_first_line() {
 
 #[rstest::rstest]
 fn render_shows_absolute_path_for_non_home_cwd() {
-    // Given a session with a non-home CWD. The path is rooted at the
-    // filesystem root so it lies outside the user's home directory on every
+    // Given a session with a non-home CWD. The path is rooted at the temp
+    // volume's root so it lies outside the user's home directory on every
     // platform — the platform temp directory is under the user profile on
-    // Windows, so a temp root would be tilde-compressed there.
-    let cwd = marked_path::MarkedPathBuf::<marked_path::Absolute>::new(
-        std::path::Path::new(std::path::MAIN_SEPARATOR_STR).join("test-project"),
-    )
-    .expect("rooted test path");
+    // Windows, so a temp dir itself would be tilde-compressed there.
+    let cwd = volume_root()
+        .join_all(["test-project"])
+        .expect("root joins a bare name");
     let mut element = StatusBarElement;
     let mut state = AppState::default_with_scope_focus();
     state

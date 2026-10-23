@@ -125,6 +125,40 @@ impl std::fmt::Debug for TestRoot {
     }
 }
 
+/// The root of the volume hosting the platform temporary directory: `/` on
+/// Unix, the temp drive's root (`C:\` or alike) on Windows.
+///
+/// A never-published anchor for test fixtures that need an absolute path
+/// naming nothing on disk, or a path outside the user's home directory. A
+/// fixture builds its paths by joining bare names onto this root — never
+/// from a string literal, because no separator spelling is portable: a
+/// forward slash is drive-relative on Windows, and the platform separator
+/// is not a root there either.
+///
+/// The root is stable across runs and across platforms in *shape*: absolute,
+/// outside home on Windows, and lexicographically ordered — fixtures that
+/// build every compared side from it keep their ordering on both platforms.
+///
+/// # Panics
+///
+/// Never, in practice: both `expect`s guard platform-impossible invariants
+/// (every path has a root ancestor, and a root ancestor is absolute). The
+/// expects exist to keep the typed construction honest, not to handle a
+/// real failure mode.
+#[expect(
+    clippy::expect_used,
+    reason = "both steps are platform-impossible invariants: a path's root ancestor is absolute by definition"
+)]
+#[must_use]
+pub fn volume_root() -> MarkedPathBuf<Absolute> {
+    let temp = std::env::temp_dir();
+    let root = temp
+        .ancestors()
+        .last()
+        .expect("any path has a root ancestor");
+    MarkedPathBuf::<Absolute>::new(root).expect("a path's root ancestor is absolute")
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -137,7 +171,7 @@ mod tests {
     use marked_path::MarkedPathBuf;
     use marked_path::Relative;
 
-    use super::TestRoot;
+    use super::{TestRoot, volume_root};
 
     #[rstest::rstest]
     #[test]
@@ -217,14 +251,30 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn join_str_rejects_an_absolute_path() {
-        // Given a test root.
+        // Given a test root and an absolute path built from the volume root.
         let root = TestRoot::new();
+        let absolute = volume_root()
+            .join_all(["etc", "passwd"])
+            .expect("bare-name join");
 
-        // When joining an absolute path onto it.
-        let result = root.join_str("/etc/passwd");
+        // When joining the absolute path onto the root.
+        let result = root.join_str(absolute.as_path().to_str().expect("utf-8 temp path"));
 
         // Then the join is refused.
         assert!(result.is_err());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn volume_root_is_absolute_with_no_parent() {
+        // Given the volume root of the platform temp directory.
+
+        // When it is constructed.
+        let root = volume_root();
+
+        // Then it is absolute and has no parent.
+        assert!(root.as_path().is_absolute());
+        assert_eq!(root.as_path().parent(), None);
     }
 
     #[rstest::rstest]

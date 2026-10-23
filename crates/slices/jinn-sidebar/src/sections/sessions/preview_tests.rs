@@ -18,7 +18,7 @@ use jinn_chat_log_view_msg::{PREVIEW_ENTRY_COUNT, PREVIEW_MAX_LINES};
 use jinn_core_types::model_selection::ModelSelection;
 use jinn_kernel::protocol::ChatEntry;
 use jinn_session_state::ChatSessionState;
-use jinn_testutil::{buffer_row, setup_term};
+use jinn_testutil::{buffer_row, setup_term, volume_root};
 use jinn_theme::default_theme;
 use jinn_tools_msg::{PhaseInput, TaskStatus};
 use marked_path::{Absolute, MarkedPathBuf};
@@ -44,13 +44,12 @@ fn make_session_with_title(title: &str) -> ChatSessionState {
 ///
 /// The platform temp directory is *under* the user profile on Windows
 /// (`%LOCALAPPDATA%\Temp` hangs off `%USERPROFILE%`), so a temp root is not
-/// outside home there — it is on Unix. A path rooted at the filesystem root
-/// is outside home everywhere. The directory need not exist: these tests
+/// outside home there — it is on Unix. A path rooted at the temp volume's
+/// root is outside home everywhere. The directory need not exist: these tests
 /// render a path string, they do not touch the filesystem.
 fn path_outside_home(name: &str) -> MarkedPathBuf<Absolute> {
-    MarkedPathBuf::<Absolute>::new(std::path::MAIN_SEPARATOR_STR)
-        .expect("root separator is absolute")
-        .join(name)
+    volume_root()
+        .join_all([name])
         .expect("root joins a bare name")
 }
 

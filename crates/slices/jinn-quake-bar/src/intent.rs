@@ -300,6 +300,7 @@ mod tests {
     use jinn_slices::KeyRoutes;
     use jinn_slices::ScopeSignal;
     use jinn_slices::Slices;
+    use jinn_testutil::volume_root;
 
     use jinn_quake_bar_msg::quake_bar_slot;
 
@@ -528,7 +529,7 @@ mod tests {
         }
 
         fn active_session_cwd(&self) -> MarkedPathBuf<Absolute> {
-            MarkedPathBuf::<Absolute>::new("/").expect("test cwd")
+            volume_root()
         }
 
         fn publish_session_cwd(

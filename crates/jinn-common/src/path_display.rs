@@ -52,23 +52,20 @@ mod tests {
     )]
 
     use super::shorten_path;
+    use jinn_testutil::volume_root;
     use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
     #[rstest::rstest]
     fn path_outside_home_is_returned_unchanged() {
-        // Given a path outside the home directory. It is rooted at the
-        // platform's own filesystem root, so it lies outside the user's
-        // home directory on every platform — the platform temp directory
-        // hangs off the user profile on Windows, so a temp root would be
-        // tilde-compressed there.
-        let path = MarkedPathBuf::<Absolute>::new(
-            Path::new(std::path::MAIN_SEPARATOR_STR)
-                .join("opt")
-                .join("jinn")
-                .join("config.toml"),
-        )
-        .expect("rooted path is absolute");
+        // Given a path outside the home directory. It is built from the
+        // volume root — the platform's own filesystem root — so it lies
+        // outside the user's home directory on every platform: the temp
+        // directory hangs off the user profile on Windows, so a temp root
+        // would be tilde-compressed there.
+        let path = volume_root()
+            .join_all(["opt", "jinn", "config.toml"])
+            .expect("bare-name joins keep the base absolute");
 
         // When shortening it.
         let display = shorten_path(&path);

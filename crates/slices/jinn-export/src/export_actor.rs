@@ -460,22 +460,36 @@ mod tests {
 
     #[rstest::rstest]
     fn unwritable_destination_reports_the_reason() {
-        // Given a job targeting a path inside a file, not a directory.
+        // Given a job targeting a path inside a file, not a directory. The
+        // relative argument and the failure needle are both derived from
+        // one constructed destination, so the message names the path in
+        // whatever spelling this platform resolves it to.
         let dir = jinn_testutil::tempdir();
         let blocker = dir
             .path
             .join("blocker")
             .expect("temp root joins a bare name");
         std::fs::write(&blocker, "i am a file").expect("write");
+        let destination = dir
+            .path
+            .join_all(["blocker", "out.html"])
+            .expect("bare-name joins keep the base absolute");
+        let argument = destination
+            .as_path()
+            .strip_prefix(dir.path.as_path())
+            .expect("the destination is inside the cwd")
+            .to_string_lossy()
+            .into_owned();
 
         // When running the blocking write.
-        let result = render_and_write_blocking(&job("blocker/out.html", &dir.path));
+        let result = render_and_write_blocking(&job(&argument, &dir.path));
 
         // Then the failure names the path that could not be written.
         let reason = result
             .expect_err("writing under a file must fail")
             .to_string();
-        assert!(reason.contains("blocker/out.html"), "was: {reason}");
+        let needle = destination.to_string();
+        assert!(reason.contains(&needle), "was: {reason}");
     }
 }
 

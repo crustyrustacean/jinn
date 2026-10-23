@@ -472,15 +472,13 @@ mod tests {
         reason = "test code"
     )]
     use super::*;
+    use jinn_testutil::volume_root;
     fn default_map() -> SessionMap {
         let session = ChatSessionState::new();
         // The default cwd is a token the tests never touch on disk, so it is
-        // rooted at the platform's own filesystem root rather than named as a
-        // POSIX literal.
-        let default_cwd = marked_path::MarkedPathBuf::<marked_path::Absolute>::new(
-            std::path::Path::new(std::path::MAIN_SEPARATOR_STR),
-        )
-        .expect("the filesystem root is absolute");
+        // the volume root of the platform temp dir: absolute on every platform
+        // without naming a POSIX literal.
+        let default_cwd = volume_root();
         SessionMap::new(session, default_cwd)
     }
 

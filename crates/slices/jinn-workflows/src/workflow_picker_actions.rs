@@ -41,10 +41,9 @@ mod tests {
         Workflow {
             name: name.to_owned(),
             description: format!("the {name} workflow"),
-            dir: marked_path::MarkedPathBuf::<marked_path::Absolute>::new(format!(
-                "/cfg/workflows/{name}"
-            ))
-            .expect("rooted test path"),
+            dir: jinn_testutil::volume_root()
+                .join_all(["cfg", "workflows", name])
+                .expect("bare-name join keeps the root absolute"),
         }
     }
 

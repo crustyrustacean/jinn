@@ -460,7 +460,6 @@ fn open_log_file(path: &MarkedPathBuf<Absolute>) -> Result<File, Report<TracingI
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
     use std::sync::Mutex;
 
     /// A `MakeWriter` capturing formatted output for assertions.
@@ -789,17 +788,23 @@ mod tests {
     #[test]
     fn panic_log_path_is_sibling_of_log_path() {
         // Given a resolved log path in a directory of its own. The path is
-        // rooted at the platform's own filesystem root, so it is absolute on
-        // every platform without naming a POSIX literal.
-        let root = Path::new(std::path::MAIN_SEPARATOR_STR);
-        let log_path = MarkedPathBuf::<Absolute>::new(root.join("x").join("jinn.log"))
-            .expect("rooted path is absolute");
+        // built from the volume root of the platform temp dir, so it is
+        // absolute on every platform without naming a POSIX literal.
+        let root = jinn_testutil::volume_root();
+        let log_path = root
+            .join_all(["x", "jinn.log"])
+            .expect("bare-name join keeps the root absolute");
 
         // When deriving the panic-log path.
         let panic_path = panic_log_path(&log_path);
 
         // Then it is jinn-panic.log in the same directory.
-        assert_eq!(panic_path.as_path(), root.join("x").join("jinn-panic.log"));
+        assert_eq!(
+            panic_path.as_path(),
+            root.join_all(["x", "jinn-panic.log"])
+                .expect("bare-name join keeps the root absolute")
+                .as_path()
+        );
     }
 
     #[rstest::rstest]
@@ -822,13 +827,19 @@ mod tests {
     fn panic_log_path_falls_back_to_root_when_log_has_no_parent() {
         // Given the filesystem root as the log path (the only absolute
         // path with no parent).
-        let log_path = MarkedPathBuf::<Absolute>::new("/").expect("root types");
+        let log_path = jinn_testutil::volume_root();
 
         // When deriving the panic-log path.
         let panic_path = panic_log_path(&log_path);
 
         // Then the panic log lands at the root.
-        assert_eq!(panic_path.to_string_lossy(), "/jinn-panic.log");
+        assert_eq!(
+            panic_path.as_path(),
+            jinn_testutil::volume_root()
+                .join_all(["jinn-panic.log"])
+                .expect("bare-name join keeps the root absolute")
+                .as_path()
+        );
     }
 
     #[rstest::rstest]

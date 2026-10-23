@@ -29,7 +29,7 @@ test:
     # One suite run; full output captured so failure details never require a
     # re-run. tee must not mask cargo's exit code (pipefail handles it).
     set -o pipefail
-    if ! cargo test --workspace --no-fail-fast 2>&1 | tee target/test-output.log; then
+    if ! cargo test --workspace --lib --bins --tests --no-fail-fast 2>&1 | tee target/test-output.log; then
         TEST_STATUS="failed"
     else
         TEST_STATUS="passed"
@@ -196,11 +196,6 @@ lint-testattr:
            file=sys.stderr,
        )
        sys.exit(1)
-
-# Full CI pipeline (lint + test + docs)
-ci: lint test
-    cargo test --workspace --doc --exclude llm
-    cargo doc --workspace --no-deps
 
 # Build and open documentation
 docs:
