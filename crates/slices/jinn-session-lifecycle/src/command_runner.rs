@@ -649,12 +649,13 @@ mod tests {
             .expect("downcast");
         match err {
             LifecycleCommandError::NotADirectory { raw, .. } => {
-                assert_eq!(
-                    raw.as_str(),
-                    canonicalize_display(&file_path)
-                        .expect("canonicalize")
-                        .to_string()
-                );
+                // `raw` is the stdout line the command printed, verbatim — the
+                // shell never canonicalizes. The fixture spells the path as
+                // tempfile handed it over (unresolved), and `echo` round-trips
+                // that spelling exactly; resolving the expectation (as this
+                // test once did) diverges on macOS, where the temp root's
+                // /var/folders/... resolves to /private/var/folders/....
+                assert_eq!(raw.as_str(), file_path.to_string());
             }
             other => panic!("expected NotADirectory, got {other:?}"),
         }
