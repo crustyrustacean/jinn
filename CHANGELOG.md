@@ -1,5 +1,9 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
+## (development)
+
+- `#approve-plan` prompt no longer requires a _verbatim_ copy of the decision ledger. This should fix the issue where an agent refuses to amend the ledger even after human approval to do so.
+
 ## 2026-10-22 v1.11.2
 
 - Test suite now passes on Windows.
