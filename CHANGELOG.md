@@ -3,6 +3,15 @@
 ## (development)
 
 - `#approve-plan` prompt no longer requires a _verbatim_ copy of the decision ledger. This should fix the issue where an agent refuses to amend the ledger even after human approval to do so.
+- Pinning a tool call/result chunk now only displays the tool result in the sidebar. This reduces the noise from pinning saved plans and skill loads.
+- Big attendant overhaul:
+  - "Attendants" renamed to "Bots"
+  - Old attendant configuration values should still import fine
+  - Bots can be created and run as standalone sessions
+  - `b` in session sidebar: Add new bot to session
+  - `B` in session sidebar: Create new standalone bot
+  - Picker keybind changed from `<leader>sa` to `<leader>sb`
+  - `<c-enter>` in bot picker creates the bot in it's own session (`<c-a>` and `<enter>` keybinds unchanged)
 
 ## 2026-10-22 v1.11.2
 
