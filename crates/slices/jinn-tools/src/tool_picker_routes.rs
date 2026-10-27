@@ -45,7 +45,7 @@ use jinn_slices::route::{
 };
 use jinn_tools_msg::{ToolPickerState, tool_picker_scope};
 
-use crate::tool_picker_actions::{self, ToolRow};
+use crate::tool_picker_actions;
 use jinn_bot_msg::is_bot_tool_definition;
 
 /// The picker's cell — the single home for everything it shows.
@@ -266,7 +266,12 @@ fn open_tool_picker(ctx: &mut ActionCtx<'_>, cell: &ToolPickerCell) -> IntentRes
 
     let seed = seed_from_session(state);
     cell.update(|picker| {
-        tool_picker_actions::open(picker, &seed.rows, seed.tool_filter.as_ref(), &seed.theme)
+        tool_picker_actions::open(
+            picker,
+            &seed.definitions,
+            seed.tool_filter.as_ref(),
+            &seed.theme,
+        )
     });
 
     state
@@ -275,10 +280,10 @@ fn open_tool_picker(ctx: &mut ActionCtx<'_>, cell: &ToolPickerCell) -> IntentRes
     IntentResult::empty()
 }
 
-/// The rows and the disabled set the picker seeds itself from on open.
+/// The definitions and the disabled set the picker seeds itself from on open.
 struct Seed {
-    /// The tools available for the session, in display order.
-    rows: Vec<ToolRow>,
+    /// The definitions available for the session, in display order.
+    definitions: Vec<jinn_core_types::tool_types::ToolDefinition>,
     /// The session's live tool filter, snapshotted so escape can restore it
     /// mode and all. `None` means the session has no filter at all.
     tool_filter: Option<NameFilter>,
@@ -288,10 +293,11 @@ struct Seed {
 
 /// Reads the session's tool context into the picker's seed.
 ///
-/// Only tools the session's provider can actually run are offered, and the rows
-/// come back sorted case-insensitively by name so the menu is in a stable order
-/// regardless of registry hash order. An absent registry yields no rows: a
-/// session with no tool context offers nothing rather than panicking.
+/// Only definitions the session's provider can actually run are offered, and
+/// they come back sorted case-insensitively by name so the menu is in a stable
+/// order regardless of registry hash order. An absent registry yields no
+/// definitions: a session with no tool context offers nothing rather than
+/// panicking.
 fn seed_from_session(state: &jinn_kernel::AppState) -> Seed {
     let active_session = state.active_session();
     let provider_name = active_session.model_selection().provider_name().to_owned();
@@ -311,7 +317,7 @@ fn seed_from_session(state: &jinn_kernel::AppState) -> Seed {
     // parent to wake.
     let is_bot = active_session.is_bot();
     let bot_has_parent = active_session.parent_session().is_some();
-    let mut rows: Vec<ToolRow> = state
+    let mut definitions: Vec<jinn_core_types::tool_types::ToolDefinition> = state
         .tool_registry()
         .map(|registry| {
             registry
@@ -320,17 +326,13 @@ fn seed_from_session(state: &jinn_kernel::AppState) -> Seed {
                 .into_iter()
                 .filter(|def| def.available_for_provider(&provider_name))
                 .filter(|def| bot_sees_tool(is_bot, bot_has_parent, def))
-                .map(|def| ToolRow {
-                    name: def.name,
-                    description: def.description,
-                })
                 .collect()
         })
         .unwrap_or_default();
-    rows.sort_by_key(|row| row.name.to_lowercase());
+    definitions.sort_by_key(|def| def.name.to_lowercase());
 
     Seed {
-        rows,
+        definitions,
         tool_filter: active_session.tool_filter().cloned(),
         theme,
     }
@@ -544,9 +546,9 @@ mod bot_tool_picker_tests {
     fn row_names(state: &State) -> Vec<String> {
         let guard = state.read();
         seed_from_session(&guard)
-            .rows
+            .definitions
             .into_iter()
-            .map(|r| r.name)
+            .map(|def| def.name)
             .collect()
     }
 

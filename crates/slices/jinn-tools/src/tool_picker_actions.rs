@@ -23,6 +23,8 @@
 use std::collections::HashSet;
 
 use jinn_core_types::NameFilter;
+use jinn_core_types::ToolDefinition;
+use jinn_llm_support::token_estimator::{TiktokenCounter, toolset_context_tokens};
 use jinn_picker::picker_style::{dim_style, split_match_indices};
 use jinn_picker::{PickerItemHooks, make_items_with_hooks};
 use jinn_selection_widget::highlight::highlight_text_with_bg;
@@ -80,16 +82,6 @@ pub fn tool_row(entry: &ToolEntry, ctx: &jinn_picker::RowCtx<'_>) -> Line<'stati
     Line::from(spans)
 }
 
-/// The definitions the picker offers, already narrowed to what the session's
-/// provider can actually run and seeded from the live disabled set.
-#[derive(Debug, Clone)]
-pub struct ToolRow {
-    /// The tool's registered name.
-    pub name: String,
-    /// The tool's registered description.
-    pub description: String,
-}
-
 /// Opens the picker: fresh filter and highlight over `definitions`, and a
 /// snapshot of the session's tool filter so escape can put it back.
 ///
@@ -97,7 +89,7 @@ pub struct ToolRow {
 /// take the snapshot. The session's filter is written only on confirm.
 pub fn open(
     state: &mut ToolPickerState,
-    definitions: &[ToolRow],
+    definitions: &[ToolDefinition],
     tool_filter: Option<&NameFilter>,
     theme: &Theme,
 ) {
@@ -119,6 +111,37 @@ pub fn open(
         })
         .collect();
     state.selection.set_items(wrap_entries(entries));
+
+    // The full definitions ride along (schemas included) so the context-cost
+    // figure is counted from exactly the material a prompt would ship.
+    state.definitions = definitions.to_vec();
+    recompute_context_tokens(state);
+}
+
+/// Recomputes the pending context-cost figure from the enabled rows.
+///
+/// Counts with the assembler's own builders and the real tokenizer, over the
+/// enabled subset of the stored definitions — the same predicate
+/// `jinn-context-assembly` applies when it ships a tools array. Rows and
+/// definitions are matched by name, not position.
+pub fn recompute_context_tokens(state: &mut ToolPickerState) {
+    let enabled: HashSet<&str> = state
+        .selection
+        .items()
+        .iter()
+        .filter(|item| item.entry().enabled)
+        .map(|item| item.entry().name.as_str())
+        .collect();
+    let counter = TiktokenCounter::o200k_base();
+    state.context_tokens = toolset_context_tokens(
+        &state
+            .definitions
+            .iter()
+            .filter(|def| enabled.contains(def.name.as_str()))
+            .cloned()
+            .collect::<Vec<_>>(),
+        &counter,
+    );
 }
 
 /// Wraps entries for the selection widget, wiring the row renderer and the text
@@ -176,6 +199,7 @@ pub fn toggle_highlighted(state: &mut ToolPickerState) {
     state
         .selection
         .with_selected_mut(|item| item.entry_mut().enabled = !item.entry().enabled);
+    recompute_context_tokens(state);
     let viewport = state.results_viewport;
     state.selection.move_down(viewport);
 }
@@ -206,15 +230,21 @@ mod tests {
     )]
     use super::*;
 
-    /// One row per name, ordered as the session's registry returns them.
-    fn rows(names: &[&str]) -> Vec<ToolRow> {
-        names
-            .iter()
-            .map(|name| ToolRow {
-                name: (*name).to_owned(),
-                description: format!("{name} description"),
-            })
-            .collect()
+    /// A minimal definition under `name`.
+    fn def(name: &str) -> ToolDefinition {
+        ToolDefinition {
+            name: name.to_owned(),
+            description: format!("{name} description"),
+            parameters: serde_json::json!({ "type": "object" }),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+            server_tool_type: None,
+        }
+    }
+
+    /// One definition per name, ordered as the session's registry returns them.
+    fn defs(names: &[&str]) -> Vec<ToolDefinition> {
+        names.iter().map(|name| def(name)).collect()
     }
 
     /// A picker opened over `names` withholding `disabled`.
@@ -222,7 +252,7 @@ mod tests {
         let mut state = ToolPickerState::default();
         open(
             &mut state,
-            &rows(names),
+            &defs(names),
             Some(&NameFilter::deny(disabled.iter().map(|s| (*s).to_owned()))),
             &jinn_theme::default_theme(),
         );
@@ -257,7 +287,7 @@ mod tests {
         let mut state = ToolPickerState::default();
         open(
             &mut state,
-            &rows(&["bash", "read"]),
+            &defs(&["bash", "read"]),
             Some(&filter),
             &jinn_theme::default_theme(),
         );
@@ -278,7 +308,7 @@ mod tests {
         let mut state = ToolPickerState::default();
         open(
             &mut state,
-            &rows(&["bash", "read"]),
+            &defs(&["bash", "read"]),
             Some(&filter),
             &jinn_theme::default_theme(),
         );
@@ -362,7 +392,7 @@ mod tests {
         let mut state = ToolPickerState::default();
         open(
             &mut state,
-            &rows(&["bash", "read"]),
+            &defs(&["bash", "read"]),
             Some(&filter),
             &jinn_theme::default_theme(),
         );
@@ -399,6 +429,64 @@ mod tests {
 
         // Then one of two is enabled.
         assert_eq!((enabled, total), (1, 2));
+    }
+
+    #[rstest::rstest]
+    fn toggling_a_tool_changes_the_figure_by_that_tool_s_cost() {
+        // Given a picker over one tool, whose figure counts it enabled.
+        let mut state = opened(&["bash"], &[]);
+        let enabled_cost = state.context_tokens;
+        assert!(enabled_cost > 0, "an enabled tool must cost tokens");
+
+        // When toggling the tool off.
+        toggle_highlighted(&mut state);
+
+        // Then the figure drops to zero — the disabled toolset ships nothing.
+        assert_eq!(state.context_tokens, 0);
+
+        // When toggling it back on.
+        toggle_highlighted(&mut state);
+
+        // Then the figure returns to exactly the enabled cost.
+        assert_eq!(state.context_tokens, enabled_cost);
+    }
+
+    #[rstest::rstest]
+    fn allow_mode_filter_seeds_the_figure_from_the_permitted_subset() {
+        // Given an allow filter naming only one of two tools.
+        let filter = NameFilter {
+            mode: jinn_core_types::FilterMode::Allow,
+            names: ["read".to_owned()].into_iter().collect(),
+        };
+
+        // When opening the picker.
+        let mut state = ToolPickerState::default();
+        open(
+            &mut state,
+            &defs(&["bash", "read"]),
+            Some(&filter),
+            &jinn_theme::default_theme(),
+        );
+
+        // Then the figure equals the cost of the permitted tool alone — a
+        // withheld row opens off and contributes nothing from the first frame.
+        let counter = jinn_llm_support::token_estimator::TiktokenCounter::o200k_base();
+        let expected =
+            jinn_llm_support::token_estimator::toolset_context_tokens(&[def("read")], &counter);
+        assert_eq!(state.context_tokens, expected);
+    }
+
+    #[rstest::rstest]
+    fn open_stores_the_definitions_behind_the_rows() {
+        // Given a picker opened over two tools.
+
+        // When opening it.
+        let state = opened(&["bash", "read"], &[]);
+
+        // Then the full definitions are stored for the figure's recomputes.
+        let mut names: Vec<&str> = state.definitions.iter().map(|d| d.name.as_str()).collect();
+        names.sort_unstable();
+        assert_eq!(names, vec!["bash", "read"]);
     }
 
     #[rstest::rstest]

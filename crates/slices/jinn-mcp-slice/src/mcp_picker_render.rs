@@ -225,11 +225,26 @@ fn wrap_line(raw: &str, width: usize, color: ratatui::style::Color) -> Vec<Line<
     out
 }
 
-/// The status line: the live enabled count, e.g. `3/7 enabled`.
+/// The status line: the live enabled count and the enabled servers' context
+/// cost, e.g. `3/7 enabled · 2.1k ctx`.
+///
+/// The figure covers this picker's own contribution — the registered tool
+/// definitions of the enabled servers. The tool picker's figure also counts
+/// those same tools inside the whole enabled toolset, so the two figures are
+/// separate views of one request and must not be added. Toggling a row moves
+/// nothing here: tools register and unregister only when a confirm
+/// reconciles the connection set, so consumption has not changed until it
+/// has.
 #[must_use]
-pub fn mcp_picker_status(enabled: usize, total: usize, theme: &jinn_theme::Theme) -> Line<'static> {
+pub fn mcp_picker_status(
+    enabled: usize,
+    total: usize,
+    context_tokens: usize,
+    theme: &jinn_theme::Theme,
+) -> Line<'static> {
+    let cost = jinn_picker::format_compact(context_tokens);
     Line::from(Span::styled(
-        format!("{enabled}/{total} enabled"),
+        format!("{enabled}/{total} enabled · {cost} ctx"),
         Style::default().fg(theme.muted_text),
     ))
 }
@@ -260,7 +275,7 @@ pub fn render_mcp_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFacts)
     let enabled = mcp_picker_actions::enabled_count(state);
     let total = state.selection.items().len();
     let footers = vec![
-        mcp_picker_status(enabled, total, theme),
+        mcp_picker_status(enabled, total, state.context_tokens, theme),
         Line::from(keybind.0),
     ];
 

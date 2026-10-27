@@ -9,6 +9,7 @@ marked-path = { workspace = true }
 jinn-chat-log-view = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-kernel = { workspace = true }
+jinn-llm-support = { workspace = true }
 jinn-picker = { workspace = true }
 jinn-selection-widget = { workspace = true }
 jinn-session-init-msg = { workspace = true }

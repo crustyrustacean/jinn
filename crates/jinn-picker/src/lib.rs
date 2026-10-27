@@ -26,6 +26,7 @@ pub mod preview_key;
 pub mod registry;
 pub mod render;
 pub mod scroll;
+pub mod token_cost;
 pub mod widget;
 
 #[cfg(test)]
@@ -53,4 +54,5 @@ pub use render::KeybindLine;
 pub use render::RenderOutcome;
 pub use render::keybind_line;
 pub use scroll::PickerScrolls;
+pub use token_cost::format_compact;
 pub use widget::{PickerWidget, PreviewSpec, WidgetKind};

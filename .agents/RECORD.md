@@ -584,3 +584,7 @@ Entries are added or amended **only with human approval**.
 - (provider) The OpenAI-compat stream parser captures the `model` field providers echo on SSE chunks and reports it on the terminal Done event.
 - (session) Every provider-produced chat entry carries the concrete model that produced it, stamped from the dispatching generation's request and overridden by the response-reported model when the stream completes normally.
 - (chat-log-view) The audit popup derives a tool result's model from its paired tool call rather than storing one on the result.
+- (pickers) The tool, skill, and MCP picker footers carry a context-cost figure counted with the prompt assembler's own builders and the o200k_base counter, reflecting the picker's pending state rather than the committed session filter.
+- (skills) The skill picker's footer splits its cost into a list term over the enabled skills and a loaded term over pinned skill bodies.
+- (skills) A loaded skill that is disabled keeps its body cost in the loaded term until it is unloaded from context.
+- (mcp) The MCP inspector's footer counts the registered tool definitions of enabled servers only, so a disabled server contributes zero.
