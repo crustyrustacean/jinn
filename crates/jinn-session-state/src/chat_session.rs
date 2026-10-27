@@ -3747,6 +3747,16 @@ impl ChatSessionState {
         self.core.storage.session_state = state;
     }
 
+    /// Whether this session belongs to the sidebar's Library section.
+    pub fn in_library(&self) -> bool {
+        self.core.storage.in_library
+    }
+
+    /// Sets this session's Library membership.
+    pub fn set_in_library(&mut self, in_library: bool) {
+        self.core.storage.in_library = in_library;
+    }
+
     /// Returns the lifecycle script state.
     pub fn lifecycle_script_state(&self) -> LifecycleScriptState {
         self.core.lifecycle.lifecycle_script_state

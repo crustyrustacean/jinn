@@ -23,14 +23,16 @@ use jinn_session_state::SessionStoreError;
 ///
 /// Adapts [`jinn_session_schema::run_migrations`] to jinn's async dao pool.
 ///
-/// The actual migration sequence (FK-toggle, DDL, `foreign_key_check`) lives
-/// entirely in the schema crate; this wrapper only acquires a pool connection
-/// and folds `SchemaMigrationError` into `SessionStoreError`.
+/// The actual migration sequence (FK-toggle, DDL; plus the `foreign_key_check`
+/// integrity walk in debug builds only) lives entirely in the schema crate;
+/// this wrapper only acquires a pool connection and folds
+/// `SchemaMigrationError` into `SessionStoreError`.
 ///
 /// # Errors
 ///
-/// Returns an error if the connection cannot be acquired, any migration fails,
-/// or `foreign_key_check` reports violations afterward.
+/// Returns an error if the connection cannot be acquired or any migration
+/// fails (in debug builds, also if the post-migration FK check reports
+/// violations).
 pub async fn run_migrations(pool: &Pool) -> Result<(), Report<SessionStoreError>> {
     // The closure returns `daow::Result<Result<_, Report<SchemaMigrationError>>>`:
     // the outer `daow::Error` covers connection/pragma failures; the inner is the
@@ -1006,12 +1008,13 @@ mod tests {
         // When migrating to v20.
         run_migrations(&pool).await.expect("migrate to v20");
 
-        // Then sessions has exactly 9 columns.
+        // Then sessions has exactly 11 columns (the authoritative set plus
+        // in_library and is_bot).
         let cols = column_names(&pool, "sessions").await;
         assert_eq!(
             cols.len(),
-            9,
-            "sessions must have exactly 9 columns; got {cols:?}"
+            11,
+            "sessions must have exactly 11 columns; got {cols:?}"
         );
         assert!(
             !cols.iter().any(|c| matches!(

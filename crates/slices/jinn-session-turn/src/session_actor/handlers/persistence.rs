@@ -180,11 +180,12 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn save_active_session_releases_write_lock_before_clone() {
+        use parking_lot::Mutex as ParkingMutex;
         use std::sync::Arc;
-        use std::sync::atomic::{AtomicBool, Ordering};
 
-        // Given an interacted session with a large history.
-        let (actor, store, session_id) = {
+        // Given an interacted session with a large history, and the store's
+        // save probe armed against the actor's state.
+        let (actor, store, session_id, can_write) = {
             let (actor, store, _audit) = test_actor_with_store_recording(vec![]).await;
             let session_id = actor.state.read().session.active_session_id().clone();
             {
@@ -196,60 +197,28 @@ mod tests {
                     session.push_entry(jinn_core_types::ChatEntry::user(format!("msg {i}")));
                 }
             }
-
-            (actor, store, session_id)
+            let can_write = Arc::new(ParkingMutex::new(true));
+            store.arm_write_probe(actor.state.clone(), can_write.clone());
+            (actor, store, session_id, can_write)
         };
 
-        // When saving while a probe continuously attempts a read lock, and
-        // asking what FRACTION of the probe's attempts a writer blocked.
+        // When saving — eight back-to-back saves, each one a full
+        // touch → capture-clone → store.save round trip.
         //
-        // A fraction, not a count: a busy machine slows the probe's sampling
-        // but cannot skew its sample, because the probe is always runnable —
-        // the scheduler time-slices it across free and blocked stretches
-        // alike, so the sampled fraction tracks the lock's real blocked
-        // share of the window on that machine at that moment. The old fixed
-        // iteration threshold (`ok > 10_000`) collapsed into false failures
-        // under full-suite load, where a starved *thread* reads exactly like
-        // a held *lock* to an absolute count.
-        //
-        // The probe runs from before the first save until after the last
-        // save has fully resolved — the `done` flag is the only completion
-        // signal, set once the save future returned, so the window is the
-        // saves' real wall-clock, not a fixed iteration count. Two rounds
-        // with back-to-back saves each; the round with the LOWER blocked
-        // fraction is the flow's best case, so one scheduler hiccup or
-        // futex storm cannot fail a healthy flow, while a genuinely held
-        // lock raises every round's fraction together.
-        let probe_state = actor.state.clone();
-        let mut best_blocked = None;
-        for _ in 0..2 {
-            let done = Arc::new(AtomicBool::new(false));
-            let probe_done = done.clone();
-            let probe_state = probe_state.clone();
-            let probe = tokio::task::spawn_blocking(move || {
-                let mut ok = 0usize;
-                let mut blocked = 0usize;
-                while !probe_done.load(Ordering::Relaxed) {
-                    match probe_state.try_read() {
-                        Some(_guard) => ok += 1,
-                        None => blocked += 1,
-                    }
-                }
-                (ok, blocked)
-            });
-
-            for _ in 0..8 {
-                actor.save_active_session(&session_id).await;
-            }
-
-            done.store(true, Ordering::Relaxed);
-            let (ok, blocked) = probe.await.expect("contention probe panicked");
-            if ok + blocked > 0 {
-                let fraction = blocked as f64 / (ok + blocked) as f64;
-                if best_blocked.is_none_or(|(best, _, _)| fraction < best) {
-                    best_blocked = Some((fraction, ok, blocked));
-                }
-            }
+        // The lock-release property is asserted per save, not sampled: the
+        // probe lives inside the store's `save`, which the flow reaches only
+        // after the capture clone has resolved. A `try_write` there fails
+        // exactly when the actor's write lock is still held across the
+        // clone — the regression this test exists for. The previous version
+        // sampled `try_read` from a hot spin loop and asserted a blocked
+        // *fraction*, which is a wall-clock claim: under full-suite load the
+        // probe's thread and the saves' spawn_blocking captures share a
+        // pool and cores, descheduling the probe across writer windows and
+        // skewing the sample (observed 12.6% against a 10% floor with the
+        // lock genuinely released). One bit per save has no such mode: it
+        // is `false` only if the lock really was held.
+        for _ in 0..8 {
+            actor.save_active_session(&session_id).await;
         }
 
         // Then the session was saved (touch() ran under the write lock).
@@ -257,23 +226,11 @@ mod tests {
             store.last_saved_session(&session_id).is_some(),
             "interacted session should be persisted"
         );
-        // And the probe's sampled blocked fraction stayed far below a tenth
-        // of its attempts: readers share the lock with the capture's read
-        // guard, so only the brief touch() write windows block them — on
-        // the order of a hundredth of the window. Holding the lock across
-        // the large history clone makes the writer windows the whole window
-        // (measured: ~43% of attempts blocked, healthy ~0.2%), an order of
-        // magnitude above this line. A handful of transient blocks
-        // (touch(), writer-wake handoff) is absorbed by the fraction; a
-        // held lock is not.
-        let Some((fraction, ok, blocked)) = best_blocked else {
-            panic!("probe sampled nothing during save — cannot demonstrate lock release");
-        };
+        // And every save found the write lock free: the clone never held it.
         assert!(
-            fraction < 0.10,
-            "readers starved during save: {:.1}% of attempts blocked \
-             (floor 10%), ok={ok}, blocked={blocked}",
-            fraction * 100.0
+            *can_write.lock(),
+            "the write lock must be released across the capture clone; \
+             some save ran with the lock still held"
         );
     }
 

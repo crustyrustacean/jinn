@@ -31,4 +31,7 @@ tracing = { workspace = true }
 testing = []
 
 [dev-dependencies]
+# The crate's own integration tests use the `testing` helpers
+# (apply_migrations_inner, the format renderers).
+jinn-session-schema = { path = ".", features = ["testing"] }
 rstest = { workspace = true }

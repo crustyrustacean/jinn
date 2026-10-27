@@ -15,7 +15,8 @@ use jinn_kernel::common::state::State;
 use jinn_session_store_msg::PersistSession;
 use jinn_session_store_msg::SessionLoadRequested;
 use jinn_session_store_msg::{ArchiveSession, ArchiveSessionTree};
-use jinn_session_store_msg::{LoadSessionPickerEntries, LoadSessionTree, SessionForkRequested};
+use jinn_session_store_msg::{LoadLibraryEntries, LoadSessionPickerEntries, LoadSessionTree};
+use jinn_session_store_msg::{SessionForkRequested, SetSessionLibrary};
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
@@ -44,6 +45,9 @@ pub struct SessionStoreActorDeps {
     /// the menu that shows them instead of the kernel's frontend state.
     pub session_picker_cell:
         jinn_slices::cell::TypedCell<jinn_session_store_msg::SessionPickerState>,
+    /// The Library section's cell, so membership and archive writes can
+    /// refresh the list the sidebar renders from.
+    pub library_cell: jinn_slices::cell::TypedCell<jinn_session_store_msg::LibraryState>,
 }
 
 /// Actor that owns session persistence, loading, hydration, and archiving.
@@ -53,6 +57,9 @@ pub struct SessionStoreActor {
     /// The session picker's cell, so the history read can install rows into
     /// the menu that shows them instead of the kernel's frontend state.
     session_picker_cell: jinn_slices::cell::TypedCell<jinn_session_store_msg::SessionPickerState>,
+    /// The Library section's cell, so membership and archive writes can
+    /// refresh the list the sidebar renders from.
+    library_cell: jinn_slices::cell::TypedCell<jinn_session_store_msg::LibraryState>,
     /// Loads dispatched to the hydration pool that have not reported back.
     ///
     /// The startup handler no longer knows when hydration ends — it dispatches
@@ -108,6 +115,7 @@ impl SessionStoreActor {
                             services: deps.services,
                             state: deps.state,
                             session_picker_cell: deps.session_picker_cell,
+                            library_cell: deps.library_cell,
                             pending_hydrations: 0,
                             pending_frozen_hydrations: 0,
                         })
@@ -116,6 +124,8 @@ impl SessionStoreActor {
             })
             .handles::<SessionLoadRequested>()
             .handles::<LoadSessionPickerEntries>()
+            .handles::<LoadLibraryEntries>()
+            .handles::<SetSessionLibrary>()
             .handles::<LoadSessionTree>()
             .handles::<SessionForkRequested>()
             .handles::<PersistSession>()
@@ -129,6 +139,9 @@ impl SessionStoreActor {
             // drops any outbound type not declared here.
             .emits::<LayoutChatSession>()
             .emits::<ArmLayoutDeadline>()
+            // Membership changes tell the sidebar's Sessions and Library
+            // sections that their lists are stale.
+            .emits::<jinn_session_store_msg::SessionLibraryMembershipChanged>()
             // Hydration jobs leave this actor; without this the flush gate
             // drops them and the sidebar never fills in.
             .emits::<HydrateSession>()
@@ -167,6 +180,18 @@ impl MsgHandler<SessionLoadRequested> for SessionStoreActor {
 impl MsgHandler<LoadSessionPickerEntries> for SessionStoreActor {
     async fn handle(&mut self, msg: &LoadSessionPickerEntries, _ctx: &mut MsgCtx<'_>) {
         self.handle_load_session_picker_entries(msg).await;
+    }
+}
+
+impl MsgHandler<LoadLibraryEntries> for SessionStoreActor {
+    async fn handle(&mut self, _msg: &LoadLibraryEntries, _ctx: &mut MsgCtx<'_>) {
+        self.refresh_library_cell().await;
+    }
+}
+
+impl MsgHandler<SetSessionLibrary> for SessionStoreActor {
+    async fn handle(&mut self, msg: &SetSessionLibrary, _ctx: &mut MsgCtx<'_>) {
+        self.handle_set_session_library(msg).await;
     }
 }
 

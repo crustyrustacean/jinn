@@ -39,18 +39,18 @@ pub fn handle_open_bot_properties(state: &mut AppState) -> IntentResult {
 /// The session id of the highlighted bot, or `None` when the focused
 /// section has no bot under its cursor.
 ///
-/// Both sections keep their own cursor and clear the one they are leaving,
+/// Each section keeps its own cursor and clears the one it is leaving,
 /// so exactly one of them is ever set — which is what makes reading the
-/// focused section's cursor the right answer rather than a guess. Both
-/// cursors are session ids, so this is a choice between two identities rather
-/// than between two row positions: the two sections list different sessions
-/// over different orders, and there is no index to resolve against the wrong
-/// one.
+/// focused section's cursor the right answer rather than a guess. All
+/// cursors are session ids, so this is a choice between identities rather
+/// than between row positions: the sections list different sessions over
+/// different orders, and there is no index to resolve against the wrong one.
 fn highlighted_bot_id(state: &AppState) -> Option<jinn_core_types::SessionId> {
     let focused = state.frontend.sidebar_section()?;
     state.frontend.with_sections(
         |s| match focused {
             SidebarSectionId::Bot => s.bot.selected_id.clone(),
+            SidebarSectionId::Library => s.library.selected_id.clone(),
             _ => s.sessions.selected_id.clone(),
         },
         || None,

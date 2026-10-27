@@ -16,13 +16,14 @@ pub fn rename_scope() -> SliceScopeId {
 
 /// Opens the rename session input popup.
 ///
-/// Seeds the input with the currently selected session's title (or empty if
-/// "Untitled Session") and requests the rename scope. No-op if no session is
-/// selected in the sidebar.
+/// Seeds the input with the highlighted session's title (or empty if
+/// "Untitled Session") and requests the rename scope. The highlighted
+/// session resolves through the focused section's own cursor — sessions,
+/// bots, or library — so the popup renames what the user is looking at.
+/// No-op if no session is highlighted or it is not in memory (an archived
+/// library member has no live title to edit until it is loaded).
 pub fn handle_rename_session_enter(state: &mut AppState) -> IntentResult {
-    let Some(session_id) = state
-        .frontend
-        .with_sections(|s| s.sessions.selected_id.clone(), || None)
+    let Some(session_id) = crate::sections::sessions::bot_actions::selected_section_session(state)
     else {
         return IntentResult::empty();
     };
@@ -64,10 +65,10 @@ pub fn handle_rename_session_confirm(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     }
 
-    // Resolve the selected session.
-    let Some(session_id) = state
-        .frontend
-        .with_sections(|s| s.sessions.selected_id.clone(), || None)
+    // Resolve the highlighted session — the same section-relative cursor the
+    // enter handler resolved, so confirming renames the row the popup opened
+    // from even if another section's cursor moved meanwhile.
+    let Some(session_id) = crate::sections::sessions::bot_actions::selected_section_session(state)
     else {
         return IntentResult::empty();
     };

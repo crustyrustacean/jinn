@@ -248,13 +248,30 @@ pub fn request_preview_if_needed(
     state: &mut AppState,
     config: &jinn_slices::ConfigLayer,
 ) -> Option<PreviewSessionRequested> {
-    if state.frontend.sidebar_section() != Some(jinn_sidebar_msg::SidebarSectionId::Sessions) {
-        return None;
-    }
-    let session_id = state
-        .frontend
-        .with_sections(|s| s.sessions.selected_id.clone(), || None)?;
+    let session_id = previewed_session_id(state)?;
     update_preview(state, &session_id, config)
+}
+
+/// The session the focused section's cursor names, if it previews one.
+///
+/// Both list sections preview: the sessions tree and the library cell are
+/// different orderings of the same in-memory sessions, so the popup reads
+/// identically from either door and shares the one preview cache. A section
+/// that previews nothing (persona, pins, …) returns `None`, as does a cursor
+/// naming a session that is not in memory — an archived library member has
+/// no history to render until `<enter>` loads it.
+#[must_use]
+pub fn previewed_session_id(state: &AppState) -> Option<SessionId> {
+    match state.frontend.sidebar_section()? {
+        jinn_sidebar_msg::SidebarSectionId::Sessions => state
+            .frontend
+            .with_sections(|s| s.sessions.selected_id.clone(), || None),
+        jinn_sidebar_msg::SidebarSectionId::Library => state
+            .frontend
+            .with_sections(|s| s.library.selected_id.clone(), || None),
+        _ => None,
+    }
+    .filter(|id| state.session.get(id).is_some())
 }
 
 #[cfg(test)]
@@ -789,6 +806,86 @@ mod preview_load_tests {
             request.is_some(),
             "nothing asked for the preview, so a stationary cursor would spin forever"
         );
+    }
+
+    /// App state like [`state_focused_on_sessions`], but the library section
+    /// is the focused previewer and its cursor names `id`.
+    fn state_focused_on_library(id: &SessionId) -> AppState {
+        let (state, _) = state_with_session(46);
+        // The scope is pushed before the section is set: `set_sidebar_section`
+        // is a no-op on a stack with no sidebar scope on it.
+        state
+            .frontend
+            .scope_push(jinn_sidebar_msg::SidebarSectionId::Library.focus_scope());
+        state
+            .frontend
+            .update_sections(|s| s.library.selected_id = Some(id.clone()));
+        state
+    }
+
+    #[rstest::rstest]
+    fn a_library_cursor_asks_for_its_members_preview() {
+        // Given the sidebar focused on the library, its cursor on an
+        // in-memory member — and the sessions cursor on a different session,
+        // so a resolver that fell back to the wrong section's cursor is
+        // caught.
+        let mut member = ChatSessionState::new();
+        member.push_entry(ChatEntry::user("hello from the library"));
+        let member_id = member.session_id().clone();
+        member.set_in_library(true);
+        let mut state = state_focused_on_library(&member_id);
+        let sessions_cursor = state.session.active_session_id().clone();
+        state.session.insert(member);
+        state.frontend.update_sections(|s| {
+            s.library.selected_id = Some(member_id.clone());
+            s.sessions.selected_id = Some(sessions_cursor);
+        });
+
+        // When the render pass asks.
+        let request = request_preview_if_needed(&mut state, jinn_slices::empty_config_layer());
+
+        // Then it asks for the member's own preview — the same pipeline the
+        // sessions section drives, pointed at the library's cursor.
+        let request = request.expect("a library cursor must ask for its preview");
+        assert_eq!(
+            request.session_id, member_id,
+            "the request must name the member under the library cursor"
+        );
+    }
+
+    #[rstest::rstest]
+    fn an_archived_member_asks_for_no_preview() {
+        // Given the library focused with its cursor naming a member that is
+        // not in memory — the archived case.
+        let ghost = SessionId::new();
+        let mut state = state_focused_on_library(&ghost);
+
+        // When the render pass asks.
+        let request = request_preview_if_needed(&mut state, jinn_slices::empty_config_layer());
+
+        // Then nothing is requested: there is no history to render until the
+        // member is loaded with `<enter>`.
+        assert!(
+            request.is_none(),
+            "an archived member has no history to preview"
+        );
+    }
+
+    #[rstest::rstest]
+    fn a_non_previewing_section_asks_for_nothing() {
+        // Given the sidebar focused on a section with no preview, the
+        // sessions cursor still set — a resolver keyed to the cursor rather
+        // than the focus would ask anyway.
+        let mut state = state_focused_on_sessions();
+        state
+            .frontend
+            .scope_push(jinn_sidebar_msg::SidebarSectionId::Persona.focus_scope());
+
+        // When the render pass asks.
+        let request = request_preview_if_needed(&mut state, jinn_slices::empty_config_layer());
+
+        // Then nothing is requested.
+        assert!(request.is_none(), "persona previews nothing");
     }
 
     #[rstest::rstest]

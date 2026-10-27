@@ -284,12 +284,19 @@ pub struct SessionIntegrationFields {
     pub enabled_mcp_servers: BTreeSet<String>,
 }
 
-/// Loaded/archived state and persistence policy.
+/// Loaded/archived state, library membership, and persistence policy.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionStorageFields {
     /// Current storage state.
     #[serde(default)]
     pub session_state: SessionState,
+    /// Whether this session belongs to the sidebar's Library section.
+    ///
+    /// Membership is orthogonal to `session_state`: a member stays listed in
+    /// the Library whether loaded or archived, and is hidden from the
+    /// sidebar's Sessions list either way.
+    #[serde(default)]
+    pub in_library: bool,
     /// Whether this session participates in durable persistence.
     #[serde(default = "default_persist")]
     pub persist: bool,
@@ -299,6 +306,7 @@ impl Default for SessionStorageFields {
     fn default() -> Self {
         Self {
             session_state: SessionState::Loaded,
+            in_library: false,
             persist: true,
         }
     }

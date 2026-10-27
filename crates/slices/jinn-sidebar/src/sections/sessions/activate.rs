@@ -60,23 +60,28 @@ fn activate_selected(state: &mut AppState, enter_input: bool) -> IntentResult {
     activate_session(state, target_id, IntentResult::empty())
 }
 
-/// The session id under the cursor, or `None` outside the two sections that
+/// The session id under the cursor, or `None` outside the sections that
 /// list a session to activate.
 ///
-/// Two sections list sessions a user opens this way, and they keep separate
-/// cursors over separate lists: sessions and bots. Reading whichever
-/// cursor belongs to the focused section is a choice between two identities
-/// rather than between two row positions — there is no index to resolve
-/// against the wrong list.
+/// Three sections list sessions a user opens this way, and they keep
+/// separate cursors over separate lists: sessions, bots, and library.
+/// Reading whichever cursor belongs to the focused section is a choice
+/// between identities rather than between row positions — there is no
+/// index to resolve against the wrong list.
 ///
 /// Any other section has no session to activate, and neither has the chat
 /// pane itself; those return `None`, leaving the key inert there.
+///
+/// The Library is in this set on purpose: activating a member goes through
+/// the standard load path, which unarchives an archived member as a side
+/// effect — the same `<enter>` the Sessions section binds.
 fn highlighted_session_id(state: &AppState) -> Option<jinn_core_types::SessionId> {
     let focused = state.frontend.sidebar_section()?;
     state.frontend.with_sections(
         |s| match focused {
             SidebarSectionId::Sessions => s.sessions.selected_id.clone(),
             SidebarSectionId::Bot => s.bot.selected_id.clone(),
+            SidebarSectionId::Library => s.library.selected_id.clone(),
             _ => None,
         },
         || None,

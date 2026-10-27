@@ -302,6 +302,16 @@ impl SessionStore for SqliteSessionStore {
         rows.into_iter().map(summary_from_row).collect()
     }
 
+    async fn library_members(&self) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
+        let dao = SessionDao::new(self.pool.clone());
+        let rows: Vec<LibraryMemberRow> = dao
+            .library_member_rows()
+            .await
+            .change_context(SessionStoreError)
+            .attach("failed to query library members")?;
+        rows.into_iter().map(library_summary_from_row).collect()
+    }
+
     async fn load_session(
         &self,
         session_id: &SessionId,
@@ -365,6 +375,20 @@ impl SessionStore for SqliteSessionStore {
             .await
             .change_context(SessionStoreError)
             .attach("failed to set archived flag for session tree")?;
+        Ok(())
+    }
+
+    async fn set_in_library(
+        &self,
+        session_id: &SessionId,
+        in_library: bool,
+    ) -> Result<(), Report<SessionStoreError>> {
+        let session_id_str = session_id.to_string();
+        let dao = SessionDao::new(self.pool.clone());
+        dao.set_in_library(in_library, session_id_str)
+            .await
+            .change_context(SessionStoreError)
+            .attach("failed to set in_library flag")?;
         Ok(())
     }
 
@@ -453,8 +477,30 @@ struct SessionRow {
     created_at: String,
     parent_session: Option<String>,
     archived: bool,
+    in_library: bool,
     metadata: Option<String>,
     persist: bool,
+}
+
+/// Reading model for the library-members query: the scalar columns only,
+/// no metadata blob.
+///
+/// The blob is by far the heaviest column (task list, bot reports, working
+/// intervals), and the Library row renders none of it — id, title,
+/// timestamps, and state. Reading it here would re-pay a full deserialize
+/// per row on every membership write.
+#[derive(Debug, Clone, Entity)]
+#[dao(table = "sessions")]
+struct LibraryMemberRow {
+    #[dao(pk)]
+    id: String,
+    title: Option<String>,
+    updated_at: String,
+    created_at: String,
+    parent_session: Option<String>,
+    archived: bool,
+    in_library: bool,
+    is_bot: bool,
 }
 
 /// Insert model for the `sessions` table. Built from a [`SessionSnapshot`] then
@@ -466,6 +512,8 @@ struct NewSessionRow {
     created_at: String,
     parent_session: Option<String>,
     archived: bool,
+    in_library: bool,
+    is_bot: bool,
     metadata: Option<String>,
 }
 
@@ -530,22 +578,35 @@ struct TokenLedgerRow {
 #[async_trait]
 trait SessionDao {
     #[query(
-        "SELECT id, title, updated_at, created_at, parent_session, archived, metadata, persist FROM sessions"
+        "SELECT id, title, updated_at, created_at, parent_session, archived, in_library, metadata, persist FROM sessions"
     )]
     async fn all_sessions(&self) -> daow::Result<Vec<SessionRow>>;
 
     #[query(
-        "SELECT id, title, updated_at, created_at, parent_session, archived, metadata, persist FROM sessions WHERE id = ?"
+        "SELECT id, title, updated_at, created_at, parent_session, archived, in_library, metadata, persist FROM sessions WHERE id = ?"
     )]
     async fn session_by_id(&self, id: String) -> daow::Result<Option<SessionRow>>;
 
     #[query(
-        "SELECT id, title, updated_at, created_at, parent_session, archived, metadata, persist FROM sessions WHERE archived = FALSE"
+        "SELECT id, title, updated_at, created_at, parent_session, archived, in_library, metadata, persist FROM sessions WHERE archived = FALSE"
     )]
     async fn unarchived_sessions(&self) -> daow::Result<Vec<SessionRow>>;
 
+    #[query(
+        "SELECT id, title, updated_at, created_at, parent_session, archived, in_library, is_bot \
+         FROM sessions WHERE in_library = TRUE"
+    )]
+    async fn library_member_rows(&self) -> daow::Result<Vec<LibraryMemberRow>>;
+
     #[execute("UPDATE sessions SET archived = ? WHERE id = ?")]
     async fn set_archived(&self, archived: bool, id: String) -> daow::Result<daow::ExecuteResult>;
+
+    #[execute("UPDATE sessions SET in_library = ? WHERE id = ?")]
+    async fn set_in_library(
+        &self,
+        in_library: bool,
+        id: String,
+    ) -> daow::Result<daow::ExecuteResult>;
 }
 
 // ── Conversions ──────────────────────────────────────────────────────────
@@ -698,6 +759,7 @@ impl From<PersistableCore> for SessionSnapshotMetadata {
             workflow_source: core.workflow_source,
             working_intervals: core.working_intervals,
             session_state: SessionState::Loaded,
+            in_library: false,
         }
     }
 }
@@ -717,6 +779,8 @@ impl TryFrom<&SessionSnapshot> for NewSessionRow {
                 .as_ref()
                 .map(std::string::ToString::to_string),
             archived: metadata.session_state == SessionState::Archived,
+            in_library: metadata.in_library,
+            is_bot: metadata.origin == jinn_session_msg::SessionOrigin::Bot,
             metadata: Some(
                 serde_json::to_string(&PersistableCore::from(metadata))
                     .change_context(SessionStoreError)
@@ -739,6 +803,7 @@ impl TryFrom<SessionLoadContext> for SessionSnapshot {
     fn try_from(ctx: SessionLoadContext) -> Result<Self, Self::Error> {
         let SessionRow {
             archived,
+            in_library,
             metadata,
             persist: _persist,
             ..
@@ -757,6 +822,7 @@ impl TryFrom<SessionLoadContext> for SessionSnapshot {
         } else {
             SessionState::Loaded
         };
+        metadata.in_library = in_library;
 
         Ok(Self {
             revision: SessionRevision::new(0),
@@ -784,7 +850,7 @@ fn load_context_in_transaction(
     let tx = conn.transaction()?;
     let row: Option<SessionRow> = tx
         .query_row(
-            "SELECT id, title, updated_at, created_at, parent_session, archived, metadata, persist \
+            "SELECT id, title, updated_at, created_at, parent_session, archived, in_library, metadata, persist \
              FROM sessions WHERE id = ?",
             rusqlite::params![session_id.to_string()],
             |row| {
@@ -795,6 +861,7 @@ fn load_context_in_transaction(
                     created_at: row.get("created_at")?,
                     parent_session: row.get("parent_session")?,
                     archived: row.get("archived")?,
+                    in_library: row.get("in_library")?,
                     metadata: row.get("metadata")?,
                     persist: row.get("persist")?,
                 })
@@ -973,6 +1040,8 @@ fn clone_row(row: &NewSessionRow) -> NewSessionRow {
         created_at: row.created_at.clone(),
         parent_session: row.parent_session.clone(),
         archived: row.archived,
+        in_library: row.in_library,
+        is_bot: row.is_bot,
         metadata: row.metadata.clone(),
     }
 }
@@ -987,6 +1056,8 @@ fn write_snapshot(tx: &rusqlite::Transaction<'_>, write: &SnapshotWrite) -> rusq
         &write.row.created_at,
         &write.row.parent_session,
         write.row.archived,
+        write.row.in_library,
+        write.row.is_bot,
         &write.row.metadata,
     )?;
     tx.execute(
@@ -1210,18 +1281,22 @@ fn upsert_session_row(
     created_at: &str,
     parent_session: &Option<String>,
     archived: bool,
+    in_library: bool,
+    is_bot: bool,
     metadata: &Option<String>,
 ) -> rusqlite::Result<()> {
     conn.execute(
         "INSERT INTO sessions (id, title, updated_at, created_at, parent_session, archived, \
-         metadata, is_automated, persist) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, FALSE, TRUE) \
+         in_library, is_bot, metadata, is_automated, persist) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, TRUE) \
          ON CONFLICT(id) DO UPDATE SET \
          title = excluded.title, \
          updated_at = excluded.updated_at, \
          created_at = excluded.created_at, \
          parent_session = excluded.parent_session, \
          archived = excluded.archived, \
+         in_library = excluded.in_library, \
+         is_bot = excluded.is_bot, \
          metadata = excluded.metadata, \
          is_automated = excluded.is_automated, \
          persist = excluded.persist",
@@ -1232,6 +1307,8 @@ fn upsert_session_row(
             created_at,
             parent_session,
             archived,
+            in_library,
+            is_bot,
             metadata
         ],
     )?;
@@ -1456,12 +1533,82 @@ fn summary_from_row(row: SessionRow) -> Result<SessionSummary, Report<SessionSto
         .as_deref()
         .and_then(|json| serde_json::from_str::<PersistableCore>(json).ok())
         .and_then(|core| core.project);
-    let session_id = SessionId::try_from_string(&row.id)
-        .ok_or(SessionStoreError)
-        .attach(format!("sessions row carries a malformed id: {}", row.id))?;
-    let parent_session = row
-        .parent_session
+    summary_parts(
+        &row.id,
+        row.title,
+        &row.updated_at,
+        &row.created_at,
+        row.parent_session.as_deref(),
+        row.archived,
+        row.in_library,
+        is_bot_of(&row.metadata),
+        project,
+    )
+}
+
+/// Reads the blob's `origin` for the summary's `is_bot` projection.
+///
+/// Parse failure (corrupt/legacy row) yields `false`: the summary stays
+/// servable, and the only consequence is a bot rendered untinted — the same
+/// degradation a NULL column would give.
+fn is_bot_of(metadata: &Option<String>) -> bool {
+    metadata
         .as_deref()
+        .and_then(|json| serde_json::from_str::<PersistableCore>(json).ok())
+        .is_some_and(|core| core.origin == jinn_session_msg::SessionOrigin::Bot)
+}
+
+/// Builds a `SessionSummary` from a library-members row.
+///
+/// The metadata blob is deliberately unread here: the Library section
+/// renders none of it, and the whole point of the members query is to skip
+/// its parse. `project` is therefore `None`.
+///
+/// # Errors
+///
+/// Same contract as [`summary_from_row`]: a malformed id or parent id is an
+/// error, not a silently poisoned summary.
+fn library_summary_from_row(
+    row: LibraryMemberRow,
+) -> Result<SessionSummary, Report<SessionStoreError>> {
+    summary_parts(
+        &row.id,
+        row.title,
+        &row.updated_at,
+        &row.created_at,
+        row.parent_session.as_deref(),
+        row.archived,
+        row.in_library,
+        row.is_bot,
+        None,
+    )
+}
+
+/// The shared summary assembly behind [`summary_from_row`] and
+/// [`library_summary_from_row`]: everything after "which columns did we read".
+///
+/// # Errors
+///
+/// Returns an error on a malformed `id` or `parent_session` value.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one flat parameter per read column keeps the two call sites symmetric"
+)]
+fn summary_parts(
+    id: &str,
+    title: Option<String>,
+    updated_at: &str,
+    created_at: &str,
+    parent_session: Option<&str>,
+    archived: bool,
+    in_library: bool,
+    is_bot: bool,
+    project: Option<MarkedPathBuf<Absolute>>,
+) -> Result<SessionSummary, Report<SessionStoreError>> {
+    let session_id = SessionId::try_from_string(id)
+        .ok_or(SessionStoreError)
+        .attach(format!("sessions row carries a malformed id: {id}"))?;
+    let parent_session = parent_session
         .map(|id| {
             SessionId::try_from_string(id)
                 .ok_or(SessionStoreError)
@@ -1472,20 +1619,20 @@ fn summary_from_row(row: SessionRow) -> Result<SessionSummary, Report<SessionSto
         .transpose()?;
     Ok(SessionSummary {
         session_id,
-        title: row.title.unwrap_or_else(|| "Untitled".to_owned()),
-        updated_at: row
-            .updated_at
+        title: title.unwrap_or_else(|| "Untitled".to_owned()),
+        updated_at: updated_at
             .parse()
             .unwrap_or_else(|_| jiff::Timestamp::now()),
-        created_at: row
-            .created_at
+        created_at: created_at
             .parse()
             .unwrap_or_else(|_| jiff::Timestamp::now()),
-        session_state: if row.archived {
+        session_state: if archived {
             SessionState::Archived
         } else {
             SessionState::Loaded
         },
+        in_library,
+        is_bot,
         parent_session,
         project,
     })

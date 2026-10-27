@@ -51,6 +51,7 @@ pub fn register_hints(slices: &jinn_slices::Slices) {
         SidebarSectionId::Bot,
         SidebarSectionId::TaskList,
         SidebarSectionId::McpServers,
+        SidebarSectionId::Library,
     ] {
         slices.register_scope_hint(section.scope_id(), ScopeRenderHint::focused());
     }
@@ -114,6 +115,7 @@ fn record_cursor_rows(
 ) -> Vec<jinn_slices::route::PublishClosure> {
     crate::sections::capture_rows::capture_sessions_cursor_row(state);
     crate::sections::capture_rows::capture_bot_cursor_row(state);
+    crate::sections::capture_rows::capture_library_cursor_row(state);
     Vec::new()
 }
 

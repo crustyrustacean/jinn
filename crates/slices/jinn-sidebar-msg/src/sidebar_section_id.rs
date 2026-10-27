@@ -18,6 +18,9 @@ pub enum SidebarSectionId {
     Sessions,
     /// The MCP servers section (per-session enabled servers + live status).
     McpServers,
+    /// The library section: sessions moved here with `L`, listed flat
+    /// regardless of loaded/archived state.
+    Library,
 }
 
 impl std::fmt::Display for SidebarSectionId {
@@ -29,6 +32,7 @@ impl std::fmt::Display for SidebarSectionId {
             Self::TaskList => write!(f, "TaskList"),
             Self::Sessions => write!(f, "Sessions"),
             Self::McpServers => write!(f, "McpServers"),
+            Self::Library => write!(f, "Library"),
         }
     }
 }
@@ -53,6 +57,7 @@ impl SidebarSectionId {
             "task-list" => Some(Self::TaskList),
             "sessions" => Some(Self::Sessions),
             "mcp-servers" => Some(Self::McpServers),
+            "library" => Some(Self::Library),
             _ => None,
         }
     }
@@ -71,6 +76,7 @@ impl SidebarSectionId {
                 Self::TaskList => "task-list",
                 Self::Sessions => "sessions",
                 Self::McpServers => "mcp-servers",
+                Self::Library => "library",
             },
         )
     }

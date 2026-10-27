@@ -112,6 +112,9 @@ pub struct SessionSnapshotMetadata {
     /// Loaded/archived state, reconstructed from the sessions table.
     #[serde(skip, default)]
     pub session_state: SessionState,
+    /// Library membership, reconstructed from the sessions table.
+    #[serde(skip, default)]
+    pub in_library: bool,
     /// What a run in a bot sees of the conversation.
     #[serde(default)]
     pub behavior: BotBehavior,
@@ -170,6 +173,7 @@ impl From<&SessionCore> for SessionSnapshotMetadata {
             enabled_mcp_servers: core.integrations.enabled_mcp_servers.clone(),
             persist: core.storage.persist,
             session_state: core.storage.session_state,
+            in_library: core.storage.in_library,
             behavior: core.bot.behavior,
             prep_mode: core.bot.prep_mode,
             trigger: core.bot.trigger,
@@ -209,6 +213,7 @@ impl From<SessionSnapshotMetadata> for SessionCore {
         core.integrations.enabled_mcp_servers = metadata.enabled_mcp_servers;
         core.storage.persist = metadata.persist;
         core.storage.session_state = metadata.session_state;
+        core.storage.in_library = metadata.in_library;
         core.bot.behavior = metadata.behavior;
         core.bot.prep_mode = metadata.prep_mode;
         core.bot.trigger = metadata.trigger;
@@ -253,6 +258,10 @@ impl SessionSnapshot {
         metadata.fork_ordinal = Some(at_ordinal);
         metadata.origin = SessionOrigin::Fork;
         metadata.session_state = SessionState::Loaded;
+        // A fork is a new session with its own list membership: it does not
+        // inherit its source's library placement, any more than it inherits
+        // its source's archived state.
+        metadata.in_library = false;
         // A fork of a session with no tool filter still has to have the task
         // tool permitted, and "no filter" cannot be edited in place: a
         // subagent inheriting nothing needs its filter to name the task tool

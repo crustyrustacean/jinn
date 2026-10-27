@@ -35,6 +35,7 @@ pub struct SessionListKey {
     bot_fires_on_parent_completion: bool,
     has_live_term: bool,
     is_in_flight: bool,
+    in_library: bool,
 }
 
 impl SessionListKey {
@@ -78,6 +79,7 @@ impl SessionListKey {
                 && session.bot_fires_on_parent_completion(),
             has_live_term,
             is_in_flight,
+            in_library: session.in_library(),
         }
     }
 }
@@ -104,6 +106,10 @@ pub fn session_list_key(state: &AppState) -> Vec<SessionListKey> {
         .iter()
         .filter(|(_, session)| {
             session.session_state() == jinn_session_store_msg::SessionState::Loaded
+                // Library members are *moved*, not bookmarked: the Sessions
+                // tree must not list them. The flag rides the key so the
+                // memoized tree rebuilds on every membership change.
+                && !session.in_library()
         })
         .map(|(id, session)| {
             let has_live_term = state
@@ -130,6 +136,9 @@ pub fn sorted_open_sessions_split(
         .iter()
         .filter(|(_, session)| {
             session.session_state() == jinn_session_store_msg::SessionState::Loaded
+                // Same rule `session_list_key` applies: a library member is
+                // hidden from the Sessions list, loaded or not.
+                && !session.in_library()
         })
         .map(|(id, session)| SessionEntry {
             kind: SessionEntryKind::Session,
@@ -200,13 +209,21 @@ fn visual_parents(state: &AppState) -> HashMap<SessionId, SessionId> {
         .with_sections(|s| s.sessions.visual_parents.clone(), HashMap::new)
 }
 
-/// The loaded sessions reduced to identity and tree position.
+/// The listed sessions reduced to identity and tree position.
+///
+/// The filter must match the list builders exactly ([`sorted_open_sessions_split`],
+/// [`session_list_key`]): this node list is the index space every cursor,
+/// highlight, capture, and anchor resolves through, and an index computed
+/// over a differently-filtered list points at a different session than the
+/// one the user sees. Library members are hidden from the Sessions list, so
+/// they are hidden from this projection too.
 fn session_tree_nodes(state: &AppState) -> Vec<jinn_session_list::SessionTreeNode> {
     state
         .session
         .iter()
         .filter(|(_, session)| {
             session.session_state() == jinn_session_store_msg::SessionState::Loaded
+                && !session.in_library()
         })
         .map(|(id, session)| jinn_session_list::SessionTreeNode {
             id: id.clone(),

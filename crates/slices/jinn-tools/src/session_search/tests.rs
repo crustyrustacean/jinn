@@ -107,6 +107,14 @@ impl SessionStore for StubStore {
         Ok(())
     }
 
+    async fn set_in_library(
+        &self,
+        _session_id: &SessionId,
+        _in_library: bool,
+    ) -> Result<(), Report<SessionStoreError>> {
+        Ok(())
+    }
+
     async fn load_unarchived_summaries(
         &self,
     ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
@@ -178,6 +186,8 @@ fn summary(id: &str, title: &str, project: Option<&str>) -> SessionSummary {
         updated_at: jiff::Timestamp::now(),
         created_at: jiff::Timestamp::now(),
         session_state: jinn_session_store_msg::SessionState::Loaded,
+        in_library: false,
+        is_bot: false,
         parent_session: None,
         project: project.map(|p| {
             let root = std::env::current_dir().expect("process cwd is readable");

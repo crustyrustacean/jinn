@@ -1,13 +1,15 @@
 //! Bot key actions — `b` (new bot of a session), `B` (standalone bot),
-//! and `R` (re-run) in the sessions section.
+//! `G` (re-run), and `R` (reset) — and `L` (library membership).
 //!
-//! `R` calls into the bot slice's rerun, which owns the shared
+//! `G` calls into the bot slice's rerun, which owns the shared
 //! fire sequence; the sidebar only resolves the highlighted session and
-//! publishes what the rerun produces. `b` creates a bot of the
-//! highlighted session and makes it active, landing in seed mode so the
-//! user composes its instructions before anything can fire. `B` creates
-//! a standalone bot — no parent — from the highlighted session's
-//! environment, landing in the same seed mode.
+//! publishes what the rerun produces. `R` resets a bot's context in place:
+//! every non-pinned entry is force-excluded and nothing is dispatched.
+//! `b` creates a bot of the highlighted session and makes it active, landing
+//! in seed mode so the user composes its instructions before anything can
+//! fire. `B` creates a standalone bot — no parent — from the highlighted
+//! session's environment, landing in the same seed mode. `L` moves the
+//! highlighted session into the library, refusing only a bot with a parent.
 
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::protocol::{ChatEntry, IntentResult};
@@ -16,6 +18,54 @@ use jinn_session_store_msg::PersistSession;
 use jinn_slices::ConfigLayer;
 
 use super::close::validate_session_close;
+use crate::sections::section_trait::SidebarSectionId;
+use jinn_slices::FocusScope;
+
+/// The session the focused sidebar section's cursor names, if that section
+/// lists one.
+///
+/// The three sections that name a session in their cursor keep separate
+/// cursors over separate lists; reading whichever one belongs to the focused
+/// section is a choice between identities. Resolution walks the scope
+/// *stack*, not just its top: the sidebar's own popups (rename, properties)
+/// push dynamic scopes above the section scope, and an action inside such a
+/// popup must still resolve to the section the popup was opened from — the
+/// focused section is the nearest sidebar scope on the stack, the top if it
+/// is one, else the parent.
+///
+/// Deliberately un-gated: the rerun supersedes a busy bot, and reset refuses
+/// busy on its own terms, so neither wants the close action's idle
+/// requirement. `c` (continue) shares it for the same reason — resume's
+/// idle check lives downstream in the session actor.
+#[must_use]
+pub(crate) fn selected_section_session(state: &AppState) -> Option<jinn_core_types::SessionId> {
+    let focused = focused_sidebar_section(state)?;
+    state.frontend.with_sections(
+        |sections| match focused {
+            SidebarSectionId::Sessions => sections.sessions.selected_id.clone(),
+            SidebarSectionId::Bot => sections.bot.selected_id.clone(),
+            SidebarSectionId::Library => sections.library.selected_id.clone(),
+            _ => None,
+        },
+        || None,
+    )
+}
+
+/// The nearest sidebar-section scope on the focus stack: the current scope
+/// if it names a section, else the scope below it (the popup case).
+fn focused_sidebar_section(state: &AppState) -> Option<SidebarSectionId> {
+    if let Some(section) = state.frontend.sidebar_section() {
+        return Some(section);
+    }
+    state.frontend.scope_parent().and_then(|scope| {
+        let FocusScope::Dynamic(id) = scope else {
+            return None;
+        };
+        (id.slice() == "sidebar")
+            .then(|| SidebarSectionId::from_scope_name(id.name()))
+            .flatten()
+    })
+}
 
 /// The idle session under the sessions-section cursor, if any.
 ///
@@ -193,14 +243,15 @@ pub fn handle_new_standalone_bot(state: &mut AppState, config: &ConfigLayer) -> 
     result
 }
 
-/// `R` — re-runs the highlighted bot.
+/// `G` — re-runs the highlighted bot (the sessions-scope key the bot scheme
+/// uses everywhere).
 ///
 /// Delegates to the bot slice's rerun (the same sequence a trigger
 /// fire uses), then publishes the cancel and dispatch it produces. A
 /// no-op on a non-bot row, or on a bot still in seed mode;
 /// a blocked rerun surfaces its reason as a transient system line.
 pub fn handle_rerun_bot(state: &mut AppState) -> IntentResult {
-    let Some(bot_id) = selected_idle_session(state) else {
+    let Some(bot_id) = selected_section_session(state) else {
         return IntentResult::empty();
     };
     let Some((cancel, dispatch, reset)) = jinn_bot::rerun::rerun_in_state(state, &bot_id) else {
@@ -242,4 +293,110 @@ pub fn handle_rerun_bot(state: &mut AppState) -> IntentResult {
         result = result.with_message(PersistSession { session_id: bot_id });
     }
     result
+}
+
+/// `R` — resets the highlighted bot's context without dispatching.
+///
+/// Force-excludes every non-pinned entry, so the model sees only the pins;
+/// the transcript itself is untouched, and nothing is sent anywhere. This is
+/// the reset half of the rerun sequence, run on its own: unlike the rerun it
+/// refuses a busy bot rather than superseding it — starting over behind a
+/// running turn would race the turn's own writes.
+pub fn handle_reset_bot(state: &mut AppState) -> IntentResult {
+    let Some(bot_id) = selected_section_session(state) else {
+        return IntentResult::empty();
+    };
+    // The end of the borrow: both guard reads need the session, and the reset
+    // needs it mutably, so the guards run first and hand back only the verdict.
+    let blocked_reason: Option<&'static str> = {
+        let Some(session) = state.session.get(&bot_id) else {
+            return IntentResult::empty();
+        };
+        if !session.is_bot() {
+            Some("not a bot")
+        } else if !matches!(session.phase(), jinn_session_msg::PhaseKind::Idle) {
+            Some("the bot is busy")
+        } else {
+            None
+        }
+    };
+    let Some(reason) = blocked_reason else {
+        // Re-borrow mutably now that the guard borrow has ended.
+        let Some(session) = state.session.get_mut(&bot_id) else {
+            return IntentResult::empty();
+        };
+        let changed = jinn_bot::activation::reset_context(session);
+        if changed.is_empty() {
+            return IntentResult::empty();
+        }
+        // The exclusions only survive a restart if they are written now — a
+        // bot reloaded from disk would otherwise come back with its full
+        // history.
+        return IntentResult::empty().with_message(PersistSession { session_id: bot_id });
+    };
+    let session_id = state.session.active_session_id().clone();
+    IntentResult::empty().with_message(jinn_session_history_msg::PushChatEntry {
+        session_id,
+        entry: ChatEntry::system(format!("⚠️ Cannot reset: {reason}")),
+        pin: None,
+    })
+}
+
+/// Why a session cannot be moved into the library.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LibraryError {
+    /// The focused section is not the sessions list — that is the only
+    /// list the move works from.
+    WrongSection,
+    /// No session is selected, or the selected one is not in memory.
+    NoSelection,
+    /// The selected session is a bot with a parent association. Shelved
+    /// in the library while archived, a `ParentCompleted` bot would
+    /// silently never fire; parent links are immutable, so nothing that
+    /// entered could later become blocked.
+    BlockedParentedBot,
+}
+
+/// Validates that the highlighted session can move into the library.
+///
+/// Only a *bot with a parent* is refused. Every other session — plain
+/// sessions, forks, subagents, standalone bots — may enter.
+///
+/// # Errors
+///
+/// Returns [`LibraryError`] naming why the move cannot proceed.
+pub fn validate_library_add(state: &AppState) -> Result<jinn_core_types::SessionId, LibraryError> {
+    if state.frontend.sidebar_section() != Some(SidebarSectionId::Sessions) {
+        return Err(LibraryError::WrongSection);
+    }
+    let session_id = state
+        .frontend
+        .with_sections(|sections| sections.sessions.selected_id.clone(), || None)
+        .ok_or(LibraryError::NoSelection)?;
+    let session = state
+        .session
+        .get(&session_id)
+        .ok_or(LibraryError::NoSelection)?;
+    if session.is_bot() && session.parent_session().is_some() {
+        return Err(LibraryError::BlockedParentedBot);
+    }
+    Ok(session_id)
+}
+
+/// `L` — moves the highlighted session into the library.
+///
+/// Membership is a durable flag; the session disappears from the Sessions
+/// list and appears in the Library section, whether loaded or archived.
+/// Validated first, so a refusal leaves no partial mutation and publishes
+/// nothing.
+pub fn handle_toggle_library(state: &mut AppState) -> IntentResult {
+    use jinn_session_store_msg::SetSessionLibrary;
+
+    let Ok(session_id) = validate_library_add(state) else {
+        return IntentResult::empty();
+    };
+    IntentResult::new_message(SetSessionLibrary {
+        session_id,
+        in_library: true,
+    })
 }

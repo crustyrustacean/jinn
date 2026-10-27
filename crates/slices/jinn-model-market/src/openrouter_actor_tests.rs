@@ -34,6 +34,7 @@ use jinn_slices::Slices;
 use jinn_slices::TypedCell;
 use jinn_testutil::bus_harness::TestHarness;
 use jinn_testutil::bus_harness::await_recorded;
+use jinn_testutil::wait::await_cell;
 use marked_path::{Absolute, MarkedPathAccess as _, MarkedPathBuf};
 use std::time::Duration;
 
@@ -405,6 +406,21 @@ async fn refresh_all_drops_every_cache() {
     // When publishing RefreshAll.
     world.harness.publish(RefreshAll).await;
     let loaded = await_recorded(&recorder, 1, REFRESH_SETTLE).await;
+
+    // The detail's endpoints land in the cell last — after both HTTP
+    // fetches have fully resolved. Waiting for them before the mock
+    // assertions closes the ordering race where `ModelsLoaded` (the first
+    // fetch's event) arrives while the endpoints request is still in
+    // flight: asserting then fails with "received 0" against a request
+    // that is on its way, which is what flaked this test under full-suite
+    // load.
+    await_cell(&world.data, REFRESH_SETTLE, |state| {
+        state
+            .detail
+            .as_ref()
+            .is_some_and(|detail| !detail.endpoints.is_empty())
+    })
+    .await;
 
     // Then both GETs were consumed — memory and disk caches are gone.
     assert_eq!(loaded.len(), 1, "models refetched");

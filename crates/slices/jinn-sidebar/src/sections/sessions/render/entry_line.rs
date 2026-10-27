@@ -26,6 +26,9 @@ use super::truncate::truncate_str;
 ///
 /// Both spinners wear [`Theme::streaming`], the theme's busy/active color, so
 /// they read the same in a green gruvbox as in a sky-blue catppuccin.
+///
+/// `pub(crate)` because the library section's rows lead with the same cell:
+/// both lists must read "this one is working" identically.
 pub(crate) fn indicator_span(
     is_idle: bool,
     is_in_flight: bool,

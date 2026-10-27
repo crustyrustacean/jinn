@@ -25,6 +25,7 @@ use jinn_chat_log_view_msg::{ArmPreviewDeadline, SessionPreviewRendered};
 use jinn_kernel::common::state::State;
 use jinn_session_lifecycle_msg::SessionTeardownFinished;
 use jinn_session_msg::{SessionArchiveFailed, SessionRemoved};
+use jinn_session_store_msg::SessionLibraryMembershipChanged;
 
 /// The sidebar state actor's static trouper path.
 pub const SIDEBAR_STATE_PATH: &str = "sidebar-state";
@@ -104,6 +105,12 @@ impl SidebarStateActor {
             .handles::<SessionRemoved>()
             .handles::<SessionArchiveFailed>()
             .handles::<SessionTeardownFinished>()
+            // A library move hides the moved session from the Sessions list
+            // while leaving it in memory, so the same reconciliation the
+            // removal path runs is what lands the cursor on a row that still
+            // exists. The store actor publishes this event after every
+            // membership write; nothing else declares it.
+            .handles::<SessionLibraryMembershipChanged>()
             // NOT `handles::<PreviewSessionRequested>`: that message is a
             // *command*, so trouper routes it to exactly one handler, and a
             // command declared here joins the round-robin with the preview
@@ -133,6 +140,25 @@ impl SidebarStateActor {
             );
             repair_bot_cursor(view.session.map(), view.frontend, &payload.session_id);
             sessions::reconcile_split(view.session.map(), view.frontend, payload.was_active);
+        });
+    }
+
+    /// Land the Sessions cursor after a library membership change.
+    ///
+    /// Moving a session into the library hides its row from the Sessions list
+    /// while the session itself stays live in the map — a cursor left naming
+    /// it resolves to nothing, which costs the section its selection band.
+    /// The membership flag is already flipped by the time this runs (the store
+    /// actor publishes after its write), so re-running the removal path's
+    /// reconciliation places the cursor on the row now sitting where the moved
+    /// row was, exactly as an archive would. Removing a member re-adds a row
+    /// and no cursor is lost, so there is nothing to repair.
+    fn handle_library_membership_changed(&self, payload: &SessionLibraryMembershipChanged) {
+        if !payload.in_library {
+            return;
+        }
+        self.state.with_session_sidebar(|view| {
+            sessions::reconcile_split(view.session.map(), view.frontend, false);
         });
     }
 
@@ -176,6 +202,12 @@ impl SidebarStateActor {
 impl MsgHandler<SessionRemoved> for SidebarStateActor {
     async fn handle(&mut self, msg: &SessionRemoved, _ctx: &mut MsgCtx<'_>) {
         self.handle_session_removed(msg);
+    }
+}
+
+impl MsgHandler<SessionLibraryMembershipChanged> for SidebarStateActor {
+    async fn handle(&mut self, msg: &SessionLibraryMembershipChanged, _ctx: &mut MsgCtx<'_>) {
+        self.handle_library_membership_changed(msg);
     }
 }
 
@@ -662,5 +694,60 @@ mod tests {
             .position(|row| Some(&row.session_id) == cursor.as_ref())
             .expect("the cursor names a listed bot");
         assert_eq!(index, 1);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn library_move_lands_sessions_cursor_on_a_listed_row() {
+        // Given four listed sessions with the cursor on the second one, and
+        // that row captured from the last rendered frame.
+        let actor = test_actor();
+        let ids = insert_sessions(&actor, 4);
+        place_cursor_on_row(&actor, 1);
+
+        // When the session the cursor names moves into the library — the
+        // flag flipped in the map first, the event second, the way the
+        // store actor publishes it.
+        {
+            let mut state = actor.state.write();
+            state
+                .session
+                .get_mut(&ids[1])
+                .expect("fixture session")
+                .set_in_library(true);
+        }
+        actor.handle_library_membership_changed(&SessionLibraryMembershipChanged {
+            session_id: ids[1].clone(),
+            in_library: true,
+        });
+
+        // Then the cursor sits on the row the moved session occupied, which
+        // now holds the session that shifted up into it.
+        assert_eq!(cursor_row(&actor), Some(1));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn library_removal_leaves_the_sessions_cursor_alone() {
+        // Given four listed sessions with the cursor on the second one.
+        let actor = test_actor();
+        let ids = insert_sessions(&actor, 4);
+        place_cursor_on_row(&actor, 1);
+
+        // When a *different* session's membership clears — the cursor's own
+        // session never left the list, so there is nothing to repair.
+        actor.handle_library_membership_changed(&SessionLibraryMembershipChanged {
+            session_id: ids[3].clone(),
+            in_library: false,
+        });
+
+        // Then the cursor still names the session it named.
+        let state = actor.state.read();
+        assert_eq!(
+            state
+                .frontend
+                .with_sections(|s| s.sessions.selected_id.clone(), || None),
+            Some(ids[1].clone())
+        );
     }
 }

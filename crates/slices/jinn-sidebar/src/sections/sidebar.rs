@@ -11,7 +11,8 @@ use super::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
 use super::{
-    bots_section, mcp_servers_section, persona_section, pins, sessions, task_list_section,
+    bots_section, library_section, mcp_servers_section, persona_section, pins, sessions,
+    task_list_section,
 };
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::protocol::IntentResult;
@@ -97,6 +98,8 @@ impl Sidebar {
         // Once the document overflows, the slack is zero and the single scroll
         // offset takes over.
         let slack = document.bottom_slack(area.height);
+        // The bottom anchor lands on the last registered section — Sessions,
+        // the document tail, which always draws rows.
         let last_index = document.spans.len().saturating_sub(1);
 
         for (index, (span, section)) in document
@@ -215,6 +218,10 @@ fn dispatch_navigate(
             IntentResult::empty(),
         ),
         jinn_sidebar_msg::SidebarSectionId::Sessions => sessions::navigate(intent, state, config),
+        jinn_sidebar_msg::SidebarSectionId::Library => (
+            library_section::navigate(intent, state),
+            IntentResult::empty(),
+        ),
     }
 }
 
@@ -236,6 +243,9 @@ fn next_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
             Some(jinn_sidebar_msg::SidebarSectionId::McpServers)
         }
         jinn_sidebar_msg::SidebarSectionId::McpServers => {
+            Some(jinn_sidebar_msg::SidebarSectionId::Library)
+        }
+        jinn_sidebar_msg::SidebarSectionId::Library => {
             Some(jinn_sidebar_msg::SidebarSectionId::Sessions)
         }
         jinn_sidebar_msg::SidebarSectionId::Sessions => None,
@@ -257,8 +267,11 @@ fn prev_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
         jinn_sidebar_msg::SidebarSectionId::McpServers => {
             Some(jinn_sidebar_msg::SidebarSectionId::TaskList)
         }
-        jinn_sidebar_msg::SidebarSectionId::Sessions => {
+        jinn_sidebar_msg::SidebarSectionId::Library => {
             Some(jinn_sidebar_msg::SidebarSectionId::McpServers)
+        }
+        jinn_sidebar_msg::SidebarSectionId::Sessions => {
+            Some(jinn_sidebar_msg::SidebarSectionId::Library)
         }
     }
 }
@@ -284,6 +297,7 @@ fn section_has_content(
                 .any(|(name, _)| enabled.contains(name.as_str()))
         }
         jinn_sidebar_msg::SidebarSectionId::Sessions => !state.session.is_empty(),
+        jinn_sidebar_msg::SidebarSectionId::Library => library_section::has_content(state),
     }
 }
 
@@ -297,6 +311,7 @@ pub(crate) fn clear_cursor(id: SidebarSectionId, state: &mut AppState) {
         jinn_sidebar_msg::SidebarSectionId::Sessions => {
             s.sessions.selected_id = None;
         }
+        jinn_sidebar_msg::SidebarSectionId::Library => s.library.selected_id = None,
     });
 }
 
@@ -333,6 +348,9 @@ fn receive_cursor(
         jinn_sidebar_msg::SidebarSectionId::Sessions => {
             sessions::receive_cursor(state, enter_from, config)
         }
+        jinn_sidebar_msg::SidebarSectionId::Library => {
+            library_section::receive_cursor(state, enter_from)
+        }
     }
 }
 
@@ -350,6 +368,7 @@ fn section_has_cursor(id: SidebarSectionId, state: &AppState) -> bool {
                 s.mcp_servers.selected_index.is_some()
             }
             jinn_sidebar_msg::SidebarSectionId::Sessions => s.sessions.selected_id.is_some(),
+            jinn_sidebar_msg::SidebarSectionId::Library => s.library.selected_id.is_some(),
         },
         || false,
     )

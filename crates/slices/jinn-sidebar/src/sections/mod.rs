@@ -13,6 +13,7 @@ pub mod bots_section;
 pub mod capture_rows;
 pub mod intent;
 pub mod layout;
+pub mod library_section;
 pub mod mcp_servers_section;
 pub mod persona_section;
 pub mod pins;
@@ -25,6 +26,8 @@ pub mod sidebar;
 pub mod sidebar_state_actor;
 pub mod task_list_section;
 
+#[cfg(test)]
+mod library_section_tests;
 #[cfg(test)]
 mod sessions_tests;
 #[cfg(test)]
@@ -46,5 +49,9 @@ pub fn register_sections(sidebar: &mut Sidebar) {
     sidebar.register(Box::new(pins::PinsSection));
     sidebar.register(Box::new(task_list_section::TaskListSection));
     sidebar.register(Box::new(mcp_servers_section::McpServersSection));
+    // Library sits below MCP servers and above Sessions — the user-confirmed
+    // order. Sessions is the document tail again, so `REGISTRATION_ORDER`
+    // must agree (the slack pushes the tail down).
+    sidebar.register(Box::new(library_section::LibrarySection::default()));
     sidebar.register(Box::new(sessions::SessionsSection::new()));
 }

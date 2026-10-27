@@ -51,6 +51,8 @@ pub struct SidebarSections {
     pub mcp_servers: McpServersSectionState,
     /// Bots section cursor state.
     pub bot: BotSectionState,
+    /// Library section cursor state.
+    pub library: LibrarySectionState,
     /// In-progress text for the rename-session popup.
     pub rename_input: RenameSessionInputState,
     /// The sidebar column's scroll offset from the last frame that had a
@@ -528,6 +530,23 @@ pub struct BotSectionState {
     /// The bot row the cursor was on when the last rendered frame
     /// resolved it, remembered for the same reason as the sessions section's
     /// `last_cursor_row`: a removed bot takes its row with it, and only a
+    /// row captured before the removal can restore the position.
+    pub last_cursor_row: Option<usize>,
+}
+
+/// Library-section cursor state: the selected library member, as a session id.
+/// `None` means no cursor (section not focused).
+#[derive(Debug, Clone, Default)]
+pub struct LibrarySectionState {
+    /// The selected library member, or `None` when the section has no cursor.
+    ///
+    /// An id like the other list sections': the library list is a rendered
+    /// projection of the library cell's entries, and a key bound here acts on
+    /// the member rather than on the position it happens to occupy.
+    pub selected_id: Option<SessionId>,
+    /// The member row the cursor was on when the last rendered frame
+    /// resolved it, remembered for the same reason as the sessions section's
+    /// `last_cursor_row`: removing a member takes its row with it, and only a
     /// row captured before the removal can restore the position.
     pub last_cursor_row: Option<usize>,
 }

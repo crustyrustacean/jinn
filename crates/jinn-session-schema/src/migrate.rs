@@ -15,8 +15,8 @@ use std::collections::HashMap;
 use error_stack::{Report, ResultExt as _};
 use rusqlite::params;
 
-use crate::legacy::LegacySessionColumns;
 use crate::SchemaMigrationError;
+use crate::legacy::LegacySessionColumns;
 
 /// The highest migration version this runner knows how to apply.
 ///
@@ -262,12 +262,22 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "add_entries_model_used_columns",
         apply: migrate_v29,
     },
+    Migration {
+        version: 30,
+        name: "add_sessions_in_library_column",
+        apply: migrate_v30,
+    },
+    Migration {
+        version: 31,
+        name: "add_sessions_is_bot_column",
+        apply: migrate_v31,
+    },
 ];
 
 /// The newest migration in [`MIGRATIONS`], kept in lockstep with
 /// [`LATEST_VERSION`] (which is asserted equal to this by
 /// `latest_version_matches_chain`).
-pub const CHAIN_LATEST_VERSION: i32 = 29;
+pub const CHAIN_LATEST_VERSION: i32 = 31;
 
 /// Applies every migration above `current`, announcing each to stderr.
 ///
@@ -1300,6 +1310,35 @@ pub fn migrate_v29(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaM
     Ok(())
 }
 
+/// v30: Add the `in_library` column to `sessions`.
+///
+/// Library membership is a durable per-session flag, orthogonal to `archived`:
+/// a library'd session stays listed in the sidebar's Library section whether
+/// loaded or archived, and disappears from the Sessions list. Every session
+/// defaults to not-a-member, which is exactly the pre-migration behavior.
+pub fn migrate_v30(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+    conn.execute_batch("ALTER TABLE sessions ADD COLUMN in_library BOOLEAN NOT NULL DEFAULT FALSE")
+        .change_context(SchemaMigrationError)
+        .attach("v30: add in_library column to sessions")?;
+    Ok(())
+}
+
+/// v31: Add the `is_bot` column to `sessions`.
+///
+/// A scalar projection of the metadata blob's `origin == Bot`, read by the
+/// library-members query. That query deliberately skips the blob (it was the
+/// perf cost of every membership write), but the Library section tints bot
+/// members with the bots color the sessions tree uses — a fact it cannot get
+/// without either parsing the blob per row or persisting the one bit it
+/// needs. `origin` is immutable after creation, so the column never drifts
+/// from the blob it projects.
+pub fn migrate_v31(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+    conn.execute_batch("ALTER TABLE sessions ADD COLUMN is_bot BOOLEAN NOT NULL DEFAULT FALSE")
+        .change_context(SchemaMigrationError)
+        .attach("v31: add is_bot column to sessions")?;
+    Ok(())
+}
+
 /// Rewrites the `session_id` and `parent_session` string values inside the
 /// `sessions.metadata` JSON blob, stripping a leading `s-` where present.
 ///
@@ -1473,9 +1512,14 @@ pub fn apply_up_to_no_fk(conn: &mut rusqlite::Connection, target: i32) {
 #[allow(unused_imports)]
 pub mod testing {
     pub use super::{
-        announcement_line, apply_migrations_inner, bootstrap_tracking_table, migrate_v10,
-        migrate_v15, migrate_v16, migrate_v17, migrate_v18, migrate_v19, migrate_v21, migrate_v22,
-        migrate_v23, migrate_v25, migrate_v26, record_version, CHAIN_LATEST_VERSION,
-        LATEST_VERSION, MIGRATIONS,
+        CHAIN_LATEST_VERSION, LATEST_VERSION, MIGRATIONS, announcement_line,
+        apply_migrations_inner, bootstrap_tracking_table, migrate_v10, migrate_v15, migrate_v16,
+        migrate_v17, migrate_v18, migrate_v19, migrate_v21, migrate_v22, migrate_v23, migrate_v25,
+        migrate_v26, record_version,
     };
+
+    /// The debug-build integrity-walk announcement, re-exported for the
+    /// format test. Present in debug builds only, matching the walk itself.
+    #[cfg(debug_assertions)]
+    pub use crate::debug_fk_check_line;
 }

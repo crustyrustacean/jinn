@@ -355,6 +355,13 @@ mod tests {
         ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
             Ok(())
         }
+        async fn set_in_library(
+            &self,
+            _session_id: &SessionId,
+            _in_library: bool,
+        ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
+            Ok(())
+        }
         async fn load_unarchived_summaries(
             &self,
         ) -> Result<Vec<SessionSummary>, error_stack::Report<jinn_session_state::SessionStoreError>>
@@ -432,6 +439,8 @@ mod tests {
             updated_at: jiff::Timestamp::now(),
             created_at: jiff::Timestamp::now(),
             session_state: SessionState::Loaded,
+            in_library: false,
+            is_bot: false,
             parent_session: None,
             project: None,
         };
@@ -504,6 +513,13 @@ mod tests {
             &self,
             _session_ids: &[SessionId],
             _archived: bool,
+        ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
+            Ok(())
+        }
+        async fn set_in_library(
+            &self,
+            _session_id: &SessionId,
+            _in_library: bool,
         ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
             Ok(())
         }
@@ -583,6 +599,8 @@ mod tests {
             updated_at: jiff::Timestamp::now(),
             created_at: jiff::Timestamp::now(),
             session_state: SessionState::Loaded,
+            in_library: false,
+            is_bot: false,
             parent_session: None,
             project,
         }
@@ -652,6 +670,8 @@ mod tests {
             updated_at: jiff::Timestamp::now(),
             created_at: jiff::Timestamp::now(),
             session_state: SessionState::Loaded,
+            in_library: false,
+            is_bot: false,
             parent_session: None,
             project: None,
         };
@@ -677,6 +697,8 @@ mod tests {
             updated_at: jiff::Timestamp::now(),
             created_at: jiff::Timestamp::now(),
             session_state: SessionState::Loaded,
+            in_library: false,
+            is_bot: false,
             parent_session: None,
             project: None,
         };
@@ -704,6 +726,8 @@ mod tests {
             updated_at: jiff::Timestamp::now(),
             created_at: jiff::Timestamp::now(),
             session_state: SessionState::Loaded,
+            in_library: false,
+            is_bot: false,
             parent_session: None,
             project: None,
         };

@@ -68,6 +68,18 @@ impl State {
     pub fn try_read(&self) -> Option<StateReadGuard<'_>> {
         self.inner.try_read().map(|inner| StateReadGuard { inner })
     }
+
+    /// Non-blocking write attempt — test/diagnostic only.
+    ///
+    /// Returns `None` if any reader or writer holds the lock. Used by tests
+    /// that must observe whether the write lock is free at a specific point
+    /// in a flow (e.g. inside a store callback that only runs after a save's
+    /// capture clone has resolved) without sampling a ratio.
+    pub fn try_write(&self) -> Option<StateWriteGuard<'_>> {
+        self.inner
+            .try_write()
+            .map(|inner| StateWriteGuard { inner })
+    }
 }
 
 impl std::ops::Deref for StateReadGuard<'_> {

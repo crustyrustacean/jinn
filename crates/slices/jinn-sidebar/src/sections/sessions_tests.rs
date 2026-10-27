@@ -4246,3 +4246,106 @@ fn a_selected_error_row_takes_the_selection_band_not_red() {
         "the selected band row is the errored session: {text}"
     );
 }
+
+#[rstest::rstest]
+#[test]
+fn move_to_library_hides_session_from_sessions_list() {
+    // Given three sessions in the sidebar and the second in the library.
+    let (mut state, ids) = state_with_session_ids(3);
+    if let Some(session) = state.session.get_mut(&ids[1]) {
+        session.set_in_library(true);
+    }
+
+    // When building the sessions list.
+    let visible = sorted_open_sessions(&state);
+
+    // Then the library member is absent and the others remain.
+    assert!(
+        !visible.iter().any(|entry| entry.id == ids[1]),
+        "a library member must not appear in the sessions list"
+    );
+    assert!(visible.iter().any(|entry| entry.id == ids[0]));
+    assert!(visible.iter().any(|entry| entry.id == ids[2]));
+}
+
+#[rstest::rstest]
+#[test]
+fn index_space_agrees_with_the_drawn_list_when_a_member_is_hidden() {
+    // Given three sessions with the middle one in the library — the shape
+    // that once inflated every row index by the number of members sorting
+    // before the cursor.
+    let (mut state, ids) = state_with_session_ids(3);
+    if let Some(session) = state.session.get_mut(&ids[1]) {
+        session.set_in_library(true);
+    }
+    let visible = sorted_open_sessions(&state);
+
+    // When resolving the row of every session the list actually draws.
+    let rows: Vec<_> = visible
+        .iter()
+        .map(|entry| crate::sections::sessions::state::visible_row_of(&state, &entry.id))
+        .collect();
+
+    // Then every drawn session resolves to its own drawn position — the
+    // cursor, highlight, capture, and anchor index space is the drawn list,
+    // not a superset of it.
+    let expected: Vec<_> = (0..visible.len()).map(Some).collect();
+    assert_eq!(
+        rows, expected,
+        "visible_row_of must agree with the drawn list when library members are hidden"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn hidden_member_leaves_no_index_gap_in_the_drawn_list() {
+    // Given three sessions with the first in the library — the pre-seeded
+    // default is removed so the member is the whole head of the list.
+    let (mut state, ids) = state_with_session_ids(3);
+    let default_id = state.session.active_session_id().clone();
+    state.session.remove_without_replacement(&default_id);
+    if let Some(session) = state.session.get_mut(&ids[0]) {
+        session.set_in_library(true);
+    }
+    let visible = sorted_open_sessions(&state);
+    assert_eq!(visible.len(), 2, "the member is hidden from the drawn list");
+    let first_drawn = visible[0].id.clone();
+
+    // When resolving the row the first drawn session lands on.
+    let row = crate::sections::sessions::state::visible_row_of(&state, &first_drawn);
+
+    // Then it is row 0 — a member sorting before it must not inflate the
+    // index into selecting the wrong session.
+    assert_eq!(
+        row,
+        Some(0),
+        "the first drawn session must resolve to row 0 when a member is hidden above it"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn remove_from_library_restores_sessions_row() {
+    // Given the only listed session in the library — the pre-seeded default
+    // is removed so the member is the whole list.
+    let (mut state, ids) = state_with_session_ids(1);
+    let default_id = state.session.active_session_id().clone();
+    state.session.remove_without_replacement(&default_id);
+    if let Some(session) = state.session.get_mut(&ids[0]) {
+        session.set_in_library(true);
+    }
+    assert!(sorted_open_sessions(&state).is_empty());
+
+    // When the library flag is cleared.
+    if let Some(session) = state.session.get_mut(&ids[0]) {
+        session.set_in_library(false);
+    }
+
+    // Then the session is listed again.
+    assert!(
+        sorted_open_sessions(&state)
+            .iter()
+            .any(|entry| entry.id == ids[0]),
+        "clearing the flag must restore the row"
+    );
+}

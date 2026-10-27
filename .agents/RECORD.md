@@ -109,6 +109,8 @@ Entries are added or amended **only with human approval**.
 - (keybinds) The sidebar sessions scope has no `p` prefix group; the Normal-scope `p` pin binding is still guarded against Leaf→Branch keymap promotion by a dedicated regression test.
 - (keybinds) `Alt+Q` in input scope toggles input mode; `Alt+S` focuses the sidebar sessions section from both input and normal scopes.
 - (keybinds) `s` in the sidebar task-list section opens the task-list picker.
+- (keybinds) In the sidebar's sessions, bots, and library scopes, G runs a bot, R resets a bot's context without dispatching, and L toggles library membership.
+- (keybinds) `c` in the sidebar's sessions, bots, and library scopes resumes the session under the cursor without injecting a new user message; an archived library member is not resumed until it is loaded.
 - (keybinds) `gci` in normal scope isolates the highlighted entry's tool loop: it force-includes that loop and user-force-excludes every other non-pinned entry. A pinned highlight is accepted — the other non-pinned entries are still excluded, and the pinned loop stays in context via its pin.
 - (mcp) jinn is an MCP client: one `McpActor` per (session × enabled server) owns a connection to an MCP server over stdio, local_http (jinn-managed child process), or remote_http (externally-managed, no process management).
 - (mcp) MCP tools are namespaced `mcp__<server>__<tool>` and registered per-session via `RegisterTools { session_id: Some(_) }`.
@@ -141,6 +143,8 @@ Entries are added or amended **only with human approval**.
 - (session) A replacement session seeded on archive inherits reasoning effort from the global default.
 - (session) An empty session that was never interacted with is not persisted on archive.
 - (session) Archiving the last active session creates a new one; archiving an empty session removes and archives it; archiving the active session makes the row the sidebar cursor lands on the active session.
+- (session) Library membership is a durable per-session flag, orthogonal to archived/loaded state; library members are hidden from the sidebar Sessions list.
+- (session) A bot with a parent association cannot be moved into the library; all other sessions can.
 - (session) Entry kinds round-trip through serialization; image attachments are allowed only on models confirmed image-capable via models.dev — text-only and unknown models are blocked with an error entry.
 - (session) Model selection supports alloy (multi-provider) configs that round-trip through serde; `as_single` returns `None` for an alloy and the string for a single model.
 - (session) A session can pin one OpenRouter endpoint on its profile; when pinned and the model is served via the OpenRouter backend, dispatch forces that endpoint with `provider.order=[tag]` and `allow_fallbacks:false` for prefix-cache affinity.
@@ -175,7 +179,9 @@ Entries are added or amended **only with human approval**.
 - (ui) Scope transitions are driven by keybinds that emit routing intents; leaving a scope pops back to the prior one (e.g. picker/skill/task-list scopes return to normal on `Esc`).
 - (ui) The TUI tracks focus as a scope stack (`FocusScope`); keys resolve differently per scope, and the active scope determines which bindings are available (e.g. the dashboard scope has no chat-history or sidebar bindings).
 - (ui) The chat input popup narrows rows by typed prefix and renders directory entries with trailing slashes, plus empty/loading states.
-- (ui) The sidebar has six sections — Persona, Pins, Bots, TaskList, McpServers, Sessions — with cyclic navigation.
+- (ui) The sidebar has seven sections — Persona, Bots, Pins, TaskList, McpServers, Library, Sessions — with cyclic navigation.
+- (session) The sidebar Library section renders from a cell the session-store actor refreshes at startup, on membership/archive/load writes, and when the section is entered.
+- (session) The library-members query reads only scalar columns — a persisted `is_bot` column projects the metadata blob's `origin == Bot` so the Library tints bot members without parsing blobs.
 - (citations) Citable web sources detected in tool calls and results render as a Sources footer when a turn reaches a final assistant answer.
 - (workflow) Commits use `just commit '<message>'`, which runs `fossil addremove --dotfiles` so dot-directories like `.agents/` are included.
 - (workflow) The workspace is checked with `just check` (compile), `just test` (tests), and `just lint` (lints); all tests must pass before committing.

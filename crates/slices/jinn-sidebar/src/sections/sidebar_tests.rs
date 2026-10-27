@@ -596,6 +596,114 @@ fn sessions_header_anchored_to_bottom() {
     );
 }
 
+/// The user-confirmed section order: Library above Sessions, below MCP
+/// servers. This was once built with Library last, and the anchor logic had
+/// a workaround for its collapsible tail; the order and the plain anchor
+/// are pinned together here.
+#[rstest::rstest]
+fn library_renders_between_mcp_and_sessions() {
+    // Given a state with a library member and MCP servers configured and
+    // enabled, so all three sections draw rows.
+    let mut state = AppState::default_with_scope_focus();
+    {
+        let library_cell = state
+            .frontend
+            .slices()
+            .and_then(|slices| {
+                slices.reader::<jinn_session_store_msg::LibraryState>(
+                    &jinn_session_store_msg::library_slot(),
+                )
+            })
+            .expect("the cell catalog registers the library slot");
+        library_cell.update(|library| {
+            library.entries = vec![jinn_session_store_msg::SessionSummary {
+                session_id: jinn_core_types::SessionId::new(),
+                title: "shelved work".to_owned(),
+                updated_at: jiff::Timestamp::now(),
+                created_at: jiff::Timestamp::now(),
+                session_state: jinn_session_store_msg::SessionState::Loaded,
+                in_library: true,
+                is_bot: false,
+                parent_session: None,
+                project: None,
+            }];
+        });
+    }
+    state.active_session_mut().enable_mcp_server("probe");
+    let config = jinn_config::testutil::config_layer("[mcp.probe]\ncommand = \"echo\"\n");
+
+    // When building the document table the render walks.
+    let document = crate::sections::layout::document(&state, &config);
+    let tail: Vec<_> = document
+        .spans
+        .iter()
+        .filter(|span| span.rows > 0)
+        .map(|span| span.id)
+        .collect();
+
+    // Then the drawn sections run ... McpServers, Library, Sessions, and
+    // Sessions is the document's last span.
+    let mcp = tail
+        .iter()
+        .position(|id| *id == jinn_sidebar_msg::SidebarSectionId::McpServers)
+        .expect("MCP servers configured and enabled");
+    let library = tail
+        .iter()
+        .position(|id| *id == jinn_sidebar_msg::SidebarSectionId::Library)
+        .expect("the library holds a member");
+    let sessions = tail
+        .iter()
+        .position(|id| *id == jinn_sidebar_msg::SidebarSectionId::Sessions)
+        .expect("sessions always draw");
+    assert!(
+        mcp < library && library < sessions,
+        "expected ... MCP servers, Library, Sessions ..., got {tail:?}"
+    );
+    assert_eq!(
+        document.spans.last().map(|span| span.id),
+        Some(jinn_sidebar_msg::SidebarSectionId::Sessions),
+        "Sessions must be the document tail — the bottom anchor lands on it"
+    );
+}
+
+/// The bottom anchor pins Sessions to the column bottom even when the
+/// Library above it is empty. The anchor used to pass through empty tails
+/// because Library — a collapsible section — sat last; with Sessions back as
+/// the guaranteed tail, the plain last-span logic must hold for an empty
+/// library too.
+#[rstest::rstest]
+fn sessions_anchor_survives_empty_library() {
+    // Given a sidebar with all sections, an empty library cell, and a
+    // column tall enough that the document has slack.
+    let mut sidebar = sidebar_with_all_sections();
+    let state = AppState::default_with_scope_focus();
+
+    let width = 30u16;
+    let height = 40u16;
+    let backend = TestBackend::new(width, height);
+    let _terminal = Terminal::new(backend).unwrap();
+
+    // When rendering.
+    let terminal = render_draw(&state, width, height, |frame, _area, frame_ctx| {
+        sidebar.render(
+            frame,
+            ratatui::layout::Rect::new(0, 0, width, height),
+            frame_ctx,
+        );
+    });
+
+    // Then the Sessions footer still lands on the column's last row — the
+    // same row the plain bottom-anchor test above pins — with the library
+    // contributing nothing between MCP servers and Sessions.
+    let buf = terminal.backend().buffer();
+    let sessions_row = find_row_containing(buf, width, height, "Sessions");
+    assert_eq!(
+        sessions_row,
+        Some(39),
+        "an empty library must not un-anchor Sessions from the bottom"
+    );
+}
+
 #[rstest::rstest]
 fn leading_sections_stay_at_the_top_when_the_document_is_short() {
     // Given a sidebar with content in more than just Persona and Sessions, in
@@ -1743,4 +1851,200 @@ fn the_sidebar_section_order_is_the_same_everywhere() {
         registered,
         "the layout's section order has drifted from the registration order"
     );
+}
+
+#[rstest::rstest]
+fn preview_bottom_edge_sits_two_rows_above_the_sessions_cursor() {
+    // Given the sidebar focused on sessions, its cursor on a session with a
+    // cached preview, and a frame tall enough for the full popup.
+    let mut sidebar = sidebar_with_all_sections();
+    let mut state = AppState::default_with_scope_focus();
+    // The scope is pushed before the section matters: `sidebar_section` is
+    // None without a sidebar scope on the stack, and the preview exits early.
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Sessions.focus_scope());
+    let entry = crate::sections::sessions::state::sorted_open_sessions(&state)
+        .first()
+        .expect("the active session always lists")
+        .clone();
+    state
+        .frontend
+        .update_sections(|s| s.sessions.selected_id = Some(entry.id.clone()));
+    // A preview must be cached at the width the render pass will look up at:
+    // the pass derives it from the frame, so the test derives it the same way.
+    let frame_area = ratatui::layout::Rect::new(0, 0, 100, 60);
+    let measured = crate::sections::sessions::preview::preview_content_width(frame_area);
+    state
+        .frontend
+        .update_sections(|s| s.sessions.preview_content_width = measured);
+    complete_preview(&mut state, &entry.id);
+
+    let width = 100u16;
+    let height = 60u16;
+
+    // When the sidebar renders and the preview pass draws over it.
+    let terminal = render_draw(&state, width, height, |frame, area, frame_ctx| {
+        sidebar.render(frame, area, frame_ctx);
+        crate::sections::sessions::render_session_preview_for_state(frame, area, area, frame_ctx);
+    });
+
+    // Then the popup's bottom edge sits exactly two rows above the row the
+    // cursor band is drawn on.
+    let buf = terminal.backend().buffer();
+    let keybinds_row = find_row_containing(buf, width, height, " close · a archive · i insert")
+        .expect("the popup's keybinds bar renders");
+    let cursor_row = cursor_row_of_band(&buf, width, height);
+    assert_eq!(
+        keybinds_row + POPUP_ROWS_BELOW_KEYBINDS + PAST_BORDER + POPUP_GAP_ROWS,
+        cursor_row,
+        "the popup must hang two rows above the cursor row"
+    );
+}
+
+#[rstest::rstest]
+fn preview_bottom_edge_sits_two_rows_above_the_library_cursor() {
+    // Given the sidebar focused on the library, its cursor on an in-memory
+    // member with a cached preview.
+    let mut sidebar = sidebar_with_all_sections();
+    let mut state = AppState::default_with_scope_focus();
+    let mut member = jinn_session_state::ChatSessionState::new();
+    member.set_title("a library member".to_owned());
+    member.push_entry(jinn_kernel::protocol::ChatEntry::user("hello"));
+    member.set_in_library(true);
+    let member_id = member.session_id().clone();
+    // Sections above the library are empty in a default state, which puts
+    // the library's cursor a few rows from the frame's top — no room for the
+    // popup above it. Bots give those sections rows.
+    seed_bots(&mut state, 4);
+    let (library_cell, seed) = {
+        let cell = state
+            .frontend
+            .slices()
+            .and_then(|slices| {
+                slices.reader::<jinn_session_store_msg::LibraryState>(
+                    &jinn_session_store_msg::library_slot(),
+                )
+            })
+            .expect("the cell catalog registers the library slot");
+        let summary = jinn_session_store_msg::SessionSummary {
+            session_id: member_id.clone(),
+            title: "a library member".to_owned(),
+            updated_at: jiff::Timestamp::now(),
+            created_at: jiff::Timestamp::now(),
+            session_state: jinn_session_store_msg::SessionState::Loaded,
+            in_library: true,
+            is_bot: false,
+            parent_session: None,
+            project: None,
+        };
+        cell.update(|library| library.entries = vec![summary]);
+        (cell, ())
+    };
+    let _ = (library_cell, seed);
+    state.session.insert(member);
+    // The library scope focuses the section and lights its cursor band.
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Library.focus_scope());
+    state.frontend.update_sections(|s| {
+        s.library.selected_id = Some(member_id.clone());
+        s.sessions.selected_id = None;
+    });
+    let frame_area = ratatui::layout::Rect::new(0, 0, 100, 60);
+    let measured = crate::sections::sessions::preview::preview_content_width(frame_area);
+    state
+        .frontend
+        .update_sections(|s| s.sessions.preview_content_width = measured);
+    complete_preview(&mut state, &member_id);
+
+    let width = 100u16;
+    let height = 60u16;
+
+    // When the sidebar renders and the preview pass draws over it.
+    let terminal = render_draw(&state, width, height, |frame, area, frame_ctx| {
+        sidebar.render(frame, area, frame_ctx);
+        crate::sections::sessions::render_session_preview_for_state(frame, area, area, frame_ctx);
+    });
+
+    // Then the popup's bottom edge sits exactly two rows above the row the
+    // cursor band is drawn on — the header-row offset that once left the
+    // popup floating four rows up cannot come back.
+    let buf = terminal.backend().buffer();
+    let keybinds_row = find_row_containing(buf, width, height, " close · a archive · i insert")
+        .expect("the popup's keybinds bar renders");
+    assert!(
+        find_row_containing(buf, width, height, "a library member").is_some(),
+        "the member row renders"
+    );
+    let cursor_row = cursor_row_of_band(&buf, width, height);
+    assert_eq!(
+        keybinds_row + POPUP_ROWS_BELOW_KEYBINDS + PAST_BORDER + POPUP_GAP_ROWS,
+        cursor_row,
+        "the popup must hang two rows above the library cursor row"
+    );
+}
+
+/// Rows from the keybinds line down to the popup's bottom border: the second
+/// keybind row, the cwd row, the stats row, and the border itself.
+const POPUP_ROWS_BELOW_KEYBINDS: u16 = 4;
+
+/// The one row the cursor sits past the popup's bottom border before the gap
+/// is counted: bottom border, gap, gap, cursor.
+const PAST_BORDER: u16 = 1;
+
+/// The rows between the popup's bottom border and the cursor row — the
+/// gap the rect math honours. Named here so the pin reads as arithmetic
+/// rather than an import of the thing it audits.
+const POPUP_GAP_ROWS: u16 = 2;
+
+/// Inserts `count` bots into the session map so the sections above the
+/// library have rows and the library's cursor sits low enough in the frame
+/// for the popup to have room above it.
+fn seed_bots(state: &mut AppState, count: usize) {
+    let parent = state.session.active_session().clone();
+    for i in 0..count {
+        let mut bot = jinn_session_state::ChatSessionState::new_bot(&parent, true);
+        bot.set_title(format!("seeded bot {i}"));
+        state.session.insert(bot);
+    }
+}
+
+/// Renders a preview for `id` and completes it into the cache, the way the
+/// worker would — an empty line set, which caches as a hit and draws the
+/// popup's chrome and footer.
+fn complete_preview(state: &mut AppState, id: &jinn_core_types::SessionId) {
+    use std::sync::Arc;
+    let request = crate::sections::sessions::preview_load::update_preview(
+        state,
+        id,
+        jinn_slices::empty_config_layer(),
+    )
+    .expect("a measured width must request");
+    state.frontend.update_sections(|s| {
+        s.sessions.preview.complete(
+            id.clone(),
+            request.generation,
+            request.signature,
+            request.content_width,
+            Arc::new(Vec::new()),
+        );
+    });
+}
+
+/// The row the cursor band is drawn on, found by the selection background.
+fn cursor_row_of_band(buf: &ratatui::buffer::Buffer, width: u16, height: u16) -> u16 {
+    let theme = &AppState::default_with_scope_focus().frontend.theme;
+    for y in 0..height {
+        let banded: Vec<u16> = (0..width)
+            .filter(|&x| {
+                buf.cell((x, y))
+                    .is_some_and(|cell| cell.bg == theme.selection_fg)
+            })
+            .collect();
+        if !banded.is_empty() {
+            return y;
+        }
+    }
+    panic!("no selection band found in the buffer");
 }

@@ -4045,10 +4045,11 @@ dependencies = [
 
 [[package]]
 name = "jinn-session-schema"
-version = "0.1.0"
+version = "1.11.2"
 dependencies = [
  "error-stack",
  "jiff",
+ "jinn-session-schema",
  "rstest",
  "rusqlite",
  "serde",

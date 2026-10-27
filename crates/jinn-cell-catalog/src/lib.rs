@@ -76,7 +76,7 @@ pub fn register_all_cells(slices: &Slices) {
 /// The `jinn-slices` infrastructure slots are not counted: they are
 /// registered lazily by the first caller that resolves one, and a harness
 /// that never renders never creates them.
-const EXPECTED_CELL_COUNT: usize = 43;
+const EXPECTED_CELL_COUNT: usize = 44;
 
 // ── The catalog ─────────────────────────────────────────────────────
 //
@@ -314,12 +314,19 @@ fn register_catalog(slices: &Slices) -> usize {
         jinn_session_lifecycle_msg::SessionLifecyclePickerState::default()
     );
 
-    // jinn-session-store — the session picker.
+    // jinn-session-store — the session picker and the Library section's
+    // contents (actor-refreshed from store summaries).
     register!(
         slices,
         count,
         jinn_session_store_msg::session_picker_slot(),
         jinn_session_store_msg::SessionPickerState::default()
+    );
+    register!(
+        slices,
+        count,
+        jinn_session_store_msg::library_slot(),
+        jinn_session_store_msg::LibraryState::default()
     );
 
     // jinn-stream-rules — the installed rule matcher the inference stream

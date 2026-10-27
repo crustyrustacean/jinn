@@ -108,6 +108,7 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
     let task_list_scope = jinn_sidebar_msg::SidebarSectionId::TaskList.scope_id();
     let sessions_scope = jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id();
     let mcp = jinn_sidebar_msg::SidebarSectionId::McpServers.scope_id();
+    let library_scope = jinn_sidebar_msg::SidebarSectionId::Library.scope_id();
     let resize = resize_scope();
     let sections = [
         persona.clone(),
@@ -116,6 +117,7 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         task_list_scope.clone(),
         sessions_scope.clone(),
         mcp.clone(),
+        library_scope.clone(),
     ];
 
     // ---- Shared base keys (every section) ----
@@ -417,10 +419,26 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
     routes.attach(row(
         "session-rerun-bot",
         sessions_scope.clone(),
+        "G",
+        "general",
+        "go bot (re-run)",
+        sync(sessions::bot_actions::handle_rerun_bot),
+    ));
+    routes.attach(row(
+        "session-reset-bot",
+        sessions_scope.clone(),
         "R",
         "general",
-        "re-run bot",
-        sync(sessions::bot_actions::handle_rerun_bot),
+        "reset bot context",
+        sync(sessions::bot_actions::handle_reset_bot),
+    ));
+    routes.attach(row(
+        "session-library-add",
+        sessions_scope.clone(),
+        "L",
+        "general",
+        "move to library",
+        sync(sessions::bot_actions::handle_toggle_library),
     ));
     routes.attach(row(
         "session-bot-properties",
@@ -508,11 +526,110 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
     ));
     routes.attach(row(
         "bot-activate-insert",
-        bot_scope,
+        bot_scope.clone(),
         "i",
         "general",
         "activate + insert",
         sync(sessions::handle_session_activate_insert),
+    ));
+    // Go and reset are the same two handlers the sessions section binds at
+    // the same keys, for the same reason `P` is: the sections differ only in
+    // which row the cursor is on, and the route table dispatches on
+    // (scope, action), so identical keys across the sections are free.
+    routes.attach(row(
+        "bot-go",
+        bot_scope.clone(),
+        "G",
+        "general",
+        "go bot (re-run)",
+        sync(sessions::bot_actions::handle_rerun_bot),
+    ));
+    routes.attach(row(
+        "bot-reset",
+        bot_scope.clone(),
+        "R",
+        "general",
+        "reset bot context",
+        sync(sessions::bot_actions::handle_reset_bot),
+    ));
+    // Continue is the same handler the sessions section binds at the same
+    // key, for the same reason `G`/`R` are: the sections differ only in
+    // which row the cursor is on.
+    routes.attach(row(
+        "bot-continue",
+        bot_scope.clone(),
+        "c",
+        "general",
+        "continue session",
+        sync(sessions::handle_session_continue),
+    ));
+
+    // ---- Library section ----
+    routes.attach(row(
+        "library-activate",
+        jinn_sidebar_msg::SidebarSectionId::Library.scope_id(),
+        "<enter>",
+        "general",
+        "activate member",
+        sync(crate::sections::library_section::handle_library_activate),
+    ));
+    routes.attach(row(
+        "library-archive",
+        jinn_sidebar_msg::SidebarSectionId::Library.scope_id(),
+        "a",
+        "general",
+        "archive member",
+        sync(crate::sections::library_section::handle_library_archive),
+    ));
+    routes.attach(row(
+        "library-remove",
+        jinn_sidebar_msg::SidebarSectionId::Library.scope_id(),
+        "L",
+        "general",
+        "remove from library",
+        sync(crate::sections::library_section::handle_library_remove),
+    ));
+    routes.attach(row(
+        "library-go",
+        jinn_sidebar_msg::SidebarSectionId::Library.scope_id(),
+        "G",
+        "general",
+        "go bot (re-run)",
+        sync(sessions::bot_actions::handle_rerun_bot),
+    ));
+    routes.attach(row(
+        "library-reset",
+        jinn_sidebar_msg::SidebarSectionId::Library.scope_id(),
+        "R",
+        "general",
+        "reset bot context",
+        sync(sessions::bot_actions::handle_reset_bot),
+    ));
+    routes.attach(row(
+        "library-bot-properties",
+        jinn_sidebar_msg::SidebarSectionId::Library.scope_id(),
+        "P",
+        "general",
+        "bot properties",
+        sync(sessions::bot_properties::handle_open_bot_properties),
+    ));
+    routes.attach(row(
+        "library-continue",
+        jinn_sidebar_msg::SidebarSectionId::Library.scope_id(),
+        "c",
+        "general",
+        "continue session",
+        sync(sessions::handle_session_continue),
+    ));
+    routes.attach(row(
+        "library-rename",
+        jinn_sidebar_msg::SidebarSectionId::Library.scope_id(),
+        "r",
+        "general",
+        "rename member",
+        // The enter handler pushes the popup's dynamic scope itself, and
+        // resolves the target through the focused section's cursor.
+        sync(rename::handle_rename_session_enter),
     ));
 
     // ---- Task list section ----
@@ -1011,6 +1128,135 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn p_in_the_library_scope_opens_the_highlighted_bots_properties() {
+        // Given the library section focused with the cursor on a member bot
+        // — and the sessions cursor naming a different session, so a
+        // resolver that fell back to the wrong section's cursor is caught.
+        let mut state = state_with_bots(1);
+        focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Library);
+        let library_bot = jinn_bot::section_rows::bot_rows(&state)
+            .first()
+            .map(|row| row.session_id.clone());
+        let active_id = state.session.active_session_id().clone();
+        state.frontend.update_sections(|s| {
+            s.library.selected_id = library_bot.clone();
+            s.sessions.selected_id = Some(active_id);
+        });
+        let bot_id = library_bot.expect("a bot member");
+
+        // When `P` is pressed in the sidebar's library section.
+        let routes = KeyRoutes::new();
+        attach_sidebar_rows(&routes);
+        press(
+            &routes,
+            &mut state,
+            jinn_sidebar_msg::SidebarSectionId::Library.scope_id(),
+            "library-bot-properties",
+        );
+
+        // Then the properties popup is open for the highlighted bot.
+        assert_eq!(
+            state.frontend.scope(),
+            jinn_slices::FocusScope::Dynamic(jinn_bot_msg::bot_properties_scope()),
+            "`P` must open the properties popup from the library scope"
+        );
+        // The popup state rides its cell (the catalog registers the slot);
+        // its session id must be the library member, not the sessions cursor.
+        let popup_id = state
+            .frontend
+            .slices()
+            .and_then(|slices| {
+                slices.reader::<jinn_bot_msg::BotPropertiesState>(
+                        &jinn_bot_msg::bot_properties_slot(),
+                    )
+            })
+            .and_then(|cell| cell.read().session_id.clone());
+        assert_eq!(
+            popup_id.as_ref(),
+            Some(&bot_id),
+            "the popup must name the library member, not the sessions cursor"
+        );
+    }
+
+    #[rstest::rstest]
+    fn r_in_the_library_scope_opens_the_rename_popup_for_the_member() {
+        // Given the library section focused with the cursor on a member —
+        // and the sessions cursor naming a different session, so a resolver
+        // that fell back to the wrong section's cursor is caught.
+        let mut state = state_with_bots(1);
+        focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Library);
+        let member_id = jinn_bot::section_rows::bot_rows(&state)
+            .first()
+            .map(|row| row.session_id.clone())
+            .expect("a bot member");
+        let active_id = state.session.active_session_id().clone();
+        state.frontend.update_sections(|s| {
+            s.library.selected_id = Some(member_id.clone());
+            s.sessions.selected_id = Some(active_id);
+        });
+
+        // When `r` is pressed in the sidebar's library section.
+        let routes = KeyRoutes::new();
+        attach_sidebar_rows(&routes);
+        press(
+            &routes,
+            &mut state,
+            jinn_sidebar_msg::SidebarSectionId::Library.scope_id(),
+            "library-rename",
+        );
+
+        // Then the rename popup is open, seeded with the member's title.
+        assert_eq!(
+            state.frontend.scope(),
+            jinn_slices::FocusScope::Dynamic(rename_scope()),
+            "`r` must open the rename popup from the library scope"
+        );
+        let seeded = state
+            .frontend
+            .with_sections(|s| s.rename_input.text.input.clone(), String::new);
+        let titled = state
+            .session
+            .get(&member_id)
+            .and_then(|session| session.title().map(str::to_owned));
+        assert_eq!(
+            Some(seeded),
+            titled,
+            "the popup must be seeded with the library member's title"
+        );
+    }
+
+    #[rstest::rstest]
+    fn confirming_the_rename_renames_the_library_member() {
+        // Given the rename popup open over a library member.
+        let mut state = state_with_bots(1);
+        focus_section(&state, jinn_sidebar_msg::SidebarSectionId::Library);
+        let member_id = jinn_bot::section_rows::bot_rows(&state)
+            .first()
+            .map(|row| row.session_id.clone())
+            .expect("a bot member");
+        state.frontend.update_sections(|s| {
+            s.library.selected_id = Some(member_id.clone());
+            s.rename_input.text.input = "renamed from library".to_owned();
+        });
+
+        // When the rename is confirmed in the library scope.
+        let routes = KeyRoutes::new();
+        attach_sidebar_rows(&routes);
+        press(&routes, &mut state, rename_scope(), "rename-confirm");
+
+        // Then the member's title is the new text.
+        let title = state
+            .session
+            .get(&member_id)
+            .and_then(|session| session.title().map(str::to_owned));
+        assert_eq!(
+            title.as_deref(),
+            Some("renamed from library"),
+            "the confirm must rename the library member"
+        );
+    }
+
+    #[rstest::rstest]
     fn p_in_the_bots_section_opens_the_highlighted_bot() {
         // Given two bots under the active session, with the cursor on the
         // second.
@@ -1216,5 +1462,40 @@ mod tests {
 
         // Then the conversation on screen does not change.
         assert_eq!(state.session.active_session_id(), &before);
+    }
+
+    /// The sidebar's navigation keys bind in every section scope, including
+    /// the Library's. This scope was once missing from the shared loop, so
+    /// `j`/`k`/`J`/`K`/`<esc>` were dead inside it — the regression test
+    /// pins each shared row by (scope, action).
+    #[rstest::rstest]
+    #[test]
+    fn library_scope_binds_navigation_keys() {
+        // Given an empty shared route table.
+        let routes = KeyRoutes::new();
+
+        // When the sidebar's rows are attached.
+        attach_sidebar_rows(&routes);
+
+        // Then every shared navigation row resolves in the library scope.
+        let scope = jinn_sidebar_msg::SidebarSectionId::Library.scope_id();
+        let bound = |action: &str| {
+            routes.rows().iter().any(|row| {
+                row.scope == scope
+                    && matches!(
+                        &row.outcome,
+                        RouteOutcome::Action { action: name, .. } if *name == action
+                    )
+            })
+        };
+        assert!(bound("move-down"), "`j` must bind in the library scope");
+        assert!(bound("move-up"), "`k` must bind in the library scope");
+        assert!(bound("section-next"), "`J` must bind in the library scope");
+        assert!(bound("section-prev"), "`K` must bind in the library scope");
+        assert!(bound("leave"), "`<esc>` must bind in the library scope");
+        assert!(
+            bound("library-bot-properties"),
+            "`P` must bind in the library scope"
+        );
     }
 }

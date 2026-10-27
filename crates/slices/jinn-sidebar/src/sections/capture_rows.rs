@@ -62,6 +62,25 @@ pub fn capture_bot_cursor_row(state: &AppState) {
     }
 }
 
+/// Records which member the library cursor is on, if it is on one.
+pub fn capture_library_cursor_row(state: &AppState) {
+    let row = state.frontend.with_sections(
+        |sections| {
+            sections
+                .library
+                .selected_id
+                .clone()
+                .and_then(|id| super::library_section::row_of(state, &id))
+        },
+        || None,
+    );
+    if let Some(row) = row {
+        state
+            .frontend
+            .update_sections(|sections| sections.library.last_cursor_row = Some(row));
+    }
+}
+
 /// The row the sessions cursor would return to after a removal.
 ///
 /// Prefers a captured row, and clamps it into the list that exists now. With

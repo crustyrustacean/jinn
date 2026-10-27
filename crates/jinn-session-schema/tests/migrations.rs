@@ -85,10 +85,11 @@ fn re_running_migrations_is_noop() {
     assert_eq!(count, 1, "sentinel row survived the no-op re-run");
 }
 
-/// The v20 rebuild left `sessions` with exactly the nine authoritative columns.
+/// The v20 rebuild plus the v29–v31 additions left `sessions` with exactly
+/// the eleven authoritative columns.
 #[rstest::rstest]
 #[test]
-fn sessions_has_nine_authoritative_columns() {
+fn sessions_has_eleven_authoritative_columns() {
     // Given a fully-migrated in-memory database.
     let mut conn = rusqlite::Connection::open_in_memory().expect("open in-memory db");
     run_migrations(&mut conn).expect("run migrations");
@@ -102,7 +103,7 @@ fn sessions_has_nine_authoritative_columns() {
         .map(|r| r.expect("row"))
         .collect();
 
-    // Then it is exactly the nine authoritative columns.
+    // Then it is exactly the eleven authoritative columns.
     assert_eq!(
         columns,
         vec![
@@ -115,8 +116,10 @@ fn sessions_has_nine_authoritative_columns() {
             "metadata",
             "is_automated",
             "persist",
+            "in_library",
+            "is_bot",
         ],
-        "sessions columns after v20",
+        "sessions columns after v31",
     );
 }
 
@@ -639,8 +642,11 @@ fn columns_of(conn: &rusqlite::Connection, table: &str) -> Vec<String> {
 /// integrity walk — nothing changed, so there is nothing to verify — and
 /// pre-existing violations do not fail the no-op run. This is the performance
 /// contract: the full walk costs seconds on large databases.
+///
+/// Debug builds only: the walk itself is debug-gated (see `run_migrations`).
 #[rstest::rstest]
 #[test]
+#[cfg(debug_assertions)]
 fn noop_run_skips_foreign_key_check() {
     // Given a fully-migrated database containing a pre-existing FK violation
     // (an orphaned session_history row, inserted with FK off).
@@ -671,12 +677,14 @@ fn noop_run_skips_foreign_key_check() {
     );
 }
 
-/// A run that applies migrations still performs the integrity walk: a
-/// migration-era FK violation fails the run.
+/// A debug-build run that applies migrations performs the integrity walk:
+/// a migration-era FK violation fails the run. Release builds skip the walk
+/// (there is no user-repairable action to gate the launch on), so the same
+/// seeded database succeeds there.
 #[rstest::rstest]
 #[test]
 #[cfg(feature = "testing")]
-fn migration_run_with_fk_violation_fails() {
+fn migration_run_with_fk_violation_fails_in_debug_and_passes_in_release() {
     use jinn_session_schema::testing::{apply_migrations_inner, bootstrap_tracking_table};
 
     // Given a database seeded at v26 with an orphaned session_history row
@@ -699,11 +707,19 @@ fn migration_run_with_fk_violation_fails() {
     // When running the pending migrations (v27).
     let result = run_migrations(&mut conn);
 
-    // Then the run fails on the post-migration integrity check.
-    assert!(
-        result.is_err(),
-        "a run that applied migrations must surface FK violations"
-    );
+    // Then the run's outcome follows the build: debug surfaces the FK
+    // violations, release runs on.
+    if cfg!(debug_assertions) {
+        assert!(
+            result.is_err(),
+            "a debug run that applied migrations must surface FK violations"
+        );
+    } else {
+        assert!(
+            result.is_ok(),
+            "a release run skips the integrity walk and must not fail"
+        );
+    }
 }
 
 /// Returns the number of FK violations in the database.
@@ -726,7 +742,7 @@ fn count_fk_violations(conn: &rusqlite::Connection) -> usize {
 #[cfg(feature = "testing")]
 fn upgrade_announces_each_pending_migration_with_version_and_name() {
     use jinn_session_schema::testing::{
-        apply_migrations_inner, bootstrap_tracking_table, MIGRATIONS,
+        MIGRATIONS, apply_migrations_inner, bootstrap_tracking_table,
     };
 
     // Given a database seeded at v24 (so everything after v24 is pending) and
@@ -777,6 +793,24 @@ fn announcement_line_has_stable_format() {
     assert_eq!(
         announcement_line(27, "add_fts_dirty_resume_offset"),
         "jinn: applying migration v27 (add_fts_dirty_resume_offset)\u{2026}"
+    );
+}
+
+/// The debug integrity-walk line's user-facing format, pinned alongside the
+/// migration announcements it appears next to on an upgrade launch's stderr.
+#[rstest::rstest]
+#[test]
+#[cfg(all(debug_assertions, feature = "testing"))]
+fn fk_check_line_has_stable_format() {
+    // Given no inputs — the line is a constant.
+
+    // When rendering the line.
+
+    // Then it carries the `jinn:` prefix and the ellipsis, matching the
+    // migration announcements' shape.
+    assert_eq!(
+        jinn_session_schema::testing::debug_fk_check_line(),
+        "jinn: checking foreign-key integrity\u{2026}"
     );
 }
 
@@ -839,10 +873,11 @@ fn v28_backfills_rowid_map_from_existing_fts() {
         "one map row per FTS row, sessions preserved"
     );
 
-    // And the recorded migration version is 29 (v28 is not the chain's end;
-    // running it as part of a fresh chain records every later version too).
+    // And the recorded migration version is the chain's latest (31) —
+    // `run_migrations` runs the full chain, so every later version has
+    // landed on top of v28.
     let version: i64 = conn
         .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
         .expect("current version");
-    assert_eq!(version, 29, "v28 recorded");
+    assert_eq!(version, 31, "v28 and later recorded");
 }

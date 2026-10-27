@@ -87,6 +87,29 @@ pub struct ArchiveSessionTree {
 
 impl jinn_slices::BusMessage for ArchiveSessionTree {}
 
+/// Set or clear a session's library membership.
+///
+/// Membership is a durable per-session flag, orthogonal to the loaded/archived
+/// state: a library'd session stays listed in the sidebar's Library section
+/// whether loaded or archived, and disappears from the Sessions list.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Set or clear a session's library membership.")]
+pub struct SetSessionLibrary {
+    /// The session whose membership changes.
+    pub session_id: SessionId,
+    /// `true` moves the session into the library, `false` removes it.
+    pub in_library: bool,
+}
+
+impl jinn_slices::BusMessage for SetSessionLibrary {}
+
+/// Load the library entries into the library cell.
+#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
+#[schema(description = "Load library entries from the session store.")]
+pub struct LoadLibraryEntries;
+
+impl jinn_slices::BusMessage for LoadLibraryEntries {}
+
 /// Request to persist a complete session snapshot immediately.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Command)]
 #[schema(description = "Persist a session snapshot to the store.")]
@@ -102,8 +125,9 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, reason = "test code")]
 
     use super::{
-        ArchiveSession, ArchiveSessionTree, LoadSessionPickerEntries, LoadSessionTree,
-        PersistSession, SessionForkRequested, SessionLoadRequested,
+        ArchiveSession, ArchiveSessionTree, LoadLibraryEntries, LoadSessionPickerEntries,
+        LoadSessionTree, PersistSession, SessionForkRequested, SessionLoadRequested,
+        SetSessionLibrary,
     };
     use jinn_core_types::SessionId;
 
@@ -130,6 +154,11 @@ mod tests {
                 session_id: id.clone(),
             },
             ArchiveSessionTree { root: id.clone() },
+            SetSessionLibrary {
+                session_id: id.clone(),
+                in_library: true,
+            },
+            LoadLibraryEntries,
             PersistSession {
                 session_id: other_id.clone(),
             },
@@ -144,6 +173,8 @@ mod tests {
             LoadSessionTree,
             ArchiveSession,
             ArchiveSessionTree,
+            SetSessionLibrary,
+            LoadLibraryEntries,
             PersistSession,
         )>(&json)
         .unwrap();
@@ -156,6 +187,8 @@ mod tests {
         assert_eq!(round.3.session_id, id);
         assert_eq!(round.4.session_id, id);
         assert_eq!(round.5.root, id);
-        assert_eq!(round.6.session_id, other_id);
+        assert!(round.6.in_library);
+        assert_eq!(round.6.session_id, id);
+        assert_eq!(round.8.session_id, other_id);
     }
 }

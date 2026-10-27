@@ -16,10 +16,14 @@ use std::sync::{Arc, Mutex};
 
 use error_stack::Report;
 use jinn_kernel::common::app_state::AppState;
+use jinn_kernel::protocol::ChatEntry;
 use jinn_session_state::{SessionSnapshot, SessionStore, SessionStoreError};
 use jinn_slices::ConfigLayer;
 
-use super::bot_actions::{handle_new_bot_of_session, handle_new_standalone_bot, handle_rerun_bot};
+use super::bot_actions::{
+    handle_new_bot_of_session, handle_new_standalone_bot, handle_rerun_bot, handle_reset_bot,
+    handle_toggle_library, validate_library_add,
+};
 
 /// A recording store that honors the same `persist` gate the real SQLite
 /// store applies — a non-persistable snapshot is dropped without a write.
@@ -100,6 +104,14 @@ impl SessionStore for RecordingStore {
         &self,
         _session_ids: &[jinn_core_types::SessionId],
         _archived: bool,
+    ) -> Result<(), Report<SessionStoreError>> {
+        Ok(())
+    }
+
+    async fn set_in_library(
+        &self,
+        _session_id: &jinn_core_types::SessionId,
+        _in_library: bool,
     ) -> Result<(), Report<SessionStoreError>> {
         Ok(())
     }
@@ -567,5 +579,334 @@ fn created_bot_is_persistable() {
             .expect("bot exists")
             .is_persistable(),
         "a bot created by `N` must be persistable"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn move_to_library_rejected_for_parented_bot() {
+    // Given the sessions section focused on a bot that has a parent.
+    let state = {
+        let mut state = state_with_selected_row(0);
+        let parent = jinn_session_state::ChatSessionState::new();
+        let mut bot = jinn_session_state::ChatSessionState::new_bot(&parent, true);
+        bot.set_title("aaa-parented-bot".to_owned());
+        let bot_id = bot.session_id().clone();
+        state.session.insert(bot);
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_id = Some(bot_id));
+        state
+    };
+
+    // When validating the move into the library.
+    let result = validate_library_add(&state);
+
+    // Then the parented bot is refused — shelved in the library while
+    // archived, a ParentCompleted bot would silently never fire.
+    assert!(matches!(
+        result,
+        Err(super::bot_actions::LibraryError::BlockedParentedBot)
+    ));
+}
+
+#[rstest::rstest]
+#[test]
+fn move_to_library_for_a_parented_bot_publishes_nothing() {
+    // Given the sessions section focused on a bot that has a parent.
+    let mut state = {
+        let mut state = state_with_selected_row(0);
+        let parent = jinn_session_state::ChatSessionState::new();
+        let mut bot = jinn_session_state::ChatSessionState::new_bot(&parent, true);
+        bot.set_title("aaa-parented-bot".to_owned());
+        let bot_id = bot.session_id().clone();
+        state.session.insert(bot);
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_id = Some(bot_id));
+        state
+    };
+
+    // When the toggle is pressed.
+    let toggle = handle_toggle_library(&mut state);
+
+    // Then nothing is published — validation refuses the move before any
+    // command can form.
+    assert!(
+        toggle.message_names.is_empty(),
+        "a refused move must publish nothing, published: {:?}",
+        toggle.message_names
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn move_to_library_allows_parented_non_bot() {
+    // Given the sessions section focused on a fork (a session with a parent
+    // that is not a bot).
+    let state = {
+        let mut state = state_with_selected_row(0);
+        let source = jinn_session_state::ChatSessionState::new();
+        let mut fork = jinn_session_state::ChatSessionState::new();
+        fork.restore_parent_session(Some(source.session_id().clone()));
+        fork.set_title("mmm-fork".to_owned());
+        let fork_id = fork.session_id().clone();
+        state.session.insert(fork);
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_id = Some(fork_id));
+        state
+    };
+
+    // When validating the move into the library.
+    let result = validate_library_add(&state);
+
+    // Then it is allowed — only a bot with a parent is blocked.
+    assert!(
+        result.is_ok(),
+        "a parented non-bot must be allowed into the library: {result:?}"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn move_to_library_publishes_the_membership_command() {
+    // Given the sessions section focused on a fork (a session with a parent
+    // that is not a bot).
+    let mut state = {
+        let mut state = state_with_selected_row(0);
+        let source = jinn_session_state::ChatSessionState::new();
+        let mut fork = jinn_session_state::ChatSessionState::new();
+        fork.restore_parent_session(Some(source.session_id().clone()));
+        fork.set_title("mmm-fork".to_owned());
+        let fork_id = fork.session_id().clone();
+        state.session.insert(fork);
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_id = Some(fork_id));
+        state
+    };
+
+    // When the toggle is pressed.
+    let toggle = handle_toggle_library(&mut state);
+
+    // Then the library command is published.
+    assert!(
+        toggle
+            .message_names
+            .iter()
+            .any(|name| name.ends_with("SetSessionLibrary")),
+        "the move must publish SetSessionLibrary, published: {:?}",
+        toggle.message_names
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn reset_key_force_excludes_non_pinned_context() {
+    // Given an idle bot with a pinned entry and two ordinary ones.
+    let mut state = state_with_selected_row(0);
+    let bot_id = {
+        let parent = jinn_session_state::ChatSessionState::new();
+        let mut bot = reset_bot(&parent);
+        bot.set_title("aaa-reset-bot".to_owned());
+        let pinned = bot.push_entry(ChatEntry::user("pinned instruction"));
+        bot.pin_entry(
+            &bot.history()[pinned].id.clone(),
+            jinn_core_types::PinPosition::Top,
+        );
+        bot.push_entry(ChatEntry::assistant("unpinned one"));
+        bot.push_entry(ChatEntry::user("unpinned two"));
+        let bot_id = bot.session_id().clone();
+        state.session.insert(bot);
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_id = Some(bot_id.clone()));
+        bot_id
+    };
+
+    // When `R` resets the bot.
+    let _result = handle_reset_bot(&mut state);
+
+    // Then exactly the two non-pinned entries are force-excluded from
+    // context, the pin staying out of the exclusion set.
+    let session = state.session.get(&bot_id).expect("bot");
+    let excluded = session
+        .history()
+        .iter()
+        .filter(|e| e.context_override() == jinn_core_types::ContextOverride::ForcedExclude)
+        .count();
+    assert_eq!(
+        excluded, 2,
+        "exactly the two non-pinned entries must be force-excluded"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn reset_key_dispatches_nothing() {
+    // Given an idle bot with a pinned entry and two ordinary ones.
+    let mut state = state_with_selected_row(0);
+    {
+        let parent = jinn_session_state::ChatSessionState::new();
+        let mut bot = reset_bot(&parent);
+        bot.set_title("aaa-reset-bot".to_owned());
+        let pinned = bot.push_entry(ChatEntry::user("pinned instruction"));
+        bot.pin_entry(
+            &bot.history()[pinned].id.clone(),
+            jinn_core_types::PinPosition::Top,
+        );
+        bot.push_entry(ChatEntry::assistant("unpinned one"));
+        bot.push_entry(ChatEntry::user("unpinned two"));
+        let bot_id = bot.session_id().clone();
+        state.session.insert(bot);
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_id = Some(bot_id));
+    }
+
+    // When `R` resets the bot.
+    let result = handle_reset_bot(&mut state);
+
+    // Then nothing is dispatched — no EnqueueUserMessage (the rerun path
+    // would publish it for this same state), no CancelTurn.
+    assert!(
+        !result
+            .message_names
+            .iter()
+            .any(|name| name.ends_with("EnqueueUserMessage")),
+        "reset must not dispatch, published: {:?}",
+        result.message_names
+    );
+    assert_eq!(cancel_count(&result), 0);
+}
+
+#[rstest::rstest]
+#[test]
+fn reset_key_persists_the_exclusions() {
+    // Given an idle bot with a pinned entry and two ordinary ones.
+    let mut state = state_with_selected_row(0);
+    {
+        let parent = jinn_session_state::ChatSessionState::new();
+        let mut bot = reset_bot(&parent);
+        bot.set_title("aaa-reset-bot".to_owned());
+        let pinned = bot.push_entry(ChatEntry::user("pinned instruction"));
+        bot.pin_entry(
+            &bot.history()[pinned].id.clone(),
+            jinn_core_types::PinPosition::Top,
+        );
+        bot.push_entry(ChatEntry::assistant("unpinned one"));
+        bot.push_entry(ChatEntry::user("unpinned two"));
+        let bot_id = bot.session_id().clone();
+        state.session.insert(bot);
+        state
+            .frontend
+            .update_sections(|s| s.sessions.selected_id = Some(bot_id));
+    }
+
+    // When `R` resets the bot.
+    let result = handle_reset_bot(&mut state);
+
+    // Then the change is persisted.
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|name| name.ends_with("PersistSession")),
+        "the exclusions must be persisted, published: {:?}",
+        result.message_names
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn reset_key_blocked_while_bot_busy() {
+    // Given a bot that is mid-turn.
+    let mut state = state_with_selected_row(0);
+    {
+        let parent = jinn_session_state::ChatSessionState::new();
+        let mut bot = reset_bot(&parent);
+        bot.set_title("aaa-busy-bot".to_owned());
+        bot.begin_streaming();
+        state.session.insert(bot);
+    }
+
+    // When `R` resets it.
+    let result = handle_reset_bot(&mut state);
+
+    // Then the refusal is surfaced as a system line, nothing is excluded,
+    // and nothing is dispatched.
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|name| name.ends_with("PushChatEntry")),
+        "a busy bot's reset must say why, published: {:?}",
+        result.message_names
+    );
+    assert_eq!(cancel_count(&result), 0);
+}
+
+#[rstest::rstest]
+#[test]
+fn reset_key_noop_on_non_bot() {
+    // Given the cursor on an ordinary session.
+    let mut state = state_with_selected_row(0);
+    {
+        let mut plain = jinn_session_state::ChatSessionState::new();
+        plain.set_title("aaa-plain".to_owned());
+        plain.push_entry(ChatEntry::user("hello"));
+        state.session.insert(plain);
+    }
+
+    // When `R` is pressed.
+    let result = handle_reset_bot(&mut state);
+
+    // Then nothing is mutated or published beyond the reason line.
+    assert!(
+        !result
+            .message_names
+            .iter()
+            .any(|name| name.ends_with("PersistSession")),
+        "a non-bot must not be persisted, published: {:?}",
+        result.message_names
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn rerun_key_moves_from_r_to_g() {
+    // Given the sidebar's real route rows attached to a route table.
+    let routes = jinn_slices::route::KeyRoutes::new();
+    crate::key_routes::attach_sidebar_rows(&routes);
+    let sessions_scope = jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id();
+    let actions_at = |routes: &jinn_slices::route::KeyRoutes, key: &str| {
+        routes
+            .rows()
+            .iter()
+            .filter(|r| r.scope == sessions_scope && r.key == key)
+            .filter_map(|r| match &r.outcome {
+                jinn_slices::route::RouteOutcome::Action { action, .. } => Some(*action),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+
+    // When looking up what `R` and `G` bind to in the sessions scope.
+    let at_r = actions_at(&routes, "R");
+    let at_g = actions_at(&routes, "G");
+
+    // Then `R` no longer re-runs, `G` does, and `R` resets instead.
+    assert!(
+        !at_r.contains(&"session-rerun-bot"),
+        "the old R-rerun binding must be gone, R binds: {at_r:?}"
+    );
+    assert!(
+        at_g.contains(&"session-rerun-bot"),
+        "G must carry the rerun, G binds: {at_g:?}"
+    );
+    assert!(
+        at_r.contains(&"session-reset-bot"),
+        "R must carry the reset, R binds: {at_r:?}"
     );
 }
