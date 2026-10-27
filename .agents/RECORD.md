@@ -576,3 +576,4 @@ Entries are added or amended **only with human approval**.
 - (paths) The file picker resolves a filter absolute when MarkedPathBuf<Absolute> accepts it on the running platform, and joins it against the session cwd otherwise.
 - (paths) Production canonicalization goes through fs_paths::canonicalize_display, which strips the Windows verbatim prefix; raw std::fs::canonicalize never crosses a published path.
 - (testing) The test suite requires a POSIX shell and ripgrep; dependency-absent tests fail loudly naming the dependency — there are no skips.
+- (sidebar) The pins sidebar renders one row per tool result of a pinned tool loop, one row per tool call without a completed result, and the loop opener only for a standalone pinned non-loop entry; pin state itself still applies to the whole loop.

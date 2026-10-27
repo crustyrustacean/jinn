@@ -202,13 +202,18 @@ impl AppState {
 
     /// Returns pinned entry IDs sorted by position for the active session.
     ///
+    /// The ids are the pins sidebar's *display rows* (one per tool result of
+    /// a pinned loop, one per pending call, one per standalone entry), so
+    /// every cursor consumer indexes the same list the sidebar renders.
     /// Order: TOP entries first, then RELATIVE, then BOTTOM.
     /// Within each group, entries maintain their original history order (stable sort).
     #[must_use]
     pub fn sorted_pinned_ids(&self) -> Vec<ChatEntryId> {
-        let mut pinned = self.active_session().pinned_entries();
-        pinned.sort_by_key(|entry| pin_sort_key(entry.pin_position));
-        pinned.iter().map(|e| e.id.clone()).collect()
+        self.active_session()
+            .pinned_display_rows()
+            .into_iter()
+            .map(|row| row.entry_id)
+            .collect()
     }
 
     /// Invalidate all theme-sensitive caches. Called when the active theme changes.

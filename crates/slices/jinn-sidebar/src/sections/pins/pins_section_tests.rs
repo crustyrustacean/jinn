@@ -14,6 +14,50 @@ use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::protocol::{ChangeSource, ChatEntry, ChatEntryId, PinPosition};
 use jinn_slices::route::ScopeSignal;
 
+/// A full tool loop pinned as a chunk: user prompt, assistant opener, two
+/// call+result pairs; every loop member carries the given pin position.
+fn state_with_pinned_loop(position: PinPosition) -> (AppState, Vec<ChatEntryId>) {
+    let mut state = AppState::default_with_scope_focus();
+    let mut ids = Vec::new();
+    let mut push = |state: &mut AppState, entry: ChatEntry| {
+        let id = entry.id.clone();
+        state.active_session_mut().push_entry(entry);
+        ids.push(id);
+    };
+    push(&mut state, ChatEntry::user("load things"));
+    push(&mut state, ChatEntry::assistant(""));
+    push(&mut state, ChatEntry::tool_call("tc-1", "skill", "{}"));
+    push(&mut state, ChatEntry::tool_call("tc-2", "save_plan", "{}"));
+    {
+        let result = ChatEntry::tool_result(
+            "tc-1",
+            "skill",
+            "<skill name=\"jinn-usage\" location=\"/x\">body</skill>",
+            ToolResultStatus::Success,
+        );
+        let id = result.id.clone();
+        state.active_session_mut().push_entry(result);
+        ids.push(id);
+    }
+    {
+        let result = ChatEntry::tool_result(
+            "tc-2",
+            "save_plan",
+            "saved plan to /mnt/x",
+            ToolResultStatus::Success,
+        );
+        let id = result.id.clone();
+        state.active_session_mut().push_entry(result);
+        ids.push(id);
+    }
+    // Pin the loop members only (indices 1..): chunk semantics pin the whole
+    // loop from any member, and the user prompt stays a separate row.
+    for id in &ids[1..] {
+        state.active_session_mut().pin_entry(id, position);
+    }
+    (state, ids)
+}
+
 fn state_with_pinned(count: usize) -> AppState {
     let mut state = AppState::default_with_scope_focus();
     let mut ids = vec![];
@@ -963,4 +1007,261 @@ fn a_selected_pin_row_bands_the_full_width_with_a_dark_gutter_and_banded_badge()
         .expect("badge cell");
     assert_eq!(badge_cell.bg, theme.selection_fg);
     assert_eq!(badge_cell.fg, theme.gutter_bg);
+}
+
+// ---------------------------------------------------------------------------
+// Pinned tool loop displays as one row per result
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
+fn pinned_tool_loop_shows_one_visible_row_per_result() {
+    // Given a pinned tool loop with two completed results and the sidebar focused.
+    let (state, _ids) = state_with_pinned_loop(PinPosition::Relative);
+    // (scope_push needs a state we can mutate only when focusing the sidebar;
+    // rendering itself does not, so this test binds immutably.)
+
+    // When rendering the pins section.
+    let mut section = PinsSection;
+    let rows = render_rows(&mut section, &state, 60, 20);
+    let combined = rows.join("\n");
+
+    // Then exactly two rows render: one per result, no ♦ opener, no ⚒ calls.
+    let skill_rows = combined.matches("jinn-usage").count();
+    let plan_rows = combined.matches("saved plan").count();
+    assert_eq!(skill_rows, 1, "one skill row: {combined}");
+    assert_eq!(plan_rows, 1, "one save_plan row: {combined}");
+    // And the rows carry the result labels, not call labels.
+    assert!(
+        !combined.contains("skill(...)"),
+        "no ⚒ call row for a result loop: {combined}"
+    );
+    assert!(
+        !combined.contains("save_plan(...)"),
+        "no ⚒ call row for a result loop: {combined}"
+    );
+    // And the skill row shows the summary label, not raw XML.
+    assert!(
+        !combined.contains("<skill"),
+        "skill row uses the summary label: {combined}"
+    );
+}
+
+#[rstest::rstest]
+fn header_count_and_section_height_equal_the_display_row_count() {
+    // Given a pinned tool loop with two completed results.
+    let (state, _ids) = state_with_pinned_loop(PinPosition::Relative);
+
+    // Then the header count equals the display-row count (2 results — the
+    // opener and calls are hidden members), not the pinned entry count (5).
+    let mut section = PinsSection;
+    let rendered = render_rows(&mut section, &state, 60, 20).join("\n");
+    let display_count = state.active_session().pinned_display_count();
+    assert_eq!(display_count, 2);
+    assert_ne!(
+        display_count,
+        state.active_session().pinned_entries().len(),
+        "the display projection must differ from the raw pinned count"
+    );
+    assert!(
+        rendered.contains(&format!("Pinned Context - {display_count}")),
+        "header must show the display-row count: {rendered}"
+    );
+    // And the section height uses the same count.
+    let height = pins_section_content_height(&state);
+    assert_eq!(height, display_count as u16 + 3);
+    // And the layout table agrees with the section.
+    assert_eq!(
+        crate::sections::layout::pins_rows(&state),
+        height,
+        "layout pins_rows must mirror the section height"
+    );
+}
+
+#[rstest::rstest]
+fn unpin_from_the_displayed_result_row_clears_the_whole_loop() {
+    // Given a pinned loop with the first result row selected.
+    let (mut state, ids) = state_with_pinned_loop(PinPosition::Relative);
+    let first_result_id = ids[4].clone();
+    state
+        .frontend
+        .update_sections(|s| s.pins.select_by_id(first_result_id.clone()));
+
+    // When handling pins unpin.
+    let result = handle_pins_unpin(&mut state);
+
+    // Then an UnpinChatEntry command for the displayed row's entry is returned.
+    let names = result
+        .message_names
+        .iter()
+        .any(|n| n.contains("UnpinChatEntry"));
+    assert!(
+        names,
+        "unpin must emit a command: {:?}",
+        result.message_names
+    );
+    // (The whole-loop clear is the actor's chunk semantics, covered by the
+    // history-editor tests; here the row id is the representative entry.)
+}
+
+#[rstest::rstest]
+fn pin_cycle_targets_the_displayed_row_and_skips_hidden_members() {
+    // Given a pinned loop whose rows are: user (idx 0), result skill (idx 1),
+    // result save_plan (idx 2) — the opener and calls are hidden members.
+    let (mut state, ids) = state_with_pinned_loop(PinPosition::Top);
+    // Select the second displayed row (the save_plan result).
+    let save_plan_result_id = ids[5].clone();
+    state
+        .frontend
+        .update_sections(|s| s.pins.select_by_id(save_plan_result_id.clone()));
+
+    // When cycling the pin position.
+    let result = handle_pins_pin_cycle(&mut state);
+
+    // Then a PinChatEntry command is returned for the displayed row's entry.
+    assert!(
+        result
+            .message_names
+            .iter()
+            .any(|n| n.contains("PinChatEntry")),
+        "cycle must emit a command: {:?}",
+        result.message_names
+    );
+}
+
+#[rstest::rstest]
+fn navigation_moves_across_displayed_rows_only() {
+    // Given a pinned loop with the cursor on the first result row.
+    let (mut state, ids) = state_with_pinned_loop(PinPosition::Relative);
+    let first_result_id = ids[4].clone();
+    state
+        .frontend
+        .update_sections(|s| s.pins.select_by_id(first_result_id.clone()));
+
+    // When moving down.
+    let nav = navigate(
+        &crate::sections::section_trait::SidebarIntent::MoveDown,
+        &mut state,
+    );
+
+    // Then the move lands and the selection is a displayed row id.
+    assert!(matches!(
+        nav,
+        crate::sections::section_trait::SectionNavResult::Moved
+    ));
+    let sorted_ids = state.sorted_pinned_ids();
+    let selected = state
+        .frontend
+        .with_sections(|s| s.pins.selected_id().cloned(), || None);
+    assert!(selected.is_some_and(|id| sorted_ids.contains(&id)));
+}
+
+#[rstest::rstest]
+fn skill_load_row_renders_the_rel_badge_and_summary_label() {
+    // Given a pinned loop that loaded jinn-usage (Relative pin, as chat-log pins are).
+    let (state, _ids) = state_with_pinned_loop(PinPosition::Relative);
+
+    // When rendering the pins section.
+    let mut section = PinsSection;
+    let rows = render_rows(&mut section, &state, 60, 20);
+
+    // Then exactly one row composes the badge and summary label.
+    let skill_row = rows
+        .iter()
+        .find(|row| row.contains("jinn-usage"))
+        .expect("the skill row to render");
+    assert!(skill_row.contains("[REL]"), "badge on the row: {skill_row}");
+    assert!(
+        skill_row.contains('\u{2756}'),
+        "skill icon on the row: {skill_row}"
+    );
+    assert_eq!(
+        rows.iter().filter(|row| row.contains("jinn-usage")).count(),
+        1,
+        "exactly one row for the loaded skill"
+    );
+}
+
+#[rstest::rstest]
+fn save_plan_row_renders_the_check_icon_and_content() {
+    // Given a pinned loop whose save_plan result succeeded.
+    let (state, _ids) = state_with_pinned_loop(PinPosition::Relative);
+
+    // When rendering the pins section.
+    let mut section = PinsSection;
+    let rows = render_rows(&mut section, &state, 60, 20);
+
+    // Then its row shows the ✓ icon, the tool name, and the content.
+    let plan_row = rows
+        .iter()
+        .find(|row| row.contains("save_plan"))
+        .expect("the save_plan row to render");
+    assert!(plan_row.contains('✓'), "success icon: {plan_row}");
+    assert!(
+        plan_row.contains("saved plan"),
+        "result content: {plan_row}"
+    );
+}
+
+#[rstest::rstest]
+fn two_parallel_skill_results_render_in_load_order() {
+    // Given a loop that loaded two skills in one turn (skill A first).
+    let mut state = AppState::default_with_scope_focus();
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::user("load two"));
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::assistant(""));
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::tool_call("tc-a", "skill", "{}"));
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::tool_call("tc-b", "skill", "{}"));
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::tool_result(
+            "tc-a",
+            "skill",
+            "<skill name=\"first-skill\" location=\"/x\">body</skill>",
+            ToolResultStatus::Success,
+        ));
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::tool_result(
+            "tc-b",
+            "skill",
+            "<skill name=\"second-skill\" location=\"/x\">body</skill>",
+            ToolResultStatus::Success,
+        ));
+    let ids: Vec<ChatEntryId> = state
+        .active_session()
+        .history()
+        .iter()
+        .skip(1)
+        .map(|e| e.id.clone())
+        .collect();
+    for id in &ids {
+        state
+            .active_session_mut()
+            .pin_entry(id, PinPosition::Relative);
+    }
+
+    // When rendering the pins section.
+    let mut section = PinsSection;
+    let rows = render_rows(&mut section, &state, 80, 20);
+
+    // Then two ❖ rows appear, first-skill before second-skill.
+    let first_at = rows
+        .iter()
+        .position(|row| row.contains("first-skill"))
+        .expect("first skill row");
+    let second_at = rows
+        .iter()
+        .position(|row| row.contains("second-skill"))
+        .expect("second skill row");
+    assert!(
+        first_at < second_at,
+        "load order: first-skill row precedes second-skill row"
+    );
 }

@@ -1145,10 +1145,10 @@ mod tests {
                 let mut msg = send_msg(chat.clone());
                 msg.text = Some("echo val=$TERMVAR".to_owned());
                 msg.keys = vec!["enter".to_owned()];
-                if let SendTermOutcome::Sent(screen) = actor.ask::<_, SendTermOutcome>(msg).await {
-                    if plain_screen(&screen.screen).contains("val=inner-42") {
-                        return;
-                    }
+                if let SendTermOutcome::Sent(screen) = actor.ask::<_, SendTermOutcome>(msg).await
+                    && plain_screen(&screen.screen).contains("val=inner-42")
+                {
+                    return;
                 }
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }

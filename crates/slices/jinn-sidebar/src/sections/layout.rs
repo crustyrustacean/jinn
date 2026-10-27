@@ -172,7 +172,7 @@ pub fn persona_rows(_state: &AppState) -> u16 {
 /// Pins section content height in rows; zero when nothing is pinned.
 #[must_use]
 pub fn pins_rows(state: &AppState) -> u16 {
-    let count = state.active_session().pinned_entries().len();
+    let count = state.active_session().pinned_display_count();
     if count == 0 {
         return 0;
     }

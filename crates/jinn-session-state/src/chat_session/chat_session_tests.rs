@@ -16,6 +16,7 @@ use jinn_token_count_msg::TokenRecord;
 
 use jinn_core_types::{
     ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, EntryTiming, PinPosition, SessionId,
+    ToolCallId,
 };
 use marked_path::MarkedPathAccess as _;
 
@@ -7657,4 +7658,325 @@ fn an_interrupted_call_reaches_the_model_with_its_own_prose() {
             .is_some_and(|calls| calls.iter().any(|c| c.id.as_str() == "tc_1")),
         "the interrupted call must ride on the same message"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Pinned display-row projection (`pinned_display_rows`)
+// ---------------------------------------------------------------------------
+
+/// A completed call+result loop: user, assistant opener, call, success result.
+fn loop_session(call_id: &str, name: &str, content: &str) -> ChatSessionState {
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("run it"));
+    session.push_entry(ChatEntry::assistant(""));
+    session.push_entry(ChatEntry::tool_call(call_id, name, "{}"));
+    session.push_entry(ChatEntry::tool_result(
+        call_id,
+        name,
+        content,
+        ToolResultStatus::Success,
+    ));
+    session
+}
+
+#[rstest::rstest]
+fn display_rows_project_a_pinned_loop_to_one_row_per_result() {
+    // Given a session whose tool loop is pinned as a whole.
+    let mut session = loop_session("tc-1", "bash", "file.txt");
+    let ids: Vec<ChatEntryId> = session
+        .history()
+        .iter()
+        .skip(1)
+        .map(|e| e.id.clone())
+        .collect();
+    for id in &ids {
+        session.pin_entry(id, PinPosition::Relative);
+    }
+
+    // When projecting display rows.
+    let rows = session.pinned_display_rows();
+
+    // Then the loop contributes exactly one row, carrying the result entry's id.
+    assert_eq!(rows.len(), 1, "one result row, not one per member");
+    assert_eq!(rows[0].entry_id, session.history()[3].id);
+    // And the label names the result.
+    assert_eq!(
+        rows[0].label,
+        PinRowLabel::Result {
+            name: "bash".to_owned(),
+            content: "file.txt".to_owned(),
+            success: true
+        }
+    );
+}
+
+#[rstest::rstest]
+fn display_rows_give_each_parallel_result_its_own_row_in_history_order() {
+    // Given a loop with two parallel call+result pairs, pinned as a whole.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("load two"));
+    session.push_entry(ChatEntry::assistant(""));
+    session.push_entry(ChatEntry::tool_call("tc-1", "skill", "{}"));
+    session.push_entry(ChatEntry::tool_call("tc-2", "save_plan", "{}"));
+    session.push_entry(ChatEntry::tool_result(
+        "tc-1",
+        "skill",
+        "<skill name=\"jinn-usage\" location=\"/x\">body</skill>",
+        ToolResultStatus::Success,
+    ));
+    session.push_entry(ChatEntry::tool_result(
+        "tc-2",
+        "save_plan",
+        "saved plan to /mnt/x",
+        ToolResultStatus::Success,
+    ));
+    let ids: Vec<ChatEntryId> = session
+        .history()
+        .iter()
+        .skip(1)
+        .map(|e| e.id.clone())
+        .collect();
+    for id in &ids {
+        session.pin_entry(id, PinPosition::Relative);
+    }
+
+    // When projecting display rows.
+    let rows = session.pinned_display_rows();
+
+    // Then both results appear, in history order.
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].entry_id, session.history()[4].id);
+    assert_eq!(rows[1].entry_id, session.history()[5].id);
+    // And the first is the skill summary label.
+    assert_eq!(
+        rows[0].label,
+        PinRowLabel::SkillResult {
+            content: "\u{2756} jinn-usage".to_owned()
+        }
+    );
+}
+
+#[rstest::rstest]
+fn display_rows_fall_back_to_one_row_per_call_without_a_completed_result() {
+    // Given a loop whose call has a pending result (and a call with no result
+    // at all in the parallel batch), pinned as a whole.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("go"));
+    session.push_entry(ChatEntry::assistant(""));
+    session.push_entry(ChatEntry::tool_call("tc-1", "bash", "{}"));
+    session.push_entry(ChatEntry::tool_call("tc-2", "read", "{}"));
+    session.push_entry(ChatEntry::tool_result(
+        "tc-1",
+        "bash",
+        "still running",
+        ToolResultStatus::Pending,
+    ));
+    let ids: Vec<ChatEntryId> = session
+        .history()
+        .iter()
+        .skip(1)
+        .map(|e| e.id.clone())
+        .collect();
+    for id in &ids {
+        session.pin_entry(id, PinPosition::Relative);
+    }
+
+    // When projecting display rows.
+    let rows = session.pinned_display_rows();
+
+    // Then each call gets its own pending row: one for the pending result's
+    // call, one for the never-resulted call.
+    assert_eq!(rows.len(), 2, "one ⚒ row per call");
+    assert_eq!(rows[0].entry_id, session.history()[2].id);
+    assert_eq!(rows[1].entry_id, session.history()[3].id);
+    // And the labels are call labels.
+    assert_eq!(
+        rows[0].label,
+        PinRowLabel::Call {
+            name: "bash".to_owned()
+        }
+    );
+    assert_eq!(
+        rows[1].label,
+        PinRowLabel::Call {
+            name: "read".to_owned()
+        }
+    );
+}
+
+#[rstest::rstest]
+fn display_rows_show_completed_results_alongside_a_straggling_call() {
+    // Given a loop with two completed results and one call with only a
+    // pending result, pinned as a whole.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("go"));
+    session.push_entry(ChatEntry::assistant(""));
+    session.push_entry(ChatEntry::tool_call("tc-1", "read", "{}"));
+    session.push_entry(ChatEntry::tool_call("tc-2", "write", "{}"));
+    session.push_entry(ChatEntry::tool_call("tc-3", "bash", "{}"));
+    session.push_entry(ChatEntry::tool_result(
+        "tc-1",
+        "read",
+        "a.txt",
+        ToolResultStatus::Success,
+    ));
+    session.push_entry(ChatEntry::tool_result(
+        "tc-2",
+        "write",
+        "ok",
+        ToolResultStatus::Failure,
+    ));
+    session.push_entry(ChatEntry::tool_result(
+        "tc-3",
+        "bash",
+        "running",
+        ToolResultStatus::Pending,
+    ));
+    let ids: Vec<ChatEntryId> = session
+        .history()
+        .iter()
+        .skip(1)
+        .map(|e| e.id.clone())
+        .collect();
+    for id in &ids {
+        session.pin_entry(id, PinPosition::Relative);
+    }
+
+    // When projecting display rows.
+    let rows = session.pinned_display_rows();
+
+    // Then three rows appear: the straggling call (it sits first in history)
+    // followed by the two results.
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[0].entry_id, session.history()[4].id);
+    assert_eq!(rows[1].entry_id, session.history()[5].id);
+    assert_eq!(rows[2].entry_id, session.history()[6].id);
+    // And the failure is a ✗ result row, never a ⚒ call row.
+    assert!(matches!(
+        &rows[2].label,
+        PinRowLabel::Result { success: false, .. }
+    ));
+}
+
+#[rstest::rstest]
+fn display_rows_render_non_loop_pins_verbatim_one_row_each() {
+    // Given a session with pinned user and system entries.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    session.push_entry(ChatEntry::system("a note"));
+    let user_id = session.history()[0].id.clone();
+    let sys_id = session.history()[1].id.clone();
+    session.pin_entry(&user_id, PinPosition::Relative);
+    session.pin_entry(&sys_id, PinPosition::Relative);
+
+    // When projecting display rows.
+    let rows = session.pinned_display_rows();
+
+    // Then each entry keeps its own verbatim row.
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].label, PinRowLabel::Verbatim);
+    assert_eq!(rows[1].label, PinRowLabel::Verbatim);
+}
+
+#[rstest::rstest]
+fn display_rows_sort_top_relative_bottom_stably() {
+    // Given pinned entries in BOT, TOP, REL order of pinning.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("bottom"));
+    session.push_entry(ChatEntry::user("top"));
+    session.push_entry(ChatEntry::user("rel"));
+    let bot_id = session.history()[0].id.clone();
+    let top_id = session.history()[1].id.clone();
+    let rel_id = session.history()[2].id.clone();
+    session.pin_entry(&bot_id, PinPosition::Bottom);
+    session.pin_entry(&top_id, PinPosition::Top);
+    session.pin_entry(&rel_id, PinPosition::Relative);
+
+    // When projecting display rows.
+    let rows = session.pinned_display_rows();
+
+    // Then rows are TOP, REL, BOT; within a group history order holds.
+    assert_eq!(rows[0].entry_id, top_id);
+    assert_eq!(rows[1].entry_id, rel_id);
+    assert_eq!(rows[2].entry_id, bot_id);
+}
+
+#[rstest::rstest]
+fn display_rows_are_empty_when_nothing_is_pinned() {
+    // Given a session with an unpinned tool loop.
+    let session = loop_session("tc-1", "bash", "file.txt");
+
+    // When projecting display rows.
+    let rows = session.pinned_display_rows();
+
+    // Then no rows exist.
+    assert!(rows.is_empty());
+}
+
+#[rstest::rstest]
+fn display_count_matches_the_row_count() {
+    // Given a pinned loop.
+    let mut session = loop_session("tc-1", "bash", "file.txt");
+    let ids: Vec<ChatEntryId> = session
+        .history()
+        .iter()
+        .skip(1)
+        .map(|e| e.id.clone())
+        .collect();
+    for id in &ids {
+        session.pin_entry(id, PinPosition::Relative);
+    }
+
+    // When asking for the display count.
+    let count = session.pinned_display_count();
+
+    // Then it equals the projected row count, not the pinned entry count.
+    assert_eq!(count, 1);
+    assert_ne!(count, session.pinned_entries().len());
+}
+
+#[rstest::rstest]
+fn display_rows_replace_a_pending_row_in_place_when_its_result_completes() {
+    // Given a pinned loop with a pending result: one ⚒ row for the call.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("go"));
+    session.push_entry(ChatEntry::assistant(""));
+    session.push_entry(ChatEntry::tool_call("tc-1", "bash", "{}"));
+    session.push_entry(ChatEntry::tool_result(
+        "tc-1",
+        "bash",
+        "still running",
+        ToolResultStatus::Pending,
+    ));
+    let ids: Vec<ChatEntryId> = session
+        .history()
+        .iter()
+        .skip(1)
+        .map(|e| e.id.clone())
+        .collect();
+    for id in &ids {
+        session.pin_entry(id, PinPosition::Relative);
+    }
+    let rows_before = session.pinned_display_rows();
+    assert_eq!(rows_before.len(), 1);
+
+    // When the result completes (the pending entry is finalized in place,
+    // carrying the loop's pin position as production does).
+    session.finalize_tool_result(
+        &ToolCallId::from("tc-1"),
+        "bash",
+        "file.txt",
+        true,
+        None,
+        None,
+        Some(PinPosition::Relative),
+    );
+
+    // Then the row count is unchanged and the row now carries the result.
+    let rows_after = session.pinned_display_rows();
+    assert_eq!(rows_after.len(), rows_before.len());
+    assert!(matches!(
+        &rows_after[0].label,
+        PinRowLabel::Result { success: true, .. }
+    ));
 }
