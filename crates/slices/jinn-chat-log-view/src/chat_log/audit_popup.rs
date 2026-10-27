@@ -20,9 +20,20 @@ use ratatui::text::{Line, Span};
 /// (chronological order). For entries with no history, returns a header plus a
 /// single `(no events recorded)` body line.
 ///
+/// `model` is the `(used, requested)` model pair resolved by the caller (the
+/// entry's own stamps, or its paired tool call's for a tool result). When
+/// present, a `Model:` line renders after the timestamp; when the requested
+/// model differs, a second line `       via <requested>` renders under it,
+/// `via` aligned with the model name — the fact that makes a routed model
+/// legible. `None` renders no line.
+///
 /// All lines carry the infopopup background color so they render cleanly over
 /// the chat-log area underneath.
-pub fn format_audit_lines(entry: &ChatEntry, theme: &Theme) -> Vec<Line<'static>> {
+pub fn format_audit_lines(
+    entry: &ChatEntry,
+    theme: &Theme,
+    model: Option<(&str, Option<&str>)>,
+) -> Vec<Line<'static>> {
     let header_style = Style::default()
         .fg(theme.infopopup_title)
         .bg(theme.infopopup_bg);
@@ -36,6 +47,24 @@ pub fn format_audit_lines(entry: &ChatEntry, theme: &Theme) -> Vec<Line<'static>
         format!("Sent: {}", format_timestamp(&entry.timing.at())),
         body_style,
     )]));
+
+    if let Some((used, requested)) = model {
+        lines.push(Line::from(vec![Span::styled(
+            format!("Model: {used}"),
+            body_style,
+        )]));
+        // The routing note rides its own line instead of a parenthetical: a
+        // long routed model plus "(requested …)" on one line overflows the
+        // popup width and truncates mid-name. `via` is indented to sit under
+        // the model name, aligned with the "Model: " prefix.
+        if let Some(req) = requested.filter(|req| *req != used) {
+            let indent = "Model: ".len();
+            lines.push(Line::from(vec![Span::styled(
+                format!("{}via {req}", " ".repeat(indent)),
+                body_style,
+            )]));
+        }
+    }
 
     if let EntryTiming::Streamed { .. } = &entry.timing {
         let ttft_text = match entry.timing.ttft() {
@@ -287,9 +316,17 @@ mod tests {
     use jinn_core_types::ChatEntry;
     use jinn_theme::default_theme;
 
-    /// Convenience: format `entry` with the default theme.
+    /// Convenience: format `entry` with the default theme and no model line.
     fn format(entry: &ChatEntry) -> Vec<Line<'static>> {
-        format_audit_lines(entry, &default_theme())
+        format_audit_lines(entry, &default_theme(), None)
+    }
+
+    /// Convenience: format `entry` with the given model pair.
+    fn format_with_model(
+        entry: &ChatEntry,
+        model: Option<(&str, Option<&str>)>,
+    ) -> Vec<Line<'static>> {
+        format_audit_lines(entry, &default_theme(), model)
     }
 
     /// Read the unstyled string of a line (for assertions that don't care about color).
@@ -814,7 +851,7 @@ mod tests {
         let theme = default_theme();
 
         // When formatting.
-        let lines = format_audit_lines(&entry, &theme);
+        let lines = format_audit_lines(&entry, &theme, None);
 
         // Then the TTFT value span uses the queue color.
         let idx = find_timing_line(&lines).expect("should have a timing line");
@@ -838,7 +875,7 @@ mod tests {
         let theme = default_theme();
 
         // When formatting.
-        let lines = format_audit_lines(&entry, &theme);
+        let lines = format_audit_lines(&entry, &theme, None);
 
         // Then the Stream Duration value span uses the streaming color.
         let idx = find_timing_line(&lines).expect("should have a timing line");
@@ -848,5 +885,75 @@ mod tests {
             Some(theme.streaming),
             "Stream Duration value should use streaming color"
         );
+    }
+
+    // ── Model line tests ───────────────────────────────────────────────
+
+    /// Helper: find the model line (starts with "Model:").
+    fn find_model_line(lines: &[Line<'_>]) -> Option<usize> {
+        lines.iter().position(|l| text(l).starts_with("Model:"))
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn popup_shows_requested_when_models_differ() {
+        // Given an entry and a model pair where the response model differs
+        // from the requested one (the auto-router case).
+        let entry = ChatEntry::assistant("answer");
+
+        // When formatting with the differing pair.
+        let lines = format_with_model(
+            &entry,
+            Some(("anthropic/claude-sonnet-4.5", Some("openrouter/auto"))),
+        );
+
+        // Then the model line names the routed model.
+        let idx = find_model_line(&lines).expect("should have a model line");
+        assert_eq!(text(&lines[idx]), "Model: anthropic/claude-sonnet-4.5");
+        // And the routing note rides its own line, `via` aligned under the
+        // model name.
+        let via = &lines[idx + 1];
+        assert_eq!(
+            text(via),
+            "       via openrouter/auto",
+            "via should be indented to align with the model name"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn popup_shows_only_model_when_requested_matches_or_is_absent() {
+        // Given an entry whose response model equals the requested one.
+        let entry = ChatEntry::assistant("answer");
+
+        // When formatting with a matching pair.
+        let lines = format_with_model(&entry, Some(("openai/gpt-5.1", Some("openai/gpt-5.1"))));
+
+        // Then the model line names the model with no via line.
+        let idx = find_model_line(&lines).expect("should have a model line");
+        assert_eq!(text(&lines[idx]), "Model: openai/gpt-5.1");
+        // And with no requested value at all, the same single-line shape.
+        let lines = format_with_model(&entry, Some(("openai/gpt-5.1", None)));
+        let idx = find_model_line(&lines).expect("should have a model line");
+        assert_eq!(text(&lines[idx]), "Model: openai/gpt-5.1");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn popup_omits_model_line_when_absent() {
+        // Given an entry with no model (a pre-attribution entry or a kind
+        // that never carries one).
+        let entry = ChatEntry::user("hi");
+
+        // When formatting with no model.
+        let lines = format(&entry);
+
+        // Then no line is a model line, and the line count is unchanged
+        // from the no-model layout.
+        assert!(
+            find_model_line(&lines).is_none(),
+            "no model line should render without a model"
+        );
+        assert_eq!(lines.len(), 5);
     }
 }

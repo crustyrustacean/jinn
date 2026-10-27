@@ -24,6 +24,11 @@ pub struct SessionCoreEphemeral {
     /// Generation marker for the currently active inference stream.
     #[serde(skip)]
     pub stream_dispatched_at: Option<Timestamp>,
+    /// The model requested at dispatch for the currently active inference
+    /// stream. Entries created while a generation is live are stamped from
+    /// this; the completion-time response override never touches it.
+    #[serde(skip)]
+    pub stream_request_model: Option<String>,
     /// Deduplicated context overrides waiting for an accumulation threshold.
     #[serde(skip)]
     pub accumulated_overrides: MutationAccumulator,

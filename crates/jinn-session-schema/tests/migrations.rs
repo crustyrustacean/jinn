@@ -839,9 +839,10 @@ fn v28_backfills_rowid_map_from_existing_fts() {
         "one map row per FTS row, sessions preserved"
     );
 
-    // And the recorded migration version is 28.
+    // And the recorded migration version is 29 (v28 is not the chain's end;
+    // running it as part of a fresh chain records every later version too).
     let version: i64 = conn
         .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
         .expect("current version");
-    assert_eq!(version, 28, "v28 recorded");
+    assert_eq!(version, 29, "v28 recorded");
 }

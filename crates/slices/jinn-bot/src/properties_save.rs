@@ -176,13 +176,11 @@ pub(super) fn commit_pending_to_session(
     // this guard is what makes the lock hold even if a pending value was
     // somehow carried in. Every trigger but manual reads the parent's
     // turn, and a standalone bot has no parent to read.
-    session.set_bot_trigger(
-        if popup.has_parent {
-            popup.pending_trigger
-        } else {
-            BotTrigger::Manual
-        },
-    );
+    session.set_bot_trigger(if popup.has_parent {
+        popup.pending_trigger
+    } else {
+        BotTrigger::Manual
+    });
     session.set_bot_model_setting(popup.pending_model_setting);
     for field in [SetField::Tool, SetField::Skill] {
         // Only a row the user actually moved may write. An untouched row

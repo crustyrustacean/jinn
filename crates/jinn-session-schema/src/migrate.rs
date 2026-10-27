@@ -1,4 +1,4 @@
-//! The migration runner and individual migrations (v0..=v28).
+//! The migration runner and individual migrations (v0..=v29).
 //!
 //! This crate is the single source of truth for the session schema. Note the
 //! deliberate version pins, which keep the migrations immutable:
@@ -257,12 +257,17 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "add_fts_rowid_map",
         apply: migrate_v28,
     },
+    Migration {
+        version: 29,
+        name: "add_entries_model_used_columns",
+        apply: migrate_v29,
+    },
 ];
 
 /// The newest migration in [`MIGRATIONS`], kept in lockstep with
 /// [`LATEST_VERSION`] (which is asserted equal to this by
 /// `latest_version_matches_chain`).
-pub const CHAIN_LATEST_VERSION: i32 = 28;
+pub const CHAIN_LATEST_VERSION: i32 = 29;
 
 /// Applies every migration above `current`, announcing each to stderr.
 ///
@@ -1266,6 +1271,32 @@ pub fn migrate_v28(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaM
     )
     .change_context(SchemaMigrationError)
     .attach("v28: create fts_rowids and backfill from session_fts")?;
+    Ok(())
+}
+
+/// v29: Add the per-entry model attribution columns to `entries`.
+///
+/// Two nullable columns: `model_used` — the concrete model that produced the
+/// entry (response-reported when the stream completed normally, requested
+/// otherwise) — and `model_requested` — the model asked for at dispatch,
+/// never overridden. Both `NULL` for pre-v29 rows, permanently: an old
+/// entry's model is a fact nobody recorded, and inventing one would be a
+/// lie.
+pub fn migrate_v29(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+    // Idempotent: ignore "duplicate column" error if migration runs twice.
+    for (column, decl) in [("model_used", "TEXT"), ("model_requested", "TEXT")] {
+        let sql = format!("ALTER TABLE entries ADD COLUMN {column} {decl}");
+        match conn.execute(&sql, []) {
+            Ok(_) => {}
+            Err(rusqlite::Error::SqliteFailure(_, Some(msg)))
+                if msg.contains("duplicate column name") => {}
+            Err(e) => {
+                return Err(e)
+                    .change_context(SchemaMigrationError)
+                    .attach(format!("v29: add {column} column to entries"));
+            }
+        }
+    }
     Ok(())
 }
 

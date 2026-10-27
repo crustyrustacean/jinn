@@ -381,6 +381,8 @@ mod tests {
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         };
 
         // When checking each for a valid kept-region opener.
@@ -425,6 +427,8 @@ mod tests {
                 context_override: ContextOverride::Default,
                 context_history: Vec::new(),
                 token_count: None,
+                model_used: None,
+                model_requested: None,
             },
             ChatEntry::user("world"),
         ];

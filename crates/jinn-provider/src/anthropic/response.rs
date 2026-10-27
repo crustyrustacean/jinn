@@ -197,6 +197,7 @@ impl AnthropicStreamParser {
         Some(StreamEvent::Done {
             stop_reason: stop,
             usage,
+            model: None,
         })
     }
     fn handle_error_event(response: &serde_json::Value) -> Option<StreamEvent> {

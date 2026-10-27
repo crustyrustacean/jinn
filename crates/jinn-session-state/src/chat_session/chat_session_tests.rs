@@ -7890,7 +7890,7 @@ fn display_rows_are_empty_when_nothing_is_pinned() {
     let rows = session.pinned_display_rows();
 
     // Then no rows exist.
-    assert!(rows.is_empty());
+    assert_eq!(rows, [] as [crate::chat_session::PinDisplayRow; 0]);
 }
 
 #[rstest::rstest]
@@ -7959,4 +7959,117 @@ fn display_rows_replace_a_pending_row_in_place_when_its_result_completes() {
         &rows_after[0].label,
         PinRowLabel::Result { success: true, .. }
     ));
+}
+
+// ─── Model attribution tests ──────────────────────────────────────
+
+#[rstest::rstest]
+#[test]
+fn streaming_entries_stamped_with_request_model_at_creation() {
+    // Given a streaming session whose dispatch receipt recorded a requested
+    // model.
+    let mut session = streaming_session();
+    session.set_stream_request_model(Some("openrouter/auto".to_owned()));
+    let da = dispatched_at();
+
+    // When the three provider-produced entries are created.
+    session.begin_thinking(da);
+    let _ = session.append_stream_token("Hello", da);
+    session.begin_tool_call(0, &ToolCallId::from("tc-1"), "read", da);
+
+    // Then every one carries the requested model on both fields.
+    for (label, entry) in [("thinking", 0usize), ("assistant", 1), ("tool call", 2)] {
+        let entry = session.history().get(entry).expect("entry exists");
+        assert_eq!(
+            entry.model_used.as_deref(),
+            Some("openrouter/auto"),
+            "{label} entry must carry the generation's requested model"
+        );
+        assert_eq!(
+            entry.model_requested.as_deref(),
+            Some("openrouter/auto"),
+            "{label} entry must carry the generation's requested model"
+        );
+    }
+}
+
+#[rstest::rstest]
+#[test]
+fn empty_request_model_normalizes_to_none_on_entries() {
+    // Given a streaming session whose dispatch carried the no-provider
+    // sentinel (an empty model id).
+    let mut session = streaming_session();
+    session.set_stream_request_model(Some(String::new()));
+    let da = dispatched_at();
+
+    // When an assistant entry is created.
+    let _ = session.append_stream_token("Hello", da);
+
+    // Then the entry carries no model rather than an empty string.
+    let entry = session.history().last().expect("entry exists");
+    assert_eq!(entry.model_used, None);
+    assert_eq!(entry.model_requested, None);
+}
+
+#[rstest::rstest]
+#[test]
+fn normal_completion_overrides_live_entry_models() {
+    // Given a streaming session with a thinking entry and an assistant entry,
+    // stamped with the requested model, and a ToolUse completion reporting a
+    // different response model.
+    let mut session = streaming_session();
+    session.set_stream_request_model(Some("openrouter/auto".to_owned()));
+    let da = dispatched_at();
+    session.begin_thinking(da);
+    let _ = session.append_stream_token("Hello", da);
+
+    // When the completion override runs on the live entries.
+    session.override_live_entry_models(Some("anthropic/claude-sonnet-4.5"));
+
+    // Then model_used is the response model on both live entries, while
+    // model_requested still names what was asked for.
+    for (label, idx) in [("thinking", 0usize), ("assistant", 1)] {
+        let entry = session.history().get(idx).expect("entry exists");
+        assert_eq!(
+            entry.model_used.as_deref(),
+            Some("anthropic/claude-sonnet-4.5"),
+            "{label} entry must carry the response model"
+        );
+        assert_eq!(
+            entry.model_requested.as_deref(),
+            Some("openrouter/auto"),
+            "{label} entry must keep the requested model"
+        );
+    }
+}
+
+#[rstest::rstest]
+#[test]
+fn requested_model_is_never_overridden_by_completion() {
+    // Given a streaming session with a live assistant entry.
+    let mut session = streaming_session();
+    session.set_stream_request_model(Some("openrouter/auto".to_owned()));
+    let _ = session.append_stream_token("Hello", dispatched_at());
+
+    // When the completion override runs.
+    session.override_live_entry_models(Some("openai/gpt-5.1"));
+
+    // Then the requested model survives untouched.
+    let entry = session.history().last().expect("entry exists");
+    assert_eq!(entry.model_requested.as_deref(), Some("openrouter/auto"));
+}
+
+#[rstest::rstest]
+#[test]
+fn set_stream_request_model_overwrites_between_dispatches() {
+    // Given a session whose first generation dispatched one model.
+    let mut session = streaming_session();
+    session.set_stream_request_model(Some("model-a".to_owned()));
+
+    // When a second dispatch arrives with a different model (overwrite on
+    // dispatch is the mechanism that keeps the stamp with its generation).
+    session.set_stream_request_model(Some("model-b".to_owned()));
+
+    // Then the active stamp is the second model.
+    assert_eq!(session.stream_request_model().as_deref(), Some("model-b"));
 }

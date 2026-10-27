@@ -3521,3 +3521,131 @@ async fn bot_fields_round_trip_through_save_and_load() {
     assert_eq!(metadata.reports[0].body, "the build was actually green");
     assert_eq!(metadata.reports[0].run, 1);
 }
+
+#[rstest::rstest]
+#[tokio::test]
+async fn entry_model_survives_persist_roundtrip() {
+    // Given a session whose entries carry model stamps.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("Model Attribution".to_owned());
+
+    let mut routed = ChatEntry::assistant("routed answer");
+    routed.restore_model_used(Some("anthropic/claude-sonnet-4.5".to_owned()));
+    routed.restore_model_requested(Some("openrouter/auto".to_owned()));
+    let mut plain = ChatEntry::assistant("plain answer");
+    plain.restore_model_used(Some("openai/gpt-5.1".to_owned()));
+    plain.restore_model_requested(Some("openai/gpt-5.1".to_owned()));
+    session.push_entry(routed);
+    session.push_entry(plain);
+
+    // When saving and loading.
+    store.save(&session.capture_snapshot()).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then both stamps are restored on both entries.
+    assert_eq!(loaded.history().len(), 2);
+    assert_eq!(
+        loaded.history()[0].model_used.as_deref(),
+        Some("anthropic/claude-sonnet-4.5")
+    );
+    assert_eq!(
+        loaded.history()[0].model_requested.as_deref(),
+        Some("openrouter/auto")
+    );
+    assert_eq!(
+        loaded.history()[1].model_used.as_deref(),
+        Some("openai/gpt-5.1")
+    );
+    assert_eq!(
+        loaded.history()[1].model_requested.as_deref(),
+        Some("openai/gpt-5.1")
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn legacy_row_without_model_loads_as_none() {
+    // Given a session saved without any model stamps (as a pre-v29 row).
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.push_entry(ChatEntry::assistant("old answer"));
+
+    // When saving and loading.
+    store.save(&session.capture_snapshot()).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then the entry loads with no model rather than failing.
+    assert_eq!(loaded.history()[0].model_used, None);
+    assert_eq!(loaded.history()[0].model_requested, None);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn conflicting_save_keeps_stored_model_over_null() {
+    // Given a shared entry whose model another session already persisted.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    let shared = ChatEntry::user("shared entry");
+    let shared_id = shared.id.clone();
+    session.push_entry(shared);
+    store
+        .save(&session.capture_snapshot())
+        .await
+        .expect("first save");
+
+    // (Seed a persisted model directly, as if another session's save had.)
+    store
+        .pool()
+        .execute(
+            "UPDATE entries SET model_used = 'anthropic/claude-sonnet-4.5', \
+             model_requested = 'openrouter/auto' WHERE id = ?",
+            vec![Box::new(shared_id.to_string())],
+        )
+        .await
+        .expect("seed persisted model");
+
+    // When saving a second session sharing the same entry, but with no model
+    // in memory (as a session from before attribution would).
+    let other_id = SessionId::new();
+    let mut other = ChatSessionState::new();
+    other.set_session_id(other_id.clone());
+    other.push_entry({
+        let mut clone = ChatEntry::user("shared entry");
+        clone.id = shared_id.clone();
+        clone
+    });
+    store
+        .save(&other.capture_snapshot())
+        .await
+        .expect("second save");
+
+    // Then the previously persisted model is not clobbered by the NULL.
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+    assert_eq!(
+        loaded.history()[0].model_used.as_deref(),
+        Some("anthropic/claude-sonnet-4.5")
+    );
+    assert_eq!(
+        loaded.history()[0].model_requested.as_deref(),
+        Some("openrouter/auto")
+    );
+}

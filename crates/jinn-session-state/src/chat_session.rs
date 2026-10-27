@@ -88,6 +88,19 @@ fn permits_or_inherits(filter: Option<&NameFilter>, name: &str) -> bool {
     filter.as_ref().is_none_or(|filter| filter.permits(name))
 }
 
+/// Stamps an entry with the dispatching generation's requested model.
+///
+/// Both fields get the same value: `model_requested` is the generation's
+/// request-time fact and is never overridden, while `model_used` starts
+/// here and is later replaced by the response-reported model when the
+/// stream completes normally. Tool results are deliberately unstamped —
+/// they are produced locally by the tool executor after the stream ended;
+/// the audit popup derives their model from the paired tool call instead.
+fn stamp_entry_with_generation_model(entry: &mut ChatEntry, model: Option<&str>) {
+    entry.model_used = model.map(str::to_owned);
+    entry.model_requested = model.map(str::to_owned);
+}
+
 /// Error returned when a streaming operation fails.
 #[derive(Debug, wherror::Error)]
 pub enum StreamingError {
@@ -1044,6 +1057,7 @@ impl ChatSessionState {
         let mut entry = ChatEntry::assistant("");
         entry.timing = EntryTiming::streamed(dispatched_at);
         entry.timing.set_first_token();
+        stamp_entry_with_generation_model(&mut entry, self.stream_request_model().as_deref());
         let index = self.push_entry(entry);
         self.core.ephemeral.machine.set_streaming_entry_index(index);
     }
@@ -1178,6 +1192,7 @@ impl ChatSessionState {
         let mut entry = ChatEntry::thinking("");
         entry.timing = EntryTiming::streamed(dispatched_at);
         entry.timing.set_first_token();
+        stamp_entry_with_generation_model(&mut entry, self.stream_request_model().as_deref());
         // Insert thinking BEFORE the assistant entry when the assistant entry
         // already exists. Some providers (OpenRouter) send reasoning tokens
         // AFTER content tokens, so the assistant entry is already in history.
@@ -1349,6 +1364,38 @@ impl ChatSessionState {
         // drops the StreamingPhase and clears streaming_thinking_entry_index().
         if let Some(idx) = self.core.ephemeral.machine.streaming_thinking_entry_index() {
             self.finish_thinking_entry(idx);
+        }
+    }
+
+    /// Sets the response-reported model on every live entry of the current
+    /// generation, replacing only `model_used`.
+    ///
+    /// `model_requested` is never touched: it is the request-time fact and
+    /// the whole point of the two fields is that they can differ. Live
+    /// entries are the ones the machine's indices still name — the
+    /// streaming assistant entry, the thinking entry, and every in-flight
+    /// tool call. Entries created before the stream started (the user's
+    /// message) are not provider-produced and are not stamped.
+    ///
+    /// Callers must invoke this while the indices are intact: the fold
+    /// runs before the phase actor's settle drops the `StreamingPhase`.
+    pub fn override_live_entry_models(&mut self, model: Option<&str>) {
+        let indices = {
+            let machine = &self.core.ephemeral.machine;
+            let mut all = Vec::new();
+            if let Some(idx) = machine.streaming_entry_index() {
+                all.push(idx);
+            }
+            if let Some(idx) = machine.streaming_thinking_entry_index() {
+                all.push(idx);
+            }
+            all.extend(machine.active_tool_call_indices().values().copied());
+            all
+        };
+        for idx in indices {
+            self.edit_history().with_entry_at_mut(idx, |entry| {
+                entry.model_used = model.map(str::to_owned);
+            });
         }
     }
 
@@ -1697,6 +1744,7 @@ impl ChatSessionState {
         let mut entry = ChatEntry::tool_call(id.clone(), name, "");
         entry.timing = EntryTiming::streamed(dispatched_at);
         entry.timing.set_first_token();
+        stamp_entry_with_generation_model(&mut entry, self.stream_request_model().as_deref());
         let history_index = self.push_entry(entry);
         // The tracking map is machine-level and always present, so a
         // registration made here survives every later phase transition — a
@@ -3852,6 +3900,29 @@ impl ChatSessionState {
     /// Arm the current inference-stream generation.
     pub fn arm_stream(&mut self, dispatched_at: Timestamp) {
         self.core.ephemeral.stream_dispatched_at = Some(dispatched_at);
+    }
+
+    /// Record the model requested for the current inference-stream generation.
+    ///
+    /// An empty string (the no-provider sentinel `accum.model_id`) is
+    /// normalized to `None` so no entry carries an empty model id. A
+    /// dispatch without a receipt always leaves the previous generation's
+    /// value in place — overwrite-on-dispatch is the mechanism that keeps
+    /// the stamp with its generation.
+    pub fn set_stream_request_model(&mut self, model: Option<String>) {
+        let normalized = model.filter(|m| !m.is_empty());
+        self.core.ephemeral.stream_request_model = normalized;
+    }
+
+    /// Return the model requested for the active inference-stream generation.
+    #[must_use]
+    pub fn stream_request_model(&self) -> Option<String> {
+        self.core.ephemeral.stream_request_model.clone()
+    }
+
+    /// Drop the requested-model stamp along with the generation it belongs to.
+    pub fn clear_stream_request_model(&mut self) {
+        self.core.ephemeral.stream_request_model = None;
     }
 
     /// Return the active inference-stream generation marker.

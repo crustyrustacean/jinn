@@ -478,6 +478,8 @@ struct JoinedEntry {
     kind: String,
     context_history: String,
     token_count: Option<i64>,
+    model_used: Option<String>,
+    model_requested: Option<String>,
     pin_position: Option<String>,
     ignored: bool,
     context_override: String,
@@ -491,6 +493,8 @@ impl FromRow for JoinedEntry {
             kind: row.get("kind")?,
             context_history: row.get("context_history")?,
             token_count: row.get("token_count")?,
+            model_used: row.get("model_used")?,
+            model_requested: row.get("model_requested")?,
             pin_position: row.get("pin_position")?,
             ignored: row.get("ignored")?,
             context_override: row.get("context_override")?,
@@ -810,7 +814,9 @@ fn load_context_in_transaction(
              session_history.pin_position AS pin_position, \
              session_history.ignored AS ignored, \
              session_history.context_override AS context_override, \
-             entries.token_count AS token_count \
+             entries.token_count AS token_count, \
+             entries.model_used AS model_used, \
+             entries.model_requested AS model_requested \
              FROM entries \
              INNER JOIN session_history ON entries.id = session_history.entry_id \
              WHERE session_history.session_id = ? \
@@ -824,6 +830,8 @@ fn load_context_in_transaction(
                 kind: row.get("kind")?,
                 context_history: row.get("context_history")?,
                 token_count: row.get("token_count")?,
+                model_used: row.get("model_used")?,
+                model_requested: row.get("model_requested")?,
                 pin_position: row.get("pin_position")?,
                 ignored: row.get("ignored")?,
                 context_override: row.get("context_override")?,
@@ -1119,6 +1127,8 @@ struct PersistableEntry {
     ignored: bool,
     context_override: String,
     token_count: Option<i64>,
+    model_used: Option<String>,
+    model_requested: Option<String>,
     attachments: Vec<Attachment>,
 }
 
@@ -1155,6 +1165,8 @@ impl PersistableEntry {
             ignored: entry.ignored(),
             context_override,
             token_count: entry.token_count.map(i64::from),
+            model_used: entry.model_used.clone(),
+            model_requested: entry.model_requested.clone(),
             attachments,
         })
     }
@@ -1234,20 +1246,26 @@ fn insert_entry_and_junction(
 ) -> rusqlite::Result<()> {
     // Insert entry. On conflict (entry shared across sessions), update
     // context_history since it mutates after first insertion via
-    // `apply_context_override`. `token_count` keeps the already-stored value
-    // when the incoming one is NULL — a session saved before its actor
-    // computed the count must not erase a count another session persisted.
+    // `apply_context_override`. `token_count`, `model_used`, and
+    // `model_requested` keep the already-stored value when the incoming one
+    // is NULL — a session saved before its actor computed the count (or
+    // before model attribution existed) must not erase a value another
+    // session persisted.
     conn.execute(
-        "INSERT INTO entries (id, timing, kind, context_history, token_count) \
-         VALUES (?, ?, ?, ?, ?) \
+        "INSERT INTO entries (id, timing, kind, context_history, token_count, model_used, model_requested) \
+         VALUES (?, ?, ?, ?, ?, ?, ?) \
          ON CONFLICT(id) DO UPDATE SET context_history = excluded.context_history, \
-         token_count = COALESCE(excluded.token_count, entries.token_count)",
+         token_count = COALESCE(excluded.token_count, entries.token_count), \
+         model_used = COALESCE(excluded.model_used, entries.model_used), \
+         model_requested = COALESCE(excluded.model_requested, entries.model_requested)",
         rusqlite::params![
             entry.entry_id,
             entry.timing,
             entry.kind,
             entry.context_history,
-            entry.token_count
+            entry.token_count,
+            entry.model_used,
+            entry.model_requested
         ],
     )?;
 
@@ -1574,6 +1592,12 @@ fn entry_from_joined(
     // computed lazily by the token count actor). Content-derived fact —
     // restored, not recomputed.
     chat_entry.restore_token_count(joined.token_count.and_then(|t| u32::try_from(t).ok()));
+
+    // Restore the persisted model stamps (NULL → None, permanent for
+    // pre-v29 rows). Facts recorded at entry creation — restored, never
+    // re-derived.
+    chat_entry.restore_model_used(joined.model_used.clone());
+    chat_entry.restore_model_requested(joined.model_requested.clone());
 
     // Restore audit trail. Empty array (default) loads as Vec::new().
     // Corrupt JSON falls back to empty with a warning.
@@ -2323,6 +2347,8 @@ async fn load_joined_range(
          session_history.ignored AS ignored, \
          session_history.context_override AS context_override, \
          entries.token_count AS token_count, \
+         entries.model_used AS model_used, \
+         entries.model_requested AS model_requested, \
          session_history.ordinal AS ordinal \
          FROM entries \
          INNER JOIN session_history ON entries.id = session_history.entry_id \

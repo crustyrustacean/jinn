@@ -581,3 +581,6 @@ Entries are added or amended **only with human approval**.
 - (paths) Production canonicalization goes through fs_paths::canonicalize_display, which strips the Windows verbatim prefix; raw std::fs::canonicalize never crosses a published path.
 - (testing) The test suite requires a POSIX shell and ripgrep; dependency-absent tests fail loudly naming the dependency — there are no skips.
 - (sidebar) The pins sidebar renders one row per tool result of a pinned tool loop, one row per tool call without a completed result, and the loop opener only for a standalone pinned non-loop entry; pin state itself still applies to the whole loop.
+- (provider) The OpenAI-compat stream parser captures the `model` field providers echo on SSE chunks and reports it on the terminal Done event.
+- (session) Every provider-produced chat entry carries the concrete model that produced it, stamped from the dispatching generation's request and overridden by the response-reported model when the stream completes normally.
+- (chat-log-view) The audit popup derives a tool result's model from its paired tool call rather than storing one on the result.

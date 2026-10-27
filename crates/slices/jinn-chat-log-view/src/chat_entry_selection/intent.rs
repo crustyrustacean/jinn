@@ -1488,6 +1488,8 @@ mod tests {
             context_override: jinn_core_types::ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         });
         state.active_session_mut().select_next_entry();
 
@@ -2512,6 +2514,8 @@ mod jump_compaction_tests {
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         }
     }
 

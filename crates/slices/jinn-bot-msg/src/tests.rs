@@ -82,7 +82,7 @@ mod bot_msg_tests {
         let template = crate::empty_seed_template();
 
         // Then it is empty — the dispatched message is the whole prompt.
-        assert!(template.is_empty());
+        assert_eq!(template, "");
     }
 
     #[rstest::rstest]

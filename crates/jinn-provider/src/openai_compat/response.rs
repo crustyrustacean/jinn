@@ -244,6 +244,7 @@ impl StreamResponseParser {
             done_events.push(StreamEvent::Done {
                 stop_reason: pending.stop_reason,
                 usage: pending.usage,
+                model: pending.model,
             });
             return done_events;
         }
@@ -263,6 +264,7 @@ impl StreamResponseParser {
         results.push(StreamEvent::Done {
             stop_reason,
             usage: None,
+            model: None,
         });
         self.done_finalized = true;
         results
@@ -504,7 +506,8 @@ mod tests {
             &events_done[0],
             StreamEvent::Done {
                 stop_reason: StopReason::EndTurn,
-                usage: None
+                usage: None,
+                model: None
             }
         ));
     }
@@ -594,7 +597,8 @@ mod tests {
             &events[0],
             StreamEvent::Done {
                 stop_reason: StopReason::EndTurn,
-                usage: None
+                usage: None,
+                model: None
             }
         ));
     }

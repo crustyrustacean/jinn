@@ -388,7 +388,11 @@ async fn process_stream_events(
                     publish_activity(bus, sid).await;
                     accum.citations.extend(citations);
                 }
-                StreamEvent::Done { stop_reason, usage } => {
+                StreamEvent::Done {
+                    stop_reason,
+                    usage,
+                    model,
+                } => {
                     // Terminal: `StreamCompleted` governs a stream's end, so
                     // this arm declares no liveness.
                     //
@@ -405,8 +409,16 @@ async fn process_stream_events(
                     if let Some(fired) = finalized {
                         return apply_rule_match(bus, sid, &mut accum, fired, dispatched_at).await;
                     }
-                    handle_done_event(bus, sid, &mut accum, stop_reason, usage, dispatched_at)
-                        .await;
+                    handle_done_event(
+                        bus,
+                        sid,
+                        &mut accum,
+                        stop_reason,
+                        usage,
+                        model,
+                        dispatched_at,
+                    )
+                    .await;
                     return StreamOutcome::Completed;
                 }
                 StreamEvent::Error { message, .. } => {
@@ -653,6 +665,12 @@ impl StreamAccumulator {
 }
 
 /// Builds the terminal `StreamCompleted` payload shared by ToolUse and Finished.
+///
+/// `response_model` is the model id the provider echoed on its stream. When
+/// present it wins over the request-time stamp — it is the authoritative
+/// answer to "which model actually answered", which is the only interesting
+/// answer for a routing provider. `None` (transport never echoes a model)
+/// keeps `accum.model_id`.
 async fn publish_stream_completed(
     bus: &BusService,
     sid: &SessionId,
@@ -663,10 +681,17 @@ async fn publish_stream_completed(
     provider_completion_tokens: Option<u64>,
     provider_prompt_tokens: Option<u64>,
     cached_tokens: Option<u64>,
+    response_model: Option<String>,
     dispatched_at: jiff::Timestamp,
 ) {
+    let model_used = {
+        let requested = accum.model_id.clone();
+        response_model
+            .filter(|m| !m.is_empty())
+            .unwrap_or(requested)
+    };
     bus.publish(StreamCompleted {
-        model_used: Some(accum.model_id.clone()),
+        model_used: Some(model_used),
         session_id: sid.clone(),
         reason,
         thinking_content: accum.take_thinking(),
@@ -752,12 +777,17 @@ async fn handle_reasoning_event(
 
 /// Handles `StreamEvent::Done`: routes tool-use vs finished and publishes
 /// `ExecuteToolBatch` + `StreamCompleted`.
+///
+/// `model` is the provider-reported model from the stream; it overrides the
+/// request-time model in `StreamCompleted.model_used` whenever present
+/// (see [`publish_stream_completed`]).
 async fn handle_done_event(
     bus: &BusService,
     sid: &SessionId,
     accum: &mut StreamAccumulator,
     stop_reason: StopReason,
     usage: Option<jinn_provider::StreamUsage>,
+    model: Option<String>,
     dispatched_at: jiff::Timestamp,
 ) {
     tracing::trace!(
@@ -795,6 +825,7 @@ async fn handle_done_event(
             provider_completion_tokens,
             provider_prompt_tokens,
             cached_tokens,
+            model,
             dispatched_at,
         )
         .await;
@@ -815,6 +846,7 @@ async fn handle_done_event(
             provider_completion_tokens,
             provider_prompt_tokens,
             cached_tokens,
+            model,
             dispatched_at,
         )
         .await;

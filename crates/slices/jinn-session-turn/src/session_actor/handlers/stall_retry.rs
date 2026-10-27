@@ -18,21 +18,22 @@ use jinn_turn_dispatch_msg::DispatchTurn;
 use super::super::SessionPersistenceActor;
 
 impl SessionPersistenceActor {
-    /// Arm the in-flight-stream guard when an LLM dispatch reaches the actor.
+    /// Logs dispatch receipt when an LLM dispatch reaches the actor.
     ///
     /// This is the guard's **single write point**: every `SendToLlmProvider`
     /// publisher (user message, queued/steered dispatch, direct dispatch,
     /// tool-loop continuation, stall retry) flows through the bus, so receipt
-    /// here covers all dispatch paths — present and future. The stored
-    /// timestamp is the same one the LLM actor embeds in downstream stream
-    /// Logs dispatch receipt. The in-flight guard itself is armed by the
-    /// phase actor at admission (`BeginStream`), not here — a dispatch
-    /// that was refused never reaches the bus, and an armed guard with no
-    /// stream behind it was exactly the wedge.
-    #[expect(
-        clippy::unused_self,
-        reason = "kept as an inherent method: callers read it as one of the actor's message-receipt handlers, alongside its siblings"
-    )]
+    /// here covers all dispatch paths — present and future. The in-flight
+    /// guard itself is armed by the phase actor at admission (`BeginStream`),
+    /// not here — a dispatch that was refused never reaches the bus, and an
+    /// armed guard with no stream behind it was exactly the wedge.
+    ///
+    /// Receipt also records `model_used` as the generation's *requested*
+    /// model (`stream_request_model`): entries created while this generation
+    /// streams are stamped from it at creation. Overwrite-on-dispatch is the
+    /// correctness mechanism — a rule-intercept resume arrives as its own
+    /// user-originated send and restamps, so the resumed generation's
+    /// entries carry the model that actually produced them.
     pub(in crate::session_actor) fn on_send_to_llm_provider(&self, payload: &SendToLlmProvider) {
         tracing::debug!(
             session_id = %payload.session_id,
@@ -40,6 +41,10 @@ impl SessionPersistenceActor {
             origin = ?payload.origin,
             "dispatch receipt (guard armed by the phase actor at admission)"
         );
+        self.state.with_session(|view| {
+            let session = view.session.map().get_or_create(&payload.session_id);
+            session.set_stream_request_model(payload.model_used.clone());
+        });
     }
 }
 

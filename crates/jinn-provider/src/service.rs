@@ -94,6 +94,7 @@ pub trait LlmService: Send + Sync {
             Ok(StreamEvent::Done {
                 stop_reason: StopReason::EndTurn,
                 usage: None,
+                model: None,
             })
         });
         Ok(Box::pin(events.chain(done)))
