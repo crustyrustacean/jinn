@@ -5,7 +5,7 @@
 use std::time::Duration;
 
 use jinn_common::app_paths::AppPaths;
-use jinn_core_types::AttendantSourcePath;
+use jinn_core_types::BotSourcePath;
 use jinn_core_types::SessionId;
 use jinn_core_types::tool_types::ToolCall;
 use jinn_kernel::common::app_state::AppState;
@@ -15,7 +15,7 @@ use jinn_session_store_msg::PersistSession;
 use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 use marked_path::{Absolute, MarkedPathBuf};
 
-use crate::load_attendant::{definition, execute, parse_attendant_entry};
+use crate::load_attendant::{definition, execute, parse_bot_entry};
 use crate::tool_types::ToolContext;
 
 /// Builds a tool call with the given JSON arguments.
@@ -65,15 +65,15 @@ fn fixture() -> (State, SessionId) {
     (state, user_id)
 }
 
-/// Writes an attendant file under a fresh prefixed temp dir; returns the
+/// Writes a bot file under a fresh prefixed temp dir; returns the
 /// [`jinn_testutil::JinnTempDir`] (its Drop removes the tree) and the file's path.
-fn attendant_file(name: &str, body: &str) -> (jinn_testutil::JinnTempDir, String) {
-    let dir = jinn_testutil::tempdir_with_prefix(&format!("jinn-test-load-attendant-{name}-"));
+fn bot_file(name: &str, body: &str) -> (jinn_testutil::JinnTempDir, String) {
+    let dir = jinn_testutil::tempdir_with_prefix(&format!("jinn-test-load-bot-{name}-"));
     let path = dir
         .path
-        .join("attendant.toml")
+        .join("bot.toml")
         .expect("temp root joins a bare name");
-    std::fs::write(&path, body).expect("write attendant file");
+    std::fs::write(&path, body).expect("write bot file");
     let path = path.to_string();
     (dir, path)
 }
@@ -88,13 +88,13 @@ seed_template = "You implement one stage of an autocoder run."
 
 #[rstest::rstest]
 #[tokio::test]
-async fn load_attaches_a_workflow_attendant_and_stamps_the_marker() {
-    // Given a user session and a workflow-local attendant file on disk.
+async fn load_attaches_a_workflow_bot_and_stamps_the_marker() {
+    // Given a user session and a workflow-local bot file on disk.
     let harness = TestHarness::new().await;
     let persists = harness.spawn_recorder::<PersistSession>().await;
     let (state, user_id) = fixture();
     let dir = jinn_testutil::tempdir();
-    let (_file_dir, path) = attendant_file("stamp", ATTENDANT_BODY);
+    let (_file_dir, path) = bot_file("stamp", ATTENDANT_BODY);
     let tool_ctx = ctx(&harness, &state, user_id.clone(), &dir.path).await;
 
     // When the tool loads the file.
@@ -104,24 +104,24 @@ async fn load_attaches_a_workflow_attendant_and_stamps_the_marker() {
     )
     .await;
 
-    // Then the tool succeeds and the attendant exists as a child.
+    // Then the tool succeeds and the bot exists as a child.
     assert!(result.success, "load must succeed: {}", result.content);
     let guard = state.read();
-    let attendant = guard
+    let bot = guard
         .session
         .iter()
         .map(|(_, s)| s)
-        .find(|s| s.is_attendant())
-        .expect("a workflow attendant must exist");
-    assert_eq!(attendant.parent_session().as_ref(), Some(&user_id));
-    assert_eq!(attendant.title(), Some("implementer"));
+        .find(|s| s.is_bot())
+        .expect("a workflow bot must exist");
+    assert_eq!(bot.parent_session().as_ref(), Some(&user_id));
+    assert_eq!(bot.title(), Some("implementer"));
     // And it carries the workflow-source marker naming its source file.
     assert_eq!(
-        attendant.workflow_source(),
-        Some(&AttendantSourcePath::new(path.clone()))
+        bot.workflow_source(),
+        Some(&BotSourcePath::new(path.clone()))
     );
-    assert!(!attendant.attendant_is_prepping(), "file config applied");
-    // And the creation published persists for parent and attendant.
+    assert!(!bot.bot_is_prepping(), "file config applied");
+    // And the creation published persists for parent and bot.
     drop(guard);
     let persisted = await_recorded::<PersistSession>(&persists, 2, Duration::from_secs(2)).await;
     assert_eq!(persisted.len(), 2);
@@ -129,12 +129,12 @@ async fn load_attaches_a_workflow_attendant_and_stamps_the_marker() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn children_of_a_workflow_attendant_do_not_inherit_the_marker() {
-    // Given an attendant loaded from a workflow-local file.
+async fn children_of_a_workflow_bot_do_not_inherit_the_marker() {
+    // Given a bot loaded from a workflow-local file.
     let harness = TestHarness::new().await;
     let (state, user_id) = fixture();
     let dir = jinn_testutil::tempdir();
-    let (_file_dir, path) = attendant_file("inherit", ATTENDANT_BODY);
+    let (_file_dir, path) = bot_file("inherit", ATTENDANT_BODY);
     let tool_ctx = ctx(&harness, &state, user_id.clone(), &dir.path).await;
     let result = execute(
         call(&serde_json::json!({ "path": path }).to_string()),
@@ -143,21 +143,21 @@ async fn children_of_a_workflow_attendant_do_not_inherit_the_marker() {
     .await;
     assert!(result.success);
 
-    // When a child is created the ordinary way from that attendant
-    // (`new_attendant` is the creation path every spawner shares).
+    // When a child is created the ordinary way from that bot
+    // (`new_bot` is the creation path every spawner shares).
     let guard = state.read();
     let loaded = guard
         .session
         .iter()
         .map(|(_, s)| s)
-        .find(|s| s.is_attendant())
-        .expect("workflow attendant");
-    let child = ChatSessionState::new_attendant(loaded, true);
+        .find(|s| s.is_bot())
+        .expect("workflow bot");
+    let child = ChatSessionState::new_bot(loaded, true);
     let child_id = child.session_id().clone();
     drop(guard);
     state.write().session.insert(child);
 
-    // Then the child is an ordinary personal attendant: no marker.
+    // Then the child is an ordinary personal bot: no marker.
     let guard = state.read();
     let child = guard.session.get(&child_id).expect("child");
     assert_eq!(
@@ -191,19 +191,19 @@ async fn missing_file_fails_naming_the_path() {
     assert!(result.content.contains(&raw_missing));
     let guard = state.read();
     assert!(
-        !guard.session.iter().any(|(_, s)| s.is_attendant()),
+        !guard.session.iter().any(|(_, s)| s.is_bot()),
         "a failed load must not create anything"
     );
 }
 
 #[rstest::rstest]
 #[tokio::test]
-async fn malformed_attendant_file_fails_with_the_reason() {
-    // Given a file that is not a valid attendant entry.
+async fn malformed_bot_file_fails_with_the_reason() {
+    // Given a file that is not a valid bot entry.
     let harness = TestHarness::new().await;
     let (state, user_id) = fixture();
     let dir = jinn_testutil::tempdir();
-    let (_file_dir, path) = attendant_file("bad", "this is not = toml = ==");
+    let (_file_dir, path) = bot_file("bad", "this is not = toml = ==");
     let tool_ctx = ctx(&harness, &state, user_id.clone(), &dir.path).await;
 
     // When the tool loads it.
@@ -215,44 +215,44 @@ async fn malformed_attendant_file_fails_with_the_reason() {
 
     // Then the tool fails explaining why.
     assert!(!result.success);
-    assert!(result.content.contains("not a valid attendant entry"));
+    assert!(result.content.contains("not a valid bot entry"));
 }
 
 #[rstest::rstest]
 #[tokio::test]
-async fn attendant_caller_cannot_load_an_attendant() {
-    // Given a user session with an attendant, calling from the attendant.
+async fn bot_caller_cannot_load_an_bot() {
+    // Given a user session with a bot, calling from the bot.
     let harness = TestHarness::new().await;
     let (state, user_id) = fixture();
-    let attendant = {
+    let bot = {
         let guard = state.read();
-        ChatSessionState::new_attendant(guard.session.get(&user_id).expect("user"), true)
+        ChatSessionState::new_bot(guard.session.get(&user_id).expect("user"), true)
     };
-    let attendant_id = attendant.session_id().clone();
-    state.write().session.insert(attendant);
+    let bot_id = bot.session_id().clone();
+    state.write().session.insert(bot);
     let dir = jinn_testutil::tempdir();
-    let (_file_dir, path) = attendant_file("nested", ATTENDANT_BODY);
-    let tool_ctx = ctx(&harness, &state, attendant_id, &dir.path).await;
+    let (_file_dir, path) = bot_file("nested", ATTENDANT_BODY);
+    let tool_ctx = ctx(&harness, &state, bot_id, &dir.path).await;
 
-    // When the attendant tries to load another attendant.
+    // When the bot tries to load another bot.
     let result = execute(
         call(&serde_json::json!({ "path": path }).to_string()),
         tool_ctx,
     )
     .await;
 
-    // Then the load is refused: loaded attendants hang off non-attendant
+    // Then the load is refused: loaded bots hang off non-bot
     // parents.
     assert!(!result.success);
-    assert!(result.content.contains("non-attendant"));
+    assert!(result.content.contains("non-bot"));
 }
 
 #[rstest::rstest]
 #[test]
 fn parse_accepts_the_bare_entry_shape() {
-    // Given a bare attendant entry body.
+    // Given a bare bot entry body.
     // When parsing.
-    let entry = parse_attendant_entry(ATTENDANT_BODY).expect("parses");
+    let entry = parse_bot_entry(ATTENDANT_BODY).expect("parses");
 
     // Then the fields came across.
     assert_eq!(entry.name, "implementer");
@@ -266,7 +266,7 @@ fn parse_accepts_a_single_entry_wrapped_in_an_entry_array() {
     let body = format!("[[entry]]\n{}", ATTENDANT_BODY.trim_start_matches('\n'));
 
     // When parsing.
-    let entry = parse_attendant_entry(&body).expect("parses");
+    let entry = parse_bot_entry(&body).expect("parses");
 
     // Then the single entry comes across.
     assert_eq!(entry.name, "implementer");
@@ -280,7 +280,7 @@ fn parse_refuses_a_wrapped_file_carrying_several_entries() {
     let body = format!("[[entry]]\n{one}\n[[entry]]\nname = \"second\"\n");
 
     // When parsing.
-    let result = parse_attendant_entry(&body);
+    let result = parse_bot_entry(&body);
 
     // Then it refuses with a reason naming the count.
     assert!(result.is_err());
@@ -291,14 +291,14 @@ fn parse_refuses_a_wrapped_file_carrying_several_entries() {
 #[test]
 fn parse_accepts_the_full_document_shape_jinn_toml_uses() {
     // Given a file in the shape jinn.toml itself uses — the array
-    // nested under an `attendant` table (`[[attendant.entry]]`) — which
+    // nested under an `bot` table (`[[bot.entry]]`) — which
     // is the shape the tool's description and the shipped autocoder
-    // attendant files both promise.
+    // bot files both promise.
     let one = ATTENDANT_BODY.trim_start_matches('\n');
-    let body = format!("[[attendant.entry]]\n{one}\n");
+    let body = format!("[[bot.entry]]\n{one}\n");
 
     // When parsing.
-    let entry = parse_attendant_entry(&body).expect("the jinn.toml shape parses");
+    let entry = parse_bot_entry(&body).expect("the jinn.toml shape parses");
 
     // Then the single entry comes across with its fields intact.
     assert_eq!(entry.name, "implementer");
@@ -306,22 +306,22 @@ fn parse_accepts_the_full_document_shape_jinn_toml_uses() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn personal_attendants_still_save_and_workflow_attendants_refuse() {
-    // Given a personal attendant (no marker) and a workflow-loaded
-    // attendant, both live.
+async fn personal_bots_still_save_and_workflow_bots_refuse() {
+    // Given a personal bot (no marker) and a workflow-loaded
+    // bot, both live.
     let harness = TestHarness::new().await;
     let (state, user_id) = fixture();
     let personal = {
         let guard = state.read();
-        ChatSessionState::new_attendant(guard.session.get(&user_id).expect("user"), true)
+        ChatSessionState::new_bot(guard.session.get(&user_id).expect("user"), true)
     };
     let personal_id = personal.session_id().clone();
     state.write().session.insert(personal);
     let dir = jinn_testutil::tempdir();
-    let (_file_dir, path) = attendant_file("savepath", ATTENDANT_BODY);
+    let (_file_dir, path) = bot_file("savepath", ATTENDANT_BODY);
     let tool_ctx = ctx(&harness, &state, user_id.clone(), &dir.path).await;
 
-    // When the tool loads the attendant.
+    // When the tool loads the bot.
     let result = execute(
         call(&serde_json::json!({ "path": path }).to_string()),
         tool_ctx,
@@ -337,8 +337,8 @@ async fn personal_attendants_still_save_and_workflow_attendants_refuse() {
         .session
         .iter()
         .map(|(_, s)| s)
-        .find(|s| s.is_attendant() && s.session_id() != &personal_id)
-        .expect("workflow attendant");
+        .find(|s| s.is_bot() && s.session_id() != &personal_id)
+        .expect("workflow bot");
     assert!(loaded.workflow_source().is_some());
 }
 
@@ -371,7 +371,7 @@ async fn set_name_relabels_the_instance_and_leaves_the_seed_name_alone() {
     let harness = TestHarness::new().await;
     let (state, user_id) = fixture();
     let dir = jinn_testutil::tempdir();
-    let (_file_dir, path) = attendant_file("setname", ATTENDANT_BODY);
+    let (_file_dir, path) = bot_file("setname", ATTENDANT_BODY);
 
     // When the tool loads it with set_name = "implementor-002".
     let result = execute(
@@ -380,7 +380,7 @@ async fn set_name_relabels_the_instance_and_leaves_the_seed_name_alone() {
     )
     .await;
 
-    // Then the tool succeeds and the attendant's title is the new label.
+    // Then the tool succeeds and the bot's title is the new label.
     assert!(result.success, "load must succeed: {}", result.content);
     assert!(
         result.content.contains("implementor-002"),
@@ -388,29 +388,29 @@ async fn set_name_relabels_the_instance_and_leaves_the_seed_name_alone() {
         result.content
     );
     let guard = state.read();
-    let attendant = guard
+    let bot = guard
         .session
         .iter()
         .map(|(_, s)| s)
-        .find(|s| s.is_attendant())
-        .expect("workflow attendant");
+        .find(|s| s.is_bot())
+        .expect("workflow bot");
     assert_eq!(
-        attendant.title(),
+        bot.title(),
         Some("implementor-002"),
         "the instance carries the caller's label"
     );
     // And its behavior still comes from the seed file.
-    assert_eq!(attendant.title(), Some("implementor-002"));
+    assert_eq!(bot.title(), Some("implementor-002"));
 }
 
 #[rstest::rstest]
 #[tokio::test]
-async fn loading_the_same_seed_twice_with_different_set_names_yields_two_named_attendants() {
+async fn loading_the_same_seed_twice_with_different_set_names_yields_two_named_bots() {
     // Given a user session and one shared seed file.
     let harness = TestHarness::new().await;
     let (state, user_id) = fixture();
     let dir = jinn_testutil::tempdir();
-    let (_file_dir, path) = attendant_file("twice", ATTENDANT_BODY);
+    let (_file_dir, path) = bot_file("twice", ATTENDANT_BODY);
 
     // When it is loaded twice under two different labels.
     for label in ["implementor-001", "implementor-002"] {
@@ -422,13 +422,13 @@ async fn loading_the_same_seed_twice_with_different_set_names_yields_two_named_a
         assert!(result.success, "load must succeed: {}", result.content);
     }
 
-    // Then both attendants exist, each under its own label.
+    // Then both bots exist, each under its own label.
     let guard = state.read();
     let mut titles: Vec<_> = guard
         .session
         .iter()
         .map(|(_, s)| s)
-        .filter(|s| s.is_attendant())
+        .filter(|s| s.is_bot())
         .map(|s| s.title().expect("titled").to_owned())
         .collect();
     titles.sort();
@@ -442,7 +442,7 @@ async fn without_set_name_the_seed_files_name_is_used() {
     let harness = TestHarness::new().await;
     let (state, user_id) = fixture();
     let dir = jinn_testutil::tempdir();
-    let (_file_dir, path) = attendant_file("noname", ATTENDANT_BODY);
+    let (_file_dir, path) = bot_file("noname", ATTENDANT_BODY);
     let tool_ctx = ctx(&harness, &state, user_id.clone(), &dir.path).await;
 
     // When the tool loads it with no set_name argument.
@@ -452,14 +452,14 @@ async fn without_set_name_the_seed_files_name_is_used() {
     )
     .await;
 
-    // Then the attendant keeps the seed file's name.
+    // Then the bot keeps the seed file's name.
     assert!(result.success, "load must succeed: {}", result.content);
     let guard = state.read();
-    let attendant = guard
+    let bot = guard
         .session
         .iter()
         .map(|(_, s)| s)
-        .find(|s| s.is_attendant())
-        .expect("workflow attendant");
-    assert_eq!(attendant.title(), Some("implementer"));
+        .find(|s| s.is_bot())
+        .expect("workflow bot");
+    assert_eq!(bot.title(), Some("implementer"));
 }

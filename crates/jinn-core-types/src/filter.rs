@@ -1,9 +1,9 @@
 //! A mode-plus-patterns filter over named resources.
 //!
 //! One filter type covers both tools and skills, both the user defaults and a
-//! saved attendant's, and both directions of policy. Before this there was a
+//! saved bot's, and both directions of policy. Before this there was a
 //! blocklist — a set of names to withhold — which could only ever subtract.
-//! An attendant that should have a handful of tools could not be expressed,
+//! A bot that should have a handful of tools could not be expressed,
 //! because withholding everything else means enumerating every MCP tool the
 //! user's servers contribute, and that enumeration rots the moment a server
 //! updates.
@@ -80,7 +80,7 @@ impl NameFilter {
     /// # The mode governs an empty name list as strictly as a populated one
     ///
     /// An allow filter names the only resources permitted, so one naming
-    /// nothing permits nothing: that is how an attendant frozen to no tools
+    /// nothing permits nothing: that is how a bot frozen to no tools
     /// at all is expressed. A deny filter names the only resources withheld,
     /// so one naming nothing withholds nothing. Neither mode gets to read an
     /// empty list as "no filter" — that would make the two directions
@@ -284,7 +284,7 @@ mod tests {
 
         // When asking about a tool.
         // Then it is withheld: the allow list is absolute, and it names
-        // nothing. This is what an attendant frozen to no tools at all
+        // nothing. This is what a bot frozen to no tools at all
         // carries.
         assert!(!filter.permits("bash"));
     }

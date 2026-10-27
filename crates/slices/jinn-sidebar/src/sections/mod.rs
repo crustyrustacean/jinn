@@ -8,8 +8,8 @@
 //! and sections can signal "unhandled" to let the sidebar move focus to the
 //! next/previous section.
 
-pub mod attendants_reports;
-pub mod attendants_section;
+pub mod bots_reports;
+pub mod bots_section;
 pub mod capture_rows;
 pub mod intent;
 pub mod layout;
@@ -42,7 +42,7 @@ pub use sidebar::navigate_sidebar;
 /// Registers all built-in sidebar sections into the given sidebar.
 pub fn register_sections(sidebar: &mut Sidebar) {
     sidebar.register(Box::new(persona_section::PersonaSection));
-    sidebar.register(Box::new(attendants_section::AttendantsSection));
+    sidebar.register(Box::new(bots_section::BotsSection));
     sidebar.register(Box::new(pins::PinsSection));
     sidebar.register(Box::new(task_list_section::TaskListSection));
     sidebar.register(Box::new(mcp_servers_section::McpServersSection));

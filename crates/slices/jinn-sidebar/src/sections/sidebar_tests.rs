@@ -1510,15 +1510,15 @@ fn state_with_every_section_populated() -> AppState {
     state
         .active_session_mut()
         .pin_entry(&entry_id, PinPosition::Top);
-    // Attendants: one beneath the *active* session, marked loaded so the
+    // Bots: one beneath the *active* session, marked loaded so the
     // section's row filter admits it.
     {
         let parent = state.active_session().clone();
-        let mut attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
-        attendant.append_attendant_report("a finding".to_owned());
-        attendant.set_session_state(jinn_session_store_msg::SessionState::Loaded);
-        let attendant_id = attendant.session_id().clone();
-        *state.session_mut_or_create(&attendant_id) = attendant;
+        let mut bot = jinn_session_state::ChatSessionState::new_bot(&parent, true);
+        bot.append_bot_report("a finding".to_owned());
+        bot.set_session_state(jinn_session_store_msg::SessionState::Loaded);
+        let bot_id = bot.session_id().clone();
+        *state.session_mut_or_create(&bot_id) = bot;
     }
     // Task list.
     state
@@ -1538,20 +1538,20 @@ fn state_with_every_section_populated() -> AppState {
 }
 
 #[rstest::rstest]
-fn move_up_from_the_attendants_section_enters_persona() {
-    // Given the attendants section focused, with the parent session and an
-    // attendant beneath it so the section actually has content.
+fn move_up_from_the_bots_section_enters_persona() {
+    // Given the bots section focused, with the parent session and an
+    // bot beneath it so the section actually has content.
     let mut state = state_with_pinned(2);
     {
         let parent = jinn_session_state::ChatSessionState::new();
         let id = parent.session_id().clone();
-        let mut attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
-        attendant.append_attendant_report("a finding".to_owned());
-        *state.session_mut_or_create(&id) = attendant;
+        let mut bot = jinn_session_state::ChatSessionState::new_bot(&parent, true);
+        bot.append_bot_report("a finding".to_owned());
+        *state.session_mut_or_create(&id) = bot;
     }
     state
         .frontend
-        .scope_push(jinn_sidebar_msg::SidebarSectionId::Attendant.focus_scope());
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Bot.focus_scope());
 
     // When navigating up.
     let _ = navigate_sidebar(
@@ -1560,7 +1560,7 @@ fn move_up_from_the_attendants_section_enters_persona() {
         jinn_slices::empty_config_layer(),
     );
 
-    // Then focus lands on Persona. The attendants section renders directly
+    // Then focus lands on Persona. The bots section renders directly
     // under Persona, so anything else sends the cursor backwards past a
     // section that is drawn below it.
     assert_eq!(
@@ -1572,50 +1572,50 @@ fn move_up_from_the_attendants_section_enters_persona() {
     );
 }
 
-/// Builds a state whose attendants section actually has a row.
+/// Builds a state whose bots section actually has a row.
 ///
-/// The attendant must be stored under **its own** id: the section's row
+/// The bot must be stored under **its own** id: the section's row
 /// filter admits only sessions whose `parent_session` names the active
 /// session's context (the active session's id, or its parent when the
-/// active session is itself an attendant). Inserting the attendant under
-/// the parent's id leaves `attendant_rows` empty, and every navigation
+/// active session is itself a bot). Inserting the bot under
+/// the parent's id leaves `bot_rows` empty, and every navigation
 /// through the section exits at the empty-list guard before reaching the
 /// `MoveUp` arm — the trap this fixture exists to avoid.
-fn state_with_attendant_in_section() -> AppState {
+fn state_with_bot_in_section() -> AppState {
     let mut state = AppState::default_with_scope_focus();
-    // Clone the active session as the attendant's parent.
+    // Clone the active session as the bot's parent.
     let parent = state.active_session().clone();
-    let mut attendant = ChatSessionState::new_attendant(&parent, true);
-    attendant.append_attendant_report("a finding".to_owned());
-    let attendant_id = attendant.session_id().clone();
-    *state.session_mut_or_create(&attendant_id) = attendant;
+    let mut bot = ChatSessionState::new_bot(&parent, true);
+    bot.append_bot_report("a finding".to_owned());
+    let bot_id = bot.session_id().clone();
+    *state.session_mut_or_create(&bot_id) = bot;
     state
 }
 
 #[rstest::rstest]
-fn move_up_from_a_populated_attendants_section_at_its_top_row_enters_persona() {
-    // Given the attendants section focused with a real row in it, the
+fn move_up_from_a_populated_bots_section_at_its_top_row_enters_persona() {
+    // Given the bots section focused with a real row in it, the
     // cursor resting on that row (the section's top row).
-    let mut state = state_with_attendant_in_section();
+    let mut state = state_with_bot_in_section();
     assert!(
-        crate::sections::attendants_section::has_content(&state),
-        "the fixture must produce a non-empty attendants section, or the \
+        crate::sections::bots_section::has_content(&state),
+        "the fixture must produce a non-empty bots section, or the \
          MoveUp arm under test never runs"
     );
     {
-        let attendant_id = state
+        let bot_id = state
             .session
             .iter()
-            .find(|(_, s)| s.is_attendant())
+            .find(|(_, s)| s.is_bot())
             .map(|(id, _)| id.clone())
-            .expect("the fixture inserted an attendant");
+            .expect("the fixture inserted a bot");
         state.frontend.update_sections(|s| {
-            s.attendant.selected_id = Some(attendant_id);
+            s.bot.selected_id = Some(bot_id);
         });
     }
     state
         .frontend
-        .scope_push(jinn_sidebar_msg::SidebarSectionId::Attendant.focus_scope());
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Bot.focus_scope());
 
     // When navigating up from the section's top row.
     let _ = navigate_sidebar(
@@ -1625,7 +1625,7 @@ fn move_up_from_a_populated_attendants_section_at_its_top_row_enters_persona() {
     );
 
     // Then focus lands on Persona — not re-selected onto the top
-    // attendant — and the attendants cursor is left where the section's
+    // bot — and the bots cursor is left where the section's
     // exhaustion contract requires: untouched.
     assert_eq!(
         state
@@ -1639,9 +1639,9 @@ fn move_up_from_a_populated_attendants_section_at_its_top_row_enters_persona() {
 #[rstest::rstest]
 fn repeated_move_up_walks_every_populated_section_up_to_persona() {
     // Given Sessions focused — the lowest populated section — with pins and
-    // an attendant so Sessions → Pins → Attendants → Persona all have
+    // a bot so Sessions → Pins → Bots → Persona all have
     // content, and TaskList and McpServers empty in between.
-    let mut state = state_with_attendant_in_section();
+    let mut state = state_with_bot_in_section();
     let entry = ChatEntry::user("pinned");
     let entry_id = entry.id.clone();
     state.active_session_mut().push_entry(entry);
@@ -1676,7 +1676,7 @@ fn repeated_move_up_walks_every_populated_section_up_to_persona() {
     }
 
     // Then the walk visits every populated section in draw order and
-    // stops at Persona: the attendants section must hand the cursor up
+    // stops at Persona: the bots section must hand the cursor up
     // rather than trapping it.
     use jinn_sidebar_msg::SidebarSectionId;
     assert_eq!(
@@ -1684,7 +1684,7 @@ fn repeated_move_up_walks_every_populated_section_up_to_persona() {
         vec![
             SidebarSectionId::Sessions,
             SidebarSectionId::Pins,
-            SidebarSectionId::Attendant,
+            SidebarSectionId::Bot,
             SidebarSectionId::Persona
         ],
         "k must walk up through every populated section and stop at Persona"

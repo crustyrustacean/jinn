@@ -36,9 +36,9 @@ to `providers.toml`, so it is live immediately (no restart) but is keyed by
 model and applies to every session using that model. Hand-editing that row,
 by contrast, still needs a restart.
 
-One exception inside `jinn.toml` itself: the `[[attendant.entry]]` list is
-re-read every time the saved-attendants picker (`<leader>sa`) opens, so
-adding or editing a saved attendant takes effect immediately. The shipped
+One exception inside `jinn.toml` itself: the `[[bot.entry]]` list is
+re-read every time the saved-bots picker (`<leader>sb`) opens, so
+adding or editing a saved bot takes effect immediately. The shipped
 default file ships one such entry (`auto-nudge`). Everything else in
 `jinn.toml` follows the restart rule above.
 
@@ -89,8 +89,8 @@ name (`mcp__<server>__<tool>`). A name that matches nothing is simply inert.
 
 New sessions start with these filters applied; per-session toggles
 (`<leader>st`, `<leader>sk`) override and persist in the session, never
-writing back here. The same two filter keys also exist per saved attendant
-(see `attendants.md`).
+writing back here. The same two filter keys also exist per saved bot
+(see `bots.md`).
 
 **Timeouts / output caps**
 
@@ -126,29 +126,29 @@ A project's own rules are stream rules (see **Stream rules** below) carrying
 its path in their `project` field, so they are configured with every other
 rule rather than on the project entry.
 
-**Saved attendants** (`[[attendant.entry]]` — see `attendants.md` for the
+**Saved bots** (`[[bot.entry]]` — see `bots.md` for the
 full field reference and the feature itself):
 
 ```toml
-[[attendant.entry]]
+[[bot.entry]]
 name = "reviewer"
 trigger = "parent_completed"
 behavior = "reset"
 prep_mode = false
-seed_template = "The previous run of this attendant reported: <prior report>."
+seed_template = "The previous run of this bot reported: <prior report>."
 model = { single = "openrouter/deepseek/deepseek-v4.1-flash" }
 tool_filter = { mode = "allow", names = ["read", "bash", "session_fetch", "session_search"] }
 pins = [{ role = "user", text = "Review the parent's last turn and report one line." }]
 ```
 
 `name` is required; every other field you omit is inherited from the session
-the attendant is created under. **`prep_mode` defaults to `true`**, so an
+the bot is created under. **`prep_mode` defaults to `true`**, so an
 entry that omits it does not run until you say `prep_mode = false`. Pin
 entries must carry a `role` (`"user"` or `"assistant"`) — a pin without one
 fails to parse.
 
-This list is the one `jinn.toml` surface read **live**: the saved-attendants
-picker (`<leader>sa`) re-reads the document every time it opens, so a hand edit
+This list is the one `jinn.toml` surface read **live**: the saved-bots
+picker (`<leader>sb`) re-reads the document every time it opens, so a hand edit
 shows up without a restart. `name` is the key entries are matched by, so
 saving under an existing name replaces that entry in place.
 
@@ -466,7 +466,7 @@ can add to but never lift.
 
 Every section in the shipped default `jinn.toml` is represented above or in a
 linked reference (`mcp-servers.md`, `terminal-overlay.md`,
-`context-management.md`, `sessions-and-subagents.md`, `attendants.md`).
+`context-management.md`, `sessions-and-subagents.md`, `bots.md`).
 Section names are exact — `[term]`, not `[interactive_term]`; `[mcp.<name>]`,
 not `[[mcp_server]]`; `[context_curation.compaction]`, not `[compaction]`.
 A misspelled section is **silently ignored** (it reads as absent, not as an

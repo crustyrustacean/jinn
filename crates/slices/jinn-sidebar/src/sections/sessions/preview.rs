@@ -339,14 +339,14 @@ pub fn render_session_preview_loading(
 /// The color the popup's border is drawn in.
 ///
 /// A preview is a way of asking what a session *is* before opening it, and for
-/// a subagent or an attendant that is the one question a title cannot answer —
+/// a subagent or a bot that is the one question a title cannot answer —
 /// the session list already tints those rows, and the popup that hangs off the
 /// row was saying nothing. The border carries the same tint, so the popup and
 /// the row that opened it agree. Every other kind keeps the ordinary unfocused
 /// border: an ordinary session needs no distinguishing.
 fn preview_border_fg(session: &ChatSessionState, theme: &Theme) -> ratatui::style::Color {
     match session.origin() {
-        SessionOrigin::Attendant => theme.attendant_fg,
+        SessionOrigin::Bot => theme.bot_fg,
         SessionOrigin::Subagent => theme.subagent_fg,
         SessionOrigin::User | SessionOrigin::Fork => theme.border_unfocused,
     }

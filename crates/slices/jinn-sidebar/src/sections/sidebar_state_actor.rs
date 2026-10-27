@@ -35,34 +35,34 @@ pub const SIDEBAR_STATE_PATH: &str = "sidebar-state";
 /// preview and would leave a spinner up far too long if a worker wedged.
 pub const PREVIEW_DEADLINE: Duration = Duration::from_secs(5);
 
-/// Returns the attendants cursor to the row its attendant occupied, when that
-/// attendant is the one that was removed.
+/// Returns the bots cursor to the row its bot occupied, when that
+/// bot is the one that was removed.
 ///
-/// The attendants section draws two screen lines per attendant, so the row is
+/// The bots section draws two screen lines per bot, so the row is
 /// an index into the section's list — the same unit the section navigates by.
-/// A cursor left naming a removed attendant resolves to nothing at all, which
+/// A cursor left naming a removed bot resolves to nothing at all, which
 /// costs the section its selection band and gives the document no cursor row
 /// to scroll by, so this restores it from the row captured before the removal.
-fn repair_attendant_cursor(
+fn repair_bot_cursor(
     session: &mut jinn_session_state::SessionMap,
     frontend: &mut jinn_kernel::state::frontend_state::FrontendState,
     removed_id: &jinn_core_types::SessionId,
 ) {
-    let cursor = frontend.with_sections(|sections| sections.attendant.selected_id.clone(), || None);
+    let cursor = frontend.with_sections(|sections| sections.bot.selected_id.clone(), || None);
     let names_removed = cursor.as_ref() == Some(removed_id);
     if !names_removed {
         return;
     }
-    let count = crate::sections::attendants_section::row_count_split(session, frontend);
+    let count = crate::sections::bots_section::row_count_split(session, frontend);
     if count == 0 {
         return;
     }
-    let row = crate::sections::capture_rows::restored_attendant_row_split(session, frontend);
-    let target = jinn_attendant::section_rows::attendant_rows_split(session, frontend)
+    let row = crate::sections::capture_rows::restored_bot_row_split(session, frontend);
+    let target = jinn_bot::section_rows::bot_rows_split(session, frontend)
         .get(row)
         .map(|entry| entry.session_id.clone());
     if let Some(target) = target {
-        frontend.update_sections(|sections| sections.attendant.selected_id = Some(target));
+        frontend.update_sections(|sections| sections.bot.selected_id = Some(target));
     }
 }
 
@@ -131,7 +131,7 @@ impl SidebarStateActor {
                 &payload.session_id,
                 payload.removed_parent.as_ref(),
             );
-            repair_attendant_cursor(view.session.map(), view.frontend, &payload.session_id);
+            repair_bot_cursor(view.session.map(), view.frontend, &payload.session_id);
             sessions::reconcile_split(view.session.map(), view.frontend, payload.was_active);
         });
     }
@@ -607,23 +607,23 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn the_attendant_cursor_keeps_its_row_when_that_attendant_is_removed() {
-        // Given a parent with three attendants, the cursor on the middle one
+    async fn the_bot_cursor_keeps_its_row_when_that_bot_is_removed() {
+        // Given a parent with three bots, the cursor on the middle one
         // and that row captured from the last rendered frame.
         let actor = test_actor();
         let parent = ChatSessionState::new();
         let parent_id = parent.session_id().clone();
-        let attendant_ids: Vec<_> = {
+        let bot_ids: Vec<_> = {
             let mut state = actor.state.write();
             let default_id = state.session.active_session_id().clone();
             state.session.remove_without_replacement(&default_id);
             state.session.insert(parent.clone());
             (0..3)
                 .map(|index| {
-                    let mut attendant = ChatSessionState::new_attendant(&parent, true);
-                    attendant.set_title(format!("attendant {index}"));
-                    let id = attendant.session_id().clone();
-                    state.session.insert(attendant);
+                    let mut bot = ChatSessionState::new_bot(&parent, true);
+                    bot.set_title(format!("bot {index}"));
+                    let id = bot.session_id().clone();
+                    state.session.insert(bot);
                     id
                 })
                 .collect()
@@ -636,31 +636,31 @@ mod tests {
             let mut state = actor.state.write();
             state
                 .frontend
-                .update_sections(|s| s.attendant.selected_id = Some(attendant_ids[1].clone()));
-            crate::sections::capture_rows::capture_attendant_cursor_row(&state);
+                .update_sections(|s| s.bot.selected_id = Some(bot_ids[1].clone()));
+            crate::sections::capture_rows::capture_bot_cursor_row(&state);
         }
 
-        // When that attendant is removed.
+        // When that bot is removed.
         {
             let mut state = actor.state.write();
-            state.session.remove_without_replacement(&attendant_ids[1]);
+            state.session.remove_without_replacement(&bot_ids[1]);
         }
         actor.handle_session_removed(&jinn_session_msg::SessionRemoved {
-            session_id: attendant_ids[1].clone(),
+            session_id: bot_ids[1].clone(),
             removed_parent: Some(parent_id),
             was_active: false,
         });
 
-        // Then the cursor names the attendant now on the row it occupied.
+        // Then the cursor names the bot now on the row it occupied.
         let state = actor.state.read();
         let cursor = state
             .frontend
-            .with_sections(|s| s.attendant.selected_id.clone(), || None);
-        let rows = jinn_attendant::section_rows::attendant_rows(&state);
+            .with_sections(|s| s.bot.selected_id.clone(), || None);
+        let rows = jinn_bot::section_rows::bot_rows(&state);
         let index = rows
             .iter()
             .position(|row| Some(&row.session_id) == cursor.as_ref())
-            .expect("the cursor names a listed attendant");
+            .expect("the cursor names a listed bot");
         assert_eq!(index, 1);
     }
 }

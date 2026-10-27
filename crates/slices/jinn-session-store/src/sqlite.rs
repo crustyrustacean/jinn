@@ -21,9 +21,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
 use daow::Param;
-use jinn_attendant_msg::{
-    AttendantBehavior, AttendantReport, AttendantTrigger, default_seed_template,
-};
+use jinn_bot_msg::{BotBehavior, BotReport, BotTrigger, default_seed_template};
 use jinn_core_types::SessionProfile;
 use jinn_core_types::{ChatEntry, ChatEntryKind};
 use jinn_core_types::{ChatEntryId, ContextOverride, EntryTiming, SessionId};
@@ -606,26 +604,26 @@ pub(crate) struct PersistableCore {
     /// Defaults to true for blobs written by older versions.
     #[serde(default = "default_persist")]
     persist: bool,
-    /// What a run in an attendant sees of the conversation.
+    /// What a run in a bot sees of the conversation.
     #[serde(default)]
-    behavior: AttendantBehavior,
-    /// Whether the attendant is still being composed.
+    behavior: BotBehavior,
+    /// Whether the bot is still being composed.
     /// Defaults to composing for blobs written before prep mode existed.
     #[serde(default = "default_prep_mode")]
     prep_mode: bool,
-    /// The condition that causes an automatic attendant re-run.
+    /// The condition that causes an automatic bot re-run.
     #[serde(default)]
-    trigger: AttendantTrigger,
+    trigger: BotTrigger,
     /// User-editable seed text used to inject the prior report.
     #[serde(default = "default_seed_template")]
     seed_template: String,
-    /// The attendant's append-only report log.
+    /// The bot's append-only report log.
     #[serde(default)]
-    reports: Vec<AttendantReport>,
-    /// The workflow-local TOML file a workflow attendant loaded from.
-    /// Absent for personal attendants.
+    reports: Vec<BotReport>,
+    /// The workflow-local TOML file a workflow bot loaded from.
+    /// Absent for personal bots.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    workflow_source: Option<jinn_core_types::AttendantSourcePath>,
+    workflow_source: Option<jinn_core_types::BotSourcePath>,
     /// Wall-clock intervals during which this session was working.
     /// Absent in blobs written before working time was recorded.
     ///

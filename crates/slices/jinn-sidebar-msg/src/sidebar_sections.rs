@@ -49,8 +49,8 @@ pub struct SidebarSections {
     pub task_list: TaskListSectionState,
     /// MCP servers section cursor state.
     pub mcp_servers: McpServersSectionState,
-    /// Attendants section cursor state.
-    pub attendant: AttendantSectionState,
+    /// Bots section cursor state.
+    pub bot: BotSectionState,
     /// In-progress text for the rename-session popup.
     pub rename_input: RenameSessionInputState,
     /// The sidebar column's scroll offset from the last frame that had a
@@ -515,19 +515,19 @@ pub struct McpServersSectionState {
     pub selected_index: Option<usize>,
 }
 
-/// Attendants-section cursor state: the selected attendant, as a session id.
+/// Bots-section cursor state: the selected bot, as a session id.
 /// `None` means no cursor (section not focused).
 #[derive(Debug, Clone, Default)]
-pub struct AttendantSectionState {
-    /// The selected attendant, or `None` when the section has no cursor.
+pub struct BotSectionState {
+    /// The selected bot, or `None` when the section has no cursor.
     ///
-    /// An id like the sessions section's: the attendants list is a rendered
+    /// An id like the sessions section's: the bots list is a rendered
     /// projection of the active session's children, and a key bound here acts
-    /// on the attendant rather than on the position it happens to occupy.
+    /// on the bot rather than on the position it happens to occupy.
     pub selected_id: Option<SessionId>,
-    /// The attendant row the cursor was on when the last rendered frame
+    /// The bot row the cursor was on when the last rendered frame
     /// resolved it, remembered for the same reason as the sessions section's
-    /// `last_cursor_row`: a removed attendant takes its row with it, and only a
+    /// `last_cursor_row`: a removed bot takes its row with it, and only a
     /// row captured before the removal can restore the position.
     pub last_cursor_row: Option<usize>,
 }

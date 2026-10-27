@@ -304,7 +304,7 @@ impl IntentHandler {
             KernelIntent::ToggleWhichkey => feat::global::intent::handle_toggle_whichkey(state),
             // Escape in Normal mode: raise the cancel-stream confirmation
             // when this session has something a cancel would reach — its own
-            // turn, or a running subagent or attendant beneath it. The box no
+            // turn, or a running subagent or bot beneath it. The box no
             // longer owns this — it is a session concern, and the intercept
             // above handles the confirming half.
             KernelIntent::NormalEscape => {

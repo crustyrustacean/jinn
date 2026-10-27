@@ -46,7 +46,7 @@ use jinn_slices::route::{
 use jinn_tools_msg::{ToolPickerState, tool_picker_scope};
 
 use crate::tool_picker_actions::{self, ToolRow};
-use jinn_attendant_msg::is_attendant_tool_definition;
+use jinn_bot_msg::is_bot_tool_definition;
 
 /// The picker's cell — the single home for everything it shows.
 type ToolPickerCell = TypedCell<ToolPickerState>;
@@ -299,17 +299,18 @@ fn seed_from_session(state: &jinn_kernel::AppState) -> Seed {
     let theme = state.frontend.theme.clone();
 
     // Two filters, both "may this session use this tool": the provider
-    // gate for server tools, and the attendant gate for the tools that
-    // only exist inside an attendant. A row the session cannot use is not
+    // gate for server tools, and the bot gate for the tools that
+    // only exist inside a bot. A row the session cannot use is not
     // something to toggle — offering it invites a toggle that changes
     // nothing, and its absence in the prompt while it sits in this list is
     // exactly the disagreement this filter exists to prevent.
     //
-    // The attendant gate is a subtraction, never a substitution: an
-    // attendant keeps every ordinary tool and gains its own two. Filtering
-    // *to* the attendant tools instead would leave one that cannot read,
-    // search or edit anything.
-    let is_attendant = active_session.is_attendant();
+    // The bot gate is a subtraction, never a substitution: a bot
+    // keeps every ordinary tool and gains its own. Of those, a
+    // parentless bot is offered `conclude` only — `notify_parent` has no
+    // parent to wake.
+    let is_bot = active_session.is_bot();
+    let bot_has_parent = active_session.parent_session().is_some();
     let mut rows: Vec<ToolRow> = state
         .tool_registry()
         .map(|registry| {
@@ -318,7 +319,7 @@ fn seed_from_session(state: &jinn_kernel::AppState) -> Seed {
                 .tools_for_session(&session_id)
                 .into_iter()
                 .filter(|def| def.available_for_provider(&provider_name))
-                .filter(|def| is_attendant || !is_attendant_tool_definition(def))
+                .filter(|def| bot_sees_tool(is_bot, bot_has_parent, def))
                 .map(|def| ToolRow {
                     name: def.name,
                     description: def.description,
@@ -333,6 +334,26 @@ fn seed_from_session(state: &jinn_kernel::AppState) -> Seed {
         tool_filter: active_session.tool_filter().cloned(),
         theme,
     }
+}
+
+/// Whether a session with the given bot facts is offered tool definition
+/// `def`.
+///
+/// Shared by the picker and the prompt assembler's rule: a non-bot sees
+/// none of the bot-only tools; a bot sees `conclude` always and
+/// `notify_parent` only when it has a parent.
+fn bot_sees_tool(
+    is_bot: bool,
+    bot_has_parent: bool,
+    def: &jinn_core_types::tool_types::ToolDefinition,
+) -> bool {
+    if !is_bot {
+        return !is_bot_tool_definition(def);
+    }
+    if !is_bot_tool_definition(def) {
+        return true;
+    }
+    bot_has_parent || def.name == "conclude"
 }
 
 /// Enter: commit the toggled rows as a deny filter and close.
@@ -411,35 +432,35 @@ fn clear_filter_or_leave(ctx: &mut ActionCtx<'_>, cell: &ToolPickerCell) -> Inte
 }
 
 #[cfg(test)]
-mod attendant_tool_picker_tests {
+mod bot_tool_picker_tests {
     #![allow(clippy::expect_used, clippy::unwrap_used, reason = "test module")]
 
     use super::*;
-    use jinn_attendant_msg::ATTENDANT_TOOL_NAMES;
+    use jinn_bot_msg::BOT_TOOL_NAMES;
     use jinn_core_types::tool_types::ToolDefinition;
     use jinn_kernel::common::app_state::AppState;
     use jinn_kernel::common::state::State;
     use jinn_session_state::ChatSessionState;
 
-    /// Ordinary built-ins every session keeps, attendant or not.
+    /// Ordinary built-ins every session keeps, bot or not.
     const ORDINARY_TOOL_NAMES: &[&str] = &["read", "bash", "grep"];
 
     #[rstest::rstest]
-    fn an_ordinary_session_is_offered_no_attendant_tool_row() {
+    fn an_ordinary_session_is_offered_no_bot_tool_row() {
         // Given a plain user session with the built-ins registered.
         let state = state_with_session(ChatSessionState::new());
 
         // When the picker seeds its rows.
         let names = row_names(&state);
 
-        // Then no attendant tool is listed. A row the session cannot use
+        // Then no bot tool is listed. A row the session cannot use
         // is a toggle that changes nothing, and the prompt already omits
         // these — a list that shows what the prompt hides reads as a bug
         // in one of the two.
-        for name in ATTENDANT_TOOL_NAMES {
+        for name in BOT_TOOL_NAMES {
             assert!(
                 !names.iter().any(|n| n == name),
-                "{name} must not appear in the picker for a non-attendant"
+                "{name} must not appear in the picker for a non-bot"
             );
         }
         for name in ORDINARY_TOOL_NAMES {
@@ -448,36 +469,52 @@ mod attendant_tool_picker_tests {
     }
 
     #[rstest::rstest]
-    fn an_attendant_is_offered_its_own_tool_rows() {
-        // Given an attendant session.
+    fn an_attached_bot_is_offered_its_own_tool_rows() {
+        // Given an attached bot session.
         let parent = ChatSessionState::new();
-        let state = state_with_session(ChatSessionState::new_attendant(&parent, true));
+        let state = state_with_session(ChatSessionState::new_bot(&parent, true));
 
         // When the picker seeds its rows.
         let names = row_names(&state);
 
-        // Then both attendant tools are listed — an attendant that cannot
+        // Then both bot tools are listed — a bot that cannot
         // toggle its own tools is as broken as one that cannot call them.
-        for name in ATTENDANT_TOOL_NAMES {
+        for name in BOT_TOOL_NAMES {
             assert!(
                 names.iter().any(|n| n == name),
-                "{name} must appear in the picker for an attendant"
+                "{name} must appear in the picker for a bot"
             );
         }
-        // And the ordinary tools are still there. The attendant filter is a
-        // subtraction from a full list, not a substitution for one: an
-        // attendant reads, greps and writes like any other session, and
+        // And the ordinary tools are still there. The bot filter is a
+        // subtraction from a full list, not a substitution for one: a
+        // bot reads, greps and writes like any other session, and
         // whittling its list down to just its own two tools starves it of
         // the work it exists to do.
         for name in ORDINARY_TOOL_NAMES {
             assert!(
                 names.iter().any(|n| n == name),
-                "{name} must remain available to an attendant"
+                "{name} must remain available to a bot"
             );
         }
     }
 
-    /// A state whose active session is `session`, with the attendant
+    #[rstest::rstest]
+    fn a_standalone_bot_is_offered_conclude_but_not_notify_parent() {
+        // Given a parentless bot session.
+        let source = ChatSessionState::new();
+        let state = state_with_session(ChatSessionState::new_standalone_bot(&source, true));
+
+        // When the picker seeds its rows.
+        let names = row_names(&state);
+
+        // Then `conclude` has a row and `notify_parent` does not — a toggle
+        // for a call that can only fail is the exact disagreement the gate
+        // exists to prevent.
+        assert!(names.iter().any(|n| n == "conclude"));
+        assert!(!names.iter().any(|n| n == "notify_parent"));
+    }
+
+    /// A state whose active session is `session`, with the bot
     /// built-ins and one ordinary tool registered.
     fn state_with_session(session: ChatSessionState) -> State {
         let state = State::new(AppState::default_with_scope_focus());
@@ -491,7 +528,7 @@ mod attendant_tool_picker_tests {
             guard.session.set_active(session_id.clone());
             let cell = guard.tool_registry().expect("registry cell attached");
             cell.update(|r| {
-                for name in ATTENDANT_TOOL_NAMES
+                for name in BOT_TOOL_NAMES
                     .iter()
                     .chain(ORDINARY_TOOL_NAMES.iter())
                     .copied()

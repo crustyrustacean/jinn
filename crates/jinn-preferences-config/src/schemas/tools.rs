@@ -17,7 +17,7 @@ pub struct ToolsConfig {
     /// mode = "deny"
     /// names = ["bash", "write"]
     ///
-    /// # An attendant that gets only what it is given, MCP included.
+    /// # A bot that gets only what it is given, MCP included.
     /// [tools.tool_filter]
     /// mode = "allow"
     /// names = ["read", "grep", "mcp__github__*"]

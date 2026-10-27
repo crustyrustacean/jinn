@@ -1099,9 +1099,9 @@ fn style_entry(
         ancestor_continuations: vec![],
         is_last_child: false,
         is_subagent,
-        is_attendant: false,
-        is_attendant_prepping: false,
-        attendant_fires_on_parent_completion: false,
+        is_bot: false,
+        is_bot_prepping: false,
+        bot_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     }
@@ -3453,60 +3453,57 @@ fn an_unchanged_frame_rebuilds_the_tree_only_once() {
     );
 }
 
-/// State holding a parent session and a composed attendant.
-fn state_with_composed_attendant() -> AppState {
+/// State holding a parent session and a composed bot.
+fn state_with_composed_bot() -> AppState {
     let mut state = AppState::default_with_scope_focus();
     let parent = state.session.active_session().clone();
-    let mut attendant = ChatSessionState::new_attendant(&parent, true);
-    attendant.set_title("reviewer".to_owned());
-    attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
-    attendant.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-    attendant.set_attendant_is_prepping(false);
-    state.session.insert(attendant);
+    let mut bot = ChatSessionState::new_bot(&parent, true);
+    bot.set_title("reviewer".to_owned());
+    bot.set_bot_behavior(jinn_bot_msg::BotBehavior::Reset);
+    bot.set_bot_trigger(jinn_bot_msg::BotTrigger::ParentCompleted);
+    bot.set_bot_is_prepping(false);
+    state.session.insert(bot);
     state
 }
 
-/// The id of the attendant in `state`.
-fn attendant_id(state: &AppState) -> jinn_core_types::SessionId {
+/// The id of the bot in `state`.
+fn bot_id(state: &AppState) -> jinn_core_types::SessionId {
     state
         .session
         .iter()
-        .find(|(_, session)| session.is_attendant())
+        .find(|(_, session)| session.is_bot())
         .map(|(id, _)| id.clone())
-        .expect("an attendant session")
+        .expect("a bot session")
 }
 
-/// Whether the sessions tree marks any attendant as still composing.
-fn any_attendant_prepping(state: &AppState) -> bool {
+/// Whether the sessions tree marks any bot as still composing.
+fn any_bot_prepping(state: &AppState) -> bool {
     sorted_open_sessions(state)
         .iter()
-        .any(|entry| entry.is_attendant_prepping)
+        .any(|entry| entry.is_bot_prepping)
 }
 
 #[rstest::rstest]
 fn leaving_prep_mode_refreshes_the_sessions_tree() {
     // Given a section that has already rendered a frame with a composed
-    // attendant, so no prep marker is owed.
+    // bot, so no prep marker is owed.
     let mut section = SessionsSection::new();
-    let mut state = state_with_composed_attendant();
+    let mut state = state_with_composed_bot();
     {
         let slices = jinn_slices::Slices::new();
         with_render_ctx(&state, &slices, |ctx| section.content_height(ctx));
     }
     let after_first = section.rebuilds();
-    assert!(
-        !any_attendant_prepping(&state),
-        "a composed attendant is not marked"
-    );
+    assert!(!any_bot_prepping(&state), "a composed bot is not marked");
 
-    // When the attendant goes back into prep mode and the section asks for
+    // When the bot goes back into prep mode and the section asks for
     // its height again.
-    let id = attendant_id(&state);
+    let id = bot_id(&state);
     state
         .session
         .get_mut(&id)
-        .expect("the attendant")
-        .set_attendant_is_prepping(true);
+        .expect("the bot")
+        .set_bot_is_prepping(true);
     {
         let slices = jinn_slices::Slices::new();
         with_render_ctx(&state, &slices, |ctx| section.content_height(ctx));
@@ -3517,41 +3514,38 @@ fn leaving_prep_mode_refreshes_the_sessions_tree() {
         section.rebuilds() > after_first,
         "a prep-mode change must invalidate the memoized tree"
     );
-    // And the tree the section is now caching marks the attendant as
+    // And the tree the section is now caching marks the bot as
     // composing.
-    assert!(
-        any_attendant_prepping(&state),
-        "a composing attendant is marked"
-    );
+    assert!(any_bot_prepping(&state), "a composing bot is marked");
 }
 
 #[rstest::rstest]
-fn a_manual_trigger_alone_does_not_mark_an_attendant_as_composing() {
-    // Given a composed attendant on the manual trigger.
-    let mut state = state_with_composed_attendant();
-    let id = attendant_id(&state);
+fn a_manual_trigger_alone_does_not_mark_an_bot_as_composing() {
+    // Given a composed bot on the manual trigger.
+    let mut state = state_with_composed_bot();
+    let id = bot_id(&state);
     state
         .session
         .get_mut(&id)
-        .expect("the attendant")
-        .set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::Manual);
+        .expect("the bot")
+        .set_bot_trigger(jinn_bot_msg::BotTrigger::Manual);
 
     // When the sessions tree is built.
     let tree = sorted_open_sessions(&state);
 
     // Then it carries no prep marker. A manual trigger declines to fire on
-    // its own; the `R` key still runs the attendant, and marking it as
+    // its own; the `R` key still runs the bot, and marking it as
     // unable to run is the ambiguity the two-fact split removed.
     assert!(
-        !tree.iter().any(|entry| entry.is_attendant_prepping),
+        !tree.iter().any(|entry| entry.is_bot_prepping),
         "a manual trigger is not composition"
     );
 }
 
 #[rstest::rstest]
-fn a_parent_completed_attendant_carries_the_trigger_marker() {
-    // Given a composed attendant on the parent-completed trigger.
-    let mut state = state_with_composed_attendant();
+fn a_parent_completed_bot_carries_the_trigger_marker() {
+    // Given a composed bot on the parent-completed trigger.
+    let mut state = state_with_composed_bot();
 
     // When the sessions tree is built.
     let tree = sorted_open_sessions(&state);
@@ -3559,25 +3553,25 @@ fn a_parent_completed_attendant_carries_the_trigger_marker() {
     // Then it carries the marker saying it fires on its own.
     assert!(
         tree.iter()
-            .any(|entry| entry.attendant_fires_on_parent_completion),
-        "a parent-completed attendant must be marked as one that fires on its own"
+            .any(|entry| entry.bot_fires_on_parent_completion),
+        "a parent-completed bot must be marked as one that fires on its own"
     );
 }
 
 #[rstest::rstest]
 fn the_sessions_list_key_summarizes_the_prep_flag() {
-    // Given a state whose attendant is composed.
-    let running = state_with_composed_attendant();
+    // Given a state whose bot is composed.
+    let running = state_with_composed_bot();
     let running_key = crate::sections::sessions::state::session_list_key(&running);
 
-    // When the same attendant goes back into prep mode.
-    let mut preparing = state_with_composed_attendant();
-    let id = attendant_id(&preparing);
+    // When the same bot goes back into prep mode.
+    let mut preparing = state_with_composed_bot();
+    let id = bot_id(&preparing);
     preparing
         .session
         .get_mut(&id)
-        .expect("the attendant")
-        .set_attendant_is_prepping(true);
+        .expect("the bot")
+        .set_bot_is_prepping(true);
     let preparing_key = crate::sections::sessions::state::session_list_key(&preparing);
 
     // Then the two keys differ, so a prep-state change can never be a
@@ -3590,17 +3584,17 @@ fn the_sessions_list_key_summarizes_the_prep_flag() {
 
 #[rstest::rstest]
 fn the_sessions_list_key_summarizes_the_trigger_marker() {
-    // Given a state whose attendant fires on its parent's completion.
-    let automatic = state_with_composed_attendant();
+    // Given a state whose bot fires on its parent's completion.
+    let automatic = state_with_composed_bot();
     let automatic_key = crate::sections::sessions::state::session_list_key(&automatic);
 
-    // When the same attendant's trigger is committed as manual.
-    let mut manual = state_with_composed_attendant();
+    // When the same bot's trigger is committed as manual.
+    let mut manual = state_with_composed_bot();
     manual
         .session
-        .get_mut(&attendant_id(&manual))
-        .expect("the attendant")
-        .set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::Manual);
+        .get_mut(&bot_id(&manual))
+        .expect("the bot")
+        .set_bot_trigger(jinn_bot_msg::BotTrigger::Manual);
     let manual_key = crate::sections::sessions::state::session_list_key(&manual);
 
     // Then the two keys differ, so the second marker cannot go stale behind

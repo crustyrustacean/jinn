@@ -24,7 +24,7 @@
 
 pub mod actor_lifecycle;
 pub mod attachment;
-pub mod attendant_source_path;
+pub mod bot_source_path;
 pub mod chat_entry;
 mod chat_entry_constructors;
 pub mod chat_entry_id;
@@ -52,7 +52,7 @@ mod chat_entry_tests;
 
 pub use actor_lifecycle::ActorLifecycle;
 pub use attachment::Attachment;
-pub use attendant_source_path::AttendantSourcePath;
+pub use bot_source_path::BotSourcePath;
 pub use chat_entry::{
     AttachmentOutcome, ChangeSource, ChatEntry, ChatEntryKind, ContextChangeEvent, PinPosition,
     ResolvedToken,

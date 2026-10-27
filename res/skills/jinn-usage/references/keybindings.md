@@ -171,26 +171,30 @@ to every section:
 | `X`       | Tear down the session **and its whole subtree** (press again to confirm) |
 | `c`       | Continue: switch to the session and re-run its setup command             |
 | `s`       | Re-run the session's setup command                                       |
+| `b`       | Create a bot of the selected session (prep mode)                         |
+| `B`       | Create a standalone bot (no parent) from the session's environment       |
+| `R`       | Re-run the selected bot (cancels its in-flight turn)                     |
 | `T`       | Toggle the terminal overlay for the selected session                     |
 
 Section navigation does not wrap: `J` on the last section (Sessions) and `K`
 on the first (Persona) do nothing. Sections with nothing in them are skipped
 over, so a section you never see is still reachable.
 
-### Attendants section
+### Bots section
 
-Sessions that watch another session. See `attendants.md` for what an attendant
+Sessions that watch another session. See `bots.md` for what a bot
 is, and for the properties popup's and the pickers' own keys.
 
 | Key       | Action                                                |
 | --------- | ----------------------------------------------------- |
-| `<enter>` | Switch to the highlighted attendant                   |
+| `<enter>` | Switch to the highlighted bot                   |
 | `i`       | Switch to it and enter input mode                     |
-| `P`       | Open the attendant's properties popup                 |
-| `s`       | Browse the highlighted attendant's report history     |
+| `P`       | Open the bot's properties popup                 |
+| `s`       | Browse the highlighted bot's report history     |
 
-`N` (new attendant) and `R` (re-run) work only in the **Sessions** section,
-not here — they act on the session selected there.
+`b` (new bot of the selected session), `B` (standalone bot, no parent),
+and `R` (re-run) work only in the **Sessions** section, not here — they
+act on the session selected there.
 
 ### Task-list section
 

@@ -99,7 +99,7 @@ pub(crate) fn arrow_span(is_active: bool, theme: &Theme) -> Span<'static> {
 /// This answers only "what color is this row's text when nothing is selected"
 /// — selection is a line-level band applied by [`assemble_session_line`], not
 /// a property of the title. Priority: in-flight → tinted, error → red block,
-/// active → subagent/attendant/primary text, default → subagent/attendant/
+/// active → subagent/bot/primary text, default → subagent/bot/
 /// muted text. Subagent sessions use [`Theme::subagent_fg`] wherever a regular
 /// session would use muted text, so machine-spawned sessions read as a
 /// different kind.
@@ -113,15 +113,15 @@ pub(crate) fn entry_title_style(entry: &SessionEntry, theme: &Theme) -> Style {
     }
     let base = if entry.is_subagent {
         theme.subagent_fg
-    } else if entry.is_attendant {
-        theme.attendant_fg
+    } else if entry.is_bot {
+        theme.bot_fg
     } else {
         theme.muted_text
     };
     let active = if entry.is_subagent {
         theme.subagent_fg
-    } else if entry.is_attendant {
-        theme.attendant_fg
+    } else if entry.is_bot {
+        theme.bot_fg
     } else {
         theme.primary_text
     };
@@ -191,9 +191,9 @@ pub(crate) fn assemble_entry_line(
 const SUBAGENT_SYMBOL: &str = "⋄ ";
 /// Marks a session with a live `interactive_term` terminal.
 pub(crate) const LIVE_TERM_SYMBOL: &str = "◼ ";
-/// Marks an attendant still being composed, which will not dispatch a turn.
+/// Marks a bot still being composed, which will not dispatch a turn.
 const ATTENDANT_PREPPING_SYMBOL: &str = "⏸ ";
-/// Marks an attendant that runs when its parent's turn completes.
+/// Marks a bot that runs when its parent's turn completes.
 const ATTENDANT_PARENT_TRIGGER_SYMBOL: &str = "⇉ ";
 
 /// Renders a session entry line (indicator + arrow + tree + styled title).
@@ -224,15 +224,15 @@ fn assemble_session_line(
     // Like the subagent symbol, these sit beside the title rather than
     // inside it: the title is what a rename replaces, and a mode marker
     // must not be reachable by the rename key.
-    let prepping_symbol = if entry.is_attendant_prepping {
+    let prepping_symbol = if entry.is_bot_prepping {
         ATTENDANT_PREPPING_SYMBOL
     } else {
         ""
     };
     // A separate glyph, not a second mark on the pause: "cannot run yet" and
-    // "runs on its own" are independent facts, and an attendant can be in
+    // "runs on its own" are independent facts, and a bot can be in
     // either state without the other being false.
-    let parent_trigger_symbol = if entry.attendant_fires_on_parent_completion {
+    let parent_trigger_symbol = if entry.bot_fires_on_parent_completion {
         ATTENDANT_PARENT_TRIGGER_SYMBOL
     } else {
         ""
@@ -260,13 +260,13 @@ fn assemble_session_line(
     if !prepping_symbol.is_empty() {
         spans.push(Span::styled(
             prepping_symbol.to_owned(),
-            Style::default().fg(theme.attendant_paused),
+            Style::default().fg(theme.bot_paused),
         ));
     }
     if !parent_trigger_symbol.is_empty() {
         spans.push(Span::styled(
             parent_trigger_symbol.to_owned(),
-            Style::default().fg(theme.attendant_parent_trigger),
+            Style::default().fg(theme.bot_parent_trigger),
         ));
     }
     if !term_symbol.is_empty() {

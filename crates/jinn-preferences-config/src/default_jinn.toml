@@ -440,13 +440,13 @@ settle_max_wait_ms = 3000
 # ###########################################################################
 # Attendants
 # ###########################################################################
-[attendant]
+[bot]
 
 # > "Nudges" a session to complete it's work if it stops mid-way. Relies
 # > on the agent having a defined list of work and that it reports how far along
 # > it is. This is NOT for evaluating the quality nor checking if the work was
 # > actually implemented.
-[[attendant.entry]]
+[[bot.entry]]
 behavior = "reset"
 name = "auto-nudge"
 pins = [
@@ -469,7 +469,7 @@ Regardless of the outcome, always use the `conclude` tool to record your conclus
 You **do not** need to evaluate whether the agent actually did the work. Your job is simply to keep the agent moving if it says that it stopped before finishing. You don't need to check the work at all.""" },
 ]
 prep_mode = false
-seed_template = "The previous run of this attendant reported: <prior report>."
+seed_template = "The parent session's id is <parent_id>. The previous run of this bot reported: <prior_report>."
 trigger = "parent_completed"
 tool_filter = { mode = "allow", names = [
     "conclude",
@@ -482,7 +482,7 @@ skill_filter = { mode = "allow", names = [] }
 # > Checks a completed implementation turn against the criteria the session
 # > itself committed to. Silent when there is nothing to report — it
 # > concludes "nothing to audit" and stays out of the way.
-[[attendant.entry]]
+[[bot.entry]]
 behavior = "preserve"
 name = "gap-check"
 pins = [
@@ -565,7 +565,7 @@ Do not call `notify_parent` because the work looked risky, incomplete in a way y
 You do not fix anything. You do not use `notify_parent` to instruct the parent agent on how to proceed beyond naming the gap — it is a notification, not a task hand-off, and a parent that starts treating it as one will begin looping. You do not re-audit work the parent already showed passing.""" },
 ]
 prep_mode = false
-seed_template = "The previous run of this attendant reported: <prior report>."
+seed_template = "The parent session's id is <parent_id>. The previous run of this bot reported: <prior_report>."
 trigger = "parent_completed"
 tool_filter = { mode = "allow", names = [
     "bash",

@@ -40,9 +40,13 @@ pub struct AssemblySessionProjection {
     /// Project context files discovered for the session.
     pub context_files: Vec<ContextFile>,
 
-    /// Whether this session is an attendant, which decides whether it is
-    /// offered the attendant-only tools.
-    pub is_attendant: bool,
+    /// Whether this session is a bot, which decides whether it is
+    /// offered the bot-only tools.
+    pub is_bot: bool,
+    /// Whether a bot session has a parent. Only meaningful when
+    /// [`Self::is_bot`] holds; decides whether `notify_parent` is
+    /// offered alongside `conclude`.
+    pub bot_has_parent: bool,
 }
 
 impl AssemblySessionProjection {
@@ -60,7 +64,8 @@ impl AssemblySessionProjection {
             skill_filter: session.skill_filter().cloned(),
             loaded_skills: session.loaded_skills(),
             context_files: session.discovered_context_files().to_vec(),
-            is_attendant: session.is_attendant(),
+            is_bot: session.is_bot(),
+            bot_has_parent: session.parent_session().is_some(),
         }
     }
 }

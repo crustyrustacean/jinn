@@ -2515,10 +2515,10 @@ dependencies = [
  "error-stack",
  "jiff",
  "jinn-app-state",
- "jinn-attendant",
- "jinn-attendant-msg",
  "jinn-boot",
  "jinn-boot-msg",
+ "jinn-bot",
+ "jinn-bot-msg",
  "jinn-cell-catalog",
  "jinn-chat-input",
  "jinn-chat-input-msg",
@@ -2665,63 +2665,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jinn-attendant"
-version = "1.11.2"
-dependencies = [
- "error-stack",
- "jiff",
- "jinn-app-state",
- "jinn-attendant-msg",
- "jinn-chat-input-msg",
- "jinn-config",
- "jinn-context-assembly",
- "jinn-core-types",
- "jinn-inference-msg",
- "jinn-kernel",
- "jinn-llm-support",
- "jinn-picker",
- "jinn-preferences-config",
- "jinn-selection-widget",
- "jinn-session-history-msg",
- "jinn-session-lifecycle-msg",
- "jinn-session-msg",
- "jinn-session-state",
- "jinn-session-store-msg",
- "jinn-session-turn",
- "jinn-sidebar-msg",
- "jinn-skills-msg",
- "jinn-slices",
- "jinn-testutil",
- "jinn-theme",
- "jinn-token-count-msg",
- "jinn-turn-dispatch-msg",
- "marked-path",
- "ratatui",
- "rstest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "trouper",
- "unicode-segmentation",
- "unicode-width 0.2.2",
-]
-
-[[package]]
-name = "jinn-attendant-msg"
-version = "1.11.2"
-dependencies = [
- "jiff",
- "jinn-core-types",
- "jinn-picker",
- "jinn-selection-widget",
- "jinn-slices",
- "rstest",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "jinn-boot"
 version = "1.11.2"
 dependencies = [
@@ -2760,10 +2703,67 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-bot"
+version = "1.11.2"
+dependencies = [
+ "error-stack",
+ "jiff",
+ "jinn-app-state",
+ "jinn-bot-msg",
+ "jinn-chat-input-msg",
+ "jinn-config",
+ "jinn-context-assembly",
+ "jinn-core-types",
+ "jinn-inference-msg",
+ "jinn-kernel",
+ "jinn-llm-support",
+ "jinn-picker",
+ "jinn-preferences-config",
+ "jinn-selection-widget",
+ "jinn-session-history-msg",
+ "jinn-session-lifecycle-msg",
+ "jinn-session-msg",
+ "jinn-session-state",
+ "jinn-session-store-msg",
+ "jinn-session-turn",
+ "jinn-sidebar-msg",
+ "jinn-skills-msg",
+ "jinn-slices",
+ "jinn-testutil",
+ "jinn-theme",
+ "jinn-token-count-msg",
+ "jinn-turn-dispatch-msg",
+ "marked-path",
+ "ratatui",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "trouper",
+ "unicode-segmentation",
+ "unicode-width 0.2.2",
+]
+
+[[package]]
+name = "jinn-bot-msg"
+version = "1.11.2"
+dependencies = [
+ "jiff",
+ "jinn-core-types",
+ "jinn-picker",
+ "jinn-selection-widget",
+ "jinn-slices",
+ "rstest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "jinn-cell-catalog"
 version = "1.11.2"
 dependencies = [
- "jinn-attendant-msg",
+ "jinn-bot-msg",
  "jinn-chat-input-msg",
  "jinn-chat-log-view-msg",
  "jinn-cwd-msg",
@@ -2796,7 +2796,7 @@ name = "jinn-chat-input"
 version = "1.11.2"
 dependencies = [
  "error-stack",
- "jinn-attendant-msg",
+ "jinn-bot-msg",
  "jinn-chat-input-msg",
  "jinn-config",
  "jinn-context",
@@ -2992,7 +2992,7 @@ name = "jinn-context-assembly"
 version = "1.11.2"
 dependencies = [
  "error-stack",
- "jinn-attendant-msg",
+ "jinn-bot-msg",
  "jinn-context",
  "jinn-context-assembly-msg",
  "jinn-core-types",
@@ -3666,7 +3666,7 @@ name = "jinn-preferences-config"
 version = "1.11.2"
 dependencies = [
  "error-stack",
- "jinn-attendant-msg",
+ "jinn-bot-msg",
  "jinn-common",
  "jinn-config",
  "jinn-core-types",
@@ -4063,7 +4063,7 @@ dependencies = [
  "async-trait",
  "error-stack",
  "jiff",
- "jinn-attendant-msg",
+ "jinn-bot-msg",
  "jinn-cell-catalog",
  "jinn-chat-input-msg",
  "jinn-chat-log-view-msg",
@@ -4099,8 +4099,8 @@ dependencies = [
  "daow",
  "error-stack",
  "jiff",
- "jinn-attendant-msg",
  "jinn-boot-msg",
+ "jinn-bot-msg",
  "jinn-chat-input-msg",
  "jinn-chat-log-view",
  "jinn-chat-log-view-msg",
@@ -4212,8 +4212,8 @@ dependencies = [
  "dirs",
  "error-stack",
  "jiff",
- "jinn-attendant",
- "jinn-attendant-msg",
+ "jinn-bot",
+ "jinn-bot-msg",
  "jinn-chat-input-msg",
  "jinn-chat-log-view",
  "jinn-chat-log-view-msg",
@@ -4637,8 +4637,8 @@ dependencies = [
  "error-stack",
  "futures",
  "jiff",
- "jinn-attendant",
- "jinn-attendant-msg",
+ "jinn-bot",
+ "jinn-bot-msg",
  "jinn-cell-catalog",
  "jinn-chat-input-msg",
  "jinn-common",

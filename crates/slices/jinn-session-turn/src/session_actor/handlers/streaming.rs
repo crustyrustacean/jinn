@@ -27,7 +27,7 @@ impl SessionPersistenceActor {
     ///
     /// Every path that ends a turn without a provider stream to end goes through
     /// here: a person pressing Escape, a watchdog giving up, a subagent teardown,
-    /// an attendant rerun. There is no second way to report a turn's end, which is
+    /// a bot rerun. There is no second way to report a turn's end, which is
     /// what makes the report reliable enough to hang a phase transition on.
     ///
     /// Unconditional, and that is load-bearing. A watchdog cancel lands *after*
@@ -177,7 +177,7 @@ impl SessionPersistenceActor {
     ///
     /// The actor subscribes to its own event so the outcome is visible to any
     /// in-actor follow-up work without a second derivation. Currently a
-    /// log-only sink; the attendant slice runs its own subscriber for the
+    /// log-only sink; the bot slice runs its own subscriber for the
     /// re-run trigger.
     #[expect(
         clippy::unused_async,

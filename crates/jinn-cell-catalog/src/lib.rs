@@ -161,27 +161,27 @@ fn register_catalog(slices: &Slices) -> usize {
         jinn_cwd_msg::CwdInputState::default()
     );
 
-    // jinn-attendant — the attendant properties popup, the report history
-    // picker, and the saved-attendants picker. All three activations
+    // jinn-bot — the bot properties popup, the report history
+    // picker, and the saved-bots picker. All three activations
     // resolve their cells from here before any slice activates; a missing
     // entry aborts launch.
     register!(
         slices,
         count,
-        jinn_attendant_msg::attendant_properties_slot(),
-        jinn_attendant_msg::AttendantPropertiesState::default()
+        jinn_bot_msg::bot_properties_slot(),
+        jinn_bot_msg::BotPropertiesState::default()
     );
     register!(
         slices,
         count,
-        jinn_attendant_msg::attendant_report_picker_slot(),
-        jinn_attendant_msg::AttendantReportPickerState::default()
+        jinn_bot_msg::bot_report_picker_slot(),
+        jinn_bot_msg::BotReportPickerState::default()
     );
     register!(
         slices,
         count,
-        jinn_attendant_msg::attendant_saved_picker_slot(),
-        jinn_attendant_msg::AttendantSavedPickerState::default()
+        jinn_bot_msg::bot_saved_picker_slot(),
+        jinn_bot_msg::BotSavedPickerState::default()
     );
 
     // jinn-dashboard — the actor census.

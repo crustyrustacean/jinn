@@ -138,6 +138,17 @@ pub trait ConfigList: Serialize + DeserializeOwned + Send + Sync + 'static {
     /// The dotted `jinn.toml` path this list occupies.
     const KEY: &'static str;
 
+    /// The dotted path an older file may still carry this list at, if the
+    /// list was renamed.
+    ///
+    /// Reads of the list also consult this key and merge what they find
+    /// after the entries read from [`Self::KEY`], so a config written
+    /// before the rename keeps working. `None` (the default) means the
+    /// list was never renamed. Nothing writes the legacy key: a save
+    /// touches only [`Self::KEY`], so the next time the user edits an
+    /// entry the file converges on its own.
+    const LEGACY_KEY: Option<&'static str> = None;
+
     /// The field identifying an entry. Always present here: a
     /// list-of-tables with no identity field is the exact case the entry
     /// key exists for.

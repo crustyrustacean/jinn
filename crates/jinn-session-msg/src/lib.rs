@@ -64,7 +64,7 @@ impl PhaseKind {
     /// counter that used to disagree with this one (four writers, phase-adjacent
     /// readers) is gone — every liveness predicate reads the phase, through this
     /// method or a `matches!` on it. There are deliberately no carve-outs for a
-    /// parent orchestrating subagents, an attendant composing a report, or a
+    /// parent orchestrating subagents, a bot composing a report, or a
     /// turn running its tool loop — those *are* the time the user is waiting.
     #[must_use]
     pub const fn is_working(self) -> bool {

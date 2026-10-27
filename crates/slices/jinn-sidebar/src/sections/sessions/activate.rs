@@ -15,7 +15,7 @@ use jinn_sidebar_msg::SidebarSectionId;
 ///   are emitted: each session's discovered skills/prompts/context-files
 ///   are ephemeral and persist across activation changes, and were
 ///   hydrated when the session was created/loaded.
-/// - Also answers in the attendants section, so an attendant's own
+/// - Also answers in the bots section, so a bot's own
 ///   conversation opens from the list that names it.
 pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
     activate_selected(state, false)
@@ -24,7 +24,7 @@ pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
 /// Activates the session under the cursor and enters Insert mode.
 ///
 /// Called when the user presses `i` in the sessions section — or in the
-/// attendants section, for the same reason `<enter>` answers in both. Like
+/// bots section, for the same reason `<enter>` answers in both. Like
 /// [`handle_session_activate`] but lands in Input mode instead of Normal,
 /// so the user can immediately start typing. The scope stack ends up
 /// `[Normal, Input]` — Normal as the base so that ESC (`clear_overlays`)
@@ -64,7 +64,7 @@ fn activate_selected(state: &mut AppState, enter_input: bool) -> IntentResult {
 /// list a session to activate.
 ///
 /// Two sections list sessions a user opens this way, and they keep separate
-/// cursors over separate lists: sessions and attendants. Reading whichever
+/// cursors over separate lists: sessions and bots. Reading whichever
 /// cursor belongs to the focused section is a choice between two identities
 /// rather than between two row positions — there is no index to resolve
 /// against the wrong list.
@@ -76,7 +76,7 @@ fn highlighted_session_id(state: &AppState) -> Option<jinn_core_types::SessionId
     state.frontend.with_sections(
         |s| match focused {
             SidebarSectionId::Sessions => s.sessions.selected_id.clone(),
-            SidebarSectionId::Attendant => s.attendant.selected_id.clone(),
+            SidebarSectionId::Bot => s.bot.selected_id.clone(),
             _ => None,
         },
         || None,

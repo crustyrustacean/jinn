@@ -13,9 +13,7 @@ use std::ops::Range;
 use std::sync::atomic::Ordering;
 
 use jiff::Timestamp;
-use jinn_attendant_msg::{
-    AttendantBehavior, AttendantModelSetting, AttendantReport, AttendantTrigger,
-};
+use jinn_bot_msg::{BotBehavior, BotModelSetting, BotReport, BotTrigger};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
@@ -443,7 +441,7 @@ impl ChatSessionState {
         }
     }
 
-    /// Create an attendant session: a peer that references a parent without
+    /// Create a bot session: a peer that references a parent without
     /// inheriting its conversation.
     ///
     /// Copies the parent's environment — profile, cwd, project, home, and
@@ -452,12 +450,12 @@ impl ChatSessionState {
     /// before anything dispatches.
     ///
     /// Does not reuse [`new_child`](Self::new_child): that constructor
-    /// hard-codes the `Subagent` origin, and an attendant is a different
+    /// hard-codes the `Subagent` origin, and a bot is a different
     /// creation path.
     #[must_use]
-    pub fn new_attendant(parent: &Self, persist: bool) -> Self {
+    pub fn new_bot(parent: &Self, persist: bool) -> Self {
         {
-            let mut attendant = Self {
+            let mut bot = Self {
                 core: SessionCore::default(),
                 ui: SessionUi::default(),
                 slices: std::sync::OnceLock::new(),
@@ -465,68 +463,89 @@ impl ChatSessionState {
                     jinn_chat_log_view_msg::ChatLogViewUi::default(),
                 ),
             };
-            let attendant_core = &mut attendant.core;
-            attendant_core.identity.parent_session = Some(parent.core.identity.session_id.clone());
-            attendant_core.identity.origin = SessionOrigin::Attendant;
-            attendant_core
+            let bot_core = &mut bot.core;
+            bot_core.identity.parent_session = Some(parent.core.identity.session_id.clone());
+            bot_core.identity.origin = SessionOrigin::Bot;
+            bot_core
                 .identity
                 .project
                 .clone_from(&parent.core.identity.project);
-            attendant_core.storage.persist = persist;
-            attendant_core.integrations.profile = parent.core.integrations.profile.clone();
-            attendant_core
+            bot_core.storage.persist = persist;
+            bot_core.integrations.profile = parent.core.integrations.profile.clone();
+            bot_core
                 .lifecycle
                 .cwd
                 .clone_from(&parent.core.lifecycle.cwd);
-            attendant_core
+            bot_core
                 .lifecycle
                 .home
                 .clone_from(&parent.core.lifecycle.home);
-            attendant_core
+            bot_core
                 .integrations
                 .enabled_mcp_servers
                 .clone_from(&parent.core.integrations.enabled_mcp_servers);
-            attendant
+            bot
         }
     }
 
-    /// Whether this session is an attendant of another session.
+    /// Creates a standalone bot: a bot with no parent, inheriting the
+    /// *environment* of `source` but nothing else about it.
+    ///
+    /// A standalone bot is the same session kind as [`Self::new_bot`] —
+    /// origin [`SessionOrigin::Bot`], prep mode on, the same
+    /// copy-the-environment rule — minus the parent link. Its seed
+    /// template starts empty, because the parent line an attached bot's
+    /// default names is a line a parentless bot cannot fill, and the
+    /// dispatched message is meant to be its whole prompt.
+    ///
+    /// `source` supplies the project, profile, cwd, home, and enabled MCP
+    /// servers exactly as a parent would; the conversation, pins, and bot
+    /// configuration of the source are not carried over.
     #[must_use]
-    pub fn is_attendant(&self) -> bool {
-        self.core.identity.origin == SessionOrigin::Attendant
+    pub fn new_standalone_bot(source: &Self, persist: bool) -> Self {
+        let mut bot = Self::new_bot(source, persist);
+        bot.core.identity.parent_session = None;
+        bot.core.bot.seed_template = jinn_bot_msg::empty_seed_template();
+        bot
+    }
+
+    /// Whether this session is a bot of another session.
+    #[must_use]
+    pub fn is_bot(&self) -> bool {
+        self.core.identity.origin == SessionOrigin::Bot
     }
 
     /// What a run in this session sees of the conversation.
     #[must_use]
-    pub fn attendant_behavior(&self) -> AttendantBehavior {
-        self.core.attendant.behavior
+    pub fn bot_behavior(&self) -> BotBehavior {
+        self.core.bot.behavior
     }
 
     /// Set what a run in this session sees of the conversation.
-    pub fn set_attendant_behavior(&mut self, behavior: AttendantBehavior) {
-        self.core.attendant.behavior = behavior;
+    pub fn set_bot_behavior(&mut self, behavior: BotBehavior) {
+        self.core.bot.behavior = behavior;
     }
 
-    /// Whether this attendant is still being composed.
+    /// Whether this bot is still being composed.
     ///
     /// Composition is the only configuration that stops a dispatch, and it
     /// says so on its own: a manual trigger stops a *fire*, not the user
     /// pressing `R`, so conflating the two would mark a perfectly runnable
-    /// attendant as stopped. Everything else runs on its own terms.
+    /// bot as stopped. Everything else runs on its own terms.
     ///
-    /// Only meaningful for an attendant — an ordinary session carries the
+    /// Only meaningful for a bot — an ordinary session carries the
     /// same default fields and would answer `true`.
     #[must_use]
-    pub fn attendant_is_prepping(&self) -> bool {
-        self.core.attendant.prep_mode
+    pub fn bot_is_prepping(&self) -> bool {
+        self.core.bot.prep_mode
     }
 
-    /// Set whether this attendant is still being composed.
-    pub fn set_attendant_is_prepping(&mut self, prep_mode: bool) {
-        self.core.attendant.prep_mode = prep_mode;
+    /// Set whether this bot is still being composed.
+    pub fn set_bot_is_prepping(&mut self, prep_mode: bool) {
+        self.core.bot.prep_mode = prep_mode;
     }
 
-    /// Whether this attendant runs on its parent's completion.
+    /// Whether this bot runs on its parent's completion.
     ///
     /// The sidebar marks this with its own glyph. It is a fact about the
     /// configuration rather than a derived state, so it is asked of the
@@ -534,60 +553,60 @@ impl ChatSessionState {
     /// meaning is a few fields away is a marker the two surfaces can
     /// disagree about.
     #[must_use]
-    pub fn attendant_fires_on_parent_completion(&self) -> bool {
-        self.attendant_trigger() == AttendantTrigger::ParentCompleted
+    pub fn bot_fires_on_parent_completion(&self) -> bool {
+        self.bot_trigger() == BotTrigger::ParentCompleted
     }
 
     /// The condition that causes an automatic re-run.
     #[must_use]
-    pub fn attendant_trigger(&self) -> AttendantTrigger {
-        self.core.attendant.trigger
+    pub fn bot_trigger(&self) -> BotTrigger {
+        self.core.bot.trigger
     }
 
     /// Set the condition that causes an automatic re-run.
-    pub fn set_attendant_trigger(&mut self, trigger: AttendantTrigger) {
-        self.core.attendant.trigger = trigger;
+    pub fn set_bot_trigger(&mut self, trigger: BotTrigger) {
+        self.core.bot.trigger = trigger;
     }
 
     /// The user-editable seed text injected ahead of the prior report.
     #[must_use]
     pub fn seed_template(&self) -> &str {
-        &self.core.attendant.seed_template
+        &self.core.bot.seed_template
     }
 
     /// Set the user-editable seed text injected ahead of the prior report.
     pub fn set_seed_template(&mut self, template: String) {
-        self.core.attendant.seed_template = template;
+        self.core.bot.seed_template = template;
     }
 
-    /// Whether this attendant's model is its own or the one it inherited.
+    /// Whether this bot's model is its own or the one it inherited.
     ///
-    /// A fact about the attendant's configuration rather than a reading of
+    /// A fact about the bot's configuration rather than a reading of
     /// its model: the model is always concrete, and this says whether the
-    /// attendant claimed it. Never infer one from the other.
+    /// bot claimed it. Never infer one from the other.
     #[must_use]
-    pub fn attendant_model_setting(&self) -> AttendantModelSetting {
-        self.core.attendant.model_setting
+    pub fn bot_model_setting(&self) -> BotModelSetting {
+        self.core.bot.model_setting
     }
 
-    /// Set whether this attendant's model is its own or inherited.
-    pub fn set_attendant_model_setting(&mut self, setting: AttendantModelSetting) {
-        self.core.attendant.model_setting = setting;
+    /// Set whether this bot's model is its own or inherited.
+    pub fn set_bot_model_setting(&mut self, setting: BotModelSetting) {
+        self.core.bot.model_setting = setting;
     }
 
-    /// The attendant's append-only report log, oldest first.
+    /// The bot's append-only report log, oldest first.
     #[must_use]
-    pub fn attendant_reports(&self) -> &[AttendantReport] {
-        &self.core.attendant.reports
+    pub fn bot_reports(&self) -> &[BotReport] {
+        &self.core.bot.reports
     }
 
-    /// Append one report to this attendant's log.
+    /// Append one report to this bot's log.
     ///
     /// Append-only by design: the harness never removes or edits a report,
     /// and the next run is seeded from the most recent entry.
-    pub fn append_attendant_report(&mut self, body: String) -> AttendantReport {
-        let reports = &mut self.core.attendant.reports;
-        let report = AttendantReport {
+    pub fn append_bot_report(&mut self, body: String) -> BotReport {
+        let reports = &mut self.core.bot.reports;
+        let report = BotReport {
             run: reports.len() + 1,
             published_at: Timestamp::now(),
             body,
@@ -596,22 +615,22 @@ impl ChatSessionState {
         report
     }
 
-    /// The most recent report, if this attendant has ever reported.
+    /// The most recent report, if this bot has ever reported.
     #[must_use]
-    pub fn latest_attendant_report(&self) -> Option<&AttendantReport> {
-        self.core.attendant.reports.last()
+    pub fn latest_bot_report(&self) -> Option<&BotReport> {
+        self.core.bot.reports.last()
     }
 
-    /// The workflow-local TOML file this attendant was loaded from, when
-    /// it belongs to a workflow. `None` for personal attendants.
+    /// The workflow-local TOML file this bot was loaded from, when
+    /// it belongs to a workflow. `None` for personal bots.
     #[must_use]
-    pub fn workflow_source(&self) -> Option<&jinn_core_types::AttendantSourcePath> {
-        self.core.attendant.workflow_source.as_ref()
+    pub fn workflow_source(&self) -> Option<&jinn_core_types::BotSourcePath> {
+        self.core.bot.workflow_source.as_ref()
     }
 
-    /// Stamp this attendant as loaded from the workflow-local file `source`.
-    pub fn set_workflow_source(&mut self, source: jinn_core_types::AttendantSourcePath) {
-        self.core.attendant.workflow_source = Some(source);
+    /// Stamp this bot as loaded from the workflow-local file `source`.
+    pub fn set_workflow_source(&mut self, source: jinn_core_types::BotSourcePath) {
+        self.core.bot.workflow_source = Some(source);
     }
 
     /// Immutable access to this session's steering buffer.
@@ -2106,8 +2125,8 @@ impl ChatSessionState {
     ///
     /// This gate is independent of the provider gate (`ToolDefinition::
     /// available_for_provider`), which needs the provider name and stays
-    /// where it is. An attendant's filter composes as filter ∧ provider ∧
-    /// the attendant-only gate.
+    /// where it is. A bot's filter composes as filter ∧ provider ∧
+    /// the bot-only gate.
     #[must_use]
     pub fn is_tool_enabled(&self, tool_name: &str) -> bool {
         permits_or_inherits(
@@ -2130,7 +2149,7 @@ impl ChatSessionState {
     /// Replace the tool filter for this session.
     ///
     /// `None` releases it, sending the session back to inheriting. Used by
-    /// the tool picker to commit toggle state and by the attendant panel to
+    /// the tool picker to commit toggle state and by the bot panel to
     /// thaw a frozen set.
     pub fn set_tool_filter(&mut self, filter: Option<NameFilter>) {
         self.core.integrations.profile.tool_filter = filter;
@@ -2201,7 +2220,7 @@ impl ChatSessionState {
     /// Replace the skill filter for this session.
     ///
     /// `None` releases it, sending the session back to inheriting. Used by
-    /// the skill picker to commit toggle state and by the attendant panel to
+    /// the skill picker to commit toggle state and by the bot panel to
     /// thaw a frozen set.
     pub fn set_skill_filter(&mut self, filter: Option<NameFilter>) {
         self.core.integrations.profile.skill_filter = filter;
@@ -3502,7 +3521,7 @@ impl ChatSessionState {
     /// Set the session origin for construction paths that decide the kind
     /// after building the session (forks built from snapshots, test
     /// fixtures). Construction paths that know the kind up front use a
-    /// dedicated constructor (`new_child`, `new_attendant`) instead.
+    /// dedicated constructor (`new_child`, `new_bot`) instead.
     pub fn set_origin(&mut self, origin: SessionOrigin) {
         self.core.identity.origin = origin;
     }
