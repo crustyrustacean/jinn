@@ -25,6 +25,11 @@
   - `R` now resets the bot's context
   - Picker keybind changed from `<leader>sa` to `<leader>sb`
   - `<c-enter>` in bot picker creates the bot in it's own session (`<c-a>` and `<enter>` keybinds unchanged)
+  - The replacement tokens for bot seed messages has changed:
+    - `<parent_id>`: The ID of the parent session (if any)
+    - `<prior_report>`: The previous `conclude` value for the bot
+  - Manual `jinn.toml` update will be needed. Recommend changing `seed_template` on the two builtins (`gap-check` and `auto-nudge`) to:
+    - `seed_template = "The parent session's id is <parent_id>. The previous run of this bot reported: <prior_report>."`
 
 ## 2026-10-22 v1.11.2
 
