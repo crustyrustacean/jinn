@@ -595,3 +595,5 @@ Entries are added or amended **only with human approval**.
 - (skills) The skill picker's footer splits its cost into a list term over the enabled skills and a loaded term over pinned skill bodies.
 - (skills) A loaded skill that is disabled keeps its body cost in the loaded term until it is unloaded from context.
 - (mcp) The MCP inspector's footer counts the registered tool definitions of enabled servers only, so a disabled server contributes zero.
+- (chat-log-view) The audit popup's context section header names the entry's context override, not its computed inclusion state.
+- (chat-log-view) The audit popup's metadata block reports an entry's context cost as tokens currently included over the entry's total token count.

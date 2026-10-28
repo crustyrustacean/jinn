@@ -1,8 +1,10 @@
-//! Audit popup - text rendering for a chat entry's context-change history.
+//! Audit popup - text rendering for a chat entry's metadata and its
+//! context-change history.
 //!
 //! Produces the [`Line`]s shown inside the audit popup overlay. Pure function:
-//! given a [`ChatEntry`] and a [`Theme`], returns the header line followed by
-//! one body line per recorded [`ContextChangeEvent`] (oldest first).
+//! given a [`ChatEntry`] and a [`Theme`], returns a `Metadata` block (sent
+//! timestamp, context cost, model pair, stream timing) followed by a `Context`
+//! header and one body line per recorded [`ContextChangeEvent`] (oldest first).
 //!
 //! Popup geometry and rendering live in the TUI layer; this module owns only
 //! the textual content.
@@ -16,9 +18,17 @@ use ratatui::text::{Line, Span};
 
 /// Render the audit popup's text for `entry`.
 ///
-/// Returns a header line followed by one body line per event in `context_history`
-/// (chronological order). For entries with no history, returns a header plus a
-/// single `(no events recorded)` body line.
+/// Returns a `Metadata` block — the sent timestamp, a `Ctx:` line reporting
+/// the entry's context cost, and the model/timing lines — followed by a
+/// `Context` header naming the entry's current [`ContextOverride`] and one
+/// body line per event in `context_history` (chronological order). For entries
+/// with no history, returns the header plus a single `(no events recorded)`
+/// body line.
+///
+/// The `Ctx:` line renders `<included>/<total>` tokens: `<total>` is the
+/// entry's own `token_count` and `<included>` is that count when
+/// `is_in_context()` holds, `0` otherwise. An entry with no computed count
+/// renders `Ctx: ?/?`.
 ///
 /// `model` is the `(used, requested)` model pair resolved by the caller (the
 /// entry's own stamps, or its paired tool call's for a tool result). When
@@ -47,6 +57,7 @@ pub fn format_audit_lines(
         format!("Sent: {}", format_timestamp(&entry.timing.at())),
         body_style,
     )]));
+    lines.push(format_ctx_line(entry, body_style));
 
     if let Some((used, requested)) = model {
         lines.push(Line::from(vec![Span::styled(
@@ -93,11 +104,12 @@ pub fn format_audit_lines(
 
     lines.push(Line::from(vec![Span::styled(String::new(), body_style)]));
 
-    let count = entry.context_history.len();
-    let current = context_override_label(entry.context_override);
-    let audit_label = format!("audit ({count} events) ({current})");
+    let context_label = format!(
+        "Context ({})",
+        context_override_label(entry.context_override())
+    );
     lines.push(centered_title(
-        &audit_label,
+        &context_label,
         AUDIT_POPUP_WIDTH,
         header_style,
     ));
@@ -114,6 +126,21 @@ pub fn format_audit_lines(
     }
 
     lines
+}
+
+/// Format the entry's context cost as `Ctx: <current>/<total>`.
+///
+/// `<total>` is the entry's `token_count`; `<current>` is that same count
+/// when the entry is currently in the assembled prompt ([`ChatEntry::
+/// is_in_context`]), `0` when it is not. An entry with no computed count
+/// renders `?/?` — unknown, regardless of inclusion state.
+fn format_ctx_line(entry: &ChatEntry, style: Style) -> Line<'static> {
+    let value = match entry.token_count {
+        Some(total) if entry.is_in_context() => format!("{total}/{total}"),
+        Some(total) => format!("0/{total}"),
+        None => "?/?".to_owned(),
+    };
+    Line::from(vec![Span::styled(format!("Ctx: {value}"), style)])
 }
 
 /// Format one event as `[source] From -> To`.
@@ -423,7 +450,7 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn format_audit_lines_includes_metadata_section_before_audit() {
+    fn format_audit_lines_includes_metadata_section_before_context() {
         // Given a default entry.
         let entry = ChatEntry::user("hi");
 
@@ -442,11 +469,34 @@ mod tests {
             sent.starts_with("Sent:"),
             "second line should start with Sent:: {sent}"
         );
-        // And line 3 is the centered audit title.
-        let audit = text(&lines[3]);
+        // And line 4 is the centered Context title.
+        let context = text(&lines[4]);
         assert!(
-            audit.contains("audit"),
-            "fourth line should contain audit: {audit}"
+            context.contains("Context"),
+            "fifth line should contain Context: {context}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn format_audit_lines_ctx_line_follows_sent_line() {
+        // Given a default entry.
+        let entry = ChatEntry::user("hi");
+
+        // When formatting.
+        let lines = format(&entry);
+
+        // Then line 1 is the Sent: line.
+        let sent = text(&lines[1]);
+        assert!(
+            sent.starts_with("Sent:"),
+            "second line should start with Sent:: {sent}"
+        );
+        // And line 2, immediately after it, is the Ctx: line.
+        let ctx = text(&lines[2]);
+        assert!(
+            ctx.starts_with("Ctx: "),
+            "third line should start with 'Ctx: ': {ctx}"
         );
     }
 
@@ -459,8 +509,8 @@ mod tests {
         // When formatting.
         let lines = format(&entry);
 
-        // Then line 2 (between Metadata and audit) is blank.
-        assert_eq!(text(&lines[2]), "");
+        // Then line 3 (between Metadata and Context) is blank.
+        assert_eq!(text(&lines[3]), "");
     }
 
     #[rstest::rstest]
@@ -472,14 +522,15 @@ mod tests {
         // When formatting.
         let lines = format(&entry);
 
-        // Then line count is 5: Metadata title, Sent, blank, audit title, placeholder.
-        assert_eq!(lines.len(), 5);
+        // Then line count is 6: Metadata title, Sent, Ctx, blank, Context
+        // title, placeholder.
+        assert_eq!(lines.len(), 6);
         assert_eq!(
-            text(&lines[3]),
-            "-------------------- audit (0 events) (Default) --------------------"
+            text(&lines[4]),
+            "------------------------ Context (Default) -------------------------"
         );
         // And the body is the placeholder.
-        assert_eq!(text(&lines[4]), "(no events recorded)");
+        assert_eq!(text(&lines[5]), "(no events recorded)");
     }
 
     #[rstest::rstest]
@@ -493,13 +544,13 @@ mod tests {
         let lines = format(&entry);
 
         // Then the header shows the current override.
-        assert_eq!(lines.len(), 5);
+        assert_eq!(lines.len(), 6);
         assert_eq!(
-            text(&lines[3]),
-            "----------------- audit (1 events) (ForcedExclude) -----------------"
+            text(&lines[4]),
+            "--------------------- Context (ForcedExclude) ----------------------"
         );
         // And the body line shows the transition with [user] source.
-        assert_eq!(text(&lines[4]), "[user] Default -> ForcedExclude");
+        assert_eq!(text(&lines[5]), "[user] Default -> ForcedExclude");
     }
 
     #[rstest::rstest]
@@ -518,7 +569,7 @@ mod tests {
         let lines = format(&entry);
 
         // Then the source label is the bare worker name (no `worker:` prefix).
-        assert_eq!(text(&lines[4]), "[compactor] Default -> ForcedExclude");
+        assert_eq!(text(&lines[5]), "[compactor] Default -> ForcedExclude");
     }
 
     #[rstest::rstest]
@@ -538,7 +589,7 @@ mod tests {
 
         // Then the source label is the bare internal label.
         assert_eq!(
-            text(&lines[4]),
+            text(&lines[5]),
             "[dangling-cleanup] Default -> ForcedExclude"
         );
     }
@@ -554,10 +605,10 @@ mod tests {
         // When formatting.
         let lines = format(&entry);
 
-        // Then 6 lines total (3 metadata + 3 audit) and order matches insertion.
-        assert_eq!(lines.len(), 6);
-        assert_eq!(text(&lines[4]), "[user] Default -> ForcedExclude");
-        assert_eq!(text(&lines[5]), "[user] ForcedExclude -> Default");
+        // Then 7 lines total (4 metadata + 3 audit) and order matches insertion.
+        assert_eq!(lines.len(), 7);
+        assert_eq!(text(&lines[5]), "[user] Default -> ForcedExclude");
+        assert_eq!(text(&lines[6]), "[user] ForcedExclude -> Default");
     }
 
     #[rstest::rstest]
@@ -573,9 +624,75 @@ mod tests {
         let lines = format(&entry);
 
         // Then the header parenthetical shows the *current* Default, not the last event's `to`.
-        assert!(text(&lines[3]).contains("(Default) ---"));
-        // And event count is 2, not 1.
-        assert!(text(&lines[3]).contains("(2 events)"));
+        assert!(text(&lines[4]).contains("(Default) ---"));
+    }
+
+    #[rstest::rstest]
+    #[case(
+        ContextOverride::Default,
+        "------------------------ Context (Default) -------------------------"
+    )]
+    #[case(
+        ContextOverride::ForcedInclude,
+        "--------------------- Context (ForcedInclude) ----------------------"
+    )]
+    #[case(
+        ContextOverride::ForcedExclude,
+        "--------------------- Context (ForcedExclude) ----------------------"
+    )]
+    fn format_audit_lines_header_names_the_context_override(
+        #[case] override_: ContextOverride,
+        #[case] expected: &str,
+    ) {
+        // Given an entry carrying the override with no recorded change.
+        let entry = ChatEntry::user("hi").with_context_override(override_);
+
+        // When formatting.
+        let lines = format(&entry);
+
+        // Then the Context header is the override label, centered at popup width.
+        assert_eq!(text(&lines[4]), expected);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn format_ctx_line_shows_full_count_when_entry_is_in_context() {
+        // Given a default user entry with a computed token count.
+        let mut entry = ChatEntry::user("hi");
+        entry.token_count = Some(1234);
+
+        // When formatting.
+        let lines = format(&entry);
+
+        // Then the Ctx line reports the full count as both current and total.
+        assert_eq!(text(&lines[2]), "Ctx: 1234/1234");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn format_ctx_line_shows_zero_current_when_entry_is_excluded() {
+        // Given an entry forced out of context with a computed token count.
+        let mut entry = ChatEntry::user("hi").with_context_override(ContextOverride::ForcedExclude);
+        entry.token_count = Some(1234);
+
+        // When formatting.
+        let lines = format(&entry);
+
+        // Then the Ctx line reports zero of the total.
+        assert_eq!(text(&lines[2]), "Ctx: 0/1234");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn format_ctx_line_shows_unknown_when_token_count_is_missing() {
+        // Given a default entry with no computed token count.
+        let entry = ChatEntry::user("hi");
+
+        // When formatting.
+        let lines = format(&entry);
+
+        // Then the Ctx line reads unknown regardless of inclusion state.
+        assert_eq!(text(&lines[2]), "Ctx: ?/?");
     }
 
     mod rect_tests {
@@ -954,6 +1071,6 @@ mod tests {
             find_model_line(&lines).is_none(),
             "no model line should render without a model"
         );
-        assert_eq!(lines.len(), 5);
+        assert_eq!(lines.len(), 6);
     }
 }
