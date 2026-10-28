@@ -1,10 +1,11 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
-## (development)
+## 2026-10-28 v1.12.0
 
 - Session picker fuzzy search now sorts by score.
 - `#approve-plan` prompt no longer requires a _verbatim_ copy of the decision ledger. This should fix the issue where an agent refuses to amend the ledger even after human approval to do so.
 - Pinning a tool call/result chunk now only displays the tool result in the sidebar. This reduces the noise from pinning saved plans and skill loads.
+- Add new `builtin-prompts.md` to `jinn-usage` skill that explains how to use the builtin prompts.
 - Add new "Library" sidebar section that acts as a way to bookmark sessions.
   - `L` key moves a session to/from the Library
 - The chat entry audit popup (`a` in chat history view) now shows the model + routing configuration that generated the response.
