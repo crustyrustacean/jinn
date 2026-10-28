@@ -66,6 +66,7 @@ the current truth — and echo that.
 | `references/terminal-overlay.md`       | Interactive terminal overlay, control mode                                                 |
 | `references/mcp-servers.md`            | MCP server config, enabling, the inspector                                                 |
 | `references/chat-input-tokens.md`      | `#prompt`, `@attachment`, `//` autocomplete tokens                                         |
+| `references/builtin-prompts.md`        | The builtin `#prompts`: what each is for, how they work, choosing between them             |
 | `references/models-and-providers.md`   | Model/provider pickers, alloys, endpoint pinning, reasoning effort                         |
 | `references/configuration.md`          | Config file map, snippets, apply-to-user-config protocol                                   |
 | `references/extending-jinn.md`         | Adding capabilities or extending jinn: MCP servers, skills, prompts, personas, themes, etc |

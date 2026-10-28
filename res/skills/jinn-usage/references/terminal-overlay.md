@@ -41,10 +41,10 @@ The toggle key is configurable per user — check `[term]
 control_toggle_key` in `jinn.toml` (see `configuration.md`) or just try
 `<c-g>`, the shipped default.
 
-**Handback semantics (worth explaining to users):** if the agent's input lands
-while *you* hold control, the tool call does not type into your program — it
-resolves with a "user holds control" notice, and the agent waits. When you
-hand back, the agent's next call sees the screen as *you* left it.
+**Handback semantics:** if the agent's input lands while *you* hold control,
+the tool call does not type into your program — it returns a "user holds
+control" notice, and the agent waits. When you hand back, the agent's next
+call sees the screen as *you* left it.
 
 ## Getting the screen into the conversation
 
@@ -55,7 +55,7 @@ hand back, the agent's next call sees the screen as *you* left it.
 
 `I` is the fastest way to ask the agent about what you're looking at:
 open the overlay on a failing test run, press `I`, and ask "why is this
-failing?" — no copy-pasting.
+failing?" — no copy-paste needed.
 
 ## Typical workflows
 

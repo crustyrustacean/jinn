@@ -88,8 +88,8 @@ session; forks and subagents inherit it):
 3. `<c-t>` flips the preview pane between the server's live status/stderr
    tail and its tool list.
 4. `<c-r>` restarts the selected server (useful after it dies or you edited
-   its code). Restart blocks until it's `Running` or definitively failed —
-   the model can't race a half-started server.
+   its code). Restart blocks until the server is `Running` or definitively
+   failed.
 5. `<enter>` confirms / `<esc>` closes.
 
 Status is surfaced in the sidebar's MCP servers section: connecting, running,
@@ -100,8 +100,8 @@ preview). The agent can also restart a dead server itself via its built-in
 ## Tools in context
 
 Enabled servers register their tools for the session automatically (namespace
-`mcp__<server>__<tool>`); disabling unregisters them, so the model's context
-stays clean. Tool-call timeouts and other tool defaults come from
+`mcp__<server>__<tool>`); disabling unregisters them, keeping them out of the
+model's context. Tool-call timeouts and other tool defaults come from
 `default_timeout_secs` in `jinn.toml`. Disable individual MCP tools the
 same way as built-ins: the tool picker (`<leader>st`), or the
 `tool_filter` default in `jinn.toml` using the full namespaced name.

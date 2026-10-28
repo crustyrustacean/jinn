@@ -1,9 +1,9 @@
 # Pickers & Search
 
-Pickers are Telescope-style popups for changing models, sessions, themes,
-tools, and more. Open them from normal mode with the `<leader>s` family
-(`<leader>` = Space); every picker is also listed under the `<leader>s` group
-in the which-key popup (`?`).
+Pickers are popups for changing models, sessions, themes, tools, and more.
+Open them from normal mode with the `<leader>s` family (`<leader>` = Space);
+every picker is also listed under the `<leader>s` group in the which-key
+popup (`?`).
 
 ## The picker family
 
@@ -72,19 +72,18 @@ counted with the same builders the prompt assembler uses:
   and a *loaded* term (pinned skill bodies). A disabled skill that is still
   loaded keeps its body cost until it is unloaded.
 - **MCP** inspector — the registered **tool definitions of enabled servers
-  only**; advertising a server itself is the only other MCP cost, and MCP
-  tooling is otherwise counted once, inside the tool figure. The two figures
-  are separate views of one request — do not add them.
+  only**. The other MCP cost is advertising the server itself; MCP tools are
+  also counted inside the tool picker's figure, so the two figures overlap and
+  must not be added.
 - A disabled entry (marked with an `x`) contributes zero, except a skill
   that is still loaded.
 
 ### Filter ranking
 
-With an active filter, flat pickers rank results by fuzzy-match score
-(strongest first, position tiebreak), and tree-mode pickers (e.g. the
-session picker) order whole trees by their **best** matching member so a
-near-exact title match surfaces above scattered subsequence matches. An
-empty filter keeps recency order.
+With an active filter, flat pickers sort results by fuzzy-match score
+(strongest first, position tiebreak). Tree-mode pickers (e.g. the session
+picker) sort whole trees by their best-matching member, so an exact title
+match ranks above weaker matches. An empty filter keeps recency order.
 
 ## Sidebar navigation doubles as picker preview
 
@@ -107,5 +106,5 @@ session.
 - Indexing trails saves by up to ~one heartbeat (5s); a dashboard row shows
   live reindex progress.
 
-This is jinn's cross-session memory: nothing is silently recalled — you (or
-the agent) search for it explicitly.
+This index is how jinn finds information across sessions: nothing is recalled
+automatically — you (or the agent) search for it explicitly.

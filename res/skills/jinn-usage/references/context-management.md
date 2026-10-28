@@ -16,8 +16,8 @@ automatically. All bindings below are normal mode unless stated.
 ## Pinning an entry
 
 Pinned entries are **always** included in the LLM context — auto-prune workers
-and compaction skip them. Use pinning for durable facts: a plan, API contract,
-naming decision, or correction you want enforced for the rest of the session.
+and compaction skip them. Pin durable facts: a plan, API contract, naming
+decision, or correction you want enforced for the rest of the session.
 
 1. Focus the chat history (normal mode) and select the entry with `j`/`k`
    (or a `]`/`[` jump).
@@ -28,9 +28,9 @@ its matching tool result, so the pair never desyncs in context.
 
 ### Choosing where a pin sits
 
-Position matters: entries nearer the end of the context carry more recency
-weight and pinning mid-history can shift how the model reads subsequent
-messages. To reposition:
+Position matters: entries nearer the end of the context have more influence
+on the next reply, and pinning mid-history can change how the model reads
+later messages. To reposition:
 
 1. Focus the sidebar with `<c-l>`, then `J`/`K` until the **Pins** section is
    highlighted (or jump straight there and browse).
@@ -44,13 +44,14 @@ messages. To reposition:
 3. `<enter>` (or `<esc>`/`<c-h>`) leaves the sidebar and returns to the chat,
    restoring your history position.
 
-**Implications of each position:**
-- *Top*: the instruction reads like a standing system rule; good for
-  project-wide constraints. May be "far away" from the current turn.
-- *Bottom*: maximum salience for the next reply; good for "do X now"
-  directives. Gets pushed up as the conversation grows.
-- *Relative*: keeps the instruction in its original conversational setting;
-  good for comments that explain a specific block of history.
+**Effect of each position:**
+- *Top*: reads like a standing rule; suits project-wide constraints, but is
+  far from the current turn.
+- *Bottom*: closest to the newest messages, so it has the most weight in the
+  next reply; suits "do X now" instructions. Moves up as the conversation
+  grows.
+- *Relative*: stays near where the entry sits in history; suits comments that
+  explain a specific block of history.
 
 ### Jumping among pins
 
@@ -59,8 +60,9 @@ opening the sidebar.
 
 ## Excluding an entry
 
-- `x` toggles the selected entry **out of** the LLM context ("ignore"). Great
-  for "I sent a message but changed my mind" — no context poisoning.
+- `x` toggles the selected entry **out of** the LLM context ("ignore"). Useful
+  when you sent a message you do not want the model to see: the text stays
+  visible in the TUI but does not enter context.
 - `r` resets the entry to default handling (auto-prune workers decide again).
 - Excluded entries stay visible in the TUI (collapsed, dimmed by default);
   `h` toggles visibility of the collapsed blocks.
@@ -68,12 +70,11 @@ opening the sidebar.
 
 ## Isolate a single exchange: `gci`
 
-Made a plan (or got a correction) and want to act on **only** that? Select the
-entry and press `gci` (a sequence: `g`, `c`, `i`). jinn force-includes that
-entry's tool loop and user-force-excludes every other non-pinned entry, while
-pins remain untouched. The result is a fresh-feeling context that still
-contains exactly the plan. Undo per-entry with `x`/`r`, or rebuild with a new
-session (`n`).
+To act on **only** one entry — a plan, or a correction — select it and press
+`gci` (a sequence: `g`, `c`, `i`). jinn force-includes that entry's tool loop
+and force-excludes every other non-pinned entry; pins are untouched. The
+context then contains only that exchange. Undo per-entry with `x`/`r`, or
+start a new session (`n`).
 
 ## Background pruning and compaction
 
@@ -115,6 +116,6 @@ indented `via <requested>` line renders beneath it.
 
 The sidebar **Pins** section shows one row per tool **result** of a pinned
 tool loop (plus one row per tool call still missing its result, and the
-loop's opener for a standalone pinned entry) — pinning a saved plan or a
-skill load no longer floods the section with one row per entry. Pin state
-itself still applies to the whole loop.
+loop's opener for a standalone pinned entry), so pinning a saved plan or a
+skill load produces one row, not one row per entry. Pin state still applies
+to the whole loop.
