@@ -4,6 +4,8 @@
 
 - `#approve-plan` prompt no longer requires a _verbatim_ copy of the decision ledger. This should fix the issue where an agent refuses to amend the ledger even after human approval to do so.
 - Pinning a tool call/result chunk now only displays the tool result in the sidebar. This reduces the noise from pinning saved plans and skill loads.
+- The chat entry audit popup (`a` in chat history view) now shows the model + routing configuration that generated the response.
+  - This was motivated by OpenRouter's "auto" routing strategy so you can see which model was used.
 - Big attendant overhaul:
   - "Attendants" renamed to "Bots"
   - Old attendant configuration values should still import fine
