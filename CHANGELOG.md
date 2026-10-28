@@ -6,6 +6,11 @@
 - Pinning a tool call/result chunk now only displays the tool result in the sidebar. This reduces the noise from pinning saved plans and skill loads.
 - The chat entry audit popup (`a` in chat history view) now shows the model + routing configuration that generated the response.
   - This was motivated by OpenRouter's "auto" routing strategy so you can see which model was used.
+- The estimated context used by various subsystems is now displayed in pickers.
+  - All pickers: if an entry is disabled (has an "x"), then the context used is 0 (except for loaded skills). If an entry is enabled (checkmark), then there is inherently some amount of context used (detailed below).
+  - Skills: "list" and "loaded" context usage. "list" includes names + descriptions. "loaded" counts context used when the skill body is loaded into the chat.
+  - MCP: context used by _strictly_ for advertising the existence of the MCP server. MCP tools are _not_ included.
+  - Tools: includes names, schemas, descriptions, guidelines. This _includes_ MCP tooling.
 - Big attendant overhaul:
   - "Attendants" renamed to "Bots"
   - Old attendant configuration values should still import fine
