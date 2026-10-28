@@ -5,6 +5,8 @@
 - Session picker fuzzy search now sorts by score.
 - `#approve-plan` prompt no longer requires a _verbatim_ copy of the decision ledger. This should fix the issue where an agent refuses to amend the ledger even after human approval to do so.
 - Pinning a tool call/result chunk now only displays the tool result in the sidebar. This reduces the noise from pinning saved plans and skill loads.
+- Add new "Library" sidebar section that acts as a way to bookmark sessions.
+  - `L` key moves a session to/from the Library
 - The chat entry audit popup (`a` in chat history view) now shows the model + routing configuration that generated the response.
   - This was motivated by OpenRouter's "auto" routing strategy so you can see which model was used.
 - The estimated context used by various subsystems is now displayed in pickers.
@@ -18,6 +20,8 @@
   - Bots can be created and run as standalone sessions
   - `b` in session sidebar: Add new bot to session
   - `B` in session sidebar: Create new standalone bot
+  - `R` (rerun) changed to `G` (go)
+  - `R` now resets the bot's context
   - Picker keybind changed from `<leader>sa` to `<leader>sb`
   - `<c-enter>` in bot picker creates the bot in it's own session (`<c-a>` and `<enter>` keybinds unchanged)
 
