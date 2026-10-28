@@ -169,12 +169,19 @@ to every section:
 | `x`       | Close (archive) the selected session                                     |
 | `t`       | Tear down the session (run its teardown command)                         |
 | `X`       | Tear down the session **and its whole subtree** (press again to confirm) |
-| `c`       | Continue: switch to the session and re-run its setup command             |
-| `s`       | Re-run the session's setup command                                       |
+| `c`       | Resume the session: re-send its context to the provider (no new message, no switch) |
+| `s`       | Run the session's lifecycle setup command (only when it has not run yet) |
 | `b`       | Create a bot of the selected session (prep mode)                         |
 | `B`       | Create a standalone bot (no parent) from the session's environment       |
-| `R`       | Re-run the selected bot (cancels its in-flight turn)                     |
+| `G`       | Re-run the selected bot (cancels its in-flight turn)                     |
+| `R`       | Reset the selected bot's context without dispatching                     |
+| `L`       | Move the session into the **Library** sidebar section                    |
+| `P`       | Open the selected bot's properties popup                                 |
 | `T`       | Toggle the terminal overlay for the selected session                     |
+
+`b`/`B`/`G`/`R`/`P` act on the selected session when it is a bot and do
+nothing otherwise; `L` is refused only for a bot that has a parent. See
+`bots.md` for the popup's and the pickers' own keys.
 
 Section navigation does not wrap: `J` on the last section (Sessions) and `K`
 on the first (Persona) do nothing. Sections with nothing in them are skipped
@@ -185,16 +192,36 @@ over, so a section you never see is still reachable.
 Sessions that watch another session. See `bots.md` for what a bot
 is, and for the properties popup's and the pickers' own keys.
 
-| Key       | Action                                                |
-| --------- | ----------------------------------------------------- |
-| `<enter>` | Switch to the highlighted bot                   |
-| `i`       | Switch to it and enter input mode                     |
-| `P`       | Open the bot's properties popup                 |
-| `s`       | Browse the highlighted bot's report history     |
+| Key       | Action                                             |
+| --------- | --------------------------------------------------- |
+| `<enter>` | Switch to the highlighted bot                       |
+| `i`       | Switch to it and enter input mode                   |
+| `G`       | Re-run the highlighted bot (cancels a busy turn)    |
+| `R`       | Reset the bot's context without dispatching         |
+| `c`       | Resume the bot: re-send its context to the provider |
+| `P`       | Open the bot's properties popup                     |
+| `s`       | Browse the highlighted bot's report history         |
 
-`b` (new bot of the selected session), `B` (standalone bot, no parent),
-and `R` (re-run) work only in the **Sessions** section, not here — they
-act on the session selected there.
+`b` (new bot) and `B` (standalone bot) work only in the **Sessions**
+section, not here — they act on the session selected there.
+
+### Library section
+
+A flat list of sessions bookmarked with `L` in the Sessions section.
+Archived members render dimmed, and loading one with `<enter>` unarchives
+it. Members are hidden from the Sessions list while they are in the
+Library, and a bot that has a parent cannot be moved in.
+
+| Key       | Action                                             |
+| --------- | --------------------------------------------------- |
+| `<enter>` | Load and switch to the member (unarchives it)       |
+| `G`       | Re-run the member bot (cancels a busy turn)         |
+| `R`       | Reset the member bot's context without dispatching  |
+| `c`       | Resume the member (loaded members only)             |
+| `L`       | Remove the member from the Library                  |
+| `a`       | Archive the member                                  |
+| `P`       | Open a member bot's properties popup                |
+| `r`       | Rename the member                                   |
 
 ### Task-list section
 

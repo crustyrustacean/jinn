@@ -56,15 +56,19 @@ Notes:
 - A replacement session created by archiving inherits the global default
   reasoning effort.
 
-## Continuing a session's environment
+## Resuming a session (`c`) and lifecycle setup (`s`)
 
 | Key | Action                                                 |
 | --- | ------------------------------------------------------ |
-| `c` | Switch to the session **and** re-run its setup command |
-| `s` | Re-run the setup command (without switching)           |
+| `c` | Resume the session under the cursor: re-send its context to the provider (no new message, no switch) |
+| `s` | Run the session's lifecycle setup command (only when it has not run yet) |
 
-Useful when a machine rebooted or you want the environment refreshed (branch
-re-checkout, dev servers, etc.).
+`c` fires the session's existing history at the provider again — no new user
+or assistant entry is added, and focus stays where it is. Use it after a
+rate-limit or an errored turn, or to resume a session that was rehydrated
+from disk. `s` runs the setup half of the session's lifecycle recipe
+(`[[session_lifecycle]]`), not the model turn; it is a no-op once setup has
+already run.
 
 ## Changing a session's cwd
 

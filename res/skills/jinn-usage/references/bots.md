@@ -137,9 +137,9 @@ reported: <prior_report>."` A standalone bot's default is empty.
 
 ### Trigger
 
-- `manual` — runs only when the user re-runs it (`R` in the Sessions
-  section, or the properties popup's trigger being Manual simply means it
-  never fires on its own).
+- `manual` — runs only when the user re-runs it (`G` in the Sessions,
+  Bots, or Library sidebar sections, or the properties popup's
+  trigger being Manual simply means it never fires on its own).
 - `parent_completed` — runs after a **parent turn completes successfully**.
   It fires **only on a turn that completed successfully**: an errored or
   cancelled parent turn does not fire it. A turn the automation itself
@@ -175,7 +175,7 @@ whether the prompt is sent.
 Prep mode (the `b` default) means the bot is still being composed.
 While it is on:
 
-- no manual re-run dispatches (`R` is refused),
+- no manual re-run dispatches (`G` is refused),
 - no trigger fires,
 - a typed submission is **pinned into context instead of sent**.
 
@@ -215,10 +215,29 @@ Attached bots are displayed in the sidebar for the active session. Moving
 the cursor over them allows opening the session with `<enter>` or `i` (insert
 mode). They display the most recent report, or "no reports yet" if no
 report/conclusion has been filed. Pressing the `s` key on a bot in the
-sidebar will show its historical reports.
+sidebar will show its historical reports. `G` re-runs the highlighted bot
+(canceling any in-flight turn); `R` resets its context in place — every
+non-pinned entry is force-excluded and nothing is dispatched, so the run
+that follows sees the pins alone.
 
 An `⇉` icon next to an attend means it will activate automatically on assistant
 turn end. A bot with a `⏸` icon is in "prep" mode and will not execute.
+
+## The Library sidebar section
+
+`L` in the Sessions section bookmarks the highlighted session into the
+**Library** — a flat sidebar section of saved sessions, listed whether
+loaded or archived (archived members render dimmed; `<enter>` loads and
+switches to one, unarchiving as a side effect). Members are hidden from
+the Sessions list while they are in the Library, and removing one (`L`
+again, from inside the Library) puts it back.
+
+The same bot keys work over library members: `G` re-runs, `R` resets the
+bot's context without dispatching, `P` opens a member bot's properties,
+and `c` resumes a loaded member. Only a bot **with a parent** is refused
+at the `L` move — a shelved parent-completed bot would silently never
+fire, since parent links are immutable. Plain sessions, forks, subagents,
+and standalone bots may all enter.
 
 ## Saved bots (`[[bot.entry]]`)
 

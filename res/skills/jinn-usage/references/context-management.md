@@ -101,3 +101,20 @@ See `configuration.md` for how to edit these and the restart caveat.
 | `a` | Toggle the audit popup for the selected entry |
 | `y` | Yank the selected entry's raw content |
 | `gcp` | Set the pruner accumulation threshold interactively |
+
+## The audit popup (`a`)
+
+`a` on a selected entry opens a read-only audit popup describing how that
+entry was produced. Every provider-produced entry carries the concrete
+model that generated it, so the popup shows a `Model:` line; when the
+entry's model differs from the model the session requested at dispatch
+time (OpenRouter's `auto` routing strategy is the usual cause), an
+indented `via <requested>` line renders beneath it.
+
+## Pins in the sidebar
+
+The sidebar **Pins** section shows one row per tool **result** of a pinned
+tool loop (plus one row per tool call still missing its result, and the
+loop's opener for a standalone pinned entry) — pinning a saved plan or a
+skill load no longer floods the section with one row per entry. Pin state
+itself still applies to the whole loop.

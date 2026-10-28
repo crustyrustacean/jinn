@@ -20,6 +20,7 @@ in the which-key popup (`?`).
 | `<leader>sE` | Endpoint         | OpenRouter routing endpoint pin                       |
 | `<leader>sp` | Project          | Curated project dirs for quick session creation       |
 | `<leader>sl` | Lifecycle        | Lifecycle recipes for new sessions                    |
+| `<leader>sb` | Bot              | Saved bots from `jinn.toml` (`[[bot.entry]]`)         |
 | `<leader>sw` | Workflow         | Discovered workflows; enter loads one into the current session, ctrl+enter starts a new session |
 
 ## Inside a picker
@@ -53,8 +54,37 @@ highlights:
   `mcp-servers.md`).
 - **Endpoint**: `<c-r>` re-fetches OpenRouter endpoint listings (see
   `models-and-providers.md`).
+- **Bot**: `<enter>` attaches the highlighted saved bot to the active
+  session, `<c-a>` attaches and keeps the picker open, `<c-enter>` spawns
+  it as a **standalone** bot (no parent) in its own session and switches
+  to it (see `bots.md`).
 - **Project**: `<c-n>` starts a new session, `<c-d>` removes the
   highlighted one, `<c-enter>` starts a session there with a lifecycle recipe.
+
+### Context-cost footers
+
+The tool, skill, and MCP pickers show a context-cost figure in the footer,
+counted with the same builders the prompt assembler uses:
+
+- **Tool** picker — the enabled toolset's context block (names, schemas,
+  descriptions, guidelines), including MCP tools.
+- **Skill** picker — a *list* term (names + descriptions of enabled skills)
+  and a *loaded* term (pinned skill bodies). A disabled skill that is still
+  loaded keeps its body cost until it is unloaded.
+- **MCP** inspector — the registered **tool definitions of enabled servers
+  only**; advertising a server itself is the only other MCP cost, and MCP
+  tooling is otherwise counted once, inside the tool figure. The two figures
+  are separate views of one request — do not add them.
+- A disabled entry (marked with an `x`) contributes zero, except a skill
+  that is still loaded.
+
+### Filter ranking
+
+With an active filter, flat pickers rank results by fuzzy-match score
+(strongest first, position tiebreak), and tree-mode pickers (e.g. the
+session picker) order whole trees by their **best** matching member so a
+near-exact title match surfaces above scattered subsequence matches. An
+empty filter keeps recency order.
 
 ## Sidebar navigation doubles as picker preview
 
