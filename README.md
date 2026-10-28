@@ -43,7 +43,7 @@ Quickly navigate and change things via Telescope-inspired pickers:
 
 ### Bots
 
-Attach "bots" to sessions that fire when their parent session turn ends (or manually with `R`). Things that bots can do:
+Attach "bots" to sessions that fire when their parent session turn ends (or manually with `G`). Things that bots can do:
 
 - Restarting a session if it stops mid-task (shipped by default as `auto-nudge`)
 - Ensure implementation is actually done (shipped by default as `gap-check`)
