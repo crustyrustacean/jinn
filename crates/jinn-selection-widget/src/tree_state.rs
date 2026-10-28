@@ -43,8 +43,17 @@ pub struct VisibleEntry {
 ///
 /// # Ordering
 ///
-/// Items appear in tree DFS order - NOT sorted by fuzzy score. Score is only
-/// used to determine which items match, not for ordering.
+/// When the filter is empty, items appear in tree DFS order (the consumer's
+/// order, e.g. recency).
+///
+/// When a filter is active, **trees are ranked by their best match score** — the
+/// strongest fuzzy score of any matched item in each tree — strongest tree
+/// first. A tree containing an exact/contiguous match outranks trees that only
+/// admit the filter as scattered subsequence matches, wherever in the tree the
+/// strong match lives (a matched grandchild lifts its whole tree). Trees with
+/// equal best scores keep the original root order. Within a tree, members keep
+/// DFS order and nesting; ancestors are present but scoreless, so their score
+/// never competes.
 #[derive(Debug)]
 #[expect(
     clippy::field_scoped_visibility_modifiers,
@@ -369,13 +378,15 @@ where
             let matcher = SkimMatcherV2::default();
             let terms: Vec<&str> = self.filter.split_whitespace().collect();
 
-            // Phase 1: Fuzzy match all items.
+            // Phase 1: Fuzzy match all items, keeping each item's score.
             let mut matched_set: HashSet<usize> = HashSet::new();
+            let mut scores: HashMap<usize, i64> = HashMap::new();
             let mut match_data: HashMap<usize, Vec<usize>> = HashMap::new();
 
             for (idx, item) in self.items.iter().enumerate() {
-                if let Some((_score, indices)) = match_all_terms(&matcher, item, &terms) {
+                if let Some((score, indices)) = match_all_terms(&matcher, item, &terms) {
                     matched_set.insert(idx);
+                    scores.insert(idx, score);
                     match_data.insert(idx, indices);
                 }
             }
@@ -386,9 +397,18 @@ where
                 Self::walk_ancestors(idx, &self.id_to_idx, &self.items, &mut needed);
             }
 
-            // Phase 3: DFS traversal keeping only needed items.
+            // Phase 2.5: Rank visible roots by their tree's best match score.
+            let visible_roots = Self::rank_roots(
+                &self.roots,
+                &needed,
+                &self.children_map,
+                &self.items,
+                &scores,
+            );
+
+            // Phase 3: DFS traversal keeping only needed items, strongest tree first.
             self.visible =
-                Self::dfs_filtered(&self.roots, &self.children_map, &self.items, &needed);
+                Self::dfs_filtered(&visible_roots, &self.children_map, &self.items, &needed);
 
             // Build match indices for visible entries.
             self.match_indices = self
@@ -424,6 +444,91 @@ where
             needed.insert(parent_idx);
             current = parent_idx;
         }
+    }
+
+    /// Orders visible roots strongest-tree-first.
+    ///
+    /// Each tree's score is the best match score of any matched item in its
+    /// subtree, so an exact substring in a deep descendant outranks scattered
+    /// subsequence matches near a root. Ties keep the original root order. Roots
+    /// whose subtree holds no matched item never enter the visible set (`needed`
+    /// membership), so they are filtered here for consistency with the DFS that
+    /// consumes this list.
+    fn rank_roots(
+        roots: &[usize],
+        needed: &HashSet<usize>,
+        children_map: &HashMap<String, Vec<usize>>,
+        items: &[I],
+        scores: &HashMap<usize, i64>,
+    ) -> Vec<usize> {
+        // (best score, original root position, root item index) — position breaks ties.
+        let mut ranked: Vec<(i64, usize, usize)> = roots
+            .iter()
+            .enumerate()
+            .filter(|&(_, &root_idx)| needed.contains(&root_idx))
+            .map(|(position, &root_idx)| {
+                let mut visited = HashSet::new();
+                let best = Self::subtree_best_score(
+                    root_idx,
+                    children_map,
+                    items,
+                    needed,
+                    scores,
+                    &mut visited,
+                );
+                (best, position, root_idx)
+            })
+            .collect();
+
+        ranked.sort_unstable_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+        ranked
+            .into_iter()
+            .map(|(_, _, root_idx)| root_idx)
+            .collect()
+    }
+
+    /// Returns the best match score anywhere in the subtree rooted at `idx`,
+    /// considering only items that can appear in the visible set (`needed`).
+    ///
+    /// Unmatched (ancestor-only) items contribute nothing; a subtree with no
+    /// matched item at all scores [`i64::MIN`]. `visited` prevents infinite
+    /// recursion on malformed cyclic parent data.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "idx is an item index resolved through children_map / roots"
+    )]
+    fn subtree_best_score(
+        idx: usize,
+        children_map: &HashMap<String, Vec<usize>>,
+        items: &[I],
+        needed: &HashSet<usize>,
+        scores: &HashMap<usize, i64>,
+        visited: &mut HashSet<usize>,
+    ) -> i64 {
+        if !visited.insert(idx) {
+            return i64::MIN;
+        }
+        let own = scores.get(&idx).copied().unwrap_or(i64::MIN);
+        let children_best = children_map
+            .get(items[idx].id())
+            .map_or(i64::MIN, |children| {
+                children
+                    .iter()
+                    .filter(|&&child| needed.contains(&child))
+                    .map(|&child| {
+                        Self::subtree_best_score(
+                            child,
+                            children_map,
+                            items,
+                            needed,
+                            scores,
+                            visited,
+                        )
+                    })
+                    .max()
+                    .unwrap_or(i64::MIN)
+            });
+        own.max(children_best)
     }
 
     /// Full DFS traversal producing visible entries with tree metadata.

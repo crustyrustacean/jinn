@@ -7,10 +7,7 @@ use marked_path::{Absolute, MarkedPathBuf};
 use std::collections::{BTreeSet, HashMap};
 
 use jiff::Timestamp;
-use jinn_attendant_msg::{
-    AttendantBehavior, AttendantModelSetting, AttendantReport, AttendantTrigger,
-    default_seed_template,
-};
+use jinn_bot_msg::{BotBehavior, BotModelSetting, BotReport, BotTrigger, default_seed_template};
 use jinn_core_types::{ChatHistory, SessionId};
 use jinn_session_lifecycle_msg::LifecycleScriptState;
 use jinn_session_msg::SessionOrigin;
@@ -287,12 +284,19 @@ pub struct SessionIntegrationFields {
     pub enabled_mcp_servers: BTreeSet<String>,
 }
 
-/// Loaded/archived state and persistence policy.
+/// Loaded/archived state, library membership, and persistence policy.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionStorageFields {
     /// Current storage state.
     #[serde(default)]
     pub session_state: SessionState,
+    /// Whether this session belongs to the sidebar's Library section.
+    ///
+    /// Membership is orthogonal to `session_state`: a member stays listed in
+    /// the Library whether loaded or archived, and is hidden from the
+    /// sidebar's Sessions list either way.
+    #[serde(default)]
+    pub in_library: bool,
     /// Whether this session participates in durable persistence.
     #[serde(default = "default_persist")]
     pub persist: bool,
@@ -302,72 +306,73 @@ impl Default for SessionStorageFields {
     fn default() -> Self {
         Self {
             session_state: SessionState::Loaded,
+            in_library: false,
             persist: true,
         }
     }
 }
 
-/// Attendant run parameters and the report log.
+/// Bot run parameters and the report log.
 ///
 /// Every field carries `#[serde(default)]`, so a session written before
-/// attendants existed deserializes without a migration.
+/// bots existed deserializes without a migration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionAttendantFields {
+pub struct SessionBotFields {
     /// What a run in this session sees of the conversation.
     #[serde(default)]
-    pub behavior: AttendantBehavior,
+    pub behavior: BotBehavior,
     /// The condition that causes an automatic re-run.
     #[serde(default)]
-    pub trigger: AttendantTrigger,
-    /// Whether the attendant is still being composed. While it is, nothing
+    pub trigger: BotTrigger,
+    /// Whether the bot is still being composed. While it is, nothing
     /// dispatches and the two settings above govern nothing.
     #[serde(default = "crate::fields::default_prep_mode")]
     pub prep_mode: bool,
     /// User-editable text used to inject the prior report on each run.
     #[serde(default = "default_seed_template")]
     pub seed_template: String,
-    /// Whether the session's model is this attendant's own or the copy it
+    /// Whether the session's model is this bot's own or the copy it
     /// inherited at creation.
     ///
     /// The model itself lives on the profile and is always concrete; this
-    /// only records whether the attendant *owns* it, which is what decides
+    /// only records whether the bot *owns* it, which is what decides
     /// whether a save writes a `model` key into the entry.
     #[serde(default)]
-    pub model_setting: AttendantModelSetting,
+    pub model_setting: BotModelSetting,
     /// Append-only; the harness never removes or edits a report.
     #[serde(default)]
-    pub reports: Vec<AttendantReport>,
-    /// The workflow-local TOML file this attendant was loaded from, when
+    pub reports: Vec<BotReport>,
+    /// The workflow-local TOML file this bot was loaded from, when
     /// it belongs to a workflow rather than to the user's jinn.toml.
     ///
-    /// `None` for personal attendants. An attendant with a source refuses
+    /// `None` for personal bots. A bot with a source refuses
     /// to be saved into jinn.toml — its source file is the only writer of
     /// its configuration — and the marker never crosses to children: an
-    /// attendant created by a workflow attendant is an ordinary personal
+    /// bot created by a workflow bot is an ordinary personal
     /// one. Omitted when absent, so a session that never carried the
     /// marker persists a blob byte-identical to one written before it
     /// existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workflow_source: Option<jinn_core_types::AttendantSourcePath>,
+    pub workflow_source: Option<jinn_core_types::BotSourcePath>,
 }
 
-impl Default for SessionAttendantFields {
+impl Default for SessionBotFields {
     fn default() -> Self {
         Self {
-            behavior: AttendantBehavior::default(),
-            trigger: AttendantTrigger::default(),
+            behavior: BotBehavior::default(),
+            trigger: BotTrigger::default(),
             prep_mode: default_prep_mode(),
             seed_template: default_seed_template(),
-            model_setting: AttendantModelSetting::default(),
+            model_setting: BotModelSetting::default(),
             reports: Vec::new(),
             workflow_source: None,
         }
     }
 }
 
-/// The default for [`SessionAttendantFields::prep_mode`].
+/// The default for [`SessionBotFields::prep_mode`].
 ///
-/// Composition is the state an attendant is *born* in — `N` creates one the
+/// Composition is the state a bot is *born* in — `N` creates one the
 /// user has not finished writing — so a session with no stored answer is
 /// composing. A bool has no third value to say "not set" with, so the
 /// default *is* the answer rather than a sentinel that means it; that is why
@@ -380,30 +385,30 @@ pub const fn default_prep_mode() -> bool {
 mod tests {
     #![allow(clippy::expect_used, reason = "test code")]
 
-    use jinn_attendant_msg::AttendantModelSetting;
+    use jinn_bot_msg::BotModelSetting;
 
     use super::LifecycleArgs;
-    use super::SessionAttendantFields;
+    use super::SessionBotFields;
 
     #[rstest::rstest]
-    fn an_attendant_blob_written_before_the_model_row_inherits() {
-        // Given a blob holding every attendant field as they were written
+    fn an_bot_blob_written_before_the_model_row_inherits() {
+        // Given a blob holding every bot field as they were written
         // before the model setting existed.
         let blob = serde_json::json!({
             "behavior": "reset",
             "trigger": "parent_completed",
             "prep_mode": false,
-            "seed_template": "review: <prior report>",
+            "seed_template": "review: <prior_report>",
             "reports": [],
         });
 
-        // When it is deserialized as an attendant's fields.
-        let fields: SessionAttendantFields =
+        // When it is deserialized as a bot's fields.
+        let fields: SessionBotFields =
             serde_json::from_value(blob).expect("a pre-change blob deserializes");
 
-        // Then the setting reads inherit, so an attendant that predates the
+        // Then the setting reads inherit, so a bot that predates the
         // row saves without a model key rather than pinning one.
-        assert_eq!(fields.model_setting, AttendantModelSetting::Inherit);
+        assert_eq!(fields.model_setting, BotModelSetting::Inherit);
     }
 
     #[rstest::rstest]

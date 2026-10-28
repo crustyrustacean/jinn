@@ -29,7 +29,6 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::sections::sessions::preview_load::preview_signature;
-use crate::sections::sessions::state::sorted_open_sessions;
 #[cfg(test)]
 use jinn_chat_log_view::chat_log::RenderContext;
 #[cfg(test)]
@@ -69,11 +68,13 @@ const POPUP_GAP: u16 = 2;
 /// gets no popup rather than one drawn over itself.
 const MIN_POPUP_HEIGHT: u16 = 7;
 
-/// Renders the session preview popup when the sidebar sessions section is focused.
+/// Renders the session preview popup when a previewing sidebar section is focused.
 ///
-/// Checks focus state, resolves the highlighted session, computes the popup
-/// rect anchored bottom-right (above the sessions section, right-aligned with
-/// the terminal edge), and delegates to [`render_session_preview`].
+/// Checks focus state (the sessions tree and the library cell both preview),
+/// resolves the highlighted session through the focused section's own row
+/// space, computes the popup rect anchored bottom-right (above the cursor
+/// row, right-aligned with the terminal edge), and delegates to
+/// [`render_session_preview`].
 /// This is the primary entry point for the TUI render loop.
 ///
 /// - `sidebar_rect`: the full sidebar column rect
@@ -86,23 +87,28 @@ pub fn render_session_preview_for_state(
 ) {
     let state = ctx.state();
 
-    if state.frontend.sidebar_section() != Some(jinn_sidebar_msg::SidebarSectionId::Sessions) {
-        return;
-    }
-    let Some(id) = state
-        .frontend
-        .with_sections(|s| s.sessions.selected_id.clone(), || None)
-    else {
+    // Which section is focused decides both the session and the row the
+    // popup hangs from: the sessions tree and the library cell order the
+    // same sessions differently, so the anchor math runs per section over
+    // the section's own row space.
+    let section = match state.frontend.sidebar_section() {
+        Some(
+            id @ (jinn_sidebar_msg::SidebarSectionId::Sessions
+            | jinn_sidebar_msg::SidebarSectionId::Library),
+        ) => id,
+        _ => return,
+    };
+    let Some(id) = crate::sections::sessions::preview_load::previewed_session_id(state) else {
         return;
     };
 
-    // The cursor names a session; the popup needs the row to hang off.
-    let Some(idx) = crate::sections::sessions::state::visible_row_of(state, &id) else {
-        return;
-    };
-
-    let entries = sorted_open_sessions(state);
-    let Some(entry) = entries.get(idx) else {
+    // The cursor names a session; the popup needs the row to hang off. The
+    // anchor is the same section-relative cursor row the layout math feeds
+    // the scroll and the band — `cursor_row_in_section` resolves each
+    // section's own convention (the library adds its two header rows, the
+    // sessions tree none). A bare member index would forget the header rows
+    // and hang the popup two rows above the cursor.
+    let Some(idx) = crate::sections::layout::cursor_row_in_section(state, section) else {
         return;
     };
 
@@ -113,13 +119,8 @@ pub fn render_session_preview_for_state(
 
     // Anchor the popup to the cursor through the same document layout the
     // sidebar renders with, so it stays attached while the column scrolls.
-    let cursor_y = crate::sections::layout::frame_row_of(
-        sidebar_rect,
-        state,
-        ctx.config(),
-        jinn_sidebar_msg::SidebarSectionId::Sessions,
-        u16::try_from(idx).unwrap_or(u16::MAX),
-    );
+    let cursor_y =
+        crate::sections::layout::frame_row_of(sidebar_rect, state, ctx.config(), section, idx);
 
     // The same derivation the pre-render pass records, with no floor applied:
     // both sides must produce the identical number, including zero. Flooring
@@ -136,7 +137,7 @@ pub fn render_session_preview_for_state(
         |s| {
             s.sessions
                 .preview
-                .cached(&entry.id, signature, inner_width)
+                .cached(&id, signature, inner_width)
                 // A miss on content or width falls back to whatever this session
                 // is already holding rather than to the spinner. Both happen
                 // routinely mid-turn: content moves on every streamed token and
@@ -144,7 +145,7 @@ pub fn render_session_preview_for_state(
                 // screen are still the conversation the user is reading. Putting
                 // a spinner over them — and blanking the popup while a re-render
                 // is queued — is the flicker this fallback removes.
-                .or_else(|| s.sessions.preview.drawable(&entry.id))
+                .or_else(|| s.sessions.preview.drawable(&id))
                 .map(Arc::clone)
         },
         || None,
@@ -157,9 +158,9 @@ pub fn render_session_preview_for_state(
     if cached.is_none()
         && !state
             .frontend
-            .with_sections(|s| s.sessions.preview.is_in_flight_for(&entry.id), || false)
+            .with_sections(|s| s.sessions.preview.is_in_flight_for(&id), || false)
     {
-        tracing::warn!(session_id=%entry.id, signature, lookup_width=inner_width,
+        tracing::warn!(session_id=%id, signature, lookup_width=inner_width,
             recorded_width=state.frontend.with_sections(|s| s.sessions.preview_content_width, || 0),
             "session preview has nothing cached and nothing in flight");
     }
@@ -339,14 +340,14 @@ pub fn render_session_preview_loading(
 /// The color the popup's border is drawn in.
 ///
 /// A preview is a way of asking what a session *is* before opening it, and for
-/// a subagent or an attendant that is the one question a title cannot answer —
+/// a subagent or a bot that is the one question a title cannot answer —
 /// the session list already tints those rows, and the popup that hangs off the
 /// row was saying nothing. The border carries the same tint, so the popup and
 /// the row that opened it agree. Every other kind keeps the ordinary unfocused
 /// border: an ordinary session needs no distinguishing.
 fn preview_border_fg(session: &ChatSessionState, theme: &Theme) -> ratatui::style::Color {
     match session.origin() {
-        SessionOrigin::Attendant => theme.attendant_fg,
+        SessionOrigin::Bot => theme.bot_fg,
         SessionOrigin::Subagent => theme.subagent_fg,
         SessionOrigin::User | SessionOrigin::Fork => theme.border_unfocused,
     }
@@ -649,8 +650,8 @@ fn render_status_line(
 /// Computes the popup rectangle for the session preview overlay.
 ///
 /// The popup is anchored to the right edge of the frame and sits just above
-/// the cursor row in the sessions section, with a 1-row gap. Width is 60% of
-/// the frame.
+/// the cursor row, with a two-row gap ([`POPUP_GAP`]). Width is 60% of the
+/// frame.
 ///
 /// Height is *fixed*: the content area is [`PREVIEW_MAX_LINES`] rows, plus the
 /// two borders and the four footer rows. It is deliberately not derived from
@@ -692,9 +693,10 @@ pub fn session_preview_popup_rect(frame_area: Rect, cursor_y: u16) -> Option<Rec
 
     // Right-align: right edge = frame right edge.
     let popup_x = frame_area.x + frame_area.width.saturating_sub(popup_width);
-    // Bottom edge sits 1 row above the cursor. With `max_height` above the floor
-    // this cannot underflow, so the popup's bottom edge plus `POPUP_GAP` is the
-    // cursor row — the gap is honoured exactly, never traded for a taller box.
+    // Bottom edge sits `POPUP_GAP` rows above the cursor. With `max_height`
+    // above the floor this cannot underflow, so the popup's bottom edge plus
+    // the gap is the cursor row — the gap is honoured exactly, never traded
+    // for a taller box.
     let popup_y = cursor_y
         .saturating_sub(popup_height)
         .saturating_sub(POPUP_GAP);

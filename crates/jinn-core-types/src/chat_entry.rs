@@ -175,6 +175,24 @@ pub struct ChatEntry {
     ///        session-actor (bulk DB restore via `restore_history`).
     #[serde(default)]
     pub token_count: Option<u32>,
+
+    /// The concrete model that produced this entry: the response-reported
+    /// model when the stream completed normally, the requested model
+    /// otherwise. `None` for entries that never came from a provider stream
+    /// (user, system, error, tool results) and for entries created before
+    /// attribution existed.
+    ///
+    /// Persisted in `entries.model_used` (v29).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_used: Option<String>,
+
+    /// The model requested at dispatch for the generation that produced this
+    /// entry. Never overridden by the response, so the audit popup can show
+    /// when the two differed (e.g. `openrouter/auto` routing).
+    ///
+    /// Persisted in `entries.model_requested` (v29).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_requested: Option<String>,
 }
 
 /// The kind of chat entry.
@@ -380,6 +398,8 @@ impl ChatEntry {
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         }
     }
     /// Set the context override, recording a [`ContextChangeEvent`] if and only if
@@ -445,6 +465,36 @@ impl ChatEntry {
         // No audit trail: DB-restore-only path, mirroring
         // `restore_context_override`.
         self.token_count = count;
+    }
+
+    /// Restores the persisted model stamps on this entry without overriding
+    /// either.
+    ///
+    /// This is intended for use only when restoring state from persistent
+    /// storage: both values are facts recorded when the entry was created,
+    /// not new transitions. `None` (the column was NULL) leaves the field
+    /// unset — permanent for entries created before attribution existed.
+    ///
+    /// # Why not just write the field?
+    ///
+    /// `model_used` has exactly two legitimate writers — entry creation
+    /// (stamped from the dispatching generation) and the completion-time
+    /// override from the response-reported model — plus this restore path.
+    /// Routing the restore through a named method keeps it distinct from all
+    /// three.
+    pub fn restore_model_used(&mut self, model: Option<String>) {
+        // No audit trail: DB-restore-only path, mirroring
+        // `restore_token_count`.
+        self.model_used = model;
+    }
+
+    /// Restores the persisted requested-model stamp on this entry.
+    ///
+    /// Restore-only like [`Self::restore_model_used`]; see that method for
+    /// why the write path is named.
+    pub fn restore_model_requested(&mut self, model: Option<String>) {
+        // No audit trail: DB-restore-only path.
+        self.model_requested = model;
     }
     /// Read-only access to the current context override.
     ///
@@ -1106,7 +1156,10 @@ mod tests {
         let ChatEntryKind::ToolResult { attachments, .. } = &loaded.kind else {
             panic!("expected ToolResult kind")
         };
-        assert!(attachments.is_empty());
+        assert_eq!(
+            attachments.as_slice(),
+            [] as [crate::attachment::Attachment; 0]
+        );
         // And the rest of the entry is preserved.
         assert_eq!(loaded.text(), entry.text());
     }
@@ -1135,7 +1188,10 @@ mod tests {
             panic!("expected ToolResult kind")
         };
         assert_eq!(status, ToolResultStatus::Success);
-        assert!(attachments.is_empty());
+        assert_eq!(
+            attachments.as_slice(),
+            [] as [crate::attachment::Attachment; 0]
+        );
     }
 }
 

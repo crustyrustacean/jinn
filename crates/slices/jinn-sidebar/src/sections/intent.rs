@@ -17,22 +17,27 @@ pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
         .scope_push(jinn_sidebar_msg::SidebarSectionId::Persona.focus_scope());
 
     // If a section already has cursor state, restore it.
-    let (persona_has_cursor, pins_has_cursor, sessions_has_cursor) = state.frontend.with_sections(
-        |s| {
-            (
-                s.persona.cursor.is_some(),
-                s.pins.selected_id().is_some(),
-                s.sessions.selected_id.is_some(),
-            )
-        },
-        || (false, false, false),
-    );
-    let has_existing_cursor = persona_has_cursor || pins_has_cursor || sessions_has_cursor;
+    let (persona_has_cursor, pins_has_cursor, sessions_has_cursor, library_has_cursor) =
+        state.frontend.with_sections(
+            |s| {
+                (
+                    s.persona.cursor.is_some(),
+                    s.pins.selected_id().is_some(),
+                    s.sessions.selected_id.is_some(),
+                    s.library.selected_id.is_some(),
+                )
+            },
+            || (false, false, false, false),
+        );
+    let has_existing_cursor =
+        persona_has_cursor || pins_has_cursor || sessions_has_cursor || library_has_cursor;
 
     if has_existing_cursor {
         // Restore to whichever section has a cursor.
         let section = if sessions_has_cursor {
             jinn_sidebar_msg::SidebarSectionId::Sessions
+        } else if library_has_cursor {
+            jinn_sidebar_msg::SidebarSectionId::Library
         } else if pins_has_cursor {
             jinn_sidebar_msg::SidebarSectionId::Pins
         } else {

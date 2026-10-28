@@ -21,7 +21,9 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use jinn_core_types::{ChatEntry, ChatEntryId, NameFilter, PinPosition, ToolResultStatus};
+use jinn_core_types::{
+    ChatEntry, ChatEntryId, ChatEntryKind, NameFilter, PinPosition, ToolResultStatus,
+};
 use jinn_skills_msg::{Skill, SkillPickerState};
 use jinn_slices::KeyRoutes;
 use jinn_slices::RouteId;
@@ -289,6 +291,11 @@ pub fn register_skill_picker_input_hook(routes: &KeyRoutes, cell: &SkillPickerCe
 struct Seed {
     /// Skills discovered for the active session (cwd-scoped).
     discovered: Vec<Skill>,
+    /// The in-context `skill` tool results in history, captured as
+    /// `(tool name, content)` pairs — the loaded-cost term's source.
+    /// Keyed by the tool name `"skill"` (not the parsed skill name) so each
+    /// pair prices exactly as the assembler's `LlmMessage::Tool` term does.
+    loaded_contents: Vec<(String, String)>,
     /// The session's skill filter, snapshotted so ESC can restore it whole.
     /// `None` means the session has no filter at all.
     skill_filter: Option<NameFilter>,
@@ -307,6 +314,7 @@ fn open_skill_picker(ctx: &mut ActionCtx<'_>, cell: &SkillPickerCell) -> IntentR
     let session = state.active_session();
     let seed = Seed {
         discovered: session.discovered_skills().to_vec(),
+        loaded_contents: riding_skill_contents(session.history()),
         skill_filter: session.skill_filter().cloned(),
         theme: state.frontend.theme.clone(),
     };
@@ -318,6 +326,8 @@ fn open_skill_picker(ctx: &mut ActionCtx<'_>, cell: &SkillPickerCell) -> IntentR
             seed.skill_filter.as_ref(),
             &seed.theme,
         );
+        picker.loaded_contents = seed.loaded_contents;
+        skill_picker_actions::recompute_tokens(picker);
     });
 
     IntentResult::empty().with_scope_signal(ScopeSignal::Push(skill_picker_scope()))
@@ -436,9 +446,21 @@ fn load_highlighted_skill(ctx: &mut ActionCtx<'_>, cell: &SkillPickerCell) -> In
         "skill",
         arguments,
     ));
-    let mut result = ChatEntry::tool_result(tool_call_id, "skill", xml, ToolResultStatus::Success);
+    let mut result = ChatEntry::tool_result(
+        tool_call_id,
+        "skill",
+        xml.clone(),
+        ToolResultStatus::Success,
+    );
     result.pin_position = Some(PinPosition::Relative);
     state.active_session_mut().push_entry(result);
+
+    // The new pin is the loaded term's newest member: record it so the
+    // footer's loaded figure rises without waiting for a reopen.
+    cell.update(|picker| {
+        picker.loaded_contents.push(("skill".to_owned(), xml));
+        skill_picker_actions::recompute_tokens(picker);
+    });
 
     let session_id = state.active_session().session_id().clone();
     IntentResult::new_message(jinn_session_msg::MarkSessionInteracted { session_id })
@@ -469,6 +491,8 @@ fn enable_durably(state: &mut jinn_kernel::AppState, cell: &SkillPickerCell, nam
                 item.entry_mut().enabled = true;
             });
         }
+        // The row just flipped on, so the list-cost term follows it.
+        skill_picker_actions::recompute_tokens(picker);
     });
 
     // An absent filter has to become a present one here: permitting a name
@@ -553,6 +577,25 @@ fn highlighted_entry(cell: &SkillPickerCell) -> Option<(String, bool, String)> {
     Some((entry.name.clone(), entry.enabled, entry.body.clone()))
 }
 
+/// Captures every in-context `skill` tool result's content from history.
+///
+/// The assembler bills any in-context entry — pinned or not — so pin state is
+/// irrelevant to cost: an unpinned result still rides in every prompt until a
+/// context prune excludes it. Each result appears once per occurrence; nothing
+/// is deduped.
+fn riding_skill_contents(history: &[ChatEntry]) -> Vec<(String, String)> {
+    history
+        .iter()
+        .filter(|entry| entry.is_in_context())
+        .filter_map(|entry| match &entry.kind {
+            ChatEntryKind::ToolResult { name, content, .. } if name == "skill" => {
+                Some((name.clone(), content.clone()))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 /// Republishes the picker's rows from a discovery scan.
 ///
 /// Called by the slice's republisher actor when a
@@ -578,6 +621,10 @@ pub fn republish_from_discovery(cell: &SkillPickerCell, discovered: &[Skill]) {
             filter.as_ref(),
             &theme,
         );
+        // A rescan can shadow, add, or drop skills; the stored set and both
+        // cost terms follow the new rows.
+        picker.discovered = discovered.to_vec();
+        crate::skill_picker_actions::recompute_tokens(picker);
         if let Some(name) = highlight {
             restore_highlight(picker, &name);
         }
@@ -595,4 +642,48 @@ fn restore_highlight(picker: &mut SkillPickerState, name: &str) {
         return;
     };
     picker.selection.set_selection(index);
+}
+
+#[cfg(test)]
+mod capture_tests {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test module")]
+    use super::*;
+
+    #[rstest::rstest]
+    fn unpinned_in_context_skill_results_are_captured() {
+        // Given a history holding an unpinned skill result still riding in
+        // context, and one force-excluded.
+        let riding = ChatEntry::tool_result(
+            "call-1",
+            "skill",
+            "<skill name=\"alpha\">body</skill>",
+            ToolResultStatus::Success,
+        );
+        let excluded = {
+            let mut entry = ChatEntry::tool_result(
+                "call-2",
+                "skill",
+                "<skill name=\"gone\">body</skill>",
+                ToolResultStatus::Success,
+            );
+            entry.apply_context_override(
+                jinn_core_types::ContextOverride::ForcedExclude,
+                jinn_core_types::ChangeSource::User,
+            );
+            entry
+        };
+        let history = vec![riding, excluded];
+
+        // When capturing the riding contents.
+        let contents = riding_skill_contents(&history);
+
+        // Then the unpinned in-context result counts — the assembler bills
+        // any in-context entry, pin state is irrelevant — and the excluded
+        // one contributes nothing.
+        let [(name, content)] = contents.as_slice() else {
+            panic!("exactly one riding result expected, got {}", contents.len());
+        };
+        assert_eq!(name, "skill");
+        assert!(content.contains("alpha"));
+    }
 }

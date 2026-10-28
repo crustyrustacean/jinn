@@ -26,15 +26,15 @@ across launches.
 ## OpenRouter endpoint pinning
 
 OpenRouter serves each model through multiple upstream **endpoints** (routing
-tags) with their own pricing and uptime. For prefix-cache affinity you can pin
-one:
+tags) with different pricing and uptime. Pinning one endpoint improves
+prefix-cache hits:
 
 1. Select an OpenRouter-served single model.
 2. `<leader>sE` opens the endpoint picker; `<c-r>` fetches/refreshes the
    endpoint list for that model (listings are cached in memory for the
    session's lifetime).
-3. `<enter>` pins an endpoint. From then on requests force that endpoint and
-   disable fallbacks, maximizing KV-cache hits. `<enter>` on the "Default
+3. `<enter>` pins an endpoint. Requests then force that endpoint and disable
+   fallbacks, which maximizes KV-cache hits. `<enter>` on the "Default
    (auto-route)" row clears the pin.
 
 A pin is a **per-model default**, not per-session state. Confirming writes a

@@ -101,6 +101,10 @@ pub enum StreamEvent {
         stop_reason: StopReason,
         /// Usage and cost data from the provider, if reported.
         usage: Option<StreamUsage>,
+        /// The model that produced the response, as reported by the provider
+        /// on the stream's chunks. `None` when the provider does not echo a
+        /// model id (some transports never include one).
+        model: Option<String>,
     },
     /// An error event from the provider mid-stream.
     ///

@@ -24,6 +24,19 @@ pub struct SessionSummary {
     /// Whether this session is loaded in memory or archived.
     #[serde(default = "default_session_state")]
     pub session_state: SessionState,
+    /// Whether this session belongs to the sidebar's Library section.
+    ///
+    /// Membership is orthogonal to `session_state`: a member stays listed in
+    /// the Library whether loaded or archived.
+    #[serde(default)]
+    pub in_library: bool,
+    /// Whether the session is a bot (`origin == Bot`).
+    ///
+    /// Persisted alongside the other scalar columns so the library-members
+    /// query can serve it without parsing the metadata blob the origin lives
+    /// in; the Library section tints bot members with the bots color.
+    #[serde(default)]
+    pub is_bot: bool,
     /// Parent session ID, or `None` for a root session.
     #[serde(default)]
     pub parent_session: Option<SessionId>,
@@ -96,6 +109,7 @@ mod tests {
         // Then all optional fields receive their compatibility defaults.
         assert_eq!(summary.title, "Untitled Session");
         assert_eq!(summary.session_state, SessionState::Loaded);
+        assert!(!summary.in_library);
         assert!(summary.parent_session.is_none());
         assert!(summary.project.is_none());
     }
@@ -116,6 +130,8 @@ mod tests {
             updated_at: Timestamp::UNIX_EPOCH,
             created_at: Timestamp::UNIX_EPOCH,
             session_state: SessionState::Loaded,
+            in_library: false,
+            is_bot: false,
             parent_session: Some(parent_id.clone()),
             project: Some(project.clone()),
         };

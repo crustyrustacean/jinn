@@ -283,35 +283,90 @@ async fn sidebar_task_list_section_opens_the_task_list_picker() {
 }
 
 #[rstest::rstest]
-fn the_sessions_section_n_row_is_live_not_dead() {
+fn the_sessions_section_b_row_is_live_not_dead() {
     // Given the sidebar's real rows.
     let routes = jinn_slices::route::KeyRoutes::new();
     jinn_sidebar::key_routes::attach_sidebar_rows(&routes);
     let sessions = jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id();
 
-    // When the `N` rows bound in the sessions scope are found.
+    // When the `b` rows bound in the sessions scope are found.
     let all_rows = routes.rows();
-    let n_rows: Vec<_> = all_rows
+    let b_rows: Vec<_> = all_rows
         .iter()
-        .filter(|row| row.scope == sessions && row.key == "N")
+        .filter(|row| row.scope == sessions && row.key == "b")
         .collect();
 
-    // Then `N` is bound exactly once and is a live action — it used to be
+    // Then `b` is bound exactly once and is a live action — it used to be
     // advertised as "new session (setup)" while its action did nothing, and
-    // this guard existed to catch that dead row. `N` now creates an
-    // attendant, so the guard flips: the row must exist and must name the
-    // new-attendant action, not a dead shell.
+    // this guard existed to catch that dead row. The new-bot key moved from
+    // `N` to `b`, so the guard follows it: the row must exist and must name
+    // the new-bot action, not a dead shell.
     assert_eq!(
-        n_rows.len(),
+        b_rows.len(),
         1,
-        "the sessions section must bind `N` exactly once, got {:?}",
-        n_rows.iter().map(|r| r.route_id).collect::<Vec<_>>()
+        "the sessions section must bind `b` exactly once, got {:?}",
+        b_rows.iter().map(|r| r.route_id).collect::<Vec<_>>()
     );
-    let row = n_rows[0];
+    let row = b_rows[0];
     let jinn_slices::route::RouteOutcome::Action { action, .. } = &row.outcome else {
-        panic!("`N` must be an action row, got {:?}", row.outcome);
+        panic!("`b` must be an action row, got {:?}", row.outcome);
     };
-    assert_eq!(*action, "session-new-attendant");
+    assert_eq!(*action, "session-new-bot-of-session");
+}
+
+/// The old new-bot key `N` and the old saved-picker opener `<leader>sa`
+/// must be gone: the rename moved them to `b` and `<leader>sb`, and a key
+/// that answers two names is a key that reads as both.
+#[rstest::rstest]
+#[test]
+fn the_removed_new_bot_keybind_is_unbound() {
+    // Given the sidebar's real rows.
+    let routes = jinn_slices::route::KeyRoutes::new();
+    jinn_sidebar::key_routes::attach_sidebar_rows(&routes);
+
+    // When looking for any row on the removed binds.
+    let stale: Vec<_> = routes
+        .rows()
+        .iter()
+        .filter(|row| row.key == "N" || row.key == "<leader>sa")
+        .map(|row| (row.route_id, row.key))
+        .collect();
+
+    // Then neither is bound anywhere.
+    assert!(
+        stale.is_empty(),
+        "`N` and `<leader>sa` must be unbound everywhere, got {stale:?}"
+    );
+}
+
+/// `B` spawns a standalone bot — its own action, distinct from `b`'s.
+#[rstest::rstest]
+#[test]
+fn capital_b_binds_the_standalone_bot_action_in_the_sessions_scope() {
+    // Given the sidebar's real rows.
+    let routes = jinn_slices::route::KeyRoutes::new();
+    jinn_sidebar::key_routes::attach_sidebar_rows(&routes);
+    let sessions = jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id();
+
+    // When looking for the `B` row.
+    let all_rows = routes.rows();
+    let rows: Vec<_> = all_rows
+        .iter()
+        .filter(|row| row.scope == sessions && row.key == "B")
+        .collect();
+
+    // Then it is bound exactly once, to the standalone action.
+    assert_eq!(
+        rows.len(),
+        1,
+        "the sessions section must bind `B` exactly once, got {:?}",
+        rows.iter().map(|r| r.route_id).collect::<Vec<_>>()
+    );
+    let row = rows[0];
+    let jinn_slices::route::RouteOutcome::Action { action, .. } = &row.outcome else {
+        panic!("`B` must be an action row, got {:?}", row.outcome);
+    };
+    assert_eq!(*action, "session-new-standalone-bot");
 }
 
 // ── Cancel-stream prompt: it must not outlive the keystroke after arming ──
@@ -691,24 +746,23 @@ async fn an_idle_session_suppresses_the_cancel_prompt() {
     );
 }
 
-/// The real app, with an attendant still working under an idle session and
-/// the cancel prompt armed over it. Returns the attendant's id with it.
+/// The real app, with a bot still working under an idle session and
+/// the cancel prompt armed over it. Returns the bot's id with it.
 ///
-/// Attendants fire on the parent's *completion*, so this is the shape the
+/// Bots fire on the parent's *completion*, so this is the shape the
 /// single-predicate rule exists for: the session's own turn is long finished,
 /// and the only running work is beneath it.
-async fn app_with_idle_session_and_running_attendant()
--> (jinn_tui::TuiApp, jinn_core_types::SessionId) {
+async fn app_with_idle_session_and_running_bot() -> (jinn_tui::TuiApp, jinn_core_types::SessionId) {
     let app = test_app().await;
-    let attendant_id = {
+    let bot_id = {
         let mut state = app.core.state.write();
         state.frontend.scope_push(jinn_slices::FocusScope::Normal);
         let parent = state.active_session().clone();
-        let mut attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, false);
-        attendant.begin_streaming();
-        let attendant_id = attendant.session_id().clone();
-        state.session.insert(attendant);
-        attendant_id
+        let mut bot = jinn_session_state::ChatSessionState::new_bot(&parent, false);
+        bot.begin_streaming();
+        let bot_id = bot.session_id().clone();
+        state.session.insert(bot);
+        bot_id
     };
     jinn_kernel::feat::intent::IntentHandler::handle(
         &jinn_kernel::KernelIntent::NormalEscape,
@@ -719,17 +773,17 @@ async fn app_with_idle_session_and_running_attendant()
     );
     assert!(
         app.core.state.read().frontend.cancel_stream_prompt,
-        "an idle session with a running attendant must still offer the cancel"
+        "an idle session with a running bot must still offer the cancel"
     );
-    (app, attendant_id)
+    (app, bot_id)
 }
 
 /// The bar is offered over running work that is not the session's own turn.
 #[rstest::rstest]
 #[tokio::test]
-async fn an_idle_session_with_a_running_attendant_shows_the_cancel_prompt() {
-    // Given the prompt armed over an idle session with a running attendant.
-    let (mut app, _attendant) = app_with_idle_session_and_running_attendant().await;
+async fn an_idle_session_with_a_running_bot_shows_the_cancel_prompt() {
+    // Given the prompt armed over an idle session with a running bot.
+    let (mut app, _bot) = app_with_idle_session_and_running_bot().await;
 
     // When the chat tab renders that frame.
     let rendered = render_chat_tab(&mut app);
@@ -737,7 +791,7 @@ async fn an_idle_session_with_a_running_attendant_shows_the_cancel_prompt() {
     // Then the bar is drawn.
     assert!(
         rendered.contains("Press ESC again to cancel"),
-        "an idle session with a running attendant must display the bar, got: {rendered}"
+        "an idle session with a running bot must display the bar, got: {rendered}"
     );
 }
 
@@ -745,15 +799,15 @@ async fn an_idle_session_with_a_running_attendant_shows_the_cancel_prompt() {
 #[rstest::rstest]
 #[tokio::test]
 async fn a_session_with_nothing_running_shows_no_cancel_prompt() {
-    // Given the prompt armed over an idle session whose attendant has finished.
-    let (mut app, attendant) = app_with_idle_session_and_running_attendant().await;
+    // Given the prompt armed over an idle session whose bot has finished.
+    let (mut app, bot) = app_with_idle_session_and_running_bot().await;
     {
         let mut state = app.core.state.write();
         {
             let session = state
                 .session
-                .get_mut(&attendant)
-                .expect("the attendant inserted by the fixture");
+                .get_mut(&bot)
+                .expect("the bot inserted by the fixture");
             session.finalize_entries_for_finish(false, jiff::Timestamp::now());
             session.finish_streaming_via_machine();
         }
@@ -765,7 +819,7 @@ async fn a_session_with_nothing_running_shows_no_cancel_prompt() {
     // Then the bar is absent.
     assert!(
         !rendered.contains("Press ESC again to cancel"),
-        "a finished attendant must not keep the bar up, got: {rendered}"
+        "a finished bot must not keep the bar up, got: {rendered}"
     );
 }
 

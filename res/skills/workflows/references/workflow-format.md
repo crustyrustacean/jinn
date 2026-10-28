@@ -5,7 +5,7 @@ convention the workflows skill applies when running one. Also covers the
 authoring dialogue: how a workflow gets built with the user before
 anything lands on disk. Sketches here are shapes to copy; the shipped
 worked example is `res/workflows/autodev/` — but note it is
-**event-driven**, so its layout adds `attendants/` and `lifecycle.toml`
+**event-driven**, so its layout adds `bots/` and `lifecycle.toml`
 (see `references/event-driven-workflows.md`). The sequential sketches
 below are the minimal shape.
 

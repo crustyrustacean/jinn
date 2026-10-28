@@ -182,6 +182,10 @@ impl SessionStoreActor {
                 self.publish(enablement).await;
             }
         }
+        // Archiving changes what a library member's row shows (loaded →
+        // archived), so the section re-reads its summaries once for the whole
+        // batch rather than once per member.
+        self.refresh_library_cell().await;
     }
 
     /// Captures one complete archived snapshot for each requested member.

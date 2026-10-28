@@ -1,6 +1,6 @@
 ---
 name: workflows
-description: Author and run jinn workflows — named multi-step procedures stored as markdown under ~/.config/jinn/workflows/, stamped onto the session task list and executed while the session orchestrates. Covers both execution architectures (sequential step dispatch via `spawn_subagent`, and event-driven session pools via attendants) and the harness primitives they ride (`spawn_subagent`, attendants, `tell_session`/`notify_parent`, lifecycle scripts). Use when the user asks to run a workflow, author or create one, or describes a repeatable multi-step procedure (draft-review-fix cycles, research pipelines, staged refactors, autonomous development loops) to be carried out step by step.
+description: Author and run jinn workflows — named multi-step procedures stored as markdown under ~/.config/jinn/workflows/, stamped onto the session task list and executed while the session orchestrates. Covers both execution architectures (sequential step dispatch via `spawn_subagent`, and event-driven session pools via bots) and the harness primitives they ride (`spawn_subagent`, bots, `tell_session`/`notify_parent`, lifecycle scripts). Use when the user asks to run a workflow, author or create one, or describes a repeatable multi-step procedure (draft-review-fix cycles, research pipelines, staged refactors, autonomous development loops) to be carried out step by step.
 ---
 
 # workflows — author and run multi-step procedures
@@ -16,7 +16,7 @@ Running one is a discipline the session applies.
 Determine your job before reading further — the two share vocabulary but
 not procedure:
 
-- **RUN** — a workflow already exists (installed under `~/.config/jinn/workflows/`, named by the human, or launched via `<leader>sw`) and this session is to execute it as the orchestrator. The directory is on disk; do not modify it mid-run. → Read [Running](#running) below, then the reference for the workflow's architecture (its `workflow.md` will make the architecture obvious: a flow list of one-shot steps = sequential; stage procedures plus attendant seeds = event-driven).
+- **RUN** — a workflow already exists (installed under `~/.config/jinn/workflows/`, named by the human, or launched via `<leader>sw`) and this session is to execute it as the orchestrator. The directory is on disk; do not modify it mid-run. → Read [Running](#running) below, then the reference for the workflow's architecture (its `workflow.md` will make the architecture obvious: a flow list of one-shot steps = sequential; stage procedures plus bot seeds = event-driven).
 - **AUTHOR** — the human describes a procedure they want to exist, or asks to create/change a workflow. The deliverable is the directory itself. → Read [Authoring](#authoring) below (which includes picking the architecture), then the reference for the architecture you picked.
 - **Both at once** — "make one and run it" is two jobs in sequence: author (through user approval), then run. Never collapse the approval gate because the run is coming anyway.
 
@@ -34,17 +34,17 @@ decides everything: **what the orchestrator does while the worker
 works.**
 
 - **`spawn_subagent` — blocking.** Spawns a one-shot subagent; the call does not return until the child finishes, and the child's final message comes back as the tool result. The orchestrator is **frozen** for the whole child run: no other work, no mid-flight steering, and anything the child queues is lost. Subagents are isolation, not compression — they start from an empty context and see nothing but the prompt. Use when the next orchestrator action depends on the result (sequential steps).
-- **Attendants — concurrent.** Standing child sessions created by `load_attendant` from a TOML seed. The call returns immediately; the orchestrator goes on with its turn (usually by ending it) and the attendant's report arrives **later**, as a queued message that starts the orchestrator's next turn. Several attendants run at once; each survives across dispatches (see seed fields below). Use when work can proceed while the orchestrator does other things, or when the same session must handle multiple dispatches over time (event-driven workers and specialists).
+- **Bots — concurrent.** Standing child sessions created by `load_attendant` from a TOML seed. The call returns immediately; the orchestrator goes on with its turn (usually by ending it) and the bot's report arrives **later**, as a queued message that starts the orchestrator's next turn. Several bots run at once; each survives across dispatches (see seed fields below). Use when work can proceed while the orchestrator does other things, or when the same session must handle multiple dispatches over time (event-driven workers and specialists).
 
-Never substitute one for the other: a `spawn_subagent` call where an attendant
-belongs freezes the orchestrator and silently discards the attendant's
-seed; an attendant where the result is needed *now* leaves the
+Never substitute one for the other: a `spawn_subagent` call where a bot
+belongs freezes the orchestrator and silently discards the bot's
+seed; a bot where the result is needed *now* leaves the
 orchestrator ending its turn with nothing in hand.
 
 The channels both ride:
 
-- **`tell_session`** (orchestrator → attendant): delivering to an idle attendant starts a run seeded from its template plus the message; delivering to a busy one **queues** behind its current turn. Nothing is ever cancelled, nothing races.
-- **`notify_parent`** (attendant → orchestrator): lands as a user message that starts the parent's next turn; if the parent is mid-turn, the report **queues until that turn ends**.
+- **`tell_session`** (orchestrator → bot): delivering to an idle bot starts a run seeded from its template plus the message; delivering to a busy one **queues** behind its current turn. Nothing is ever cancelled, nothing races.
+- **`notify_parent`** (bot → orchestrator): lands as a user message that starts the parent's next turn; if the parent is mid-turn, the report **queues until that turn ends**.
 
 The consequence that shapes every event-driven orchestrator: **end your
 turn.** After dispatching, or whenever nothing is left to do this
@@ -53,7 +53,7 @@ sleeps is a turn whose queued reports never arrive.
 
 Supporting tools:
 
-- **`conclude`** — an attendant records one summary per run into a history log. Its text re-enters context **only** through the `<prior report>` token in the seed template; a template without the token never sees reports (right for roles whose conclusions arrive out of order, like a reviewer).
+- **`conclude`** — a bot records one summary per run into a history log. Its text re-enters context **only** through the `<prior report>` token in the seed template; a template without the token never sees reports (right for roles whose conclusions arrive out of order, like a reviewer).
 - **Session lifecycle scripts** — a TOML of setup/teardown commands run via `run_lifecycle`. Setup is one-shot per session and adopts the last path the script prints as the session's working directory; teardown replays the recorded coordinates (session id only) — which is what makes it the cleanup mechanism. Placeholders are filled from named args, shell-quoted. Use the pair fully or not at all.
 - **`save_plan`** — persists a file that survives context compaction. The right vehicle for any artifact a later dispatch must read.
 
@@ -73,7 +73,7 @@ is the first authoring decision — it changes the directory layout, the
 execution model, and what the session must supervise.
 
 - **Sequential** — steps run one after another; each step is one unit of work; when it's done, the next starts. Use when the flow is a pipeline: research → draft → review → fix → deliver. Execution: the orchestrator dispatches each step to a fresh subagent with the `spawn_subagent` tool.
-- **Event-driven** — named worker sessions run concurrently and react to events: messages between sessions, turn completions, task completion. Use when the flow has concurrency, recursion, or long-lived workers: fanout, an issue queue that spawns more issues, workers that report back asynchronously. Execution: the orchestrator attaches **attendants** with `load_attendant` (workflow-local session seeds), dispatches them with `tell_session`, and receives their reports via `notify_parent`.
+- **Event-driven** — named worker sessions run concurrently and react to events: messages between sessions, turn completions, task completion. Use when the flow has concurrency, recursion, or long-lived workers: fanout, an issue queue that spawns more issues, workers that report back asynchronously. Execution: the orchestrator attaches **bots** with `load_attendant` (workflow-local session seeds), dispatches them with `tell_session`, and receives their reports via `notify_parent`.
 
 When both fit, prefer sequential — it is simpler to author and to debug.
 Event-driven earns its cost only when the flow genuinely needs
@@ -153,7 +153,7 @@ the loop count if the flow iterated.
 
 1. **You orchestrate; you do not execute.** Working material — research, drafts, code, reviews — belongs in dispatched sessions, never in the orchestrator's context. The one exception: a step whose entire body is conversation with the user.
 2. **Dispatches are self-contained.** The receiver sees the prompt and the filesystem, nothing else. Every dispatch carries: what to do (the step file or contract), the absolute paths of everything it reads and writes, and the expected report format. Paste paths, never retype them.
-3. **Every prescribed action names its tool.** "Create a session", "notify the human", "record the result" — if the workflow says to do it, it names the exact tool call that does it. An action verb without a mechanism sends the executing agent tool-hunting, and it will improvise the nearest capability instead (the bug class: "create a plain new session" became a `spawn_subagent` subagent, silently discarding the attendant seed).
+3. **Every prescribed action names its tool.** "Create a session", "notify the human", "record the result" — if the workflow says to do it, it names the exact tool call that does it. An action verb without a mechanism sends the executing agent tool-hunting, and it will improvise the nearest capability instead (the bug class: "create a plain new session" became a `spawn_subagent` subagent, silently discarding the bot seed).
 4. **State lives in files, not in memory.** Anything that must survive a context compaction, a turn boundary, or a session restart is a file with its path recorded in a known place. The orchestrator's memory is not a queue, not a ledger, not a cache.
 5. **The task list is the run's visible state.** Stamp it at start, update it the moment anything happens — never batched. A reader watching the list should be able to reconstruct where the run is.
 6. **Bound the fanout.** Concurrency is bounded by the work actually claimable, and every recursion has a structural ceiling: only the orchestrator attaches, only from a fixed set of seed files, and every session exists for a specific dispatch — never attached into idleness "for later."
@@ -166,5 +166,5 @@ the loop count if the flow iterated.
 | File                                       | Covers                                                                                                                                                                              |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `references/workflow-format.md`            | Sequential architecture, full spec: `workflow.md` fields, step-file anatomy, loop/conditional notation, naming rules, the authoring dialogue expanded, dispatch-prompt assembly, anti-patterns |
-| `references/event-driven-workflows.md`     | Event-driven architecture: session topology, attendant seed files (behavior, trigger, pins, templates), the turn-boundary wake model, lifecycle scripts (setup/teardown as the whole checkout contract), state files, the orchestrator instructions pattern, failure and stall handling, anti-patterns |
-| `res/workflows/autodev/`                   | The shipped worked example — event-driven: orchestrator instructions, five stage procedures, three attendant seeds (planner/implementor/reviewer), an SCM crib sheet, lifecycle scripts (on-demand implementors; setup branches the feature branch, teardown merges back; contracts record a pre-existing-failure baseline that gates measure against; work-item ids carry title slugs everywhere). Read it before authoring anything with concurrency or recursion |
+| `references/event-driven-workflows.md`     | Event-driven architecture: session topology, bot seed files (behavior, trigger, pins, templates), the turn-boundary wake model, lifecycle scripts (setup/teardown as the whole checkout contract), state files, the orchestrator instructions pattern, failure and stall handling, anti-patterns |
+| `res/workflows/autodev/`                   | The shipped worked example — event-driven: orchestrator instructions, five stage procedures, three bot seeds (planner/implementor/reviewer), an SCM crib sheet, lifecycle scripts (on-demand implementors; setup branches the feature branch, teardown merges back; contracts record a pre-existing-failure baseline that gates measure against; work-item ids carry title slugs everywhere). Read it before authoring anything with concurrency or recursion |

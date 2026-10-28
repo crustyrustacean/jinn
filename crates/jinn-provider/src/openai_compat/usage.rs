@@ -28,6 +28,10 @@ pub(super) struct PendingDone {
     /// Usage collected so far. `None` until a chunk carries a `usage` block,
     /// and left `None` if the provider never sends one.
     pub(super) usage: Option<StreamUsage>,
+    /// The model id the provider echoed on its chunks, captured by the
+    /// buffer and stamped in when the event is released. `None` when the
+    /// provider never sent one.
+    pub(super) model: Option<String>,
 }
 
 /// The buffered terminal event, plus the enrichment it accumulates.
@@ -35,6 +39,11 @@ pub(super) struct PendingDone {
 pub(super) struct PendingDoneBuffer {
     /// The buffered event, if a finish reason has been seen.
     pending: Option<PendingDone>,
+    /// The model the provider echoes on its chunks, captured from the first
+    /// chunk that carries a non-empty one. Held on the buffer rather than the
+    /// pending event so the echo is collected even on chunks that arrive
+    /// before any finish reason parks a `Done`.
+    seen_model: Option<String>,
 }
 
 impl PendingDoneBuffer {
@@ -51,6 +60,7 @@ impl PendingDoneBuffer {
         self.pending = Some(PendingDone {
             stop_reason,
             usage: None,
+            model: self.seen_model.clone(),
         });
         true
     }
@@ -60,11 +70,24 @@ impl PendingDoneBuffer {
         self.pending.is_some()
     }
 
-    /// Attaches usage parsed from `chunk`, if the chunk carries any.
+    /// Attaches model and usage parsed from `chunk`, when the chunk carries
+    /// them.
     ///
-    /// A chunk with no `usage` block leaves whatever was collected untouched,
-    /// so an interleaved content chunk cannot blank the accounting.
+    /// The model read happens before the pending check: a provider echoes its
+    /// model on every chunk, including the first, so the capture must run even
+    /// while nothing is parked. The first non-empty id wins and later chunks
+    /// cannot replace it. A chunk with no `usage` block leaves whatever usage
+    /// was collected untouched, so an interleaved content chunk cannot blank
+    /// the accounting.
     pub(super) fn enrich_from(&mut self, chunk: &serde_json::Value) {
+        if let Some(model) = chunk
+            .get("model")
+            .and_then(serde_json::Value::as_str)
+            .filter(|m| !m.is_empty())
+            && self.seen_model.is_none()
+        {
+            self.seen_model = Some(model.to_owned());
+        }
         let Some(pending) = &mut self.pending else {
             return;
         };
@@ -76,7 +99,9 @@ impl PendingDoneBuffer {
 
     /// Removes and returns the buffered event, if there is one.
     pub(super) fn take(&mut self) -> Option<PendingDone> {
-        self.pending.take()
+        let mut pending = self.pending.take()?;
+        pending.model = self.seen_model.take();
+        Some(pending)
     }
 }
 
@@ -267,5 +292,74 @@ mod tests {
         // Then only the first take returns the event.
         assert!(first.is_some());
         assert!(second.is_none());
+    }
+
+    #[rstest::rstest]
+    fn sse_captures_echoed_model() {
+        // Given a parser fed a chunk carrying the provider's model echo.
+        let mut buffer = PendingDoneBuffer::default();
+
+        // When a chunk with a top-level `model` field arrives.
+        buffer.enrich_from(&serde_json::json!({
+            "id": "x",
+            "model": "anthropic/claude-sonnet-4.5",
+            "choices": [{"delta": {"content": "hi"}}]
+        }));
+
+        // Then parking a finish reason stamps the captured model into the
+        // pending event.
+        buffer.park(StopReason::EndTurn);
+        let pending = buffer.take().expect("a pending event");
+        assert_eq!(
+            pending.model.as_deref(),
+            Some("anthropic/claude-sonnet-4.5")
+        );
+    }
+
+    #[rstest::rstest]
+    fn first_reported_model_survives_later_chunks() {
+        // Given a buffer that already captured a model echo.
+        let mut buffer = PendingDoneBuffer::default();
+        buffer.enrich_from(&serde_json::json!({"model": "anthropic/claude-sonnet-4.5"}));
+
+        // When a later chunk reports a different model.
+        buffer.enrich_from(&serde_json::json!({"model": "openai/gpt-5.1"}));
+
+        // Then the first capture wins rather than being replaced.
+        buffer.park(StopReason::EndTurn);
+        let pending = buffer.take().expect("a pending event");
+        assert_eq!(
+            pending.model.as_deref(),
+            Some("anthropic/claude-sonnet-4.5")
+        );
+    }
+
+    #[rstest::rstest]
+    fn model_captured_before_finish_reason_parks_done() {
+        // Given a buffer fed only first-chunk echoes, with no finish reason yet.
+        let mut buffer = PendingDoneBuffer::default();
+        buffer.enrich_from(&serde_json::json!({"model": "openrouter/auto"}));
+
+        // Then nothing is pending, but the echo is held for later parking.
+        assert!(!buffer.is_pending());
+        buffer.park(StopReason::ToolUse);
+        let pending = buffer.take().expect("a pending event");
+        assert_eq!(pending.model.as_deref(), Some("openrouter/auto"));
+    }
+
+    #[rstest::rstest]
+    fn done_without_any_model_echo_leaves_model_none() {
+        // Given a buffer fed chunks that never carry a `model` field.
+        let mut buffer = PendingDoneBuffer::default();
+        buffer.enrich_from(&serde_json::json!({
+            "choices": [{"delta": {"content": "hi"}}]
+        }));
+
+        // When the stream finishes and the event is released.
+        buffer.park(StopReason::EndTurn);
+        let pending = buffer.take().expect("a pending event");
+
+        // Then the released event carries no model.
+        assert_eq!(pending.model, None);
     }
 }

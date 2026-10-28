@@ -74,6 +74,12 @@ pub fn activate(
             &jinn_session_store_msg::session_picker_slot(),
         )
         .expect("the cell catalog registers the session-picker slot before any slice activates");
+    // The actor's membership and archive writes refresh the Library section
+    // through this cell; without it the sidebar would show stale membership.
+    let library_cell = host
+        .slices()
+        .reader::<jinn_session_store_msg::LibraryState>(&jinn_session_store_msg::library_slot())
+        .expect("the cell catalog registers the library slot before any slice activates");
 
     let session_store = session_store_actor::SessionStoreActor::spawn(
         host.system(),
@@ -81,6 +87,7 @@ pub fn activate(
             services: services.clone(),
             state,
             session_picker_cell,
+            library_cell,
         },
     );
 

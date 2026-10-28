@@ -14,7 +14,7 @@ Run any number of concurrent sessions, with live preview session navigation.
 
 - First-class forking and subagent support
 - Inter-session communication via the `tell_session` tool, so agents can hand work between sessions
-- Cache hit %, tokens up/down, context usage/max, total spend, and number of turns tracked per session and aggregated across forks, subagents, and attendants.
+- Cache hit %, tokens up/down, context usage/max, total spend, and number of turns tracked per session and aggregated across forks, subagents, and bots.
 
 ![Multisession](doc/screenshots/multi-session.png)
 
@@ -41,17 +41,17 @@ Quickly navigate and change things via Telescope-inspired pickers:
 
 ![OpenRouter-Search](doc/screenshots/openrouter-search.png)
 
-### Attendants
+### Bots
 
-Attach "attendants" to sessions that fire when their parent session turn ends (or manually with `R`). Things that attendants can do:
+Attach "bots" to sessions that fire when their parent session turn ends (or manually with `G`). Things that bots can do:
 
 - Restarting a session if it stops mid-task (shipped by default as `auto-nudge`)
 - Ensure implementation is actually done (shipped by default as `gap-check`)
 - Code quality gate
 
-They can be created entirely in-app by typing in the instructions in the attendant session and then turning it on. Attendants can be optionally saved to your `jinn.toml` via keybind so you can attach them to any session.
+They can be created entirely in-app by typing in the instructions in the bot session and then turning it on. Bots can be optionally saved to your `jinn.toml` via keybind so you can attach them to any session.
 
-![Attendants](doc/screenshots/attendant.png)
+![Bots](doc/screenshots/bot.png)
 
 ### Workflows
 

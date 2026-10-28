@@ -4,11 +4,14 @@
 //! [`CharRatioEstimator`] as a simple heuristic implementation (1 token ≈ 4 characters),
 //! and [`estimate_entry_tokens`] for estimating the token cost of individual chat entries.
 
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use jinn_core_types::tool_types::ToolDefinition;
 use jinn_core_types::{ChatEntry, ChatEntryKind, ContextOverride};
 use unicode_segmentation::UnicodeSegmentation;
+
+use crate::tool_prompt::build_tool_context_block;
 
 /// Estimates the token count of text.
 ///
@@ -220,6 +223,50 @@ impl TokenCounter for TiktokenCounter {
     fn name(&self) -> &'static str {
         self.encoding_name
     }
+}
+
+/// Counts the tokens a provider bills for one tool definition in the
+/// request's tools array: the serialized `{name, description, parameters}`
+/// projection.
+///
+/// `prompt_snippet` and `prompt_guidelines` are deliberately excluded — they
+/// ride only in the system prompt's tool block (see
+/// [`build_tool_context_block`]), whose tokens are counted separately.
+/// Serializing the whole [`ToolDefinition`] would bill them twice.
+///
+/// Shared by the prompt assembler and the picker context-cost figures so the
+/// two can never disagree on a tool's price.
+#[must_use]
+pub fn tool_schema_tokens(def: &ToolDefinition, counter: &dyn TokenCounter) -> usize {
+    let schema = serde_json::json!({
+        "name": def.name,
+        "description": def.description,
+        "parameters": def.parameters,
+    })
+    .to_string();
+    counter.count(&schema)
+}
+
+/// Counts the context cost of a toolset: the tool context block that rides in
+/// the system prompt (snippets + guidelines) plus the schema projection of
+/// every definition that rides in the request's tools array.
+///
+/// This is the price a prompt assembly pays for the given definitions — the
+/// same shaping `jinn-context-assembly` bills in
+/// [`AssembledPrompt::estimated_tokens`](jinn_slices::AssembledPrompt::estimated_tokens).
+#[must_use]
+pub fn toolset_context_tokens(defs: &[ToolDefinition], counter: &dyn TokenCounter) -> usize {
+    let schemas: usize = defs
+        .iter()
+        .map(|def| tool_schema_tokens(def, counter))
+        .sum();
+    let by_name: BTreeMap<String, ToolDefinition> = defs
+        .iter()
+        .cloned()
+        .map(|def| (def.name.clone(), def))
+        .collect();
+    let block = build_tool_context_block(&by_name).map_or(0, |block| counter.count(&block));
+    schemas.saturating_add(block)
 }
 
 #[cfg(test)]

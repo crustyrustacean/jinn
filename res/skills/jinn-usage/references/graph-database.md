@@ -60,14 +60,14 @@ RETURN type(r) AS relation, labels(other) AS other_label, elementKey(other) AS o
 
 For "where did I put that", give the entity a searchable phrase via
 `embed_text` (`"prefers vim keybindings in the editor"`) — then
-`graph_vector_search` finds it by meaning, not by exact key.
+`graph_vector_search` finds it by meaning rather than by exact key.
 
 ### 2. Document corpus Q&A
 
 Model a corpus as `Doc` → `HAS_CHUNK` → `Chunk` nodes, with `MENTIONS` edges
 to `Concept` nodes. The chunk text goes in `embed_text`; the edges carry the
-structure vectors can't see. bge-small-en-v1.5 truncates at 512 tokens, so
-chunk to ~400 tokens (a sentence or two of overlap), and prepend a context
+structure that vectors cannot see. bge-small-en-v1.5 truncates at 512 tokens, so
+chunk to ~400 tokens (with a sentence or two of overlap), and prepend a context
 line (doc title + section) so a bare chunk still embeds meaningfully:
 
 ```jsonc
@@ -79,7 +79,7 @@ line (doc title + section) so a bare chunk still embeds meaningfully:
 {"edge": {"label": "MENTIONS", "from": "Chunk:design/overgraph#wal", "to": "Concept:wal"}}
 ```
 
-Retrieval is the two-call hybrid recipe — vector finds the entry point,
+Retrieval is a two-call hybrid: vector search finds the entry point,
 traversal builds the answer:
 
 ```
@@ -94,8 +94,8 @@ traversal builds the answer:
 ### 3. Temporal facts
 
 Edges carry `valid_from`/`valid_to` epoch millis. A new fact is a new edge; an
-old fact's edge gets a `valid_to` (writable in GQL too: `SET validTo(r) = ...`).
-"What was true at time T" is then a query, not an archaeology dig:
+old fact's edge gets a `valid_to` (also writable in GQL: `SET validTo(r) = ...`).
+"What was true at time T" is then a query:
 
 ```jsonc
 // roles.jsonl — jayson led the team until March, then Alice did
@@ -114,10 +114,10 @@ RETURN elementKey(p), validFrom(r), validTo(r)
 
 ### 4. Hybrid retrieval
 
-The general recipe behind pattern 2, stated once: **the vector layer finds
-entry points, the graph layer builds the answer.** Vector search returns things
-that _mean like_ the query; traversal returns things _connected to_ those
-things. Whenever a question needs both — find by meaning, then use
+The general recipe behind pattern 2: **the vector layer finds
+entry points, the graph layer builds the answer.** Vector search returns
+things that _mean like_ the query; traversal returns things _connected to_
+those things. When a question needs both — find by meaning, then use
 relationships — do the two-step:
 
 1. `graph_vector_search` → take `key` + `labels` from the hits.
@@ -139,14 +139,14 @@ that emits a JSONL file, then call `graph_ingest_file` **once per file**:
 `props`/`weight`/`embed_text` (embedded locally, like `graph_upsert_node`).
 Edge lines: `label`, `from`, `to` plus optional `props`/`weight`/`valid_from`/`valid_to`;
 `from`/`to` are `Label:key` strings (split at the first colon, so keys may
-contain colons — labels may not). The engine gives the contract its teeth:
+contain colons — labels may not). The engine enforces the contract:
 
 - **Line order is free.** All nodes are upserted before any edge endpoint
   resolves, so an edge may reference a node declared later in the file or
   already in the database.
-- **Abort names the line.** An edge whose endpoint resolves to nothing kills
+- **Abort names the line.** An edge whose endpoint resolves to nothing aborts
   the whole file with zero writes, and the response names the missing
-  endpoints with their line numbers. No placeholder nodes get silently created.
+  endpoints with their line numbers. No placeholder nodes are created.
 - **Re-runs are idempotent.** Upserts key on `(label, key)` and edges are
   unique per `(from, to, label)`, so a crashed or partial run is repaired by
   re-running the same file.
@@ -199,9 +199,9 @@ Then ingest:
 // graph_ingest_file { "path": "/home/me/people.jsonl" }
 ```
 
-The error story is fix-and-rerun: when the abort names a line, fix that line
-in the file (or create the node it points at) and re-run — the re-run is
-idempotent, so re-upserting the already-written records is harmless.
+When the abort names a line, fix that line in the file (or create the node it
+points at) and re-run — the re-run is idempotent, so re-upserting the
+already-written records is harmless.
 
 ## When to use what
 
@@ -224,15 +224,15 @@ idempotent, so re-upserting the already-written records is harmless.
 - **No unlabeled scans.** Reads run with `allow_full_scan: false`, so every
   `MATCH` needs a label — `MATCH (n)` is rejected. This is the most common
   first-query error.
-- **`embed_text` truncates at 512 tokens.** Longer text silently loses its
-  tail to the embedding; chunk before ingesting, not after.
+- **`embed_text` truncates at 512 tokens.** Longer text loses its tail in the
+  embedding without warning; chunk before ingesting, not after.
 - **Pass absolute paths.** For `--db` in a custom entry and for
   `graph_ingest_file`'s `path`: both resolve against the server process's
   working directory, not yours.
 - **Embedding model lifecycle.** The first embed downloads ~35MB
   (bge-small-en-v1.5, 384-dim cosine); pre-fetch it headlessly with
   `jinn mcp overgraph --fetch-model` if desired. The dimension locks
-  into the database at first open, so switching embed models means
+  into the database at first open, so switching embed models requires
   a fresh `--db`.
 - **When unsure, call `graph_docs`** (optionally with `section`) before
   writing GQL you're not certain of — it serves the full reference from

@@ -22,6 +22,7 @@
 
 use std::collections::BTreeSet;
 
+use jinn_llm_support::token_estimator::{TiktokenCounter, toolset_context_tokens};
 use jinn_mcp_msg::McpPreviewMode;
 use jinn_mcp_msg::McpServerEntry;
 use jinn_picker::PickerEntry;
@@ -190,7 +191,7 @@ pub fn refresh_inspector_snapshot(cell: &McpPickerCell, facts: &RenderFacts) {
     let (Some(server_name), Some(session_id)) = (server_name, session_id) else {
         return;
     };
-    let (status, stderr_tail, tools) = {
+    let (status, stderr_tail, tools, session_defs) = {
         let runtime = facts
             .slices
             .reader::<jinn_mcp_msg::McpRuntimeState>(&jinn_mcp_msg::mcp_runtime_slot());
@@ -218,7 +219,8 @@ pub fn refresh_inspector_snapshot(cell: &McpPickerCell, facts: &RenderFacts) {
             .map_or_else(Vec::new, |registry| {
                 registry.read().tools_for_session(&session_id)
             });
-        (status, stderr_tail, tools_for(&server_name, &defs))
+        let tools = tools_for(&server_name, &defs);
+        (status, stderr_tail, tools, defs)
     };
 
     cell.update(|state| {
@@ -228,6 +230,9 @@ pub fn refresh_inspector_snapshot(cell: &McpPickerCell, facts: &RenderFacts) {
             entry.stderr_tail = stderr_tail;
             entry.tools = tools;
         });
+        // The figure follows the live registry, guarded by its signature so
+        // an unchanged registry never re-tokenizes.
+        refresh_cost_figure(state, &session_defs);
     });
 }
 
@@ -258,4 +263,56 @@ pub fn tools_for(
 #[must_use]
 pub fn provider_prefix(server_name: &str) -> String {
     jinn_mcp::provider_prefix(server_name)
+}
+
+/// The registered tools of the enabled servers: every `mcp__`-prefixed
+/// definition in the session's registry.
+///
+/// Registration is per-session and tracks enablement — a disabled server's
+/// tools are not registered, and a still-connecting server has registered
+/// none yet — so the prefix filter over the session's definitions *is* the
+/// enabled set; no second enablement check is applied here.
+#[must_use]
+pub fn registered_mcp_defs(
+    defs: &[jinn_core_types::ToolDefinition],
+) -> Vec<jinn_core_types::ToolDefinition> {
+    defs.iter()
+        .filter(|definition| definition.name.starts_with("mcp__"))
+        .cloned()
+        .collect()
+}
+
+/// Byte-length change signature over a definition set:
+/// `(count, Σ name + description + schema byte lengths)`.
+fn registry_signature(defs: &[jinn_core_types::ToolDefinition]) -> (usize, usize) {
+    let total: usize = defs
+        .iter()
+        .map(|definition| {
+            definition.name.len()
+                + definition.description.len()
+                + definition.parameters.to_string().len()
+        })
+        .sum();
+    (defs.len(), total)
+}
+
+/// Recomputes the enabled-servers cost figure when the registry has moved.
+///
+/// The refresh path calls this every frame; the signature guard keeps the
+/// tokenizer idle on any frame where nothing registered or unregistered.
+/// MCP-mapped tools carry no prompt snippet or guidelines, so the figure
+/// degrades to the schema sum — exactly this picker's contribution to the
+/// request. Toggling a row never calls this: tools register and unregister
+/// only when a confirm reconciles the connection set, so consumption has not
+/// changed until it has.
+pub fn refresh_cost_figure(state: &mut List, session_defs: &[jinn_core_types::ToolDefinition]) {
+    let mcp_defs = registered_mcp_defs(session_defs);
+    let sig = registry_signature(&mcp_defs);
+    if state.registry_sig == Some(sig) {
+        return;
+    }
+    let counter = TiktokenCounter::o200k_base();
+    state.context_tokens = toolset_context_tokens(&mcp_defs, &counter);
+    state.context_definitions = mcp_defs;
+    state.registry_sig = Some(sig);
 }

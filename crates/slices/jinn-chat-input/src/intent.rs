@@ -403,8 +403,8 @@ fn route_to_enqueue_or_steer(
     session_id: &SessionId,
     display: String,
 ) -> IntentResult {
-    // Seed-mode attendants are being composed, not run. A submission lands in
-    // the attendant's context as a *pinned* entry and dispatches nothing.
+    // Seed-mode bots are being composed, not run. A submission lands in
+    // the bot's context as a *pinned* entry and dispatches nothing.
     //
     // Pinning is not cosmetic: a reset run force-excludes every non-pinned
     // entry, so a seed that is not pinned is deleted from context by the very
@@ -443,9 +443,9 @@ fn route_to_enqueue_or_steer(
     }
 }
 
-/// Pins a submission into a preparing attendant's context without dispatching.
+/// Pins a submission into a preparing bot's context without dispatching.
 ///
-/// Returns `None` for any session that is not an attendant in prep mode, so
+/// Returns `None` for any session that is not a bot in prep mode, so
 /// the caller falls through to the normal routing.
 fn seed_mode_submission(
     state: &AppState,
@@ -453,7 +453,7 @@ fn seed_mode_submission(
     display: String,
 ) -> Option<IntentResult> {
     let session = state.session.get(session_id)?;
-    if !session.is_attendant() || !session.attendant_is_prepping() {
+    if !session.is_bot() || !session.bot_is_prepping() {
         return None;
     }
     let entry = ChatEntry::user(display);

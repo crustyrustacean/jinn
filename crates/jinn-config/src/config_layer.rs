@@ -409,10 +409,34 @@ impl ConfigLayer {
     /// does not deserialize into `T`.
     pub fn get_list<T: ConfigList>(&self) -> Result<Vec<T>, ConfigSectionError> {
         let doc = self.inner.doc.read().clone();
-        let Some(arrays) = section_arrays(&doc, T::KEY)? else {
-            return Ok(Vec::default());
+        let mut entries = match section_arrays(&doc, T::KEY)? {
+            Some(arrays) => deserialize_entries::<T>(T::KEY, arrays)?,
+            None => Vec::new(),
         };
-        deserialize_entries(T::KEY, arrays)
+        // A renamed list also reads its legacy key. Entries are deduped by
+        // the entry key with the live key's entry winning a collision, so a
+        // file that has already been re-saved under the new name reads the
+        // same as one still carrying both.
+        if let Some(legacy) = T::LEGACY_KEY
+            && let Some(arrays) = section_arrays(&doc, legacy)?
+        {
+            let legacy_entries = deserialize_entries::<T>(legacy, arrays)?;
+            let mut merged = entries;
+            for entry in legacy_entries {
+                let entry_key = lookup_entry_key(&entry, T::ENTRY_KEY);
+                if !merged
+                    .iter()
+                    .any(|live| lookup_entry_key(live, T::ENTRY_KEY) == entry_key)
+                {
+                    merged.push(entry);
+                }
+            }
+            entries = merged;
+        }
+        if entries.is_empty() {
+            return Ok(Vec::default());
+        }
+        Ok(entries)
     }
 
     /// Writes `value` over a [`ConfigList`] section and persists the
@@ -982,6 +1006,20 @@ mod tests {
         const ENTRY_FIELDS: &'static [&'static str] = &["name", "setup"];
     }
 
+    /// One entry of the renamed list, which still reads its old key.
+    #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+    struct RenamedEntry {
+        #[serde(default)]
+        name: String,
+    }
+
+    impl ConfigList for RenamedEntry {
+        const KEY: &'static str = "bot.entry";
+        const LEGACY_KEY: Option<&'static str> = Some("attendant.entry");
+        const ENTRY_KEY: &'static str = "name";
+        const ENTRY_FIELDS: &'static [&'static str] = &["name"];
+    }
+
     /// A section whose list is nested below its own key.
     #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
     struct AutoPruneCfg {
@@ -1372,10 +1410,10 @@ mod tests {
 
     #[rstest::rstest]
     #[case::no_umbrella_at_all("")]
-    #[case::umbrella_with_other_keys("[attendant]\nbehaviour = \"reset\"\n")]
-    #[case::umbrella_with_an_empty_list("[attendant]\nentry = []\n")]
-    #[case::umbrella_with_an_inline_array("[attendant]\nentry = [{ name = \"old\" }]\n")]
-    #[case::umbrella_with_the_list_in_header_form("[[attendant.entry]]\nname = \"old\"\n")]
+    #[case::umbrella_with_other_keys("[bot]\nbehaviour = \"reset\"\n")]
+    #[case::umbrella_with_an_empty_list("[bot]\nentry = []\n")]
+    #[case::umbrella_with_an_inline_array("[bot]\nentry = [{ name = \"old\" }]\n")]
+    #[case::umbrella_with_the_list_in_header_form("[[bot.entry]]\nname = \"old\"\n")]
     fn put_list_never_creates_a_root_table_named_after_its_leaf(#[case] body: &str) {
         // Given a layer over a document in each shape the umbrella might
         // already be in.
@@ -1437,6 +1475,64 @@ mod tests {
         assert!(
             text.contains("pattern = \"rm -rf\""),
             "sibling list lost:\n{text}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn get_list_reads_a_renamed_lists_legacy_key() {
+        // Given a document whose list is written at the pre-rename key.
+        let (layer, _storage) = layer("[[attendant.entry]]\nname = \"old\"\n");
+
+        // When the renamed list reads.
+        let entries = layer.get_list::<RenamedEntry>().expect("list reads");
+
+        // Then the legacy entry is returned.
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "old");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn get_list_merges_legacy_entries_after_the_live_key() {
+        // Given a document carrying entries at both keys, sharing a name.
+        let (layer, _storage) =
+            layer("[[bot.entry]]\nname = \"new\"\n\n[[attendant.entry]]\nname = \"old\"\n");
+
+        // When the renamed list reads.
+        let entries = layer.get_list::<RenamedEntry>().expect("list reads");
+
+        // Then both are returned, live key first — so a caller identifying
+        // entries by name sees the live key's entry.
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["new", "old"]
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn put_list_writes_only_the_live_key_of_a_renamed_list() {
+        // Given a document whose list lives at the legacy key.
+        let (layer, storage) = layer("[[attendant.entry]]\nname = \"old\"\n");
+
+        // When the list is saved.
+        layer
+            .put_list::<RenamedEntry>(&[RenamedEntry {
+                name: "updated".to_owned(),
+            }])
+            .expect("list writes");
+
+        // Then the write lands at the live key and the legacy key is left
+        // for the user to retire.
+        let text = storage.text();
+        assert!(text.contains("[[bot.entry]]"), "live key missing:\n{text}");
+        assert!(
+            text.contains("[[attendant.entry]]"),
+            "the user's legacy key must not be rewritten:\n{text}"
         );
     }
 
@@ -1804,4 +1900,17 @@ mod read_tests {
 /// `T::KEY` is an associated const, so its segments are already `'static`.
 fn static_leaf<T: ConfigList>() -> &'static str {
     T::KEY.rsplit('.').next().unwrap_or(T::KEY)
+}
+
+/// Reads an entry's [`ConfigList::ENTRY_KEY`] value as a comparable string.
+///
+/// Entries in a legacy file may omit the key field entirely — the same
+/// keyless shape the save path prunes — and two entries that both lack a
+/// name are distinct keys (each the empty string) only by courtesy; the
+/// dedupe treats them as one, which matches how a picker renders them.
+fn lookup_entry_key<T: ConfigList>(entry: &T, entry_key: &'static str) -> String {
+    toml::Value::try_from(entry)
+        .ok()
+        .and_then(|value| value.get(entry_key)?.as_str().map(str::to_owned))
+        .unwrap_or_default()
 }

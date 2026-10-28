@@ -6,7 +6,7 @@
 //! compaction).
 //!
 //! The row also names what kind of session is on screen. A subagent or an
-//! attendant is a conversation with its own identity, and the chat pane has no
+//! bot is a conversation with its own identity, and the chat pane has no
 //! title bar — the session list's colors are the only other place that says so,
 //! and they are off-screen while the user reads. So the row's right edge carries
 //! the kind in that kind's color at all times, busy or not.
@@ -83,7 +83,7 @@ impl StreamingIndicatorElement {
 
         let kind = KindLabel::of(
             origin,
-            state.frontend.theme.attendant_fg,
+            state.frontend.theme.bot_fg,
             state.frontend.theme.subagent_fg,
         );
         // Nothing to draw is the only reason to leave the row untouched: an idle
@@ -123,7 +123,7 @@ impl StreamingIndicatorElement {
         // Advance the animation step only when enough time has elapsed, and
         // only while there is a glyph to advance. The gate is load-bearing now
         // that a label alone can get the row past the early return: an idle
-        // attendant session draws every frame and must not spend its idle time
+        // bot session draws every frame and must not spend its idle time
         // spinning up a spinner it never shows.
         if is_spinning {
             self.maybe_advance_animation();
@@ -135,13 +135,13 @@ impl StreamingIndicatorElement {
 /// from the chat pane itself.
 ///
 /// A user or fork session is an ordinary conversation and says nothing. A
-/// subagent or an attendant is a conversation the user did not type into — it
+/// subagent or a bot is a conversation the user did not type into — it
 /// was opened for them — so the row names it. Origin is the whole test: a fork
 /// of a subagent session is a plain conversation again, and reads as one.
 #[derive(Debug, Clone, Copy)]
 enum KindLabel {
-    /// An attendant's own conversation.
-    Attendant(Color),
+    /// A bot's own conversation.
+    Bot(Color),
     /// A subagent's conversation.
     Subagent(Color),
 }
@@ -149,9 +149,9 @@ enum KindLabel {
 impl KindLabel {
     /// The label for `origin`, or `None` for a kind the reader can already see
     /// is an ordinary conversation.
-    fn of(origin: SessionOrigin, attendant_fg: Color, subagent_fg: Color) -> Option<Self> {
+    fn of(origin: SessionOrigin, bot_fg: Color, subagent_fg: Color) -> Option<Self> {
         match origin {
-            SessionOrigin::Attendant => Some(Self::Attendant(attendant_fg)),
+            SessionOrigin::Bot => Some(Self::Bot(bot_fg)),
             SessionOrigin::Subagent => Some(Self::Subagent(subagent_fg)),
             SessionOrigin::User | SessionOrigin::Fork => None,
         }
@@ -160,7 +160,7 @@ impl KindLabel {
     /// The bracketed text the row shows.
     fn text(self) -> &'static str {
         match self {
-            Self::Attendant(_) => "[attendant]",
+            Self::Bot(_) => "[bot]",
             Self::Subagent(_) => "[subagent]",
         }
     }
@@ -169,7 +169,7 @@ impl KindLabel {
     /// that name the same kind never disagree.
     fn style(self) -> Style {
         let color = match self {
-            Self::Attendant(color) | Self::Subagent(color) => color,
+            Self::Bot(color) | Self::Subagent(color) => color,
         };
         Style::default().fg(color)
     }
@@ -336,16 +336,16 @@ mod tests {
         );
     }
 
-    /// The theme color the session list uses for attendants.
+    /// The theme color the session list uses for bots.
     ///
     /// Read through the state's own theme field rather than through the theme
     /// crate, which this slice does not depend on: a color is a
     /// [`ratatui::style::Color`], and naming the type buys nothing here.
-    fn attendant_fg() -> Color {
+    fn bot_fg() -> Color {
         jinn_kernel::AppState::default_with_scope_focus()
             .frontend
             .theme
-            .attendant_fg
+            .bot_fg
     }
 
     /// The theme color the session list uses for subagents.
@@ -390,27 +390,28 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn idle_attendant_session_names_its_kind_at_the_right_edge() {
-        // Given an idle attendant session.
-        let state = state_with_origin(SessionOrigin::Attendant);
+    fn idle_bot_session_names_its_kind_at_the_right_edge() {
+        // Given an idle bot session.
+        let state = state_with_origin(SessionOrigin::Bot);
 
         // When the indicator row is rendered.
         let text = row_text(&state, 30);
 
         // Then the row says so, flush against the right edge.
-        assert_eq!(text, format!("{}[attendant]", " ".repeat(19)));
+        assert_eq!(text, format!("{}[bot]", " ".repeat(25)));
     }
 
     #[rstest::rstest]
-    fn idle_attendant_session_names_its_kind_in_the_attendant_color() {
-        // Given an idle attendant session.
-        let state = state_with_origin(SessionOrigin::Attendant);
+    fn idle_bot_session_names_its_kind_in_the_bot_color() {
+        // Given an idle bot session.
+        let state = state_with_origin(SessionOrigin::Bot);
 
-        // When the indicator row is rendered.
-        let color = color_at(&state, 30, 20);
+        // When the indicator row is rendered — the label sits flush right,
+        // so probe inside its span.
+        let color = color_at(&state, 30, 27);
 
         // Then the label carries the color the session list uses for one.
-        assert_eq!(color, attendant_fg());
+        assert_eq!(color, bot_fg());
     }
 
     #[rstest::rstest]
@@ -430,8 +431,9 @@ mod tests {
         // Given an idle subagent session.
         let state = state_with_origin(SessionOrigin::Subagent);
 
-        // When the indicator row is rendered.
-        let color = color_at(&state, 30, 20);
+        // When the indicator row is rendered — the label sits flush right,
+        // so probe inside its span.
+        let color = color_at(&state, 30, 27);
 
         // Then the label carries the color the session list uses for one.
         assert_eq!(color, subagent_fg());
@@ -450,8 +452,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn idle_fork_of_an_attendant_session_names_no_kind() {
-        // Given an idle session forked from an attendant's conversation.
+    fn idle_fork_of_an_bot_session_names_no_kind() {
+        // Given an idle session forked from a bot's conversation.
         let state = state_with_origin(SessionOrigin::Fork);
 
         // When the indicator row is rendered.
@@ -463,9 +465,9 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn busy_attendant_session_shows_the_kind_label() {
-        // Given a busy attendant session.
-        let state = state_with_origin(SessionOrigin::Attendant);
+    fn busy_bot_session_shows_the_kind_label() {
+        // Given a busy bot session.
+        let state = state_with_origin(SessionOrigin::Bot);
 
         // When the indicator row is rendered.
         let text = row_text(&state, 40);
@@ -473,15 +475,15 @@ mod tests {
         // Then the label still reaches the right edge — being busy does not
         // crowd it out.
         assert!(
-            text.ends_with("[attendant]"),
+            text.ends_with("[bot]"),
             "the label must reach the right edge, got: {text}"
         );
     }
 
     #[rstest::rstest]
-    fn busy_attendant_session_keeps_the_spinner_text_at_the_left_edge() {
-        // Given a busy attendant session — mid-turn in the phase sense.
-        let mut state = state_with_origin(SessionOrigin::Attendant);
+    fn busy_bot_session_keeps_the_spinner_text_at_the_left_edge() {
+        // Given a busy bot session — mid-turn in the phase sense.
+        let mut state = state_with_origin(SessionOrigin::Bot);
         state.active_session_mut().begin_streaming();
 
         // When the indicator row is rendered.
@@ -498,14 +500,14 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn busy_attendant_session_still_animates_the_spinner() {
-        // Given a busy attendant session, with the indicator's own animation
+    fn busy_bot_session_still_animates_the_spinner() {
+        // Given a busy bot session, with the indicator's own animation
         // state carrying across frames — a spinner rebuilt from a fresh state
         // each frame would sit at index 0 forever and pass a text-only assertion.
 
         use jinn_testutil::setup_term;
 
-        let mut state = state_with_origin(SessionOrigin::Attendant);
+        let mut state = state_with_origin(SessionOrigin::Bot);
         state.active_session_mut().begin_streaming();
         let mut element = StreamingIndicatorElement::new();
         let (_terminal, _area) = setup_term(40, 1);

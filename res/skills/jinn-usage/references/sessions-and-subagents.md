@@ -48,23 +48,27 @@ Within the sidebar Sessions section:
 
 Notes:
 
-- Archiving the last active session creates a fresh one, so you're never
-  stranded; archiving a never-used empty session simply removes it.
+- Archiving the last active session creates a fresh one; archiving a
+  never-used empty session simply removes it.
 - Teardown is all-or-nothing for the tree: if any member fails its teardown or
   is busy, nothing is archived.
 - Archived sessions come back through the session browser (`<leader>ss`).
 - A replacement session created by archiving inherits the global default
   reasoning effort.
 
-## Continuing a session's environment
+## Resuming a session (`c`) and lifecycle setup (`s`)
 
 | Key | Action                                                 |
 | --- | ------------------------------------------------------ |
-| `c` | Switch to the session **and** re-run its setup command |
-| `s` | Re-run the setup command (without switching)           |
+| `c` | Resume the session under the cursor: re-send its context to the provider (no new message, no switch) |
+| `s` | Run the session's lifecycle setup command (only when it has not run yet) |
 
-Useful when a machine rebooted or you want the environment refreshed (branch
-re-checkout, dev servers, etc.).
+`c` re-sends the session's existing history to the provider — no new user or
+assistant entry is added, and focus stays where it is. Use it after a
+rate-limit or an errored turn, or to resume a session that was rehydrated
+from disk. `s` runs the setup half of the session's lifecycle recipe
+(`[[session_lifecycle]]`), not the model turn; it does nothing once setup has
+already run.
 
 ## Changing a session's cwd
 
@@ -76,13 +80,13 @@ re-checkout, dev servers, etc.).
 
 ## Forking
 
-Forks copy history **up to a chosen entry** into a new sibling session — for
-branching a conversation: "try it the other way from that message."
+Forks copy history **up to a chosen entry** into a new sibling session, to
+branch a conversation at that point.
 
 1. In normal mode, select the entry to fork from (`j`/`k` or jumps).
 2. Press `f` — new session with history up to and including that entry,
    linked as a sibling in the tree.
-3. `F` instead seeds a **new session with just that entry** (no inherited
+3. `F` instead creates a **new session with just that entry** (no inherited
    history).
 
 Forks always get fork origin; a fork of a subagent always has the `spawn_subagent` tool
@@ -95,8 +99,8 @@ creates a **regular session** linked as a child:
 
 - Fresh history; inherits your model, cwd, tools, skills, and MCP servers. It
   starts with an **empty task list** — your list is not copied, so the whole
-  assignment has to arrive in the prompt. Give a subagent the context it
-  needs; don't assume it can see what you were doing.
+  assignment must be in the prompt. Give a subagent the context it needs; it
+  cannot see what you were doing.
 - The parent's `spawn_subagent` tool call blocks until the child finishes and forwards
   the child's final message as the tool result.
 - While it runs you can steer it: switch to the child session in the sidebar

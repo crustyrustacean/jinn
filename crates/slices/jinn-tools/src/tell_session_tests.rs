@@ -58,39 +58,39 @@ async fn ctx(
     }
 }
 
-/// Seeds a user session and an attendant with a parent and a seed template.
+/// Seeds a user session and a bot with a parent and a seed template.
 fn fixture() -> (State, SessionId, SessionId) {
     let state = State::new(AppState::default_with_scope_focus());
     let user = ChatSessionState::new();
     let user_id = user.session_id().clone();
-    let attendant = ChatSessionState::new_attendant(&user, true);
-    let attendant_id = attendant.session_id().clone();
+    let bot = ChatSessionState::new_bot(&user, true);
+    let bot_id = bot.session_id().clone();
     {
         let mut guard = state.write();
         guard.session.insert(user);
-        guard.session.insert(attendant);
+        guard.session.insert(bot);
     }
-    (state, user_id, attendant_id)
+    (state, user_id, bot_id)
 }
 
-/// Sets the attendant's seed template so seeded runs are recognizable.
-fn set_template(state: &State, attendant_id: &SessionId, template: &str) {
+/// Sets the bot's seed template so seeded runs are recognizable.
+fn set_template(state: &State, bot_id: &SessionId, template: &str) {
     state
         .write()
         .session
-        .get_mut(attendant_id)
-        .expect("attendant")
+        .get_mut(bot_id)
+        .expect("bot")
         .set_seed_template(template.to_owned());
 }
 
-/// Ends prep mode so the attendant can run.
-fn take_out_of_prep(state: &State, attendant_id: &SessionId) {
+/// Ends prep mode so the bot can run.
+fn take_out_of_prep(state: &State, bot_id: &SessionId) {
     state
         .write()
         .session
-        .get_mut(attendant_id)
-        .expect("attendant")
-        .set_attendant_is_prepping(false);
+        .get_mut(bot_id)
+        .expect("bot")
+        .set_bot_is_prepping(false);
 }
 
 /// Drives the session into the Streaming phase, like a real turn.
@@ -105,20 +105,20 @@ fn make_busy(state: &State, session_id: &SessionId) {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn idle_attendant_starts_a_run_seeded_with_the_message() {
-    // Given an idle attendant with a seed template.
+async fn idle_bot_starts_a_run_seeded_with_the_message() {
+    // Given an idle bot with a seed template.
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
-    let (state, user_id, attendant_id) = fixture();
+    let (state, user_id, bot_id) = fixture();
     let dir = jinn_testutil::tempdir();
-    take_out_of_prep(&state, &attendant_id);
-    set_template(&state, &attendant_id, "Review the diff. <prior report>");
+    take_out_of_prep(&state, &bot_id);
+    set_template(&state, &bot_id, "Review the diff. <prior_report>");
     let tool_ctx = ctx(&harness, &state, user_id.clone(), &dir.path).await;
 
-    // When a message is sent to the attendant.
+    // When a message is sent to the bot.
     let result = execute(
         call(&format!(
-            r#"{{"session_id":"{attendant_id}","message":"focus on main.rs"}}"#
+            r#"{{"session_id":"{bot_id}","message":"focus on main.rs"}}"#
         )),
         tool_ctx,
     )
@@ -128,7 +128,7 @@ async fn idle_attendant_starts_a_run_seeded_with_the_message() {
     assert!(result.success, "delivery must succeed: {}", result.content);
     let recorded = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
     assert_eq!(recorded.len(), 1);
-    assert_eq!(recorded[0].session_id, attendant_id);
+    assert_eq!(recorded[0].session_id, bot_id);
     // And the dispatched text carries the template seed and the message, as
     // an Intersession dispatch attributed to the calling session.
     let jinn_core_types::chat_entry::ChatEntryKind::Intersession {
@@ -140,37 +140,31 @@ async fn idle_attendant_starts_a_run_seeded_with_the_message() {
     else {
         panic!("seeded run must dispatch as an intersession entry");
     };
-    assert_eq!(target_session, &attendant_id);
+    assert_eq!(target_session, &bot_id);
     assert_eq!(source_session, &user_id);
     assert!(text.contains("Review the diff."), "seed present");
     assert!(text.contains("focus on main.rs"), "message present");
     // And the target was marked interacted so its run persists.
     let guard = state.read();
-    assert!(
-        guard
-            .session
-            .get(&attendant_id)
-            .expect("attendant")
-            .has_interacted()
-    );
+    assert!(guard.session.get(&bot_id).expect("bot").has_interacted());
 }
 
 #[rstest::rstest]
 #[tokio::test]
-async fn idle_attendant_with_empty_template_dispatches_the_message_alone() {
-    // Given an idle attendant whose template renders to nothing.
+async fn idle_bot_with_empty_template_dispatches_the_message_alone() {
+    // Given an idle bot whose template renders to nothing.
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
-    let (state, user_id, attendant_id) = fixture();
+    let (state, user_id, bot_id) = fixture();
     let dir = jinn_testutil::tempdir();
-    take_out_of_prep(&state, &attendant_id);
-    set_template(&state, &attendant_id, "");
+    take_out_of_prep(&state, &bot_id);
+    set_template(&state, &bot_id, "");
     let tool_ctx = ctx(&harness, &state, user_id.clone(), &dir.path).await;
 
     // When a message is sent.
     let result = execute(
         call(&format!(
-            r#"{{"session_id":"{attendant_id}","message":"just do the thing"}}"#
+            r#"{{"session_id":"{bot_id}","message":"just do the thing"}}"#
         )),
         tool_ctx,
     )
@@ -189,24 +183,24 @@ async fn idle_attendant_with_empty_template_dispatches_the_message_alone() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn busy_attendant_queues_and_never_cancels() {
-    // Given a busy attendant (mid-stream) with a recorder for cancel commands.
+async fn busy_bot_queues_and_never_cancels() {
+    // Given a busy bot (mid-stream) with a recorder for cancel commands.
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let cancels = harness
         .spawn_recorder::<jinn_inference_msg::CancelTurn>()
         .await;
-    let (state, user_id, attendant_id) = fixture();
+    let (state, user_id, bot_id) = fixture();
     let dir = jinn_testutil::tempdir();
-    take_out_of_prep(&state, &attendant_id);
-    set_template(&state, &attendant_id, "Review the diff.");
-    make_busy(&state, &attendant_id);
+    take_out_of_prep(&state, &bot_id);
+    set_template(&state, &bot_id, "Review the diff.");
+    make_busy(&state, &bot_id);
     let tool_ctx = ctx(&harness, &state, user_id.clone(), &dir.path).await;
 
-    // When a message is sent to the busy attendant.
+    // When a message is sent to the busy bot.
     let result = execute(
         call(&format!(
-            r#"{{"session_id":"{attendant_id}","message":"also check tests"}}"#
+            r#"{{"session_id":"{bot_id}","message":"also check tests"}}"#
         )),
         tool_ctx,
     )
@@ -220,7 +214,7 @@ async fn busy_attendant_queues_and_never_cancels() {
         result.content
     );
     let recorded = await_recorded::<EnqueueUserMessage>(&enqueues, 1, Duration::from_secs(2)).await;
-    assert_eq!(recorded[0].session_id, attendant_id);
+    assert_eq!(recorded[0].session_id, bot_id);
     // The positive signal has arrived; now the negative one is an
     // observation. The cancel recorder must have stopped changing before
     // "no cancel was published" means anything.
@@ -239,11 +233,11 @@ async fn busy_attendant_queues_and_never_cancels() {
 #[rstest::rstest]
 #[tokio::test]
 async fn plain_session_receives_a_context_carrying_entry_from_the_caller() {
-    // Given a non-attendant target with no title and a distinct calling
+    // Given a non-bot target with no title and a distinct calling
     // session.
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
-    let (state, user_id, _attendant_id) = fixture();
+    let (state, user_id, _bot_id) = fixture();
     let dir = jinn_testutil::tempdir();
     let caller = ChatSessionState::new();
     let caller_id = caller.session_id().clone();
@@ -291,7 +285,7 @@ async fn plain_delivery_carries_a_titled_caller_in_the_prefix() {
     // Given a calling session with a title.
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
-    let (state, user_id, _attendant_id) = fixture();
+    let (state, user_id, _bot_id) = fixture();
     let dir = jinn_testutil::tempdir();
     let mut caller = ChatSessionState::new();
     caller.set_title("Workflow Run 42".to_owned());
@@ -326,7 +320,7 @@ async fn plain_delivery_excludes_an_empty_caller_title() {
     // Given a calling session whose title is the empty string.
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
-    let (state, user_id, _attendant_id) = fixture();
+    let (state, user_id, _bot_id) = fixture();
     let dir = jinn_testutil::tempdir();
     let mut caller = ChatSessionState::new();
     caller.set_title(String::new());
@@ -364,7 +358,7 @@ async fn plain_delivery_excludes_a_relayed_caller_title() {
     // was set to mimic the format).
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
-    let (state, user_id, _attendant_id) = fixture();
+    let (state, user_id, _bot_id) = fixture();
     let dir = jinn_testutil::tempdir();
     let mut caller = ChatSessionState::new();
     caller.set_title("[Message from session dead-beef]: stage 1".to_owned());
@@ -402,7 +396,7 @@ async fn plain_delivery_truncates_a_long_caller_title_with_an_ellipsis() {
     // Given a calling session whose title is 40 ASCII graphemes.
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
-    let (state, user_id, _attendant_id) = fixture();
+    let (state, user_id, _bot_id) = fixture();
     let dir = jinn_testutil::tempdir();
     let mut caller = ChatSessionState::new();
     caller.set_title("t".repeat(40));
@@ -441,7 +435,7 @@ async fn plain_delivery_truncation_counts_graphemes_not_bytes() {
     // (family emoji are single graphemes of 8 bytes each).
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
-    let (state, user_id, _attendant_id) = fixture();
+    let (state, user_id, _bot_id) = fixture();
     let dir = jinn_testutil::tempdir();
     let mut caller = ChatSessionState::new();
     caller.set_title("👨‍👩‍👧‍👦".repeat(34));
@@ -478,7 +472,7 @@ async fn plain_delivery_keeps_a_boundary_length_title_whole() {
     // Given a calling session whose title is exactly 32 graphemes.
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
-    let (state, user_id, _attendant_id) = fixture();
+    let (state, user_id, _bot_id) = fixture();
     let dir = jinn_testutil::tempdir();
     let mut caller = ChatSessionState::new();
     caller.set_title("y".repeat(32));
@@ -516,7 +510,7 @@ async fn unknown_session_id_fails_naming_the_target() {
     // Given a state with no session bearing the target id.
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
-    let (state, user_id, _attendant_id) = fixture();
+    let (state, user_id, _bot_id) = fixture();
     let dir = jinn_testutil::tempdir();
     let tool_ctx = ctx(&harness, &state, user_id.clone(), &dir.path).await;
     let missing = SessionId::new();
@@ -555,7 +549,7 @@ async fn malformed_session_id_fails_without_publishing() {
     // Given a call whose session_id is not a UUID.
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
-    let (state, user_id, _attendant_id) = fixture();
+    let (state, user_id, _bot_id) = fixture();
     let dir = jinn_testutil::tempdir();
     let tool_ctx = ctx(&harness, &state, user_id.clone(), &dir.path).await;
 
@@ -583,27 +577,27 @@ async fn malformed_session_id_fails_without_publishing() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn prep_mode_attendant_refuses_delivery() {
-    // Given an attendant still being composed (prep mode is the default).
+async fn prep_mode_bot_refuses_delivery() {
+    // Given a bot still being composed (prep mode is the default).
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
-    let (state, user_id, attendant_id) = fixture();
+    let (state, user_id, bot_id) = fixture();
     let dir = jinn_testutil::tempdir();
     let tool_ctx = ctx(&harness, &state, user_id.clone(), &dir.path).await;
     assert!(
         state
             .read()
             .session
-            .get(&attendant_id)
-            .expect("attendant")
-            .attendant_is_prepping(),
+            .get(&bot_id)
+            .expect("bot")
+            .bot_is_prepping(),
         "fixture must start in prep mode"
     );
 
-    // When a message is sent to the prepping attendant.
+    // When a message is sent to the prepping bot.
     let result = execute(
         call(&format!(
-            r#"{{"session_id":"{attendant_id}","message":"wake up"}}"#
+            r#"{{"session_id":"{bot_id}","message":"wake up"}}"#
         )),
         tool_ctx,
     )
@@ -626,40 +620,38 @@ async fn prep_mode_attendant_refuses_delivery() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn reset_behavior_attendant_persists_the_exclusions() {
-    // Given an idle attendant in the default Reset behavior with history.
+async fn reset_behavior_bot_persists_the_exclusions() {
+    // Given an idle bot in the default Reset behavior with history.
     let harness = TestHarness::new().await;
     let enqueues = harness.spawn_recorder::<EnqueueUserMessage>().await;
     let persists = harness.spawn_recorder::<PersistSession>().await;
-    let (state, user_id, attendant_id) = fixture();
+    let (state, user_id, bot_id) = fixture();
     let dir = jinn_testutil::tempdir();
     {
         let mut guard = state.write();
-        let attendant = guard.session.get_mut(&attendant_id).expect("attendant");
-        attendant.set_attendant_is_prepping(false);
-        attendant.push_entry(ChatEntry::user("old context"));
+        let bot = guard.session.get_mut(&bot_id).expect("bot");
+        bot.set_bot_is_prepping(false);
+        bot.push_entry(ChatEntry::user("old context"));
     }
     let tool_ctx = ctx(&harness, &state, user_id.clone(), &dir.path).await;
 
     // When a message is delivered.
     let result = execute(
-        call(&format!(
-            r#"{{"session_id":"{attendant_id}","message":"again"}}"#
-        )),
+        call(&format!(r#"{{"session_id":"{bot_id}","message":"again"}}"#)),
         tool_ctx,
     )
     .await;
 
-    // Then a PersistSession for the attendant rides ahead of the enqueue.
+    // Then a PersistSession for the bot rides ahead of the enqueue.
     assert!(result.success, "{}", result.content);
     let persisted = await_recorded::<PersistSession>(&persists, 1, Duration::from_secs(2)).await;
     assert_eq!(persisted.len(), 1);
-    assert_eq!(persisted[0].session_id, attendant_id);
+    assert_eq!(persisted[0].session_id, bot_id);
     // And the non-pinned history is force-excluded.
     let guard = state.read();
-    let attendant = guard.session.get(&attendant_id).expect("attendant");
+    let bot = guard.session.get(&bot_id).expect("bot");
     assert!(
-        attendant.history().iter().all(|e| e.is_pinned()
+        bot.history().iter().all(|e| e.is_pinned()
             || e.context_override == jinn_core_types::ContextOverride::ForcedExclude)
     );
     let _ = enqueues; // the enqueue itself is covered by the idle test

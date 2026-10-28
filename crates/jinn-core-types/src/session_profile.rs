@@ -30,7 +30,7 @@ pub struct SessionProfile {
     /// older session's missing key leaves it so. A session saved before this
     /// key existed deserializes to `None` — and so an older session's
     /// blocklist stops applying. That is the same "a stale document reads as
-    /// a fresh install" stance the attendant entry and the umbrella layout
+    /// a fresh install" stance the bot entry and the umbrella layout
     /// take.
     ///
     /// Present with no names is not absent: it is an allow list over nothing,

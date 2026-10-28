@@ -1404,15 +1404,15 @@ fn session_of_origin(origin: jinn_session_msg::SessionOrigin) -> ChatSessionStat
 }
 
 #[rstest::rstest]
-fn an_attendant_sessions_preview_border_is_tinted_for_attendants() {
-    // Given an attendant's session.
-    let session = session_of_origin(jinn_session_msg::SessionOrigin::Attendant);
+fn an_bot_sessions_preview_border_is_tinted_for_bots() {
+    // Given a bot's session.
+    let session = session_of_origin(jinn_session_msg::SessionOrigin::Bot);
 
     // When its preview is rendered.
     let color = border_fg(&session);
 
-    // Then the border carries the attendant color the session list uses.
-    assert_eq!(color, default_theme().attendant_fg);
+    // Then the border carries the bot color the session list uses.
+    assert_eq!(color, default_theme().bot_fg);
 }
 
 #[rstest::rstest]
@@ -1440,8 +1440,8 @@ fn a_user_sessions_preview_border_is_the_ordinary_unfocused_border() {
 }
 
 #[rstest::rstest]
-fn a_fork_of_an_attendant_sessions_preview_border_is_the_ordinary_border() {
-    // Given a session forked from an attendant's conversation.
+fn a_fork_of_an_bot_sessions_preview_border_is_the_ordinary_border() {
+    // Given a session forked from a bot's conversation.
     let session = session_of_origin(jinn_session_msg::SessionOrigin::Fork);
 
     // When its preview is rendered.
@@ -1453,9 +1453,9 @@ fn a_fork_of_an_attendant_sessions_preview_border_is_the_ordinary_border() {
 }
 
 #[rstest::rstest]
-fn an_attendant_sessions_preview_border_tint_leaves_the_title_alone() {
-    // Given an attendant's session with a title.
-    let mut session = session_of_origin(jinn_session_msg::SessionOrigin::Attendant);
+fn an_bot_sessions_preview_border_tint_leaves_the_title_alone() {
+    // Given a bot's session with a title.
+    let mut session = session_of_origin(jinn_session_msg::SessionOrigin::Bot);
     session.set_title("nightly review".to_owned());
 
     // When its preview is rendered.

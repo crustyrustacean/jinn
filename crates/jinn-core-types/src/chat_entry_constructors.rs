@@ -36,6 +36,8 @@ impl ChatEntry {
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         }
     }
 
@@ -91,6 +93,8 @@ impl ChatEntry {
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         }
     }
 
@@ -108,6 +112,8 @@ impl ChatEntry {
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         }
     }
 
@@ -125,6 +131,8 @@ impl ChatEntry {
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         }
     }
 
@@ -142,6 +150,8 @@ impl ChatEntry {
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         }
     }
 
@@ -163,6 +173,8 @@ impl ChatEntry {
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         }
     }
 
@@ -194,6 +206,8 @@ impl ChatEntry {
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         }
     }
 
@@ -211,6 +225,8 @@ impl ChatEntry {
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         }
     }
 
@@ -235,6 +251,8 @@ impl ChatEntry {
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         }
     }
 
@@ -284,6 +302,8 @@ impl ChatEntry {
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         }
     }
 
@@ -301,6 +321,8 @@ impl ChatEntry {
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         }
     }
 
@@ -327,6 +349,8 @@ impl ChatEntry {
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         }
     }
 
@@ -362,6 +386,8 @@ impl ChatEntry {
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         }
     }
 
@@ -385,6 +411,8 @@ impl ChatEntry {
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         }
     }
 }

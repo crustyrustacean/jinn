@@ -279,6 +279,7 @@ impl FakeLlmService {
             events.push(Ok(StreamEvent::Done {
                 stop_reason: StopReason::EndTurn,
                 usage: None,
+                model: None,
             }));
         } else {
             for (index, tc) in resp.tool_calls.iter().enumerate() {
@@ -299,6 +300,7 @@ impl FakeLlmService {
             events.push(Ok(StreamEvent::Done {
                 stop_reason: StopReason::ToolUse,
                 usage: None,
+                model: None,
             }));
         }
 
@@ -332,6 +334,7 @@ impl FakeLlmService {
         events.push(Ok(StreamEvent::Done {
             stop_reason: StopReason::ToolUse,
             usage: None,
+            model: None,
         }));
 
         events
@@ -350,6 +353,7 @@ impl FakeLlmService {
         events.push(Ok(StreamEvent::Done {
             stop_reason: StopReason::EndTurn,
             usage: None,
+            model: None,
         }));
 
         events
@@ -422,6 +426,7 @@ impl LlmService for FakeLlmService {
             events.push(Ok(StreamEvent::Done {
                 stop_reason: StopReason::EndTurn,
                 usage: None,
+                model: None,
             }));
         } else {
             // Emit tool call events.
@@ -445,6 +450,7 @@ impl LlmService for FakeLlmService {
             events.push(Ok(StreamEvent::Done {
                 stop_reason: StopReason::ToolUse,
                 usage: None,
+                model: None,
             }));
         }
 

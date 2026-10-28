@@ -631,6 +631,7 @@ async fn process_stream_events_completes_on_done_event() {
         StreamEvent::Done {
             stop_reason: StopReason::EndTurn,
             usage: None,
+            model: None,
         },
     ]);
     let sid = SessionId::new();
@@ -655,6 +656,82 @@ async fn process_stream_events_completes_on_done_event() {
         .iter()
         .any(|sc| sc.reason == StreamCompletedReason::Finished);
     assert!(found, "Done should complete the stream");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn done_overrides_model_used_with_response_model() {
+    // Given a stream whose Done carries the provider's routed model, while
+    // the requested model was the dispatcher's.
+    use jinn_provider::{StopReason, StreamEvent};
+    let harness = TestHarness::new().await;
+    let stream = scripted_stream(vec![
+        StreamEvent::Text("hi".to_owned()),
+        StreamEvent::Done {
+            stop_reason: StopReason::EndTurn,
+            usage: None,
+            model: Some("anthropic/claude-sonnet-4.5".to_owned()),
+        },
+    ]);
+    let sid = SessionId::new();
+
+    // When processing the stream.
+    let recorder = harness.spawn_recorder::<StreamCompleted>().await;
+    process_stream_events(
+        stream,
+        &harness.bus(),
+        &sid,
+        "openrouter/auto",
+        jiff::Timestamp::now(),
+        None,
+    )
+    .await;
+
+    // Then StreamCompleted names the response model, not the request's.
+    let completed = await_recorded(&recorder, 1, std::time::Duration::from_secs(5)).await;
+    assert_eq!(
+        completed[0].model_used.as_deref(),
+        Some("anthropic/claude-sonnet-4.5"),
+        "the provider-reported model must override the request-time model"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn done_without_model_keeps_request_model() {
+    // Given a stream whose Done carries no model (a transport that never
+    // echoes one), requested as "test-model".
+    use jinn_provider::{StopReason, StreamEvent};
+    let harness = TestHarness::new().await;
+    let stream = scripted_stream(vec![
+        StreamEvent::Text("hi".to_owned()),
+        StreamEvent::Done {
+            stop_reason: StopReason::EndTurn,
+            usage: None,
+            model: None,
+        },
+    ]);
+    let sid = SessionId::new();
+
+    // When processing the stream.
+    let recorder = harness.spawn_recorder::<StreamCompleted>().await;
+    process_stream_events(
+        stream,
+        &harness.bus(),
+        &sid,
+        "test-model",
+        jiff::Timestamp::now(),
+        None,
+    )
+    .await;
+
+    // Then StreamCompleted keeps the request-time model.
+    let completed = await_recorded(&recorder, 1, std::time::Duration::from_secs(5)).await;
+    assert_eq!(
+        completed[0].model_used.as_deref(),
+        Some("test-model"),
+        "no response model must leave the request-time stamp standing"
+    );
 }
 
 /// A stream that constructs one tool call and completes, emitting no text.
@@ -685,6 +762,7 @@ fn tool_only_stream() -> jinn_provider::ToolStream {
         StreamEvent::Done {
             stop_reason: StopReason::ToolUse,
             usage: None,
+            model: None,
         },
     ])
 }
@@ -769,6 +847,7 @@ async fn process_stream_events_publishes_no_activity_for_the_terminal_done_event
         StreamEvent::Done {
             stop_reason: StopReason::EndTurn,
             usage: None,
+            model: None,
         },
     ]);
     let sid = SessionId::new();
@@ -816,6 +895,7 @@ async fn process_stream_events_publishes_citations_on_done_when_accumulated() {
         StreamEvent::Done {
             stop_reason: StopReason::EndTurn,
             usage: None,
+            model: None,
         },
     ]);
     let sid = SessionId::new();
@@ -870,6 +950,7 @@ async fn handle_done_event_publishes_stream_completed_before_execute_tool_batch(
         &sid,
         &mut accum,
         StopReason::ToolUse,
+        None,
         None,
         jiff::Timestamp::now(),
     )
@@ -964,6 +1045,7 @@ async fn an_intercepted_delta_publishes_no_stream_token() {
         StreamEvent::Done {
             stop_reason: StopReason::EndTurn,
             usage: None,
+            model: None,
         },
     ]);
     let sid = SessionId::new();
@@ -994,6 +1076,7 @@ async fn an_intercept_completes_the_stream_as_a_rule_intercept() {
         StreamEvent::Done {
             stop_reason: StopReason::EndTurn,
             usage: None,
+            model: None,
         },
     ]);
     let sid = SessionId::new();
@@ -1050,6 +1133,7 @@ async fn an_intercept_injects_the_rule_body_as_a_user_entry() {
         StreamEvent::Done {
             stop_reason: StopReason::EndTurn,
             usage: None,
+            model: None,
         },
     ]);
     let sid = SessionId::new();
@@ -1084,6 +1168,7 @@ async fn an_intercept_injects_guidance_the_model_can_still_read() {
         StreamEvent::Done {
             stop_reason: StopReason::EndTurn,
             usage: None,
+            model: None,
         },
     ]);
     let sid = SessionId::new();
@@ -1158,6 +1243,7 @@ async fn an_intercepted_tool_call_still_reaches_the_chat_log() {
             StreamEvent::Done {
                 stop_reason: jinn_provider::StopReason::ToolUse,
                 usage: None,
+                model: None,
             },
         ]);
         let sid = SessionId::new();
@@ -1221,6 +1307,7 @@ async fn an_intercept_aborts_the_stream_before_the_done_event() {
         StreamEvent::Done {
             stop_reason: StopReason::ToolUse,
             usage: None,
+            model: None,
         },
     ]);
     let sid = SessionId::new();
@@ -1256,6 +1343,7 @@ async fn a_stream_with_no_rule_completes_unchanged() {
         StreamEvent::Done {
             stop_reason: StopReason::EndTurn,
             usage: None,
+            model: None,
         },
     ]);
     let sid = SessionId::new();
@@ -1285,6 +1373,7 @@ async fn a_rule_that_matches_nothing_leaves_the_stream_untouched() {
         StreamEvent::Done {
             stop_reason: StopReason::EndTurn,
             usage: None,
+            model: None,
         },
     ]);
     let sid = SessionId::new();
@@ -1526,6 +1615,7 @@ async fn fired_rule_for(harness: &TestHarness, chunks: &[&str]) -> Option<String
             .chain(std::iter::once(StreamEvent::Done {
                 stop_reason: StopReason::EndTurn,
                 usage: None,
+                model: None,
             }))
             .collect(),
     );

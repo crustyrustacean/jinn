@@ -22,11 +22,11 @@ yours.** Work through it in order and stop at the first fit.
 | colors / visual appearance           | **Theme**       | TOML color theme, `<leader>sh` picker                    |
 | a _jinn feature_ (new keybind, pane) | **None — a PR** | Not user-extensible. See "What can't be extended" below. |
 
-MCP is the load-bearing one. Most of what people imagine a plugin system for —
+MCP is the most-used surface. Most of what people imagine a plugin system for —
 a Jira integration, a video editor, a database client, web search, an issue
 tracker — is an MCP server, and jinn is already an MCP client.
 
-**MCP vs. skills is the common confusion.** An MCP server gives the model
+**MCP vs. skills, the common confusion.** An MCP server gives the model
 _new actions_. A skill gives it _knowledge of a procedure_. "Search the video
 editor's timeline for a clip" is a tool. "How we run task loops" is a
 skill. A skill can bundle shell scripts and reference material and have the
@@ -45,7 +45,7 @@ jinn launches or connects to it, then exposes its tools to the model as
 in `mcp-servers.md` — read it before answering a config question.
 
 The key fact for routing: **an MCP tool is a plain function** —
-`name` / `description` / JSON Schema / `execute`. That's the entire contract.
+`name` / `description` / JSON Schema / `execute`. That is the entire contract.
 Anything expressible as "the model calls this with these arguments" is an MCP
 server.
 
@@ -63,10 +63,10 @@ command = "npx"
 args = ["video-editor-mcp", "--stdio"]
 ```
 
-A restart is required. The server is **off by default per session** — after
-restarting, open the MCP picker (`<leader>sM`) and enable it for the session.
-It's off by default because enabled tools occupy context even when unused, and
-most sessions need none of them.
+A restart is required. The server is **off by default per session** — enabled
+tools occupy context even when unused, and most sessions need none of them.
+After restarting, open the MCP picker (`<leader>sM`) and enable it for the
+session.
 
 **Case 2 — a server exists but needs a wrapper.** Some servers need an env var
 that shouldn't be hardcoded, or a working directory. Add a local script and
@@ -86,8 +86,8 @@ server. See "Writing an MCP server" below.
 **Case 3 — the capability is a local script with no server at all.** The `bash`
 tool already exists. If the user wants "a command that does X," don't build an
 MCP server; make sure `bash` is enabled and put the command in a skill so the
-agent knows it exists. Especially true for one-off project scripts: project
-skills live in `.agents/skills/` and get committed.
+agent knows it exists. This applies especially to one-off project scripts:
+project skills live in `.agents/skills/` and get committed.
 
 ### Writing an MCP server
 
@@ -134,10 +134,9 @@ command = "npx"
 args = ["-y", "@acme/video-editor-mcp"]
 ```
 
-**Say this to the user plainly:** the model can only call what the server
+**Say this to the user once:** the model can only call what the server
 exposes, and an MCP server is arbitrary code the user chooses to run. jinn has
-no security model — see the README's Security section. Mention it once; don't
-re-litigate it.
+no security model — see the README's Security section.
 
 ---
 
@@ -148,12 +147,12 @@ re-litigate it.
 A skill is a directory with a `SKILL.md`: YAML frontmatter (`name`,
 `description`) plus markdown instructions. jinn lists every discovered skill's
 name, description, and path in the system prompt's `<skills>` block; the full
-body loads when the agent decides to read it. That's progressive disclosure —
-descriptions always in context, bodies on demand.
+body loads when the agent decides to read it. So descriptions are always in
+context, bodies only on demand.
 
-This is a **cheaper and more portable surface than MCP** than you might expect.
+This is a **cheaper surface than MCP** in many cases.
 A skill that bundles a `scripts/` directory and tells the agent to run them via
-`bash` gives you executable capability with zero protocol work, and the same
+`bash` provides executable capability with no protocol work, and the same
 skill works in any harness using the Agent Skills format.
 
 ### Where they live and how discovery works
@@ -191,7 +190,7 @@ on demand.
 **Picking up a new skill without restarting.** The skill picker
 (`<leader>sk`, `<c-r>` to rescan) lets you enable/disable per session. `<c-r>`
 forces a rescan of the skills directory, so a freshly copied directory is
-picked up without a restart. That's the difference from MCP, which needs one.
+picked up without a restart — unlike MCP, which needs one.
 
 **Writing one from scratch.** Create the directory and a `SKILL.md`:
 
@@ -318,8 +317,8 @@ These are jinn's own code and are not user-extensible:
 - **Context assembly** — pinning, pruning, compaction tuning are config, not
   extensible.
 
-If the user's ask lands here, the honest answer is: **that's a jinn feature
-request.** Say it plainly and move on. Don't invent a workaround and don't
+If the user's ask lands here, the answer is: **that's a jinn feature
+request.** Say so and move on. Don't invent a workaround and don't
 propose writing a plugin — there is no plugin system.
 
 ---
@@ -350,7 +349,7 @@ ignored** — it reads as absent, not as an error. When an ask touches a key not
 shown in `configuration.md`, point the user at the fully commented default
 `jinn.toml` that jinn auto-creates on first run.
 
-The "Writing an MCP server" section is the only place this document teaches
-something new. Everything else routes to another reference in this skill or
+Only the "Writing an MCP server" section teaches something new; everything
+else routes to another reference in this skill or
 repeats facts already in `configuration.md`. A typo'd key or path writes files
-to the wrong place or no place at all, so verify paths before applying changes.
+to the wrong place or nowhere, so verify paths before applying changes.

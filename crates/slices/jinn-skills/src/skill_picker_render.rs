@@ -12,7 +12,7 @@ use jinn_slices::RenderFacts;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 
 /// The popup rect for the skill picker: the shared selection-widget popup.
 #[must_use]
@@ -56,6 +56,24 @@ pub fn skill_picker_binds() -> Vec<jinn_picker::BindRow> {
         .collect()
 }
 
+/// The cost status line: the live enabled count and the two-term context
+/// figure, e.g. `3/7 enabled · ctx: 1.2k list + 8.4k loaded`.
+///
+/// The **list** term is the pending `<available_skills>` block the enabled
+/// rows would ship; the **loaded** term is the pinned skill bodies already in
+/// context. Both are always shown — a loaded skill disabled in the picker
+/// still costs its body, and the breakdown is what makes that visible.
+#[must_use]
+pub fn cost_status(state: &SkillPickerState, theme: &jinn_theme::Theme) -> Line<'static> {
+    let (enabled, total) = crate::skill_picker_actions::enabled_count(state);
+    let list = jinn_picker::format_compact(state.list_tokens);
+    let loaded = jinn_picker::format_compact(state.loaded_tokens);
+    Line::from(Span::styled(
+        format!("{enabled}/{total} enabled · ctx: {list} list + {loaded} loaded"),
+        Style::default().fg(theme.muted_text),
+    ))
+}
+
 /// Draws the skill picker popup for one frame.
 pub fn render_skill_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFacts) {
     let Some(cell) = facts.slices.reader(&jinn_skills_msg::skill_picker_slot()) else {
@@ -73,7 +91,7 @@ pub fn render_skill_picker(frame: &mut Frame<'_>, area: Rect, facts: &RenderFact
     let (layout, preview_report) = {
         let guard = cell.read();
         let state: &SkillPickerState = &guard;
-        let footers = vec![Line::from(String::new()), Line::from(keybind.0)];
+        let footers = vec![cost_status(state, theme), Line::from(keybind.0)];
 
         let mut report = None;
         let widget = PreviewSelectionWidget::new(&state.selection)

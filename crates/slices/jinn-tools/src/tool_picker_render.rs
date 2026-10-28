@@ -70,12 +70,18 @@ pub fn tool_picker_binds() -> Vec<jinn_picker::BindRow> {
         .collect()
 }
 
-/// The status line: the live enabled count, e.g. `3/7 enabled`.
+/// The status line: the live enabled count and the pending context cost,
+/// e.g. `3/7 enabled · 4.2k ctx`.
+///
+/// The cost figure is the picker's *pending* state — what the next prompt pays
+/// for the enabled toolset if the picker were confirmed right now — counted
+/// with the assembler's shaping at the last open or toggle.
 #[must_use]
 pub fn tool_status(state: &ToolPickerState, theme: &Theme) -> Line<'static> {
     let (enabled, total) = crate::tool_picker_actions::enabled_count(state);
+    let cost = jinn_picker::format_compact(state.context_tokens);
     Line::from(Span::styled(
-        format!("{enabled}/{total} enabled"),
+        format!("{enabled}/{total} enabled · {cost} ctx"),
         Style::default().fg(theme.muted_text),
     ))
 }

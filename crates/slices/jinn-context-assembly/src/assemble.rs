@@ -18,7 +18,9 @@ use jinn_context_assembly_msg::AssemblyInputs;
 use jinn_core_types::LlmMessage;
 use jinn_core_types::ToolDefinition;
 use jinn_kernel::protocol::{ChatEntry, PinPosition, entries_to_messages};
-use jinn_llm_support::token_estimator::{IMAGE_ATTACHMENT_TOKENS, TokenCounter};
+use jinn_llm_support::token_estimator::{
+    IMAGE_ATTACHMENT_TOKENS, TokenCounter, tool_schema_tokens,
+};
 use jinn_llm_support::tool_prompt::build_tool_context_block;
 use jinn_skills::format_skills_for_prompt;
 use jinn_slices::AssembledPrompt;
@@ -153,7 +155,7 @@ pub fn assemble(inputs: &AssemblyInputs, counter: &dyn TokenCounter) -> Assemble
     // the request the same way the minimap's per-entry counts do not.
     let estimated_tokens = {
         let message_tokens = count_messages(&system_prompt, &final_messages, counter);
-        let schema_tokens = count_tool_schema_tokens(&tool_defs, counter);
+        let schema_tokens = tool_schema_tokens_seq(&tool_defs, counter);
         message_tokens.saturating_add(u32::try_from(schema_tokens).unwrap_or(u32::MAX))
     };
 
@@ -265,25 +267,11 @@ fn image_attachment_tokens(attachments: &[jinn_provider::Attachment]) -> usize {
         .saturating_mul(IMAGE_ATTACHMENT_TOKENS)
 }
 
-/// Counts the tokens providers bill for a tool definition in the request's
-/// tools array: the serialized `{name, description, parameters}` projection.
-///
-/// `prompt_snippet` and `prompt_guidelines` are deliberately excluded — they
-/// ride only in the system prompt's tool block (see [`build_tool_context_block`]),
-/// whose tokens are already counted via `system_prompt`. Serializing the whole
-/// [`ToolDefinition`] would bill them twice.
-fn count_tool_schema_tokens(tools: &[ToolDefinition], counter: &dyn TokenCounter) -> usize {
+/// Sums [`tool_schema_tokens`] across the request's tool definitions.
+fn tool_schema_tokens_seq(tools: &[ToolDefinition], counter: &dyn TokenCounter) -> usize {
     tools
         .iter()
-        .map(|def| {
-            let schema = serde_json::json!({
-                "name": def.name,
-                "description": def.description,
-                "parameters": def.parameters,
-            })
-            .to_string();
-            counter.count(&schema)
-        })
+        .map(|def| tool_schema_tokens(def, counter))
         .sum()
 }
 
@@ -880,7 +868,7 @@ mod tests {
                 | LlmMessage::Tool { content, .. } => counter.count(content),
             })
             .sum::<usize>();
-        let schema_tokens = count_tool_schema_tokens(&result.tool_definitions, &counter);
+        let schema_tokens = tool_schema_tokens_seq(&result.tool_definitions, &counter);
         let manual = system_tokens + message_tokens + schema_tokens;
         assert_eq!(result.estimated_tokens(), manual as u32);
     }

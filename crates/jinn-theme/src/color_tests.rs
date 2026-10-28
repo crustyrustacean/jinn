@@ -299,26 +299,26 @@ mod in_flight_tint_tests {
 }
 
 #[rstest::rstest]
-fn the_attendant_fg_is_hot_pink() {
+fn the_bot_fg_is_hot_pink() {
     // Given the default theme.
 
-    // When reading the color that marks attendant sessions.
-    let attendant_fg = crate::default_theme().attendant_fg;
+    // When reading the color that marks bot sessions.
+    let bot_fg = crate::default_theme().bot_fg;
 
     // Then it is hot pink — the one named color with enough distance from
     // subagent purple to be told apart at a glance.
-    assert_eq!(attendant_fg, Color::Rgb(255, 105, 180));
+    assert_eq!(bot_fg, Color::Rgb(255, 105, 180));
 }
 
 #[rstest::rstest]
-fn the_attendant_color_is_not_confusable_with_subagent_purple() {
+fn the_bot_color_is_not_confusable_with_subagent_purple() {
     // Given the default theme's two session-kind markers.
     let theme = crate::default_theme();
     let to_rgb = |c: Color| match c {
         Color::Rgb(r, g, b) => (u32::from(r), u32::from(g), u32::from(b)),
         other => panic!("expected an RGB color, got {other:?}"),
     };
-    let (r1, g1, b1) = to_rgb(theme.attendant_fg);
+    let (r1, g1, b1) = to_rgb(theme.bot_fg);
     let (r2, g2, b2) = to_rgb(theme.subagent_fg);
 
     // When measuring how far apart they sit.
@@ -328,6 +328,6 @@ fn the_attendant_color_is_not_confusable_with_subagent_purple() {
     // let the previous dusty rose pass while still reading as purple.
     assert!(
         distance_sq >= 10_000,
-        "attendant_fg sits only d²={distance_sq} from subagent_fg, close enough to read as the same color"
+        "bot_fg sits only d²={distance_sq} from subagent_fg, close enough to read as the same color"
     );
 }

@@ -16,6 +16,7 @@ use jinn_token_count_msg::TokenRecord;
 
 use jinn_core_types::{
     ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, EntryTiming, PinPosition, SessionId,
+    ToolCallId,
 };
 use marked_path::MarkedPathAccess as _;
 
@@ -6913,7 +6914,7 @@ fn tool_age_window_exclude_refused_on_included_todo_pair() {
 
 #[rstest::rstest]
 #[test]
-fn new_attendant_links_parent_without_inheriting_conversation() {
+fn new_bot_links_parent_without_inheriting_conversation() {
     // Given a parent session with a temp-rooted project stamp, cwd, home,
     // and MCP servers.
     let dir = jinn_testutil::tempdir();
@@ -6936,23 +6937,20 @@ fn new_attendant_links_parent_without_inheriting_conversation() {
     parent.set_enabled_mcp_servers(std::collections::BTreeSet::from(["filesystem".to_owned()]));
     parent.push_entry(ChatEntry::user("parent conversation"));
 
-    // When creating an attendant of that parent.
-    let attendant = ChatSessionState::new_attendant(&parent, true);
+    // When creating a bot of that parent.
+    let bot = ChatSessionState::new_bot(&parent, true);
 
-    // Then the attendant references the parent.
-    // And it is an attendant by origin.
+    // Then the bot references the parent.
+    // And it is a bot by origin.
     // And its history is empty — environment is inherited, never conversation.
-    assert_eq!(
-        attendant.parent_session().as_ref(),
-        Some(parent.session_id())
-    );
-    assert!(attendant.is_attendant());
-    assert!(attendant.is_empty());
+    assert_eq!(bot.parent_session().as_ref(), Some(parent.session_id()));
+    assert!(bot.is_bot());
+    assert!(bot.is_empty());
 }
 
 #[rstest::rstest]
 #[test]
-fn new_attendant_copies_parent_environment() {
+fn new_bot_copies_parent_environment() {
     // Given a parent session with temp-rooted environment values set.
     let dir = jinn_testutil::tempdir();
     let mut parent = ChatSessionState::new();
@@ -6973,23 +6971,23 @@ fn new_attendant_copies_parent_environment() {
     );
     parent.set_enabled_mcp_servers(std::collections::BTreeSet::from(["filesystem".to_owned()]));
 
-    // When creating an attendant of that parent.
-    let attendant = ChatSessionState::new_attendant(&parent, true);
+    // When creating a bot of that parent.
+    let bot = ChatSessionState::new_bot(&parent, true);
 
     // Then every environment field matches the parent.
     assert_eq!(
-        attendant.project(),
+        bot.project(),
         parent.project(),
         "project association follows the parent"
     );
-    assert_eq!(attendant.cwd(), parent.cwd(), "cwd follows the parent");
+    assert_eq!(bot.cwd(), parent.cwd(), "cwd follows the parent");
     assert_eq!(
-        attendant.enabled_mcp_servers(),
+        bot.enabled_mcp_servers(),
         parent.enabled_mcp_servers(),
         "MCP enablement follows the parent"
     );
     assert_eq!(
-        attendant.profile().persona_name,
+        bot.profile().persona_name,
         parent.profile().persona_name,
         "persona follows the parent"
     );
@@ -6997,50 +6995,47 @@ fn new_attendant_copies_parent_environment() {
 
 #[rstest::rstest]
 #[test]
-fn new_attendant_starts_composing_with_a_manual_trigger() {
+fn new_bot_starts_composing_with_a_manual_trigger() {
     // Given a parent session.
 
-    // When creating an attendant of that parent.
-    let attendant = ChatSessionState::new_attendant(&parent_of_new_session(), true);
+    // When creating a bot of that parent.
+    let bot = ChatSessionState::new_bot(&parent_of_new_session(), true);
 
     // Then it is in prep mode — the user is still composing its
     // instructions, so nothing may run.
-    assert!(attendant.attendant_is_prepping());
+    assert!(bot.bot_is_prepping());
     // And the trigger is manual — it fires for no one until configured.
-    assert_eq!(
-        attendant.attendant_trigger(),
-        jinn_attendant_msg::AttendantTrigger::Manual
-    );
+    assert_eq!(bot.bot_trigger(), jinn_bot_msg::BotTrigger::Manual);
 }
 
 #[rstest::rstest]
 #[test]
-fn attendant_run_settings_start_at_their_defaults() {
-    // Given a fresh attendant.
+fn bot_run_settings_start_at_their_defaults() {
+    // Given a fresh bot.
 
     // When reading the two settings a run would obey.
-    let attendant = ChatSessionState::new_attendant(&parent_of_new_session(), true);
-    let behavior = attendant.attendant_behavior();
-    let trigger = attendant.attendant_trigger();
+    let bot = ChatSessionState::new_bot(&parent_of_new_session(), true);
+    let behavior = bot.bot_behavior();
+    let trigger = bot.bot_trigger();
 
     // Then they are the defaults, independently of the prep mode above: a
-    // composing attendant still holds a run configuration, it simply does
+    // composing bot still holds a run configuration, it simply does
     // not apply yet.
-    assert_eq!(behavior, jinn_attendant_msg::AttendantBehavior::Reset);
-    assert_eq!(trigger, jinn_attendant_msg::AttendantTrigger::Manual);
+    assert_eq!(behavior, jinn_bot_msg::BotBehavior::Reset);
+    assert_eq!(trigger, jinn_bot_msg::BotTrigger::Manual);
 }
 
 #[rstest::rstest]
 #[test]
-fn a_prepping_attendant_answers_the_trigger_question_still() {
-    // Given a fresh attendant, whose trigger is manual.
+fn a_prepping_bot_answers_the_trigger_question_still() {
+    // Given a fresh bot, whose trigger is manual.
 
     // When asking whether it fires on its parent's completion.
-    let fires = ChatSessionState::new_attendant(&parent_of_new_session(), true)
-        .attendant_fires_on_parent_completion();
+    let fires =
+        ChatSessionState::new_bot(&parent_of_new_session(), true).bot_fires_on_parent_completion();
 
     // Then it does not. The trigger is a fact about the configuration; prep
-    // mode is a separate fact about whether the attendant may run, and
+    // mode is a separate fact about whether the bot may run, and
     // conflating them would make the sidebar unable to mark either.
     assert!(!fires);
 }
@@ -7051,28 +7046,28 @@ fn parent_of_new_session() -> ChatSessionState {
 
 #[rstest::rstest]
 #[test]
-fn new_attendant_preserves_persistence_argument() {
+fn new_bot_preserves_persistence_argument() {
     // Given a parent session and an explicit persistence policy.
 
-    // When creating an attendant with that policy.
-    let attendant = ChatSessionState::new_attendant(&ChatSessionState::new(), false);
+    // When creating a bot with that policy.
+    let bot = ChatSessionState::new_bot(&ChatSessionState::new(), false);
 
-    // Then the attendant preserves that exact policy.
-    assert!(!attendant.persist());
+    // Then the bot preserves that exact policy.
+    assert!(!bot.persist());
 }
 
 #[rstest::rstest]
 #[test]
-fn attendant_reports_append_in_run_order() {
-    // Given a fresh attendant.
-    let mut session = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
+fn bot_reports_append_in_run_order() {
+    // Given a fresh bot.
+    let mut session = ChatSessionState::new_bot(&ChatSessionState::new(), true);
 
-    // When the attendant publishes two reports.
-    session.append_attendant_report("first finding".to_owned());
-    session.append_attendant_report("second finding".to_owned());
+    // When the bot publishes two reports.
+    session.append_bot_report("first finding".to_owned());
+    session.append_bot_report("second finding".to_owned());
 
     // Then the log holds both, oldest first, with run numbers from one.
-    let reports = session.attendant_reports();
+    let reports = session.bot_reports();
     assert_eq!(reports.len(), 2);
     assert_eq!(reports[0].run, 1);
     assert_eq!(reports[1].run, 2);
@@ -7082,12 +7077,12 @@ fn attendant_reports_append_in_run_order() {
 
 #[rstest::rstest]
 #[test]
-fn latest_attendant_report_is_none_before_the_first_report() {
-    // Given an attendant that has never reported.
+fn latest_bot_report_is_none_before_the_first_report() {
+    // Given a bot that has never reported.
 
     // When the latest report is read.
-    let latest = ChatSessionState::new_attendant(&ChatSessionState::new(), true)
-        .latest_attendant_report()
+    let latest = ChatSessionState::new_bot(&ChatSessionState::new(), true)
+        .latest_bot_report()
         .cloned();
 
     // Then there is nothing to seed the next run from.
@@ -7097,38 +7092,35 @@ fn latest_attendant_report_is_none_before_the_first_report() {
 #[rstest::rstest]
 #[test]
 fn session_fields_round_trip_through_serialization() {
-    // Given an attendant with behavior, trigger, prep mode, template, and
+    // Given a bot with behavior, trigger, prep mode, template, and
     // reports — one of each, and the ones that differ from the default.
-    let mut session = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
-    session.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Preserve);
-    session.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-    session.set_attendant_is_prepping(false);
+    let mut session = ChatSessionState::new_bot(&ChatSessionState::new(), true);
+    session.set_bot_behavior(jinn_bot_msg::BotBehavior::Preserve);
+    session.set_bot_trigger(jinn_bot_msg::BotTrigger::ParentCompleted);
+    session.set_bot_is_prepping(false);
     session.set_seed_template("custom template".to_owned());
-    session.append_attendant_report("prior finding".to_owned());
+    session.append_bot_report("prior finding".to_owned());
 
     // When the whole state survives a serialization round trip.
     let json = serde_json::to_string(&session.core).expect("serialize");
     let restored: SessionCore = serde_json::from_str(&json).expect("deserialize");
 
-    // Then every attendant field is preserved.
+    // Then every bot field is preserved.
+    assert_eq!(restored.bot.behavior, jinn_bot_msg::BotBehavior::Preserve);
     assert_eq!(
-        restored.attendant.behavior,
-        jinn_attendant_msg::AttendantBehavior::Preserve
+        restored.bot.trigger,
+        jinn_bot_msg::BotTrigger::ParentCompleted
     );
-    assert_eq!(
-        restored.attendant.trigger,
-        jinn_attendant_msg::AttendantTrigger::ParentCompleted
-    );
-    assert!(!restored.attendant.prep_mode);
-    assert_eq!(restored.attendant.seed_template, "custom template");
-    assert_eq!(restored.attendant.reports.len(), 1);
-    assert_eq!(restored.attendant.reports[0].body, "prior finding");
+    assert!(!restored.bot.prep_mode);
+    assert_eq!(restored.bot.seed_template, "custom template");
+    assert_eq!(restored.bot.reports.len(), 1);
+    assert_eq!(restored.bot.reports[0].body, "prior finding");
 }
 
 #[rstest::rstest]
 #[test]
-fn attendant_fields_default_when_absent_from_persisted_blob() {
-    // Given a serialized session core written before attendants existed.
+fn bot_fields_default_when_absent_from_persisted_blob() {
+    // Given a serialized session core written before bots existed.
     let legacy = r#"{
         "session_id": "019912ac-0000-7000-8000-000000000001",
         "updated_at": "2026-01-01T00:00:00Z",
@@ -7149,22 +7141,13 @@ fn attendant_fields_default_when_absent_from_persisted_blob() {
     // When that blob is deserialized.
     let core: SessionCore = serde_json::from_str(legacy).expect("deserialize legacy blob");
 
-    // Then the attendant group takes its defaults — no migration needed.
+    // Then the bot group takes its defaults — no migration needed.
+    assert_eq!(core.bot.behavior, jinn_bot_msg::BotBehavior::Reset);
+    assert_eq!(core.bot.trigger, jinn_bot_msg::BotTrigger::Manual);
+    assert_eq!(core.bot.reports, [] as [jinn_bot_msg::BotReport; 0]);
     assert_eq!(
-        core.attendant.behavior,
-        jinn_attendant_msg::AttendantBehavior::Reset
-    );
-    assert_eq!(
-        core.attendant.trigger,
-        jinn_attendant_msg::AttendantTrigger::Manual
-    );
-    assert_eq!(
-        core.attendant.reports,
-        [] as [jinn_attendant_msg::AttendantReport; 0]
-    );
-    assert_eq!(
-        core.attendant.seed_template,
-        jinn_attendant_msg::default_seed_template()
+        core.bot.seed_template,
+        jinn_bot_msg::default_seed_template()
     );
 }
 
@@ -7231,7 +7214,7 @@ fn a_queued_message_is_handed_back_to_the_user_as_an_editable_draft() {
     session.drain_cancelled_work_to_input();
 
     // Then the seeded turn surfaces as editable draft text instead of
-    // having run. This is what a user sees when an attendant is triggered
+    // having run. This is what a user sees when a bot is triggered
     // while busy: a templated prompt they never sent, sitting in the input
     // box. The fix is upstream — the trigger must drop the phase so the
     // enqueue dispatches — and this test exists to keep the cost of getting
@@ -7243,22 +7226,22 @@ fn a_queued_message_is_handed_back_to_the_user_as_an_editable_draft() {
     );
 }
 
-/// An attendant with the given trigger, out of prep mode.
-fn attendant_configured(trigger: jinn_attendant_msg::AttendantTrigger) -> ChatSessionState {
-    let mut attendant = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
-    attendant.set_attendant_trigger(trigger);
-    attendant.set_attendant_is_prepping(false);
-    attendant
+/// A bot with the given trigger, out of prep mode.
+fn bot_configured(trigger: jinn_bot_msg::BotTrigger) -> ChatSessionState {
+    let mut bot = ChatSessionState::new_bot(&ChatSessionState::new(), true);
+    bot.set_bot_trigger(trigger);
+    bot.set_bot_is_prepping(false);
+    bot
 }
 
 #[rstest::rstest]
 #[test]
-fn a_composed_attendant_is_not_prepping() {
-    // Given an attendant that has finished composing.
-    let session = attendant_configured(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+fn a_composed_bot_is_not_prepping() {
+    // Given a bot that has finished composing.
+    let session = bot_configured(jinn_bot_msg::BotTrigger::ParentCompleted);
 
     // When asking whether it may run.
-    let prepping = session.attendant_is_prepping();
+    let prepping = session.bot_is_prepping();
 
     // Then it may. The behavior above it is a separate fact and cannot
     // decide this one.
@@ -7267,12 +7250,12 @@ fn a_composed_attendant_is_not_prepping() {
 
 #[rstest::rstest]
 #[test]
-fn a_fresh_attendant_is_prepping() {
-    // Given an attendant straight from `N`.
-    let session = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
+fn a_fresh_bot_is_prepping() {
+    // Given a bot straight from `N`.
+    let session = ChatSessionState::new_bot(&ChatSessionState::new(), true);
 
     // When asking whether it may run.
-    let prepping = session.attendant_is_prepping();
+    let prepping = session.bot_is_prepping();
 
     // Then it may not: its pins are half-written, so nothing dispatches —
     // not the `R` key, and not the trigger.
@@ -7280,19 +7263,17 @@ fn a_fresh_attendant_is_prepping() {
 }
 
 #[rstest::rstest]
-#[case(jinn_attendant_msg::AttendantTrigger::Manual)]
-#[case(jinn_attendant_msg::AttendantTrigger::ParentCompleted)]
-fn a_manual_trigger_does_not_stop_a_composed_attendant(
-    #[case] trigger: jinn_attendant_msg::AttendantTrigger,
-) {
-    // Given a composed attendant on each trigger.
-    let session = attendant_configured(trigger);
+#[case(jinn_bot_msg::BotTrigger::Manual)]
+#[case(jinn_bot_msg::BotTrigger::ParentCompleted)]
+fn a_manual_trigger_does_not_stop_a_composed_bot(#[case] trigger: jinn_bot_msg::BotTrigger) {
+    // Given a composed bot on each trigger.
+    let session = bot_configured(trigger);
 
     // When asking whether it is prepping.
-    let prepping = session.attendant_is_prepping();
+    let prepping = session.bot_is_prepping();
 
     // Then it is not. A manual trigger declines to fire on its own; the
-    // user pressing `R` still runs it. Marking that attendant as stopped
+    // user pressing `R` still runs it. Marking that bot as stopped
     // is the ambiguity the old `or` of two fields produced.
     assert!(!prepping);
 }
@@ -7300,14 +7281,14 @@ fn a_manual_trigger_does_not_stop_a_composed_attendant(
 #[rstest::rstest]
 #[test]
 fn only_a_parent_completed_trigger_fires_on_its_own() {
-    // Given a composed attendant on each trigger.
-    let manual = attendant_configured(jinn_attendant_msg::AttendantTrigger::Manual);
-    let automatic = attendant_configured(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
+    // Given a composed bot on each trigger.
+    let manual = bot_configured(jinn_bot_msg::BotTrigger::Manual);
+    let automatic = bot_configured(jinn_bot_msg::BotTrigger::ParentCompleted);
 
     // When asking which one fires when its parent finishes.
     let fires = [
-        manual.attendant_fires_on_parent_completion(),
-        automatic.attendant_fires_on_parent_completion(),
+        manual.bot_fires_on_parent_completion(),
+        automatic.bot_fires_on_parent_completion(),
     ];
 
     // Then only the parent-completed one does.
@@ -7318,17 +7299,17 @@ fn only_a_parent_completed_trigger_fires_on_its_own() {
 #[test]
 fn the_behavior_does_not_change_the_trigger_question() {
     // Given the same trigger under each behavior.
-    let mut preserve = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
-    preserve.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Preserve);
-    preserve.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-    preserve.set_attendant_is_prepping(false);
+    let mut preserve = ChatSessionState::new_bot(&ChatSessionState::new(), true);
+    preserve.set_bot_behavior(jinn_bot_msg::BotBehavior::Preserve);
+    preserve.set_bot_trigger(jinn_bot_msg::BotTrigger::ParentCompleted);
+    preserve.set_bot_is_prepping(false);
     let mut reset = preserve.clone();
-    reset.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
+    reset.set_bot_behavior(jinn_bot_msg::BotBehavior::Reset);
 
     // When asking which fires on the parent's completion.
     let fires = [
-        preserve.attendant_fires_on_parent_completion(),
-        reset.attendant_fires_on_parent_completion(),
+        preserve.bot_fires_on_parent_completion(),
+        reset.bot_fires_on_parent_completion(),
     ];
 
     // Then both do, identically. What a run sees and when it happens are
@@ -7657,4 +7638,438 @@ fn an_interrupted_call_reaches_the_model_with_its_own_prose() {
             .is_some_and(|calls| calls.iter().any(|c| c.id.as_str() == "tc_1")),
         "the interrupted call must ride on the same message"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Pinned display-row projection (`pinned_display_rows`)
+// ---------------------------------------------------------------------------
+
+/// A completed call+result loop: user, assistant opener, call, success result.
+fn loop_session(call_id: &str, name: &str, content: &str) -> ChatSessionState {
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("run it"));
+    session.push_entry(ChatEntry::assistant(""));
+    session.push_entry(ChatEntry::tool_call(call_id, name, "{}"));
+    session.push_entry(ChatEntry::tool_result(
+        call_id,
+        name,
+        content,
+        ToolResultStatus::Success,
+    ));
+    session
+}
+
+#[rstest::rstest]
+fn display_rows_project_a_pinned_loop_to_one_row_per_result() {
+    // Given a session whose tool loop is pinned as a whole.
+    let mut session = loop_session("tc-1", "bash", "file.txt");
+    let ids: Vec<ChatEntryId> = session
+        .history()
+        .iter()
+        .skip(1)
+        .map(|e| e.id.clone())
+        .collect();
+    for id in &ids {
+        session.pin_entry(id, PinPosition::Relative);
+    }
+
+    // When projecting display rows.
+    let rows = session.pinned_display_rows();
+
+    // Then the loop contributes exactly one row, carrying the result entry's id.
+    assert_eq!(rows.len(), 1, "one result row, not one per member");
+    assert_eq!(rows[0].entry_id, session.history()[3].id);
+    // And the label names the result.
+    assert_eq!(
+        rows[0].label,
+        PinRowLabel::Result {
+            name: "bash".to_owned(),
+            content: "file.txt".to_owned(),
+            success: true
+        }
+    );
+}
+
+#[rstest::rstest]
+fn display_rows_give_each_parallel_result_its_own_row_in_history_order() {
+    // Given a loop with two parallel call+result pairs, pinned as a whole.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("load two"));
+    session.push_entry(ChatEntry::assistant(""));
+    session.push_entry(ChatEntry::tool_call("tc-1", "skill", "{}"));
+    session.push_entry(ChatEntry::tool_call("tc-2", "save_plan", "{}"));
+    session.push_entry(ChatEntry::tool_result(
+        "tc-1",
+        "skill",
+        "<skill name=\"jinn-usage\" location=\"/x\">body</skill>",
+        ToolResultStatus::Success,
+    ));
+    session.push_entry(ChatEntry::tool_result(
+        "tc-2",
+        "save_plan",
+        "saved plan to /mnt/x",
+        ToolResultStatus::Success,
+    ));
+    let ids: Vec<ChatEntryId> = session
+        .history()
+        .iter()
+        .skip(1)
+        .map(|e| e.id.clone())
+        .collect();
+    for id in &ids {
+        session.pin_entry(id, PinPosition::Relative);
+    }
+
+    // When projecting display rows.
+    let rows = session.pinned_display_rows();
+
+    // Then both results appear, in history order.
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].entry_id, session.history()[4].id);
+    assert_eq!(rows[1].entry_id, session.history()[5].id);
+    // And the first is the skill summary label.
+    assert_eq!(
+        rows[0].label,
+        PinRowLabel::SkillResult {
+            content: "\u{2756} jinn-usage".to_owned()
+        }
+    );
+}
+
+#[rstest::rstest]
+fn display_rows_fall_back_to_one_row_per_call_without_a_completed_result() {
+    // Given a loop whose call has a pending result (and a call with no result
+    // at all in the parallel batch), pinned as a whole.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("go"));
+    session.push_entry(ChatEntry::assistant(""));
+    session.push_entry(ChatEntry::tool_call("tc-1", "bash", "{}"));
+    session.push_entry(ChatEntry::tool_call("tc-2", "read", "{}"));
+    session.push_entry(ChatEntry::tool_result(
+        "tc-1",
+        "bash",
+        "still running",
+        ToolResultStatus::Pending,
+    ));
+    let ids: Vec<ChatEntryId> = session
+        .history()
+        .iter()
+        .skip(1)
+        .map(|e| e.id.clone())
+        .collect();
+    for id in &ids {
+        session.pin_entry(id, PinPosition::Relative);
+    }
+
+    // When projecting display rows.
+    let rows = session.pinned_display_rows();
+
+    // Then each call gets its own pending row: one for the pending result's
+    // call, one for the never-resulted call.
+    assert_eq!(rows.len(), 2, "one ⚒ row per call");
+    assert_eq!(rows[0].entry_id, session.history()[2].id);
+    assert_eq!(rows[1].entry_id, session.history()[3].id);
+    // And the labels are call labels.
+    assert_eq!(
+        rows[0].label,
+        PinRowLabel::Call {
+            name: "bash".to_owned()
+        }
+    );
+    assert_eq!(
+        rows[1].label,
+        PinRowLabel::Call {
+            name: "read".to_owned()
+        }
+    );
+}
+
+#[rstest::rstest]
+fn display_rows_show_completed_results_alongside_a_straggling_call() {
+    // Given a loop with two completed results and one call with only a
+    // pending result, pinned as a whole.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("go"));
+    session.push_entry(ChatEntry::assistant(""));
+    session.push_entry(ChatEntry::tool_call("tc-1", "read", "{}"));
+    session.push_entry(ChatEntry::tool_call("tc-2", "write", "{}"));
+    session.push_entry(ChatEntry::tool_call("tc-3", "bash", "{}"));
+    session.push_entry(ChatEntry::tool_result(
+        "tc-1",
+        "read",
+        "a.txt",
+        ToolResultStatus::Success,
+    ));
+    session.push_entry(ChatEntry::tool_result(
+        "tc-2",
+        "write",
+        "ok",
+        ToolResultStatus::Failure,
+    ));
+    session.push_entry(ChatEntry::tool_result(
+        "tc-3",
+        "bash",
+        "running",
+        ToolResultStatus::Pending,
+    ));
+    let ids: Vec<ChatEntryId> = session
+        .history()
+        .iter()
+        .skip(1)
+        .map(|e| e.id.clone())
+        .collect();
+    for id in &ids {
+        session.pin_entry(id, PinPosition::Relative);
+    }
+
+    // When projecting display rows.
+    let rows = session.pinned_display_rows();
+
+    // Then three rows appear: the straggling call (it sits first in history)
+    // followed by the two results.
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[0].entry_id, session.history()[4].id);
+    assert_eq!(rows[1].entry_id, session.history()[5].id);
+    assert_eq!(rows[2].entry_id, session.history()[6].id);
+    // And the failure is a ✗ result row, never a ⚒ call row.
+    assert!(matches!(
+        &rows[2].label,
+        PinRowLabel::Result { success: false, .. }
+    ));
+}
+
+#[rstest::rstest]
+fn display_rows_render_non_loop_pins_verbatim_one_row_each() {
+    // Given a session with pinned user and system entries.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    session.push_entry(ChatEntry::system("a note"));
+    let user_id = session.history()[0].id.clone();
+    let sys_id = session.history()[1].id.clone();
+    session.pin_entry(&user_id, PinPosition::Relative);
+    session.pin_entry(&sys_id, PinPosition::Relative);
+
+    // When projecting display rows.
+    let rows = session.pinned_display_rows();
+
+    // Then each entry keeps its own verbatim row.
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].label, PinRowLabel::Verbatim);
+    assert_eq!(rows[1].label, PinRowLabel::Verbatim);
+}
+
+#[rstest::rstest]
+fn display_rows_sort_top_relative_bottom_stably() {
+    // Given pinned entries in BOT, TOP, REL order of pinning.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("bottom"));
+    session.push_entry(ChatEntry::user("top"));
+    session.push_entry(ChatEntry::user("rel"));
+    let bot_id = session.history()[0].id.clone();
+    let top_id = session.history()[1].id.clone();
+    let rel_id = session.history()[2].id.clone();
+    session.pin_entry(&bot_id, PinPosition::Bottom);
+    session.pin_entry(&top_id, PinPosition::Top);
+    session.pin_entry(&rel_id, PinPosition::Relative);
+
+    // When projecting display rows.
+    let rows = session.pinned_display_rows();
+
+    // Then rows are TOP, REL, BOT; within a group history order holds.
+    assert_eq!(rows[0].entry_id, top_id);
+    assert_eq!(rows[1].entry_id, rel_id);
+    assert_eq!(rows[2].entry_id, bot_id);
+}
+
+#[rstest::rstest]
+fn display_rows_are_empty_when_nothing_is_pinned() {
+    // Given a session with an unpinned tool loop.
+    let session = loop_session("tc-1", "bash", "file.txt");
+
+    // When projecting display rows.
+    let rows = session.pinned_display_rows();
+
+    // Then no rows exist.
+    assert_eq!(rows, [] as [crate::chat_session::PinDisplayRow; 0]);
+}
+
+#[rstest::rstest]
+fn display_count_matches_the_row_count() {
+    // Given a pinned loop.
+    let mut session = loop_session("tc-1", "bash", "file.txt");
+    let ids: Vec<ChatEntryId> = session
+        .history()
+        .iter()
+        .skip(1)
+        .map(|e| e.id.clone())
+        .collect();
+    for id in &ids {
+        session.pin_entry(id, PinPosition::Relative);
+    }
+
+    // When asking for the display count.
+    let count = session.pinned_display_count();
+
+    // Then it equals the projected row count, not the pinned entry count.
+    assert_eq!(count, 1);
+    assert_ne!(count, session.pinned_entries().len());
+}
+
+#[rstest::rstest]
+fn display_rows_replace_a_pending_row_in_place_when_its_result_completes() {
+    // Given a pinned loop with a pending result: one ⚒ row for the call.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("go"));
+    session.push_entry(ChatEntry::assistant(""));
+    session.push_entry(ChatEntry::tool_call("tc-1", "bash", "{}"));
+    session.push_entry(ChatEntry::tool_result(
+        "tc-1",
+        "bash",
+        "still running",
+        ToolResultStatus::Pending,
+    ));
+    let ids: Vec<ChatEntryId> = session
+        .history()
+        .iter()
+        .skip(1)
+        .map(|e| e.id.clone())
+        .collect();
+    for id in &ids {
+        session.pin_entry(id, PinPosition::Relative);
+    }
+    let rows_before = session.pinned_display_rows();
+    assert_eq!(rows_before.len(), 1);
+
+    // When the result completes (the pending entry is finalized in place,
+    // carrying the loop's pin position as production does).
+    session.finalize_tool_result(
+        &ToolCallId::from("tc-1"),
+        "bash",
+        "file.txt",
+        true,
+        None,
+        None,
+        Some(PinPosition::Relative),
+    );
+
+    // Then the row count is unchanged and the row now carries the result.
+    let rows_after = session.pinned_display_rows();
+    assert_eq!(rows_after.len(), rows_before.len());
+    assert!(matches!(
+        &rows_after[0].label,
+        PinRowLabel::Result { success: true, .. }
+    ));
+}
+
+// ─── Model attribution tests ──────────────────────────────────────
+
+#[rstest::rstest]
+#[test]
+fn streaming_entries_stamped_with_request_model_at_creation() {
+    // Given a streaming session whose dispatch receipt recorded a requested
+    // model.
+    let mut session = streaming_session();
+    session.set_stream_request_model(Some("openrouter/auto".to_owned()));
+    let da = dispatched_at();
+
+    // When the three provider-produced entries are created.
+    session.begin_thinking(da);
+    let _ = session.append_stream_token("Hello", da);
+    session.begin_tool_call(0, &ToolCallId::from("tc-1"), "read", da);
+
+    // Then every one carries the requested model on both fields.
+    for (label, entry) in [("thinking", 0usize), ("assistant", 1), ("tool call", 2)] {
+        let entry = session.history().get(entry).expect("entry exists");
+        assert_eq!(
+            entry.model_used.as_deref(),
+            Some("openrouter/auto"),
+            "{label} entry must carry the generation's requested model"
+        );
+        assert_eq!(
+            entry.model_requested.as_deref(),
+            Some("openrouter/auto"),
+            "{label} entry must carry the generation's requested model"
+        );
+    }
+}
+
+#[rstest::rstest]
+#[test]
+fn empty_request_model_normalizes_to_none_on_entries() {
+    // Given a streaming session whose dispatch carried the no-provider
+    // sentinel (an empty model id).
+    let mut session = streaming_session();
+    session.set_stream_request_model(Some(String::new()));
+    let da = dispatched_at();
+
+    // When an assistant entry is created.
+    let _ = session.append_stream_token("Hello", da);
+
+    // Then the entry carries no model rather than an empty string.
+    let entry = session.history().last().expect("entry exists");
+    assert_eq!(entry.model_used, None);
+    assert_eq!(entry.model_requested, None);
+}
+
+#[rstest::rstest]
+#[test]
+fn normal_completion_overrides_live_entry_models() {
+    // Given a streaming session with a thinking entry and an assistant entry,
+    // stamped with the requested model, and a ToolUse completion reporting a
+    // different response model.
+    let mut session = streaming_session();
+    session.set_stream_request_model(Some("openrouter/auto".to_owned()));
+    let da = dispatched_at();
+    session.begin_thinking(da);
+    let _ = session.append_stream_token("Hello", da);
+
+    // When the completion override runs on the live entries.
+    session.override_live_entry_models(Some("anthropic/claude-sonnet-4.5"));
+
+    // Then model_used is the response model on both live entries, while
+    // model_requested still names what was asked for.
+    for (label, idx) in [("thinking", 0usize), ("assistant", 1)] {
+        let entry = session.history().get(idx).expect("entry exists");
+        assert_eq!(
+            entry.model_used.as_deref(),
+            Some("anthropic/claude-sonnet-4.5"),
+            "{label} entry must carry the response model"
+        );
+        assert_eq!(
+            entry.model_requested.as_deref(),
+            Some("openrouter/auto"),
+            "{label} entry must keep the requested model"
+        );
+    }
+}
+
+#[rstest::rstest]
+#[test]
+fn requested_model_is_never_overridden_by_completion() {
+    // Given a streaming session with a live assistant entry.
+    let mut session = streaming_session();
+    session.set_stream_request_model(Some("openrouter/auto".to_owned()));
+    let _ = session.append_stream_token("Hello", dispatched_at());
+
+    // When the completion override runs.
+    session.override_live_entry_models(Some("openai/gpt-5.1"));
+
+    // Then the requested model survives untouched.
+    let entry = session.history().last().expect("entry exists");
+    assert_eq!(entry.model_requested.as_deref(), Some("openrouter/auto"));
+}
+
+#[rstest::rstest]
+#[test]
+fn set_stream_request_model_overwrites_between_dispatches() {
+    // Given a session whose first generation dispatched one model.
+    let mut session = streaming_session();
+    session.set_stream_request_model(Some("model-a".to_owned()));
+
+    // When a second dispatch arrives with a different model (overwrite on
+    // dispatch is the mechanism that keeps the stamp with its generation).
+    session.set_stream_request_model(Some("model-b".to_owned()));
+
+    // Then the active stamp is the second model.
+    assert_eq!(session.stream_request_model().as_deref(), Some("model-b"));
 }

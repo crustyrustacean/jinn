@@ -64,6 +64,8 @@ impl ControlledStartupStore {
                 updated_at: *updated_at,
                 created_at: jiff::Timestamp::UNIX_EPOCH,
                 session_state: SessionState::Loaded,
+                in_library: false,
+                is_bot: false,
                 parent_session: None,
                 project: None,
             })
@@ -174,6 +176,18 @@ impl SessionStore for ControlledStartupStore {
         Ok(self.summaries.clone())
     }
 
+    /// The members read is its own query in production, so it is its own
+    /// seam here: ungated, so a startup library refresh cannot block behind
+    /// the tree-summary gate the way the sweep does.
+    async fn library_members(&self) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
+        Ok(self
+            .summaries
+            .iter()
+            .filter(|summary| summary.in_library)
+            .cloned()
+            .collect())
+    }
+
     async fn load_session(
         &self,
         session_id: &SessionId,
@@ -230,6 +244,14 @@ impl SessionStore for ControlledStartupStore {
         &self,
         _session_ids: &[SessionId],
         _archived: bool,
+    ) -> Result<(), Report<SessionStoreError>> {
+        Ok(())
+    }
+
+    async fn set_in_library(
+        &self,
+        _session_id: &SessionId,
+        _in_library: bool,
     ) -> Result<(), Report<SessionStoreError>> {
         Ok(())
     }

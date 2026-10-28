@@ -38,7 +38,7 @@ mod lifecycle_source_persistence_tests;
 mod working_time_persistence_tests;
 
 pub use assembly_projection::AssemblySessionProjection;
-pub use chat_session::{ChatSessionState, StreamingError};
+pub use chat_session::{ChatSessionState, PinDisplayRow, PinRowLabel, StreamingError};
 pub use core::SessionCore;
 pub use fields::{
     SessionHistoryWorkFields, SessionIdentityMetadataFields, SessionIntegrationFields,

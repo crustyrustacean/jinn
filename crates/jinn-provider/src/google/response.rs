@@ -91,7 +91,11 @@ impl GeminiStreamParser {
                 "STOP" => StopReason::EndTurn,
                 _ => StopReason::Other(finish_reason.to_owned()),
             };
-            results.push(StreamEvent::Done { stop_reason, usage });
+            results.push(StreamEvent::Done {
+                stop_reason,
+                usage,
+                model: None,
+            });
             self.done_emitted = true;
         }
 
@@ -139,6 +143,7 @@ impl GeminiStreamParser {
         vec![StreamEvent::Done {
             stop_reason: StopReason::EndTurn,
             usage: None,
+            model: None,
         }]
     }
 }

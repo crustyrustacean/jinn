@@ -25,6 +25,7 @@
 //! to say which of the two it is without reading either implementation.
 
 use jinn_core_types::NameFilter;
+use jinn_core_types::ToolDefinition;
 use jinn_slices::SlotKey;
 
 use crate::tool_entry::ToolEntry;
@@ -61,6 +62,19 @@ pub struct ToolPickerState {
     pub snapshot: Option<Option<NameFilter>>,
     /// How many result rows fit on screen, measured by the render pass.
     pub results_viewport: usize,
+    /// The full seeded definitions behind the rows, as of open.
+    ///
+    /// Kept whole (schemas included) so the picker's context-cost figure is
+    /// computed from exactly the material a prompt would ship. Data only —
+    /// the counting lives in `jinn-llm-support` and the implementation crate.
+    pub definitions: Vec<ToolDefinition>,
+    /// Context cost in tokens of the picker's pending toolset (the enabled
+    /// rows), counted with the assembler's shaping at the last recompute.
+    ///
+    /// Semantics are *pending*, not committed: confirm writes the filter and
+    /// the next prompt pays it, so this is "what the next prompt costs if I
+    /// confirm right now."
+    pub context_tokens: usize,
 }
 
 impl Default for ToolPickerState {
@@ -71,6 +85,8 @@ impl Default for ToolPickerState {
             // Matches the kernel's pre-measurement fallback, so the very first
             // keypress before any render behaves as it always has.
             results_viewport: RESULTS_VIEWPORT_FALLBACK,
+            definitions: Vec::new(),
+            context_tokens: 0,
         }
     }
 }

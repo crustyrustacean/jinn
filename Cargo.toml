@@ -28,7 +28,7 @@ members = ["crates/jinn-*", "crates/slices/*", "vendor/*"]
 
 
 [workspace.package]
-version = "1.11.2"
+version = "1.12.0"
 edition = "2024"
 publish = false
 
@@ -96,7 +96,7 @@ jinn-chat-log-view = { workspace = true }
 jinn-scope-focus = { workspace = true }
 jinn-sidebar = { workspace = true }
 jinn-cwd = { workspace = true }
-jinn-attendant = { workspace = true }
+jinn-bot = { workspace = true }
 jinn-skills = { workspace = true }
 jinn-workflows = { workspace = true }
 jinn-workflows-msg = { workspace = true }
@@ -177,7 +177,7 @@ jinn-provider-selection-msg = { workspace = true }
 jinn-provider-selection = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-session-state = { workspace = true }
-jinn-attendant-msg = { workspace = true }
+jinn-bot-msg = { workspace = true }
 jinn-session-store-msg = { workspace = true }
 jinn-turn-dispatch = { workspace = true }
 jinn-session-history-msg = { workspace = true }
@@ -194,7 +194,7 @@ jinn-theme = { workspace = true }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
 jinn-app-state = { workspace = true }
-jinn-attendant = { workspace = true }
+jinn-bot = { workspace = true }
 jinn-sidebar = { workspace = true }
 jinn-tools = { workspace = true }
 jinn-model-market = { workspace = true }
@@ -235,8 +235,8 @@ jinn-session-msg = { path = "crates/jinn-session-msg" }
 jinn-session-state = { path = "crates/jinn-session-state" }
 jinn-boot = { path = "crates/slices/jinn-boot" }
 jinn-boot-msg = { path = "crates/slices/jinn-boot-msg" }
-jinn-attendant-msg = { path = "crates/slices/jinn-attendant-msg" }
-jinn-attendant = { path = "crates/slices/jinn-attendant" }
+jinn-bot-msg = { path = "crates/slices/jinn-bot-msg" }
+jinn-bot = { path = "crates/slices/jinn-bot" }
 jinn-session-store = { path = "crates/slices/jinn-session-store" }
 jinn-session-turn = { path = "crates/slices/jinn-session-turn" }
 jinn-session-store-msg = { path = "crates/slices/jinn-session-store-msg" }

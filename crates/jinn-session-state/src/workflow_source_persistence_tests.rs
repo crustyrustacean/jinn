@@ -16,20 +16,20 @@ fn metadata() -> SessionSnapshotMetadata {
 fn a_workflow_source_marker_survives_the_metadata_roundtrip() {
     // Given metadata stamped with a workflow source.
     let mut marked = metadata();
-    marked.workflow_source = Some(jinn_core_types::AttendantSourcePath::new(
-        "workflows/autocoder/attendants/planner.toml",
+    marked.workflow_source = Some(jinn_core_types::BotSourcePath::new(
+        "workflows/autocoder/bots/planner.toml",
     ));
 
     // When serializing and deserializing.
     let json = serde_json::to_string(&marked).expect("serialize");
     let round: SessionSnapshotMetadata = serde_json::from_str(&json).expect("deserialize");
 
-    // Then the marker survives, so a restarted workflow attendant still
+    // Then the marker survives, so a restarted workflow bot still
     // refuses saves and still knows its source file.
     assert_eq!(
         round.workflow_source,
-        Some(jinn_core_types::AttendantSourcePath::new(
-            "workflows/autocoder/attendants/planner.toml"
+        Some(jinn_core_types::BotSourcePath::new(
+            "workflows/autocoder/bots/planner.toml"
         ))
     );
 }
@@ -67,22 +67,18 @@ fn pre_marker_metadata_loads_with_no_marker() {
 
 #[rstest::rstest]
 fn the_marker_rides_the_session_core_roundtrip() {
-    // Given a live attendant stamped with a workflow source.
+    // Given a live bot stamped with a workflow source.
     let parent = ChatSessionState::new();
-    let mut attendant = ChatSessionState::new_attendant(&parent, true);
-    attendant.set_workflow_source(jinn_core_types::AttendantSourcePath::new(
-        "attendants/qa.toml",
-    ));
+    let mut bot = ChatSessionState::new_bot(&parent, true);
+    bot.set_workflow_source(jinn_core_types::BotSourcePath::new("bots/qa.toml"));
 
     // When capturing a snapshot and rebuilding core from it.
-    let snapshot = attendant.capture_snapshot();
+    let snapshot = bot.capture_snapshot();
     let restored = crate::SessionCore::from(snapshot.metadata);
 
     // Then the restored core still knows its source file.
     assert_eq!(
-        restored.attendant.workflow_source,
-        Some(jinn_core_types::AttendantSourcePath::new(
-            "attendants/qa.toml"
-        ))
+        restored.bot.workflow_source,
+        Some(jinn_core_types::BotSourcePath::new("bots/qa.toml"))
     );
 }

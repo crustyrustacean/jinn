@@ -4833,13 +4833,13 @@ fn register_puts_the_box_in_the_ui_registry() {
 
 #[rstest::rstest]
 fn seed_mode_submission_pins_and_does_not_dispatch() {
-    // Given a seed-mode attendant as the active session.
+    // Given a seed-mode bot as the active session.
     let mut state = AppState::default_with_scope_focus();
     {
         let session = state.active_session_mut();
         let parent = jinn_session_state::ChatSessionState::new();
-        *session = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
-        // Attendant defaults to Seed activation.
+        *session = jinn_session_state::ChatSessionState::new_bot(&parent, true);
+        // Bot defaults to Seed activation.
     }
     state.update_active_input(|i| i.insert_text("judge this repo"));
 
@@ -4900,17 +4900,17 @@ fn seed_mode_submission_leaves_normal_sessions_dispatching() {
 }
 
 #[rstest::rstest]
-fn a_composed_attendant_submissions_dispatch_normally() {
-    // Given a composed attendant — out of prep mode, so it is runnable — as
+fn a_composed_bot_submissions_dispatch_normally() {
+    // Given a composed bot — out of prep mode, so it is runnable — as
     // the active session.
     let mut state = AppState::default_with_scope_focus();
     {
         let session = state.active_session_mut();
         let parent = jinn_session_state::ChatSessionState::new();
-        let mut attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
-        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
-        attendant.set_attendant_is_prepping(false);
-        *session = attendant;
+        let mut bot = jinn_session_state::ChatSessionState::new_bot(&parent, true);
+        bot.set_bot_behavior(jinn_bot_msg::BotBehavior::Reset);
+        bot.set_bot_is_prepping(false);
+        *session = bot;
     }
     state.update_active_input(|i| i.insert_text("go"));
 
@@ -4938,16 +4938,16 @@ fn a_composed_attendant_submissions_dispatch_normally() {
 /// dispatched put a second command on the bus ahead of its own enqueue.
 #[rstest::rstest]
 fn a_submission_emits_exactly_the_interaction_mark_and_the_enqueue() {
-    // Given a composed attendant — out of prep mode, so it is runnable — as
+    // Given a composed bot — out of prep mode, so it is runnable — as
     // the active session.
     let mut state = AppState::default_with_scope_focus();
     {
         let session = state.active_session_mut();
         let parent = jinn_session_state::ChatSessionState::new();
-        let mut attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
-        attendant.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
-        attendant.set_attendant_is_prepping(false);
-        *session = attendant;
+        let mut bot = jinn_session_state::ChatSessionState::new_bot(&parent, true);
+        bot.set_bot_behavior(jinn_bot_msg::BotBehavior::Reset);
+        bot.set_bot_is_prepping(false);
+        *session = bot;
     }
     state.update_active_input(|i| i.insert_text("go"));
 
@@ -4968,7 +4968,7 @@ fn a_submission_emits_exactly_the_interaction_mark_and_the_enqueue() {
     assert!(result.message_names[1].contains("EnqueueUserMessage"));
 }
 
-/// A seed-mode attendant's submission must leave a PINNED entry in the
+/// A seed-mode bot's submission must leave a PINNED entry in the
 /// session's own history.
 ///
 /// The intent emits `PushChatEntry` then `PinChatEntry` in that order, but
@@ -4980,19 +4980,19 @@ fn a_submission_emits_exactly_the_interaction_mark_and_the_enqueue() {
 #[rstest::rstest]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn seed_mode_submission_leaves_the_entry_pinned_in_the_session() {
-    // Given a seed-mode attendant as the active session, with the
+    // Given a seed-mode bot as the active session, with the
     // session-turn actor live on that same state so the push lands.
     let (harness, state, session_id) = {
         let (harness, state, deps) = create_harness().await;
         let session_id = {
             let mut guard = state.write();
             let parent = jinn_session_state::ChatSessionState::new();
-            let attendant = jinn_session_state::ChatSessionState::new_attendant(&parent, true);
+            let bot = jinn_session_state::ChatSessionState::new_bot(&parent, true);
             // Inserted under its own id and made active: writing through
             // `active_session_mut` would leave the map keyed by the old id
             // while the session carried a new one.
-            let id = attendant.session_id().clone();
-            guard.session.insert(attendant);
+            let id = bot.session_id().clone();
+            guard.session.insert(bot);
             guard.session.set_active(id.clone());
             id
         };
@@ -5028,7 +5028,7 @@ async fn seed_mode_submission_leaves_the_entry_pinned_in_the_session() {
         closure(&harness.bus());
     }
 
-    // Then the entry is in the attendant's history, pinned. Unpinned, it
+    // Then the entry is in the bot's history, pinned. Unpinned, it
     // would be dropped from the very context the mode exists to preserve.
     //
     // The wait is on the history itself — a fixed sleep would only guess
@@ -5046,14 +5046,14 @@ async fn seed_mode_submission_leaves_the_entry_pinned_in_the_session() {
     })
     .await;
     let guard = state.read();
-    let session = guard.session.get(&session_id).expect("attendant");
+    let session = guard.session.get(&session_id).expect("bot");
     let entry = session
         .history()
         .iter()
         .find(|e| e.text() == "judge this repo")
-        .expect("the submission is in the attendant's history");
+        .expect("the submission is in the bot's history");
     assert!(
         entry.is_pinned(),
-        "a seed-mode submission must be pinned into the attendant's context"
+        "a seed-mode submission must be pinned into the bot's context"
     );
 }

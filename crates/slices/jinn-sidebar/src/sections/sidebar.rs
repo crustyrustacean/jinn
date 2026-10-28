@@ -11,7 +11,8 @@ use super::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
 use super::{
-    attendants_section, mcp_servers_section, persona_section, pins, sessions, task_list_section,
+    bots_section, library_section, mcp_servers_section, persona_section, pins, sessions,
+    task_list_section,
 };
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::protocol::IntentResult;
@@ -97,6 +98,8 @@ impl Sidebar {
         // Once the document overflows, the slack is zero and the single scroll
         // offset takes over.
         let slack = document.bottom_slack(area.height);
+        // The bottom anchor lands on the last registered section — Sessions,
+        // the document tail, which always draws rows.
         let last_index = document.spans.len().saturating_sub(1);
 
         for (index, (span, section)) in document
@@ -203,10 +206,9 @@ fn dispatch_navigate(
         jinn_sidebar_msg::SidebarSectionId::Pins => {
             (pins::navigate(intent, state), IntentResult::empty())
         }
-        jinn_sidebar_msg::SidebarSectionId::Attendant => (
-            attendants_section::navigate(intent, state),
-            IntentResult::empty(),
-        ),
+        jinn_sidebar_msg::SidebarSectionId::Bot => {
+            (bots_section::navigate(intent, state), IntentResult::empty())
+        }
         jinn_sidebar_msg::SidebarSectionId::TaskList => (
             task_list_section::navigate(intent, state),
             IntentResult::empty(),
@@ -216,6 +218,10 @@ fn dispatch_navigate(
             IntentResult::empty(),
         ),
         jinn_sidebar_msg::SidebarSectionId::Sessions => sessions::navigate(intent, state, config),
+        jinn_sidebar_msg::SidebarSectionId::Library => (
+            library_section::navigate(intent, state),
+            IntentResult::empty(),
+        ),
     }
 }
 
@@ -227,11 +233,9 @@ fn dispatch_navigate(
 fn next_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
     match id {
         jinn_sidebar_msg::SidebarSectionId::Persona => {
-            Some(jinn_sidebar_msg::SidebarSectionId::Attendant)
+            Some(jinn_sidebar_msg::SidebarSectionId::Bot)
         }
-        jinn_sidebar_msg::SidebarSectionId::Attendant => {
-            Some(jinn_sidebar_msg::SidebarSectionId::Pins)
-        }
+        jinn_sidebar_msg::SidebarSectionId::Bot => Some(jinn_sidebar_msg::SidebarSectionId::Pins),
         jinn_sidebar_msg::SidebarSectionId::Pins => {
             Some(jinn_sidebar_msg::SidebarSectionId::TaskList)
         }
@@ -239,6 +243,9 @@ fn next_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
             Some(jinn_sidebar_msg::SidebarSectionId::McpServers)
         }
         jinn_sidebar_msg::SidebarSectionId::McpServers => {
+            Some(jinn_sidebar_msg::SidebarSectionId::Library)
+        }
+        jinn_sidebar_msg::SidebarSectionId::Library => {
             Some(jinn_sidebar_msg::SidebarSectionId::Sessions)
         }
         jinn_sidebar_msg::SidebarSectionId::Sessions => None,
@@ -250,20 +257,21 @@ fn next_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
 fn prev_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
     match id {
         jinn_sidebar_msg::SidebarSectionId::Persona => None,
-        jinn_sidebar_msg::SidebarSectionId::Attendant => {
+        jinn_sidebar_msg::SidebarSectionId::Bot => {
             Some(jinn_sidebar_msg::SidebarSectionId::Persona)
         }
-        jinn_sidebar_msg::SidebarSectionId::Pins => {
-            Some(jinn_sidebar_msg::SidebarSectionId::Attendant)
-        }
+        jinn_sidebar_msg::SidebarSectionId::Pins => Some(jinn_sidebar_msg::SidebarSectionId::Bot),
         jinn_sidebar_msg::SidebarSectionId::TaskList => {
             Some(jinn_sidebar_msg::SidebarSectionId::Pins)
         }
         jinn_sidebar_msg::SidebarSectionId::McpServers => {
             Some(jinn_sidebar_msg::SidebarSectionId::TaskList)
         }
-        jinn_sidebar_msg::SidebarSectionId::Sessions => {
+        jinn_sidebar_msg::SidebarSectionId::Library => {
             Some(jinn_sidebar_msg::SidebarSectionId::McpServers)
+        }
+        jinn_sidebar_msg::SidebarSectionId::Sessions => {
+            Some(jinn_sidebar_msg::SidebarSectionId::Library)
         }
     }
 }
@@ -276,7 +284,7 @@ fn section_has_content(
     match id {
         jinn_sidebar_msg::SidebarSectionId::Persona => true,
         jinn_sidebar_msg::SidebarSectionId::Pins => !state.sorted_pinned_ids().is_empty(),
-        jinn_sidebar_msg::SidebarSectionId::Attendant => attendants_section::has_content(state),
+        jinn_sidebar_msg::SidebarSectionId::Bot => bots_section::has_content(state),
         jinn_sidebar_msg::SidebarSectionId::TaskList => {
             !state.active_session().task_list().is_empty()
         }
@@ -289,6 +297,7 @@ fn section_has_content(
                 .any(|(name, _)| enabled.contains(name.as_str()))
         }
         jinn_sidebar_msg::SidebarSectionId::Sessions => !state.session.is_empty(),
+        jinn_sidebar_msg::SidebarSectionId::Library => library_section::has_content(state),
     }
 }
 
@@ -296,12 +305,13 @@ pub(crate) fn clear_cursor(id: SidebarSectionId, state: &mut AppState) {
     state.frontend.update_sections(|s| match id {
         jinn_sidebar_msg::SidebarSectionId::Persona => s.persona.cursor = None,
         jinn_sidebar_msg::SidebarSectionId::Pins => s.pins.clear_selection(),
-        jinn_sidebar_msg::SidebarSectionId::Attendant => s.attendant.selected_id = None,
+        jinn_sidebar_msg::SidebarSectionId::Bot => s.bot.selected_id = None,
         jinn_sidebar_msg::SidebarSectionId::TaskList => s.task_list.selected_phase_index = None,
         jinn_sidebar_msg::SidebarSectionId::McpServers => s.mcp_servers.selected_index = None,
         jinn_sidebar_msg::SidebarSectionId::Sessions => {
             s.sessions.selected_id = None;
         }
+        jinn_sidebar_msg::SidebarSectionId::Library => s.library.selected_id = None,
     });
 }
 
@@ -323,8 +333,8 @@ fn receive_cursor(
             pins::receive_cursor(state, enter_from);
             IntentResult::empty()
         }
-        jinn_sidebar_msg::SidebarSectionId::Attendant => {
-            attendants_section::receive_cursor(state, enter_from);
+        jinn_sidebar_msg::SidebarSectionId::Bot => {
+            bots_section::receive_cursor(state, enter_from);
             IntentResult::empty()
         }
         jinn_sidebar_msg::SidebarSectionId::TaskList => {
@@ -338,6 +348,9 @@ fn receive_cursor(
         jinn_sidebar_msg::SidebarSectionId::Sessions => {
             sessions::receive_cursor(state, enter_from, config)
         }
+        jinn_sidebar_msg::SidebarSectionId::Library => {
+            library_section::receive_cursor(state, enter_from)
+        }
     }
 }
 
@@ -347,7 +360,7 @@ fn section_has_cursor(id: SidebarSectionId, state: &AppState) -> bool {
         |s| match id {
             jinn_sidebar_msg::SidebarSectionId::Persona => s.persona.cursor.is_some(),
             jinn_sidebar_msg::SidebarSectionId::Pins => s.pins.selected_id().is_some(),
-            jinn_sidebar_msg::SidebarSectionId::Attendant => s.attendant.selected_id.is_some(),
+            jinn_sidebar_msg::SidebarSectionId::Bot => s.bot.selected_id.is_some(),
             jinn_sidebar_msg::SidebarSectionId::TaskList => {
                 s.task_list.selected_phase_index.is_some()
             }
@@ -355,6 +368,7 @@ fn section_has_cursor(id: SidebarSectionId, state: &AppState) -> bool {
                 s.mcp_servers.selected_index.is_some()
             }
             jinn_sidebar_msg::SidebarSectionId::Sessions => s.sessions.selected_id.is_some(),
+            jinn_sidebar_msg::SidebarSectionId::Library => s.library.selected_id.is_some(),
         },
         || false,
     )
