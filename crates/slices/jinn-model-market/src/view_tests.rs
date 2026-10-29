@@ -128,8 +128,70 @@ fn hidden_help_draws_no_card_pixels() {
     // Then no help card text is anywhere on the screen.
     let text = buffer_text(&buffer);
     assert!(
-        !text.contains("Search OpenRouter Models help"),
+        !text.contains("OpenRouter Model Market help"),
         "a hidden help must not draw, got: {text:?}"
+    );
+}
+
+#[rstest::rstest]
+fn table_mode_renders_no_em_dash() {
+    // Given a wired popup whose data carries an empty-cell placeholder
+    // (a None ECI renders the plain-hyphen EMPTY_CELL glyph).
+    let harness = Harness::new();
+    harness.data.update(|d| {
+        d.rows = vec![variant_row(), plain_row()];
+    });
+
+    // When the popup renders in table mode.
+    let buffer = harness.render(ratatui::layout::Rect::new(5, 2, 80, 10), 90, 100);
+
+    // Then no em-dash is on screen — the empty-cell glyph is the plain
+    // hyphen, and nothing else the table draws uses the character.
+    let text = buffer_text(&buffer);
+    assert!(
+        !text.contains('\u{2014}'),
+        "the popup displays no em-dash, got: {text:?}"
+    );
+}
+
+#[rstest::rstest]
+fn detail_mode_renders_no_em_dash() {
+    // Given a wired popup pinned to a model whose detail carries an
+    // endpoint row with every optional field absent (all the `-`
+    // placeholders render).
+    let harness = Harness::new();
+    harness.data.update(|d| {
+        d.rows = vec![plain_row()];
+        d.detail = Some(jinn_model_market_msg::MarketDetail {
+            model_id: "openrouter/a/plain".to_owned(),
+            endpoints: vec![jinn_model_market_msg::MarketEndpointRow {
+                tag: "free".to_owned(),
+                provider_name: "Chutes".to_owned(),
+                prompt_price: 0.0,
+                completion_price: 0.0,
+                cache_read_price: None,
+                latency_p50_ms: None,
+                throughput_p50: None,
+                uptime_1d: None,
+                quantization: None,
+                overrides: Vec::new(),
+            }],
+        });
+        d.endpoints_fetched_at = Some(jiff::Timestamp::from_second(0).expect("epoch"));
+    });
+    harness.ui.update(|s| {
+        s.detail_model = Some("openrouter/a/plain".to_owned());
+    });
+
+    // When the popup renders in detail mode.
+    let buffer = harness.render(ratatui::layout::Rect::new(5, 2, 80, 10), 90, 100);
+
+    // Then no em-dash is on screen — every absent optional renders the
+    // plain-hyphen placeholder.
+    let text = buffer_text(&buffer);
+    assert!(
+        !text.contains('\u{2014}'),
+        "the popup displays no em-dash, got: {text:?}"
     );
 }
 
@@ -148,7 +210,7 @@ fn visible_help_draws_the_card_below_the_popup() {
     // one row inside that.
     let title_row = row_text(&buffer, popup.y + popup.height + 1, popup.width);
     assert!(
-        title_row.contains("Search OpenRouter Models help"),
+        title_row.contains("OpenRouter Model Market help"),
         "the card draws below the popup, got: {title_row:?}"
     );
 }
@@ -168,7 +230,7 @@ fn visible_help_over_a_full_height_popup_still_reaches_the_screen() {
     // Then the card's fallback placement still puts its text on screen.
     let text = buffer_text(&buffer);
     assert!(
-        text.contains("Search OpenRouter Models help"),
+        text.contains("OpenRouter Model Market help"),
         "the card falls back to the terminal top, got: {text:?}"
     );
 }
@@ -305,7 +367,7 @@ fn focused_filter_renders_its_own_line_and_the_title_stays_plain() {
     // never renders into the titlebar.
     let title = row_text(&buffer, popup.y, popup.width);
     assert!(
-        title.contains(" Search OpenRouter Models "),
+        title.contains(" OpenRouter Model Market "),
         "the title stays plain, got: {title:?}"
     );
     assert!(

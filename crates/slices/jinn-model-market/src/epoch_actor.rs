@@ -197,7 +197,7 @@ pub async fn load_seed(actor: &EpochMarketActor) {
         }
         Err(report) => {
             actor
-                .fail_load(format!("shipped epoch seed failed to parse — {report}"))
+                .fail_load(format!("shipped epoch seed failed to parse: {report}"))
                 .await;
         }
     }

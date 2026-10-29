@@ -1611,7 +1611,7 @@ fn focused_filter_shows_a_visible_filter_line() {
         "the focused filter line shows a cursor, got: {filter_line:?}"
     );
     assert!(
-        title.contains(" Search OpenRouter Models "),
+        title.contains(" OpenRouter Model Market "),
         "the title stays plain, got: {title:?}"
     );
     assert!(
@@ -2344,7 +2344,7 @@ fn title_in_detail_mode_carries_the_model_in_focus_accent() {
     // Then the title reads the prefix and the model name, the
     // `openrouter/` prefix stripped.
     assert!(
-        title.contains(" Search OpenRouter Models ") && title.contains("\u{b7} a/small"),
+        title.contains(" OpenRouter Model Market ") && title.contains("\u{b7} a/small"),
         "the title carries the model, got: {title:?}"
     );
 

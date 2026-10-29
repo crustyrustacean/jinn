@@ -472,12 +472,12 @@ fn model_listing_row<'a>(data: &'a MarketDataState, ui: &MarketUiState) -> Optio
     data.rows.iter().find(|row| row.id == *pinned)
 }
 
-/// The title's spans: ` Search OpenRouter Models ` in the popup-title accent, and —
+/// The title's spans: ` OpenRouter Model Market ` in the popup-title accent, and —
 /// in detail mode — `· {author/slug[:variant]}` appended with the model
 /// name in the focus accent, both bold.
 fn title_spans(ui: &MarketUiState, data: &MarketDataState, theme: &Theme) -> Vec<Span<'static>> {
     let prefix = Span::styled(
-        " Search OpenRouter Models ",
+        " OpenRouter Model Market ",
         Style::default()
             .fg(theme.popup_title)
             .add_modifier(Modifier::BOLD),

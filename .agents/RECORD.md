@@ -307,6 +307,7 @@ Entries are added or amended **only with human approval**.
 - (session) Pinning or unpinning a chat entry marks the session interacted, so the pin change persists even on a session that was never sent to.
 - (preferences) The app-state actor handles UpdateAppState through its trouper .handles declaration; jinn.toml has no bus command because the configuration layer writes it directly.
 - (boot) The startup tail — the GetEnvironmentConfig ask and the EnvironmentLoaded publish — runs in composition after AllActorsSpawned, not in the slice.
+- (boot) The API-key store is populated by EnvInitActor during the startup tail's GetEnvironmentConfig ask, after every slice activation, so the store is empty throughout the spawn window.
 - (session) Live session state is owned by the `jinn-session-state` crate, which preserves the authoritative atomic session aggregate and runtime turn state.
 - (session) Durable session persistence uses a complete `SessionSnapshot` containing session metadata, history, task state, and token accounting.
 - (session) The session turn reducer is owned by `jinn-session-turn` and coordinates history, phase, streaming, tools, retries, and persistence.
@@ -577,6 +578,8 @@ Entries are added or amended **only with human approval**.
 - (graph) The overgraph server embeds text locally via candle, pure Rust; no ONNX runtime or other native ML library is linked.
 - (graph) The overgraph server's bge-small-en-v1.5 embeddings are CLS-token pooled and L2 normalized, verified against fastembed reference vectors by the feature-gated embedding-parity test.
 - (model-market) A model-market refresh publishes one command (`RefreshAll`, handled by the models actor) that ends by emitting `MarketModelsRefreshed`; the epoch actor subscribes to that event and forces its own refresh, so no message in the refresh path is declared by two actors.
+- (model-market) The model market popup displays no em-dash; empty cells render as a plain hyphen.
+- (arch) API keys are read from the store at request time; no component snapshots a key into a field at spawn.
 - (arch) A schema's declared kind decides its transport on the erased publish path (a route action's closure): an Event broadcasts to every declarant, a Command routes to one handler and rotates between them when a second actor declares the same schema; a direct typed publish always broadcasts, so the two paths disagree only for a Command with more than one declarant.
 - (tools) The `read_image` built-in tool attaches a local image file to its own tool result, so a model sees a picture mid-tool-loop without a user send.
 - (tools) A `read_image` call under a model not confirmed vision-capable succeeds with text-only guidance instead of attaching.
