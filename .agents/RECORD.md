@@ -605,3 +605,4 @@ Entries are added or amended **only with human approval**.
 - (storage) The database maintenance actor deletes whole session trees whose members are all archived, outside the Library, and idle past the retention threshold.
 - (storage) The maintenance actor returns freed pages to the filesystem with a bounded incremental vacuum after each prune sweep.
 - (logging) Startup truncates jinn.log to its last 10,000 lines before opening the append handle.
+- (rules) Every shipped tool:bash condition that anchors on a compound separator requires whitespace after it, so a shell metacharacter inside quoted script content — a grep alternation, an awk program — is never read as a command separator.

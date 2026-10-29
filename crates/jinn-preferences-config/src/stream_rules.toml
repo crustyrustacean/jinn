@@ -654,28 +654,34 @@ negative = ['createuser app_user', 'psql -c "\\du"']
 
 # source: dylancaponi/claude-code-permissions (shutdown), anchored to command
 #   position (envelope head or a compound separator) so grepping code for
-#   the word stays silent.
+#   the word stays silent. The separator requires mandatory whitespace
+#   ([;&|][ \t]+), the same fix the machine-hanger rules carry: with \s* a
+#   bare `|` inside a quoted script (grep alternation like
+#   'busy_timeout\|shutdown') matched as a command separator and fired on
+#   script CONTENT, not commands. The accepted tradeoff is the compact
+#   `;shutdown` form escaping the guard.
 # license: unlicensed (no license file upstream; shipped with per-entry credit)
 [[stream_rules.entry]]
 name = 'no-shutdown'
 description = 'shutdown powers the machine down mid-session'
-conditions = ['(?:"command"\s*:\s*"|[;&|]\s*)shutdown\b']
+conditions = ['(?:"command"\s*:\s*"|[;&|][ \t]+)shutdown\b']
 scopes = ['tool:bash']
 body = 'Shutting the machine down kills the session, the user work, and everything else running. There is no ordinary work that needs this -- stop.'
 positive = ['shutdown -h now', 'shutdown -r +5', 'echo x; shutdown -h now']
-negative = ['grep -rn shutdown src/', 'journalctl -u shutdown.target', 'echo shutdown']
+negative = ['grep -rn shutdown src/', 'journalctl -u shutdown.target', 'echo shutdown', "grep -n 'busy_timeout\\|shutdown_timeout' src/", "grep -rn 'shutdown_graceful\\|shutdown(' src/", 'echo x;shutdown -h now']
 
 # source: dylancaponi/claude-code-permissions (reboot/halt/poweroff), anchored
-#   to command position as in no-shutdown.
+#   to command position as in no-shutdown, with the same mandatory whitespace
+#   after a compound separator.
 # license: unlicensed (no license file upstream; shipped with per-entry credit)
 [[stream_rules.entry]]
 name = 'no-reboot'
 description = 'reboot/halt/poweroff restart or stop the machine mid-session'
-conditions = ['(?:"command"\s*:\s*"|[;&|]\s*)(?:reboot|halt|poweroff)\b', '\bsystemctl\s+(?:reboot|halt|poweroff)\b']
+conditions = ['(?:"command"\s*:\s*"|[;&|][ \t]+)(?:reboot|halt|poweroff)\b', '\bsystemctl\s+(?:reboot|halt|poweroff)\b']
 scopes = ['tool:bash']
 body = 'Rebooting or halting the machine kills the session and the user work with it. There is no ordinary work that needs this -- stop and report what you were trying to accomplish.'
 positive = ['reboot', 'poweroff', 'systemctl reboot', 'halt', 'echo x && reboot']
-negative = ['grep -rn reboot src/', 'systemctl status reboot.target', 'echo halt', 'systemctl list-units']
+negative = ['grep -rn reboot src/', 'systemctl status reboot.target', 'echo halt', 'systemctl list-units', "grep -rn 'reboot\\|halt' src/"]
 
 # source: dylancaponi/claude-code-permissions (crontab -r)
 # license: unlicensed (no license file upstream; shipped with per-entry credit)
