@@ -9,6 +9,7 @@
   - Endpoint `LAT p50` and `TP p50` data after this update will NOT be shown for existing users until the model cache expires (7 days)
     - To force an update, you'll need to manually refresh model data using `<c-r>` in the Model Market popup, OR delete `~/.cache/jinn/openrouter/models.json`
 - Enable incremental vacuum operation to database. Migration might take a long time at first run.
+- Loosen `no-shutdown` stream rule. It should not trigger as often now.
 - `jinn` logfile now caps at 10k lines, cleaned up at startup.
 - Add `jinn.toml` configuration to delete old sessions. Default behavior is to never delete anything.
 
