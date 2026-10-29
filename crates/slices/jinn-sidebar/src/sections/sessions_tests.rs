@@ -516,7 +516,7 @@ fn settled_turn_returns_to_idle() {
     {
         let session = state.active_session_mut();
         session.begin_streaming();
-        session.finish_streaming_via_machine();
+        session.settle_to_idle();
     }
 
     // When collecting sorted open sessions.

@@ -141,6 +141,7 @@ mod tests {
     /// calling test.
     fn test_ctx(cwd: &MarkedPathBuf<Absolute>) -> ToolContext {
         ToolContext {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             cwd: cwd.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
@@ -307,6 +308,7 @@ mod tests {
         // Given a temp directory as CWD.
         let dir = jinn_testutil::tempdir();
         let ctx = ToolContext {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             cwd: dir.path.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
@@ -899,6 +901,7 @@ mod tests {
         // Given a temp directory as CWD.
         let dir = jinn_testutil::tempdir();
         let ctx = ToolContext {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             cwd: dir.path.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
@@ -955,6 +958,7 @@ mod tests {
         let other = jinn_testutil::tempdir();
 
         let ctx = ToolContext {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             cwd: other.path.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),

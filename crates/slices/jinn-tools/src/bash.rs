@@ -140,19 +140,24 @@ fn truncate_streaming_output(content: &str) -> String {
     truncate_tail(content, DEFAULT_MAX_LINES, DEFAULT_MAX_BYTES).content
 }
 
+/// Where a tool's streamed output goes: the bus to publish on, the session
+/// the output belongs to, and the turn identity the events carry.
+#[derive(Clone, Copy)]
+struct StreamTarget<'a> {
+    bus: Option<&'a BusService>,
+    session_id: Option<&'a SessionId>,
+    turn: jinn_core_types::turn_identity::TurnToken,
+}
+
 /// Emits buffered output as a single `ToolExecutionOutput` event.
-async fn flush_buffer(
-    buffer: &str,
-    bus: Option<&BusService>,
-    session_id: Option<&SessionId>,
-    tool_call_id: &ToolCallId,
-) {
+async fn flush_buffer(buffer: &str, target: StreamTarget<'_>, tool_call_id: &ToolCallId) {
     emit_stream_event(
-        bus,
-        session_id,
+        target.bus,
+        target.session_id,
         ToolExecutionOutput {
             kind: ToolOutputKind::default(),
-            session_id: session_id.cloned().unwrap_or_default(),
+            session_id: target.session_id.cloned().unwrap_or_default(),
+            turn: target.turn,
             tool_call_id: tool_call_id.clone(),
             output: buffer.to_owned(),
         },
@@ -328,16 +333,11 @@ impl StreamingBatcher {
     /// Emits the buffered output as a streaming event and clears the buffer.
     ///
     /// No-op when the buffer is empty.
-    async fn flush(
-        &mut self,
-        bus: Option<&BusService>,
-        session_id: Option<&SessionId>,
-        tool_call_id: &ToolCallId,
-    ) {
+    async fn flush(&mut self, target: StreamTarget<'_>, tool_call_id: &ToolCallId) {
         if self.buffer.is_empty() {
             return;
         }
-        flush_buffer(&self.buffer, bus, session_id, tool_call_id).await;
+        flush_buffer(&self.buffer, target, tool_call_id).await;
         self.buffer.clear();
     }
 }
@@ -351,8 +351,7 @@ async fn read_child_output_and_wait(
     stdout: tokio::process::ChildStdout,
     stderr: tokio::process::ChildStderr,
     accumulated: &mut String,
-    bus: Option<&BusService>,
-    session_id: Option<&SessionId>,
+    target: StreamTarget<'_>,
     tool_call_id: &ToolCallId,
 ) -> Result<std::process::ExitStatus, std::io::Error> {
     // WHY tokio::sync::mpsc HERE, NOT kanal:
@@ -382,18 +381,18 @@ async fn read_child_output_and_wait(
                 Some(line) => {
                     batcher.push_line(&line, accumulated);
                     if batcher.should_flush() {
-                        batcher.flush(bus, session_id, tool_call_id).await;
+                        batcher.flush(target, tool_call_id).await;
                     }
                 }
                 None => break,
             },
             _ = timer.tick() => {
-                batcher.flush(bus, session_id, tool_call_id).await;
+                batcher.flush(target, tool_call_id).await;
             }
         }
     }
 
-    batcher.flush(bus, session_id, tool_call_id).await;
+    batcher.flush(target, tool_call_id).await;
 
     // Wait for both readers to finish.
     let _ = stdout_handle.await;
@@ -486,6 +485,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             ctx.session_id.as_ref(),
             ToolExecutionStarted {
                 session_id: ctx.session_id.clone().unwrap_or_default(),
+                turn: ctx.turn,
                 tool_call_id: call.id.clone(),
                 name: call.name.clone(),
                 dispatched_at: jiff::Timestamp::now(),
@@ -528,13 +528,17 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         // Read stdout and stderr concurrently using tokio async IO.
         let mut accumulated = String::new();
 
+        let target = StreamTarget {
+            bus: ctx.bus.as_ref(),
+            session_id: ctx.session_id.as_ref(),
+            turn: ctx.turn,
+        };
         let read_fut = read_child_output_and_wait(
             &mut child,
             stdout,
             stderr,
             &mut accumulated,
-            ctx.bus.as_ref(),
-            ctx.session_id.as_ref(),
+            target,
             &call.id,
         );
 
@@ -569,6 +573,7 @@ mod tests {
     /// bash ever runs.
     fn test_ctx(cwd: &MarkedPathBuf<Absolute>) -> ToolContext {
         ToolContext {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             cwd: cwd.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
@@ -726,6 +731,7 @@ mod tests {
             #[cfg(not(windows))]
             let (pwd_command, expected_cwd) = ("pwd", canonical);
             let ctx = ToolContext {
+                turn: jinn_core_types::turn_identity::TurnToken::legacy(),
                 cwd: dir.path.clone(),
                 config: jinn_config::testutil::config_layer(""),
                 shells: Default::default(),
@@ -1109,8 +1115,11 @@ mod tests {
         // When flushing an empty buffer.
         batcher
             .flush(
-                Some(&bus),
-                Some(&session_id),
+                StreamTarget {
+                    bus: Some(&bus),
+                    session_id: Some(&session_id),
+                    turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+                },
                 &ToolCallId::from("test_call"),
             )
             .await;
@@ -1134,8 +1143,11 @@ mod tests {
         // When flushing the buffer.
         batcher
             .flush(
-                Some(&bus),
-                Some(&session_id),
+                StreamTarget {
+                    bus: Some(&bus),
+                    session_id: Some(&session_id),
+                    turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+                },
                 &ToolCallId::from("test_call"),
             )
             .await;

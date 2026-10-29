@@ -38,6 +38,11 @@ pub struct ExecuteToolBatch {
     pub tool_calls: Vec<ToolCall>,
     /// When the original LLM request was dispatched.
     pub dispatched_at: Timestamp,
+    /// The turn this batch belongs to, as minted by the turn ledger.
+    ///
+    /// Zero is the pre-ledger legacy value; see `SendToLlmProvider.turn`.
+    #[serde(default)]
+    pub turn: jinn_core_types::turn_identity::TurnToken,
 }
 
 /// Execute a single tool call.
@@ -50,6 +55,11 @@ pub struct ExecuteToolBatch {
 pub struct ExecuteTool {
     /// The session this execution belongs to.
     pub session_id: SessionId,
+    /// The turn this execution belongs to, as minted by the turn ledger.
+    ///
+    /// Zero is the pre-ledger legacy value; see `SendToLlmProvider.turn`.
+    #[serde(default)]
+    pub turn: jinn_core_types::turn_identity::TurnToken,
     /// The tool call to execute.
     pub tool_call: ToolCall,
     /// When the original LLM request was dispatched.

@@ -220,6 +220,7 @@ fn tool_ctx(
     paths_root: &MarkedPathBuf<Absolute>,
 ) -> ToolContext {
     ToolContext {
+        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
         cwd: paths_root.clone(),
         config: jinn_config::testutil::config_layer(""),
         shells: Default::default(),

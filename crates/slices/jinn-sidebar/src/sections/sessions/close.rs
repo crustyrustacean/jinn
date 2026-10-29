@@ -2,7 +2,7 @@
 
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::protocol::IntentResult;
-use jinn_session_msg::PhaseKind;
+use jinn_slices::PhaseView;
 
 use crate::sections::sessions::state::mark_in_flight;
 
@@ -37,7 +37,7 @@ pub fn validate_session_close(state: &AppState) -> Result<(), SessionCloseError>
         .session
         .get(&id)
         .ok_or(SessionCloseError::NoSelection)?;
-    if !matches!(session.phase(), PhaseKind::Idle) {
+    if !matches!(session.phase(), PhaseView::Idle) {
         return Err(SessionCloseError::SessionBusy);
     }
     Ok(())

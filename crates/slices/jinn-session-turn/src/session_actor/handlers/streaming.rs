@@ -17,10 +17,11 @@ use jinn_session_history_msg::CitationsReceived;
 use jinn_session_msg::TurnCompleted;
 use jinn_session_msg::TurnOutcome;
 use jinn_session_state::ChatSessionState;
+use jinn_tools_msg::CancelToolBatch;
 use jinn_turn_dispatch_msg::QueueItem;
 
 use super::super::SessionPersistenceActor;
-use jinn_session_msg::PhaseKind;
+use jinn_slices::PhaseView;
 
 impl SessionPersistenceActor {
     /// Ends a turn and reports its end — the one routine that terminates a turn.
@@ -52,61 +53,67 @@ impl SessionPersistenceActor {
     /// a `StreamCompleted(Canceled)`. Both halves are serialized through this
     /// actor, so whichever order they arrive in, exactly one settle happens.
     pub(in crate::session_actor) async fn terminate_turn(&self, msg: &CancelTurn) {
-        // A turn ends once. The once-ness lives in the phase actor's turn
-        // record: `TurnCanceled` on an already-ended turn replies with a
-        // refusal, and this handler publishes nothing on it. The record
-        // replaced the session-local termination mark — the mark was a
-        // second copy of the same fact, readable by components that had no
-        // business deciding with it.
-        //
-        // Skipping on the phase instead was wrong twice over. It skipped the
-        // report for a busy session whose turn had genuinely ended — the wedge
-        // this exists to close. And where the phase *was* `Idle`, it was `Idle`
-        // for two different reasons: a caller that settled synchronously before
-        // publishing, and a turn this routine already reported. The first needs
-        // a report (its `"Cancelled"` entry has not been written yet); the second
-        // must not have one, or the fold pushes a duplicate onto history.
-        let decision = match crate::phase_actor::cancel_turn(&self.services, &msg.session_id).await
-        {
-            Ok(decision) => decision,
-            Err(report) => {
-                tracing::error!(
-                    session_id = %msg.session_id,
-                    ?report,
-                    "cancel ask failed; the turn-end report cannot be stamped"
-                );
-                return;
-            }
-        };
-        if !decision.admitted {
+        // A turn ends once. The once-ness lives in the ledger: `begin_cancel`
+        // is idempotent — the first call flips the turn's intent to
+        // `Cancel` and starts the drain, later calls are no-ops, and this
+        // handler publishes nothing on them. Skipping on the phase instead
+        // was wrong twice over: it skipped the report for a busy session
+        // whose turn had genuinely ended, and it read `Idle` for two
+        // different reasons it could not tell apart. The ledger's answer is
+        // the turn's own state, not a phase the history happens to sit in.
+        let outcome = self.services.turn_ledger.begin_cancel(&msg.session_id);
+        let Some(outcome) = outcome else {
             tracing::debug!(
                 session_id = %msg.session_id,
-                "CancelTurn for an already-ended turn; not reporting twice"
+                "CancelTurn with nothing to drain (no live turn, or already \
+                 draining); not reporting twice"
             );
             return;
-        }
+        };
 
-        // Terminated-before-arrival is the half of termination the phase cannot
-        // express, so it gets its own record — the one set above.
-        //
-        // `CancelTurn` and a stream-rule intercept race by construction: the
-        // watchdog counts an interrupt that the intercept itself reported, and
-        // the intercept's completion is published from inside the stream task
-        // that the cancel is tearing down. In a real run the intercept's handler
-        // lands *after* the cancel's, and the cancel settles the session — which
-        // rewinds it to a busy phase with a live guard, so every check the
-        // intercept performs passes. It then resumes a turn nobody is running,
-        // re-arming the in-flight guard on a dead session, which is exactly what
-        // the stall watchdog re-triggers on.
+        // The drain is armed. Open tool calls get a synthesized cancellation
+        // from the orchestrator (`CancelToolBatch`), so the work set empties
+        // without waiting on a tool that cannot be aborted; the stream's own
+        // abort rides `CancelTurn`'s broadcast to the inference actor. The
+        // completion published below retires the stream; the last closer —
+        // synthesis or stream ack — settles the turn exactly once.
+        self.publish(CancelToolBatch {
+            session_id: msg.session_id.clone(),
+        })
+        .await;
 
         // The stamp must be the session's own live generation, not `now()`. A
         // fresh stamp on a session with a live generation sorts *before* it, and
         // the stale-generation guard drops the report on arrival — closing the
-        // wedge by reproducing it. The decision carries the generation's stamp;
+        // wedge by reproducing it. The mint's stamp is what the session armed;
         // a session with no live generation has nothing to settle, so the
         // current time is both correct and sufficient.
-        let dispatched_at = decision.stream_stamp.unwrap_or_else(jiff::Timestamp::now);
+        let dispatched_at = self
+            .state
+            .read()
+            .session
+            .get(&msg.session_id)
+            .and_then(jinn_kernel::ChatSessionState::stream_dispatched_at)
+            .unwrap_or_else(jiff::Timestamp::now);
 
+        // The cancel's completion carries the live turn's identity: the
+        // ledger's live stream is exactly the one this completion retires.
+        // A session with no live turn has nothing to stamp — but `begin_cancel`
+        // admitted above means the turn exists, so only the stream can be
+        // missing (tools running, drain window): the zero stream retires
+        // nothing and still carries the turn's end-work.
+        let live = self.services.turn_ledger.live(&msg.session_id);
+        let (turn, stream) = match live {
+            Some(l) => (l.turn, l.stream.unwrap_or_default()),
+            None => (
+                jinn_core_types::turn_identity::TurnToken::legacy(),
+                jinn_core_types::turn_identity::StreamId::legacy(),
+            ),
+        };
+
+        // `StartedAndSettled` means the cancel emptied the work set itself:
+        // the completion below is refused (the entry is settled), so settle
+        // here — the sweep and the single `Canceled` report still run once.
         self.publish(StreamCompleted {
             model_used: None,
             session_id: msg.session_id.clone(),
@@ -119,8 +126,17 @@ impl SessionPersistenceActor {
             cached_tokens: None,
             thinking_content: None,
             dispatched_at,
+            turn,
+            stream,
         })
         .await;
+        if outcome == jinn_kernel::common::turn_ledger::CancelOutcome::StartedAndSettled {
+            self.settle_turn(
+                &msg.session_id,
+                jinn_kernel::common::turn_ledger::Next::Cancel,
+            )
+            .await;
+        }
     }
 
     /// Handles a cancel request by terminating the turn it names.
@@ -134,19 +150,19 @@ impl SessionPersistenceActor {
         self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&event.session_id);
             match session.phase() {
-                PhaseKind::Streaming => {}
-                // No defensive arm in `Sending`: a token there belongs to a
+                PhaseView::Streaming => {}
+                // No defensive arm in `Working`: a token there belongs to a
                 // generation whose dispatch was refused or torn down, and
                 // arming `Streaming` for it would back the phase with no
-                // live generation. The token is appended only when the
-                // phase actor has already admitted the stream — the entry
-                // index below exists exactly then.
+                // live turn. The token is appended only when the ledger's
+                // mint has admitted the stream — the entry index below
+                // exists exactly then.
                 #[expect(
                     clippy::match_same_arms,
-                    reason = "arms kept separate: `Streaming` is the healthy path and `Sending` is deliberately tolerated, not defended"
+                    reason = "arms kept separate: `Streaming` is the healthy path and `Working` is deliberately tolerated, not defended"
                 )]
-                PhaseKind::Sending => {}
-                PhaseKind::Idle => {
+                PhaseView::Working | PhaseView::Cancelling => {}
+                PhaseView::Idle => {
                     tracing::warn!(
                         phase = ?session.phase(),
                         "StreamToken received in unexpected phase"
@@ -242,83 +258,149 @@ impl SessionPersistenceActor {
         self.emit_override_changes(&event.session_id, fold.changed_overrides)
             .await;
 
-        // The settle edge is the phase actor's: the fold only does entry
-        // work, and the generation's terminal edge (`Streaming → Idle` for
-        // Finished/Error, the fuse through `Sending` for a ToolUse whose
-        // tool loop keeps the turn) resolves against the same stamp the
-        // fold just checked. A refused settle means a racing cancel already
-        // ended the generation — the fold's entries still land, and the
-        // outcome below reads the phase the actor left.
-        let decision = crate::phase_actor::settle_stream(
-            &self.services,
+        // Retire the completed stream in the ledger and learn what the
+        // turn wants next. A ToolUse completion records `Continue` — the
+        // tool calls are open work now, and the turn ends when the work
+        // set empties, whichever message lands last. Every other reason
+        // records `End`. A refused ack is a stale stream (a retry swapped
+        // it out) or a turn that already ended; the fold's entries landed,
+        // nothing else happens.
+        //
+        // A ToolUse ack registers the model's calls in the same critical
+        // section that retires the stream: the batch can trail the ack on
+        // the bus, and an empty work set at the ack would settle the turn
+        // before any result landed. Registering here — and idempotently at
+        // the batch — makes both orders one behaviour.
+        let tool_call_ids = event
+            .tool_calls
+            .as_ref()
+            .map(|calls| calls.iter().map(|c| c.id.clone()).collect())
+            .unwrap_or_default();
+        let ack = self.services.turn_ledger.ack_stream_with_calls(
             &event.session_id,
-            event.reason,
-            event.dispatched_at,
-        )
-        .await;
+            &event.turn,
+            &event.stream,
+            match event.reason {
+                StreamCompletedReason::ToolUse => jinn_kernel::common::turn_ledger::Next::Continue,
+                _ => jinn_kernel::common::turn_ledger::Next::End,
+            },
+            tool_call_ids,
+        );
 
-        // The phases around the outcome gate are the decision's: the actor
-        // is the sole writer, and it published the transition itself.
-
-        // Publish the turn outcome. Exactly once per dispatched turn:
-        // a ToolUse completion transitions to `Sending` (the tool loop
-        // continues), so it fails the gate and publishes nothing. The
-        // `Idle → Idle` cancel race resolves to `Canceled` — the user
-        // already ended the turn before this completion landed, and a
-        // turn the user cancelled must never look like a success.
-        let outcome: Option<TurnOutcome> =
-            if decision.old_phase == PhaseKind::Idle && decision.new_phase == PhaseKind::Idle {
-                Some(TurnOutcome::Canceled)
-            } else if decision.new_phase != PhaseKind::Idle {
-                // Still busy (tool loop). Not a turn end.
-                None
-            } else {
-                let last_entry = self.state.with_session(|view| {
-                    view.session
-                        .map()
-                        .get_or_create(&event.session_id)
-                        .history()
-                        .last()
-                        .cloned()
-                });
-                Some(outcome_from_history(last_entry))
-            };
-        if let Some(outcome) = outcome {
-            self.bus()
-                .publish(TurnCompleted {
-                    session_id: event.session_id.clone(),
-                    outcome,
-                })
-                .await;
+        match ack {
+            Err(refused) => {
+                tracing::debug!(
+                    session_id = %event.session_id,
+                    turn = ?event.turn,
+                    stream = ?event.stream,
+                    reason = ?refused,
+                    "StreamCompleted refused by the turn ledger; no settle"
+                );
+            }
+            Ok(Some(settlement)) => {
+                // The work set emptied with this retirement: the turn is
+                // over. `Continue` here means the batch landed before the
+                // stream retirement — the continuation dispatches now.
+                self.settle_turn(&event.session_id, settlement.next).await;
+            }
+            Ok(None) => {
+                // Work still open (a ToolUse whose calls run, or a drain in
+                // progress). The last closer settles.
+            }
         }
+
         super::super::helpers::emit_history_appended(self.bus(), &event.session_id).await;
 
         // Persist session after stream finishes.
         if should_save {
             self.save_active_session(&event.session_id).await;
         }
+    }
 
-        // Drain a buffered `ToolBatchCompleted` that raced ahead of this
-        // `StreamCompleted(ToolUse)`. The buffer is populated by
-        // `on_tool_batch_completed` when the batch arrives while the session
-        // is still `Streaming`. Now that the phase has advanced to `Sending`,
-        // the continuation can be dispatched.
-        let drained_batch = event.reason == StreamCompletedReason::ToolUse && {
-            self.state.with_session(|view| {
-                view.session
-                    .map()
-                    .get_or_create(&event.session_id)
-                    .take_buffered_tool_results()
-                    .is_some()
-            })
-        };
-
-        if drained_batch {
-            tracing::info!(
-                session_id = %event.session_id,
-                "draining buffered ToolBatchCompleted after StreamCompleted(ToolUse)"
-            );
-            self.continue_tool_loop(&event.session_id).await;
+    /// Applies a turn settlement: the session's machine edge plus the turn
+    /// outcome publish.
+    ///
+    /// `Continue` dispatches the tool continuation (the work set emptied
+    /// before the stream retired — the batch won the race). `End` applies
+    /// the `Idle` edge, publishes `TurnCompleted`, and drains the queue
+    /// when the fold recorded a failure-shaped end. `Cancel` sweeps
+    /// still-pending results to `Failure` and reports the cancellation once.
+    async fn settle_turn(
+        &self,
+        session_id: &jinn_core_types::SessionId,
+        next: jinn_kernel::common::turn_ledger::Next,
+    ) {
+        match next {
+            jinn_kernel::common::turn_ledger::Next::Continue => {
+                self.continue_tool_loop(session_id).await;
+            }
+            jinn_kernel::common::turn_ledger::Next::End => {
+                let (old, new) = self.state.with_session(|view| {
+                    let session = view.session.map().get_or_create(session_id);
+                    let old = session.phase();
+                    session.settle_to_idle();
+                    // The settled turn owns the in-flight guard; the settle
+                    // kills both. This is the projection side of the ledger's
+                    // admission: the stamp the dispatch armed is exactly the
+                    // one this turn's completion consumed.
+                    session.clear_stream_generation();
+                    (old, session.phase())
+                });
+                // The phase is a projection here; its change is broadcast so
+                // subscribers see the settle the ledger adjudicated.
+                if old != new {
+                    jinn_kernel::common::phase_events::publish_phase_change(
+                        self.bus(),
+                        session_id,
+                        old,
+                        new,
+                    )
+                    .await;
+                }
+                let last_entry = self.state.with_session(|view| {
+                    view.session
+                        .map()
+                        .get_or_create(session_id)
+                        .history()
+                        .last()
+                        .cloned()
+                });
+                let outcome = outcome_from_history(last_entry);
+                self.bus()
+                    .publish(TurnCompleted {
+                        session_id: session_id.clone(),
+                        outcome,
+                    })
+                    .await;
+            }
+            jinn_kernel::common::turn_ledger::Next::Cancel => {
+                let (old, new) = self.state.with_session(|view| {
+                    let session = view.session.map().get_or_create(session_id);
+                    session.sweep_pending_tool_results_to_failure();
+                    let old = session.phase();
+                    session.settle_to_idle();
+                    // The cancelled turn owns the in-flight guard; killing it
+                    // clears the stamp, so the stall watchdog finds nothing to
+                    // re-trigger on.
+                    session.clear_stream_generation();
+                    (old, session.phase())
+                });
+                if old != new {
+                    jinn_kernel::common::phase_events::publish_phase_change(
+                        self.bus(),
+                        session_id,
+                        old,
+                        new,
+                    )
+                    .await;
+                }
+                self.bus()
+                    .publish(TurnCompleted {
+                        session_id: session_id.clone(),
+                        outcome: TurnOutcome::Canceled,
+                    })
+                    .await;
+            }
         }
     }
 
@@ -413,6 +495,13 @@ impl SessionPersistenceActor {
                 ) {
                     session.override_live_entry_models(event.model_used.as_deref());
                 }
+                // The stream is over: one streaming round ends here. A
+                // tool-use round hands off to its batch and the continuation
+                // lazily creates fresh assistant/thinking entries below the
+                // calls, so each round renders its own text next to its own
+                // results. Cleared after the model override, which still
+                // reads the indices.
+                session.finish_streaming_round();
                 // The generation is over (Finished/Error) or about to hand off
                 // to its continuation dispatch — either way this generation's
                 // request stamp is consumed. ToolUse relies on the continuation
@@ -444,12 +533,13 @@ impl SessionPersistenceActor {
                 // `StreamEndedToolUse`, applied before the tool batch
                 // dispatch asks its own `BeginStream(ToolContinuation)`.
 
-                // When returning to Idle on error/cancel, drain queued messages back to
-                // the input buffer so the user can review and retry.
-                if matches!(
-                    event.reason,
-                    StreamCompletedReason::Error | StreamCompletedReason::Canceled
-                ) {
+                // When returning to Idle on error, drain queued messages back
+                // to the input buffer so the user can review and retry. A
+                // cancel does NOT: its queued messages survive the drain and
+                // dispatch after the settle — the queue actor's idle
+                // transition picks them up — so a cancel never eats the
+                // user's queued work.
+                if event.reason == StreamCompletedReason::Error {
                     let drained = session.message_queue_mut().drain();
                     if let Some(text) = drained_queue_to_text(&drained) {
                         session.update_input(|input| input.replace_all(text));
@@ -644,8 +734,8 @@ mod tests {
     use jinn_inference_msg::{CancelTurn, StreamCompleted, StreamCompletedReason, StreamToken};
     use jinn_kernel::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
     use jinn_session_history_msg::CitationsReceived;
-    use jinn_session_msg::PhaseKind;
     use jinn_session_msg::SessionPhaseChanged;
+    use jinn_slices::PhaseView;
     use jinn_token_count_msg::TokenRecord;
 
     use super::SessionPersistenceActor;
@@ -653,6 +743,7 @@ mod tests {
 
     /// Builds the `StreamCompleted` event a provider emits when a turn ends.
     fn stream_completed(
+        actor: &SessionPersistenceActor,
         session_id: &jinn_core_types::SessionId,
         reason: StreamCompletedReason,
         assistant_content: Option<&str>,
@@ -660,6 +751,17 @@ mod tests {
         provider_completion_tokens: Option<u64>,
         thinking_content: Option<&str>,
     ) -> StreamCompleted {
+        // The live identity, as production's terminate path and provider
+        // completions both carry: the ledger's mint is what this resolves
+        // against. A fixture without a live turn carries the legacy zero,
+        // which the ledger refuses.
+        let (turn, stream) = match actor.services.turn_ledger.live(session_id) {
+            Some(live) => (live.turn, live.stream.unwrap_or_default()),
+            None => (
+                jinn_core_types::turn_identity::TurnToken::legacy(),
+                jinn_core_types::turn_identity::StreamId::legacy(),
+            ),
+        };
         StreamCompleted {
             model_used: None,
             session_id: session_id.clone(),
@@ -672,6 +774,8 @@ mod tests {
             cached_tokens: None,
             thinking_content: thinking_content.map(str::to_owned),
             dispatched_at: jiff::Timestamp::now(),
+            turn,
+            stream,
         }
     }
 
@@ -732,59 +836,72 @@ mod tests {
         }
     }
 
-    /// Puts the active session mid-turn: the phase actor mints the turn
-    /// generation (`FreshTurn`), applying the fused
-    /// `Idle → Sending → Streaming` edge and arming the in-flight-stream
-    /// guard — the same write production's dispatch path makes before the
-    /// first token can arrive. Returns the session id.
+    /// Puts the active session mid-turn: the ledger mints the turn
+    /// (`FreshTurn`) and the projection helper writes the `Streaming` phase
+    /// and arms the in-flight-stream guard — the same writes production's
+    /// dispatch path makes before the first token can arrive. Returns the
+    /// session id.
     ///
-    /// Seeding the machine directly (`session.begin_streaming()`) would leave
-    /// the phase actor's turn record empty, so every completion the test
-    /// drives would resolve against no stamp and be refused.
+    /// Seeding the phase directly (`session.begin_streaming()`) would leave
+    /// the ledger without a live turn, so every completion the test drives
+    /// would be refused.
     async fn begin_streaming_session(
         actor: &SessionPersistenceActor,
     ) -> jinn_core_types::SessionId {
         let session_id = actor.state.read().session.active_session_id().clone();
-        let minted = jinn_kernel::common::phase_command::apply_phase(
+        // The ledger mints the turn the completion will resolve against.
+        actor
+            .services
+            .turn_ledger
+            .mint(
+                &session_id,
+                jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+            )
+            .expect("a fresh turn's mint must be admitted");
+        // The mint is the admission; the session-side projection (phase +
+        // armed guard) rides the same helper production's dispatch paths use.
+        jinn_kernel::common::turn_ledger::mint_dispatch_with_stamp(
             &actor.services,
-            jinn_session_msg::PhaseCommand::BeginStream {
-                session_id: session_id.clone(),
-                kind: jinn_session_msg::phase_command::DispatchKind::FreshTurn,
-                dispatched_at: jiff::Timestamp::now(),
-            },
+            &actor.state,
+            &session_id,
+            jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+            jiff::Timestamp::now(),
         )
         .await
-        .expect("phase actor reachable");
-        assert!(
-            minted.admitted,
-            "a fresh turn's mint must be admitted: {minted:?}"
-        );
+        .expect("a fresh turn's mint must be admitted");
         session_id
     }
 
-    /// Puts the active session into the mid-tool-loop `Sending` phase — the
-    /// shape a `StreamEndedToolUse` completion leaves — by minting the turn
-    /// through the phase actor and then applying the tool-use edge through
-    /// the same actor. Returns the session id.
-    ///
-    /// Both edges are the phase actor's now; a session dropped into `Sending`
-    /// by hand has no turn record behind it and every later completion is
-    /// refused at resolution.
+    /// Puts the active session into the mid-tool-loop `Working` phase — the
+    /// shape a tool-use completion leaves: the stream retired toward a
+    /// continuation, the calls executing. Returns the session id.
     async fn begin_sending_session(actor: &SessionPersistenceActor) -> jinn_core_types::SessionId {
         let session_id = begin_streaming_session(actor).await;
-        let ended = jinn_kernel::common::phase_command::apply_phase(
-            &actor.services,
-            jinn_session_msg::PhaseCommand::StreamEndedToolUse {
-                session_id: session_id.clone(),
-                dispatched_at: jiff::Timestamp::now(),
-            },
-        )
-        .await
-        .expect("phase actor reachable");
-        assert!(
-            ended.admitted,
-            "a live generation's tool-use edge must be admitted: {ended:?}"
-        );
+        // The ledger side of the tool-use edge: the stream retires toward a
+        // continuation, leaving the turn working.
+        let live = actor
+            .services
+            .turn_ledger
+            .live(&session_id)
+            .expect("live turn");
+        actor
+            .services
+            .turn_ledger
+            .ack_stream_ended(
+                &session_id,
+                &live.turn,
+                &live.stream.expect("in-flight stream"),
+                jinn_kernel::common::turn_ledger::Next::Continue,
+            )
+            .expect("the tool-use edge retires the live stream");
+        // The projection side of the tool-use edge: the turn is working,
+        // the stream has retired. The ledger ack above is the admission.
+        actor.state.with_session(|view| {
+            view.session
+                .map()
+                .get_or_create(&session_id)
+                .begin_sending();
+        });
         session_id
     }
 
@@ -841,6 +958,7 @@ mod tests {
 
         // When the stream completes with an error.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Error,
             None,
@@ -853,7 +971,7 @@ mod tests {
         // Then the session is no longer streaming.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert!(!matches!(session.phase(), PhaseKind::Streaming));
+        assert!(!matches!(session.phase(), PhaseView::Streaming));
     }
 
     #[rstest::rstest]
@@ -873,6 +991,7 @@ mod tests {
 
         // When the stream completes with an error.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Error,
             None,
@@ -912,6 +1031,7 @@ mod tests {
 
         // When the stream completes with an error.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Error,
             None,
@@ -990,22 +1110,22 @@ mod tests {
         let (actor, audit) = test_actor_recording().await;
         let session_id = begin_sending_session(&actor).await;
 
-        // When the cancel is reported and the completion it publishes is
-        // consumed — the full chain the ESC-ESC cascade drives.
+        // When the cancel is applied — the full chain the ESC-ESC cascade
+        // drives, ending in the ledger's drain (the synthesized completions
+        // it requests are the orchestrator's job, covered there).
         let msg = CancelTurn {
             session_id: session_id.clone(),
         };
         actor.on_cancel_turn(&msg).await;
         let completed = audit.of_type::<StreamCompleted>();
         assert_eq!(completed.len(), 1, "setup: the cancel reported the turn");
-        actor.on_stream_completed(&completed[0]).await;
 
         // Then the phase is `Idle` and no in-flight guard survives: the
         // spinner stops, the queue drains, and the stall watchdog finds
         // nothing to re-trigger on.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(session.phase(), PhaseKind::Idle);
+        assert_eq!(session.phase(), PhaseView::Idle);
         assert!(!session.has_in_flight_stream());
     }
 
@@ -1029,7 +1149,7 @@ mod tests {
             .session
             .get_mut(&session_id)
             .expect("session exists")
-            .cancel_streaming_via_machine();
+            .settle_to_idle();
         audit.clear();
 
         // When the command it published lands.
@@ -1070,7 +1190,7 @@ mod tests {
                 .session
                 .get_mut(&session_id)
                 .expect("session exists")
-                .cancel_streaming_via_machine();
+                .settle_to_idle();
         }
 
         // When the command lands and its report is consumed.
@@ -1080,6 +1200,7 @@ mod tests {
         actor.on_cancel_turn(&msg).await;
         actor
             .on_stream_completed(&stream_completed(
+                &actor,
                 &session_id,
                 StreamCompletedReason::Canceled,
                 None,
@@ -1093,7 +1214,7 @@ mod tests {
         // settle, which is what the phase machine's rejection buys.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(session.phase(), PhaseKind::Idle);
+        assert_eq!(session.phase(), PhaseView::Idle);
     }
 
     #[rstest::rstest]
@@ -1179,8 +1300,8 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn a_cancel_clears_the_in_flight_guard_it_terminated() {
-        // Given the same armed-guard state, with the report consumed.
-        let (actor, _audit) = test_actor_recording().await;
+        // Given the same armed-guard state.
+        let (actor, audit) = test_actor_recording().await;
         let session_id = begin_streaming_session(&actor).await;
         let dispatched_at = jiff::Timestamp::now();
         {
@@ -1189,33 +1310,25 @@ mod tests {
             session.arm_stream(dispatched_at);
         }
 
-        // When the cancel is reported and its completion is consumed.
+        // When the cancel is applied and the completion it publishes is
+        // consumed — in production the bus delivers it back to this actor,
+        // which is what retires the stream and settles the drain.
         actor
             .on_cancel_turn(&CancelTurn {
                 session_id: session_id.clone(),
             })
             .await;
-        actor
-            .on_stream_completed(&StreamCompleted {
-                model_used: None,
-                session_id: session_id.clone(),
-                reason: StreamCompletedReason::Canceled,
-                assistant_content: None,
-                tool_calls: None,
-                cost: None,
-                provider_completion_tokens: None,
-                provider_prompt_tokens: None,
-                cached_tokens: None,
-                thinking_content: None,
-                dispatched_at,
-            })
-            .await;
+        let completed = audit.of_type::<StreamCompleted>();
+        assert_eq!(completed.len(), 1, "setup: the cancel reported the turn");
+        actor.on_stream_completed(&completed[0]).await;
 
         // Then the guard is cleared and the session is idle, so the stall
-        // watchdog's retry finds nothing in flight and stands down.
+        // watchdog's retry finds nothing in flight and stands down. The
+        // guard belongs to the cancelled generation; the drain's settle
+        // kills both — a stream that later unwinds cannot resurrect it.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(session.phase(), PhaseKind::Idle);
+        assert_eq!(session.phase(), PhaseView::Idle);
         assert!(
             !session.has_in_flight_stream(),
             "a terminated turn must leave no in-flight guard behind, or the \
@@ -1261,6 +1374,7 @@ mod tests {
         actor.on_cancel_turn(&msg).await;
         actor
             .on_stream_completed(&stream_completed(
+                &actor,
                 &session_id,
                 StreamCompletedReason::Canceled,
                 None,
@@ -1275,7 +1389,7 @@ mod tests {
         // ended", and only this routine may claim otherwise.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(session.phase(), PhaseKind::Idle);
+        assert_eq!(session.phase(), PhaseView::Idle);
         assert_eq!(
             audit.of_type::<StreamCompleted>().len(),
             1,
@@ -1287,7 +1401,7 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn on_stream_completed_canceled_reason_drains_queue_to_input_buffer() {
+    async fn on_stream_completed_canceled_reason_keeps_the_queue_for_dispatch() {
         // Given a streaming session with one queued user message.
         let (actor, _audit) = test_actor_recording().await;
         let session_id = {
@@ -1302,6 +1416,7 @@ mod tests {
 
         // When the stream completes because it was canceled.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Canceled,
             None,
@@ -1311,13 +1426,16 @@ mod tests {
         );
         actor.on_stream_completed(&event).await;
 
-        // Then the queue is empty and its text lands in the input buffer.
+        // Then the queue survives: the queued message dispatches after the
+        // settle (the queue actor's idle transition), it is not bounced to
+        // the input box.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(session.queue_len(), 0);
+        assert_eq!(session.queue_len(), 1);
         assert_eq!(
             session.with_input(|i| i.text().to_owned(), String::new),
-            "queued message"
+            "",
+            "a cancel must not drain the queue into the input box"
         );
     }
 
@@ -1331,6 +1449,7 @@ mod tests {
 
         // When the stream completes because it was canceled.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Canceled,
             None,
@@ -1343,7 +1462,7 @@ mod tests {
         // Then the session is no longer busy.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(session.phase(), PhaseKind::Idle);
+        assert_eq!(session.phase(), PhaseView::Idle);
     }
 
     #[rstest::rstest]
@@ -1355,6 +1474,7 @@ mod tests {
 
         // When the stream completes because it was canceled.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Canceled,
             None,
@@ -1369,7 +1489,7 @@ mod tests {
         assert!(
             phase_events
                 .iter()
-                .any(|e| e.old_phase == PhaseKind::Sending && e.new_phase == PhaseKind::Idle),
+                .any(|e| e.old_phase == PhaseView::Working && e.new_phase == PhaseView::Idle),
             "expected SessionPhaseChanged(Sending -> Idle); got: {:?}",
             audit.names()
         );
@@ -1384,6 +1504,7 @@ mod tests {
 
         // When the stream completes because it was canceled.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Canceled,
             None,
@@ -1419,6 +1540,7 @@ mod tests {
 
         // When the stream completes because it was canceled.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Canceled,
             None,
@@ -1450,6 +1572,7 @@ mod tests {
 
         // When the stream completes because it was canceled.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Canceled,
             None,
@@ -1485,6 +1608,7 @@ mod tests {
 
         // When the stream completes normally.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Finished,
             Some("response"),
@@ -1517,6 +1641,7 @@ mod tests {
 
         // When the stream completes with an error.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Error,
             None,
@@ -1549,6 +1674,7 @@ mod tests {
 
         // When the stream completes because it was canceled.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Canceled,
             None,
@@ -1569,10 +1695,11 @@ mod tests {
     #[tokio::test]
     async fn a_cancel_publishes_the_settle_even_when_the_report_races_it() {
         // Given a streaming session whose cancel and whose completion race:
-        // the cancel asks the phase actor's `TurnCanceled` (the settle, which
-        // publishes the transition), and the provider's `StreamCompleted(
-        // Canceled)` lands afterwards — the order ESC produces when the
-        // frontend reports the turn while the stream is still unwinding.
+        // the cancel drains the turn (publishing the report the drain waits
+        // on), and a second `StreamCompleted(Canceled)` lands afterwards —
+        // the order ESC produces when the frontend reports the turn while
+        // the stream is still unwinding. The straggler carries stale
+        // identity: the drain already retired the live stream.
         let (actor, audit) = test_actor_recording().await;
         let session_id = begin_streaming_session(&actor).await;
         let stamp = actor
@@ -1590,6 +1717,9 @@ mod tests {
                 session_id: session_id.clone(),
             })
             .await;
+        let completed = audit.of_type::<StreamCompleted>();
+        assert_eq!(completed.len(), 1, "setup: the cancel reported the turn");
+        actor.on_stream_completed(&completed[0]).await;
         let event = StreamCompleted {
             model_used: None,
             session_id: session_id.clone(),
@@ -1602,13 +1732,16 @@ mod tests {
             cached_tokens: None,
             thinking_content: None,
             dispatched_at: stamp,
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            stream: jinn_core_types::turn_identity::StreamId::legacy(),
         };
         actor.on_stream_completed(&event).await;
 
-        // Then the settle was announced by the phase actor — the mint's
-        // going-busy announcement and the cancel's settle announcement, and
-        // nothing from the completion (its generation was already ended, so
-        // the settle ask was refused and published nothing further).
+        // Then exactly one busy announcement and one settle announcement:
+        // the settle is the cancel drain's (the completion consumed above is
+        // the drain's own retirement, carrying the live identity), and the
+        // straggler the race produces announces nothing — a turn settles
+        // once, whoever wins the race.
         let phase_events = audit.of_type::<SessionPhaseChanged>();
         assert_eq!(
             phase_events.len(),
@@ -1616,10 +1749,10 @@ mod tests {
             "one busy announcement, one settle announcement; got: {:?}",
             audit.names()
         );
-        assert_eq!(phase_events[0].old_phase, PhaseKind::Idle);
-        assert_eq!(phase_events[0].new_phase, PhaseKind::Streaming);
-        assert_eq!(phase_events[1].old_phase, PhaseKind::Streaming);
-        assert_eq!(phase_events[1].new_phase, PhaseKind::Idle);
+        assert_eq!(phase_events[0].old_phase, PhaseView::Idle);
+        assert_eq!(phase_events[0].new_phase, PhaseView::Streaming);
+        assert_eq!(phase_events[1].old_phase, PhaseView::Streaming);
+        assert_eq!(phase_events[1].new_phase, PhaseView::Idle);
     }
 
     #[rstest::rstest]
@@ -1640,6 +1773,7 @@ mod tests {
 
         // When the stream completes because it was canceled.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Canceled,
             None,
@@ -1711,7 +1845,7 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
-            matches!(session.phase(), PhaseKind::Streaming),
+            matches!(session.phase(), PhaseView::Streaming),
             "expected Streaming phase, got {:?}",
             session.phase()
         );
@@ -1742,7 +1876,7 @@ mod tests {
         let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(
             session.phase(),
-            PhaseKind::Sending,
+            PhaseView::Working,
             "a token with no live generation must not arm the phase"
         );
         assert!(
@@ -1767,6 +1901,7 @@ mod tests {
 
         // When the stream completes normally.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Finished,
             Some("response"),
@@ -1799,6 +1934,7 @@ mod tests {
 
         // When the stream completes with an error.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Error,
             None,
@@ -1831,6 +1967,7 @@ mod tests {
 
         // When the stream completes because it was canceled.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Canceled,
             None,
@@ -1856,6 +1993,7 @@ mod tests {
 
         // When the stream completes with an error.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Error,
             Some("some error content"),
@@ -1892,6 +2030,7 @@ mod tests {
 
         // When the stream completes requesting a tool call.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::ToolUse,
             Some("response"),
@@ -1923,6 +2062,7 @@ mod tests {
 
         // When the stream completes requesting a tool call with long arguments.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::ToolUse,
             Some("checking"),
@@ -1965,6 +2105,7 @@ mod tests {
 
         // When the stream completes normally.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Finished,
             Some("world"),
@@ -2011,6 +2152,7 @@ mod tests {
 
         // When the stream completes because it was canceled.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Canceled,
             None,
@@ -2049,6 +2191,7 @@ mod tests {
 
         // When the stream completes normally.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Finished,
             Some("response"),
@@ -2062,7 +2205,7 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
-            matches!(session.phase(), PhaseKind::Idle),
+            matches!(session.phase(), PhaseView::Idle),
             "expected Idle after Finished without auto-compaction, got {:?}",
             session.phase()
         );
@@ -2078,6 +2221,7 @@ mod tests {
 
         // When the stream completes normally.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Finished,
             Some("response"),
@@ -2111,6 +2255,7 @@ mod tests {
 
         // When the stream completes with an error.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Error,
             None,
@@ -2160,6 +2305,7 @@ mod tests {
 
         // When the stream completes because it was canceled.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Canceled,
             None,
@@ -2193,6 +2339,7 @@ mod tests {
 
         // When the stream completes requesting a tool call.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::ToolUse,
             Some("response"),
@@ -2226,6 +2373,7 @@ mod tests {
 
         // When the stream completes with a provider completion-token report.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Finished,
             Some("short"),
@@ -2250,6 +2398,7 @@ mod tests {
 
         // When the stream completes with thinking content and no provider report.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Finished,
             Some("short"),
@@ -2278,6 +2427,7 @@ mod tests {
 
         // When the stream completes with text only and no provider report.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Finished,
             Some("response text"),
@@ -2305,6 +2455,7 @@ mod tests {
 
         // When the stream completes with both a provider report and long thinking.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Finished,
             Some("short"),
@@ -2329,6 +2480,7 @@ mod tests {
 
         // When the stream completes with text and no provider report.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Finished,
             Some("response text"),
@@ -2359,6 +2511,7 @@ mod tests {
 
         // When the stream completes with a provider count far above the local one.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Finished,
             Some("ok"),
@@ -2386,6 +2539,7 @@ mod tests {
         // When the stream completes with text and no provider report.
         let content = "hello world this is a test";
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Finished,
             Some(content),
@@ -2525,6 +2679,8 @@ mod tests {
             thinking_content: None,
             dispatched_at: dispatched,
             model_used: None,
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            stream: jinn_core_types::turn_identity::StreamId::legacy(),
         };
         actor.on_stream_completed(&event).await;
 
@@ -2672,6 +2828,8 @@ mod tests {
             thinking_content: Some("only reasoning".to_owned()),
             dispatched_at: dispatched,
             model_used: None,
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            stream: jinn_core_types::turn_identity::StreamId::legacy(),
         };
         actor.on_stream_completed(&event).await;
 
@@ -2727,6 +2885,8 @@ mod tests {
             thinking_content: None,
             dispatched_at: dispatched,
             model_used: None,
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            stream: jinn_core_types::turn_identity::StreamId::legacy(),
         };
         actor.on_stream_completed(&event).await;
 
@@ -2789,6 +2949,8 @@ mod tests {
             thinking_content: None,
             dispatched_at: dispatched,
             model_used: None,
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            stream: jinn_core_types::turn_identity::StreamId::legacy(),
         };
         actor.on_stream_completed(&event).await;
 
@@ -3071,6 +3233,8 @@ mod tests {
             cached_tokens: None,
             thinking_content: None,
             dispatched_at: backdated,
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            stream: jinn_core_types::turn_identity::StreamId::legacy(),
         };
         actor.on_stream_completed(&event).await;
 
@@ -3079,7 +3243,7 @@ mod tests {
         let guard = actor.state.read();
         let session = guard.session.get(&session_id).expect("session exists");
         assert!(
-            matches!(session.phase(), PhaseKind::Streaming),
+            matches!(session.phase(), PhaseView::Streaming),
             "stale-generation StreamCompleted must not transition the session"
         );
         assert!(
@@ -3090,8 +3254,8 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn on_stream_completed_tooluse_without_buffered_batch_does_not_dispatch() {
-        // Given a session mid-stream with no buffered tool batch.
+    async fn tool_use_completion_without_call_identity_does_not_dispatch() {
+        // Given a session mid-stream with a live, minted turn.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -3102,7 +3266,9 @@ mod tests {
         };
         begin_streaming_session(&actor).await;
 
-        // When a ToolUse stream completes with no pending batch buffered.
+        // When a ToolUse stream completes carrying no call identity — the
+        // pre-ledger legacy stamp, a completion minted before turn identity
+        // existed.
         let event = StreamCompleted {
             model_used: None,
             session_id: session_id.clone(),
@@ -3115,14 +3281,16 @@ mod tests {
             cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            stream: jinn_core_types::turn_identity::StreamId::legacy(),
         };
         actor.on_stream_completed(&event).await;
 
-        // Then no SendToLlmProvider is emitted — the continuation must wait
-        // for the ExecuteToolBatch round-trip.
+        // Then no SendToLlmProvider is emitted — the completion carries no
+        // identity the ledger can admit, so the tool loop cannot start.
         assert!(
             !audit.contains_name("SendToLlmProvider"),
-            "ToolUse completion without a buffered batch must not dispatch a continuation"
+            "ToolUse completion without call identity must not dispatch a continuation"
         );
     }
 
@@ -3177,6 +3345,7 @@ mod tests {
 
         // When the stream finishes.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Finished,
             Some("all done"),
@@ -3211,6 +3380,7 @@ mod tests {
 
         // When the stream completes with an error.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Error,
             None,
@@ -3242,6 +3412,7 @@ mod tests {
 
         // When the stream completes because it was canceled.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Canceled,
             None,
@@ -3277,6 +3448,7 @@ mod tests {
 
         // When the stream completes because the model requested tools.
         let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::ToolUse,
             Some("let me check"),
@@ -3299,18 +3471,47 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn completion_landing_after_sync_cancel_resolves_as_canceled() {
-        // Given a session whose phase the frontend already drove to Idle
-        // (the synchronous ESC-cancel path).
+        // Given a live turn the user synchronously cancelled: the cancel
+        // settles it (Canceled, exactly once) and removes the entry.
         let (actor, audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("hello"));
-            state.session.active_session_id().clone()
-        };
-
-        // When the late `Finished` completion lands with the phase already Idle.
+        let session_id = begin_streaming_session(&actor).await;
+        assert!(
+            actor
+                .services
+                .turn_ledger
+                .begin_cancel(&session_id)
+                .is_some(),
+            "a live turn's cancel starts the drain"
+        );
+        assert!(
+            actor.services.turn_ledger.live(&session_id).is_some(),
+            "a cancelled turn with an open stream is not yet settled"
+        );
+        // The cancel's TurnCompleted publishes from the settle path — the
+        // session actor's, not the ledger's. Drive it the way production
+        // does: the cancel's completion is a StreamCompleted(Canceled)
+        // through the handler.
         let event = stream_completed(
+            &actor,
+            &session_id,
+            StreamCompletedReason::Canceled,
+            None,
+            None,
+            None,
+            None,
+        );
+        actor.on_stream_completed(&event).await;
+        let completions = audit.of_type::<jinn_session_msg::TurnCompleted>();
+        assert_eq!(completions.len(), 1);
+        assert_eq!(
+            completions[0].outcome,
+            jinn_session_msg::TurnOutcome::Canceled
+        );
+
+        // When the provider's own `Finished` completion lands late — the
+        // sync-cancel race — it carries the settled turn's identity.
+        let event = stream_completed(
+            &actor,
             &session_id,
             StreamCompletedReason::Finished,
             Some("late result"),
@@ -3320,13 +3521,301 @@ mod tests {
         );
         actor.on_stream_completed(&event).await;
 
-        // Then the outcome resolves as Canceled, not Succeeded — a turn the
-        // user cancelled must never look like a success.
+        // Then nothing more publishes: the turn ended once, as Canceled —
+        // a turn the user cancelled must never look like a success, and a
+        // settled turn has no second completion to give.
         let completions = audit.of_type::<jinn_session_msg::TurnCompleted>();
         assert_eq!(completions.len(), 1);
         assert_eq!(
             completions[0].outcome,
             jinn_session_msg::TurnOutcome::Canceled
+        );
+    }
+}
+
+#[cfg(test)]
+mod ledger_projection_tests {
+    //! TM-19: the session's stored phase is a projection of the ledger, and
+    //! the ledger's `view` derives every display state the UI reads.
+
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+
+    use crate::session_actor::helpers::test_actor_recording;
+    use jinn_slices::PhaseView;
+
+    /// TM-19 (consumer side): after a fresh mint the session reads
+    /// `Streaming` and the ledger's derived view agrees; after the tool-use
+    /// edge the session reads `Working` and the ledger agrees; after settle
+    /// both read `Idle`.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn phase_view_is_derived_from_the_ledger_across_a_turn() {
+        // Given a test actor whose harness-seeded turn is retired: the
+        // fixture starts from Idle.
+        let (actor, _audit) = test_actor_recording().await;
+        let session_id = actor.state.read().session.active_session_id().clone();
+        actor.services.turn_ledger.finish_streaming(&session_id);
+        actor.state.with_session(|view| {
+            view.session
+                .map()
+                .get_or_create(&session_id)
+                .settle_to_idle();
+        });
+
+        // Then the view is Idle on both sides.
+        assert_eq!(
+            actor.services.turn_ledger.view(&session_id),
+            PhaseView::Idle
+        );
+        assert_eq!(
+            actor.state.read().session.active_session().phase(),
+            PhaseView::Idle
+        );
+
+        // When a fresh turn is minted through the production helper.
+        let stamp = jiff::Timestamp::now();
+        jinn_kernel::common::turn_ledger::mint_dispatch_with_stamp(
+            &actor.services,
+            &actor.state,
+            &session_id,
+            jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+            stamp,
+        )
+        .await
+        .expect("a fresh turn's mint must be admitted");
+
+        // Then both sides read Streaming.
+        assert_eq!(
+            actor.services.turn_ledger.view(&session_id),
+            PhaseView::Streaming
+        );
+        assert_eq!(
+            actor.state.read().session.active_session().phase(),
+            PhaseView::Streaming
+        );
+
+        // When the tool-use edge retires the stream toward a continuation.
+        let live = actor
+            .services
+            .turn_ledger
+            .live(&session_id)
+            .expect("live turn");
+        actor
+            .services
+            .turn_ledger
+            .ack_stream_ended(
+                &session_id,
+                &live.turn,
+                &live.stream.expect("in-flight stream"),
+                jinn_kernel::common::turn_ledger::Next::Continue,
+            )
+            .expect("the tool-use edge retires the live stream");
+        actor.state.with_session(|view| {
+            view.session
+                .map()
+                .get_or_create(&session_id)
+                .begin_sending();
+        });
+
+        // Then both sides read Working.
+        assert_eq!(
+            actor.services.turn_ledger.view(&session_id),
+            PhaseView::Working
+        );
+        assert_eq!(
+            actor.state.read().session.active_session().phase(),
+            PhaseView::Working
+        );
+
+        // When the turn settles (the continuation's finish does this in
+        // production).
+        actor.state.with_session(|view| {
+            view.session
+                .map()
+                .get_or_create(&session_id)
+                .settle_to_idle();
+        });
+        actor.services.turn_ledger.finish_streaming(&session_id);
+
+        // Then both sides read Idle and the entry is gone.
+        assert_eq!(
+            actor.services.turn_ledger.view(&session_id),
+            PhaseView::Idle
+        );
+        assert_eq!(
+            actor.state.read().session.active_session().phase(),
+            PhaseView::Idle
+        );
+    }
+}
+
+#[cfg(test)]
+mod tool_loop_round_order {
+    //! Regression for the sticky tool-call rendering bug: each tool-loop
+    //! round must own its assistant/thinking entries, and a round's text
+    //! must render next to that round's calls and results — never appended
+    //! into a previous round's entry.
+
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
+
+    use crate::session_actor::helpers::test_actor_recording;
+    use jinn_inference_msg::StreamToken;
+    use jinn_kernel::protocol::ChatEntryKind;
+
+    fn kinds(
+        actor: &crate::session_actor::SessionPersistenceActor,
+        sid: &jinn_core_types::SessionId,
+    ) -> Vec<String> {
+        actor
+            .state
+            .read()
+            .session
+            .get(sid)
+            .map(|s| {
+                s.history()
+                    .iter()
+                    .map(|e| match &e.kind {
+                        ChatEntryKind::User { .. } => "User".into(),
+                        ChatEntryKind::Assistant(t) => format!("Assistant({t})"),
+                        ChatEntryKind::Thinking(t) => format!("Thinking({t})"),
+                        ChatEntryKind::ToolCall { name, .. } => format!("ToolCall({name})"),
+                        ChatEntryKind::ToolResult { name, .. } => format!("ToolResult({name})"),
+                        other => format!("{other:?}"),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn round_two_tokens_must_not_land_in_round_ones_assistant_entry() {
+        let (actor, _audit) = test_actor_recording().await;
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(jinn_kernel::protocol::ChatEntry::user("go"));
+            state.session.active_session_id().clone()
+        };
+        // Mint + stream round 1 like the dispatch path does.
+        jinn_kernel::common::turn_ledger::mint_dispatch_with_stamp(
+            &actor.services,
+            &actor.state,
+            &session_id,
+            jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+            jiff::Timestamp::now(),
+        )
+        .await
+        .expect("mint");
+
+        // Round 1: thinking + content tokens, then a tool call streams.
+        actor.on_stream_token(&StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "round-one ".into(),
+            is_thinking: false,
+            dispatched_at: jiff::Timestamp::now(),
+        });
+        actor.on_tool_use_started(&jinn_tools_msg::ToolUseStarted {
+            session_id: session_id.clone(),
+            index: 0,
+            id: "tc-1".into(),
+            name: "bash".into(),
+            dispatched_at: jiff::Timestamp::now(),
+        });
+
+        // The ToolUse completion runs production's fold: entries finalize,
+        // the stream retires toward Continue, the round ends.
+        let (turn, stream) = match actor.services.turn_ledger.live(&session_id) {
+            Some(live) => (live.turn, live.stream.unwrap_or_default()),
+            None => (
+                jinn_core_types::turn_identity::TurnToken::legacy(),
+                jinn_core_types::turn_identity::StreamId::legacy(),
+            ),
+        };
+        actor
+            .on_stream_completed(&jinn_inference_msg::StreamCompleted {
+                model_used: None,
+                session_id: session_id.clone(),
+                reason: jinn_inference_msg::StreamCompletedReason::ToolUse,
+                assistant_content: None,
+                tool_calls: Some(vec![jinn_core_types::tool_types::ToolCall {
+                    id: "tc-1".into(),
+                    name: "bash".into(),
+                    arguments: "{}".into(),
+                }]),
+                cost: None,
+                provider_completion_tokens: None,
+                provider_prompt_tokens: None,
+                cached_tokens: None,
+                thinking_content: None,
+                dispatched_at: jiff::Timestamp::now(),
+                turn,
+                stream,
+            })
+            .await;
+
+        // The continuation joins (fresh stream) and round 2 streams tokens.
+        let grant = actor
+            .services
+            .turn_ledger
+            .mint(
+                &session_id,
+                jinn_kernel::common::turn_ledger::MintKind::ToolContinuation,
+            )
+            .expect("continuation join");
+        actor.state.with_session(|view| {
+            view.session
+                .map()
+                .get_or_create(&session_id)
+                .begin_streaming();
+            view.session
+                .map()
+                .get_or_create(&session_id)
+                .arm_stream(jiff::Timestamp::now());
+        });
+        let _ = grant;
+        actor.on_stream_token(&StreamToken {
+            session_id: session_id.clone(),
+            index: 1,
+            token: "round-two".into(),
+            is_thinking: false,
+            dispatched_at: jiff::Timestamp::now(),
+        });
+
+        let history = kinds(&actor, &session_id);
+        // The round-2 token must NOT land inside round-1's assistant entry.
+        let assistants: Vec<_> = history
+            .iter()
+            .filter(|k| k.starts_with("Assistant"))
+            .collect();
+        assert_eq!(
+            assistants.len(),
+            2,
+            "each round gets its own assistant entry; got {history:#?}"
+        );
+        assert!(
+            history
+                .iter()
+                .position(|k| k.contains("round-two"))
+                .expect("round-two text")
+                > history
+                    .iter()
+                    .position(|k| k.starts_with("ToolCall"))
+                    .expect("tool call"),
+            "round-2 text must sit below round-1's tool call"
         );
     }
 }

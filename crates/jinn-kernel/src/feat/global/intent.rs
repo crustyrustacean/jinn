@@ -78,8 +78,8 @@ mod tests {
     )]
 
     use super::*;
-    use jinn_session_msg::PhaseKind;
     use jinn_slices::FocusScope;
+    use jinn_slices::PhaseView;
 
     fn handle_quit(state: &mut AppState) -> IntentResult {
         super::handle_quit(state)
@@ -167,7 +167,7 @@ mod tests {
         // And the session is still streaming.
         assert!(matches!(
             state.active_session().phase(),
-            PhaseKind::Streaming
+            PhaseView::Streaming
         ));
     }
 
@@ -190,7 +190,7 @@ mod tests {
         // the phase actor's, applied when the command lands.
         assert!(matches!(
             state.session.get_unchecked(&second_id).phase(),
-            PhaseKind::Streaming
+            PhaseView::Streaming
         ));
         // And a CancelTurn message is returned for that session.
         assert_eq!(result.messages.len(), 1);

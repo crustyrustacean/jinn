@@ -80,6 +80,50 @@ impl SessionCore {
     pub fn restore_token_ledger(&mut self, records: Vec<TokenRecord>) {
         self.history_work.token_ledger = records;
     }
+
+    /// Sweeps every still-`Pending` tool result in history to `Failure`.
+    ///
+    /// The load boundary's step: storage residue from a turn that never
+    /// finalized must not reach the context converter as `Pending`, or the
+    /// whole assistant tool-call block is stripped from the request
+    /// (bug #21). Returns the number swept.
+    pub fn ephemeral_sweep_pending_tool_results(&mut self) -> usize {
+        let pending: Vec<jinn_core_types::ChatEntryId> = self
+            .history_work
+            .history
+            .iter()
+            .filter(|entry| {
+                matches!(
+                    &entry.kind,
+                    jinn_core_types::ChatEntryKind::ToolResult {
+                        status: jinn_core_types::ToolResultStatus::Pending,
+                        ..
+                    }
+                )
+            })
+            .map(|entry| entry.id.clone())
+            .collect();
+        let mut swept = 0;
+        for id in &pending {
+            if let Some(entry) = self
+                .history_work
+                .history
+                .iter_mut()
+                .find(|entry| &entry.id == id)
+                && let jinn_core_types::ChatEntryKind::ToolResult {
+                    status, content, ..
+                } = &mut entry.kind
+                && *status == jinn_core_types::ToolResultStatus::Pending
+            {
+                *status = jinn_core_types::ToolResultStatus::Failure;
+                if content.is_empty() {
+                    "cancelled".clone_into(content);
+                }
+                swept += 1;
+            }
+        }
+        swept
+    }
 }
 
 impl Default for SessionCore {

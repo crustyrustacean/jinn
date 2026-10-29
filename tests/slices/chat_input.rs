@@ -810,7 +810,7 @@ fn queue_badge_count_is_muted_in_normal_mode() {
 
 use jinn_chat_input::{AutocompleteMatch, AutocompleteTrigger, InputMode};
 use jinn_chat_input_msg::{FileEntry, FilePickerState};
-use jinn_session_msg::PhaseKind;
+use jinn_slices::PhaseView;
 
 /// Empty slice registry + route table for handler tests that don't
 /// exercise slices or route rows.
@@ -1090,20 +1090,22 @@ fn queue_submit_always_enqueues() {
 
 #[rstest::rstest]
 fn steer_submit_while_busy_routes_to_steer(
-    #[values(PhaseKind::Streaming, PhaseKind::Sending)] phase: PhaseKind,
+    #[values(PhaseView::Streaming, PhaseView::Working)] phase: PhaseView,
 ) {
     // Given default (Steer) mode + a non-Idle phase with text typed.
     let mut state = AppState::default_with_scope_focus();
 
     match phase {
-        PhaseKind::Streaming => state.session.active_session_mut().begin_streaming(),
-        PhaseKind::Sending => state.session.active_session_mut().begin_sending(),
-        PhaseKind::Idle => unreachable!("Idle is the fall-through case, tested separately"),
+        PhaseView::Streaming => state.session.active_session_mut().begin_streaming(),
+        PhaseView::Working | PhaseView::Cancelling => {
+            state.session.active_session_mut().begin_sending()
+        }
+        PhaseView::Idle => unreachable!("Idle is the fall-through case, tested separately"),
     }
     // Sanity: phase is not Idle.
     assert_ne!(
         state.session.active_session().phase(),
-        PhaseKind::Idle,
+        PhaseView::Idle,
         "test setup: phase must not be Idle"
     );
     state.update_active_input(|i| i.insert_text("h"));
@@ -1140,7 +1142,7 @@ fn steer_submit_while_idle_falls_back_to_enqueue() {
     state.update_active_input(|i| i.insert_text("h"));
 
     // Sanity check phase is Idle.
-    assert_eq!(state.session.active_session().phase(), PhaseKind::Idle);
+    assert_eq!(state.session.active_session().phase(), PhaseView::Idle);
 
     // When submitting.
     let result = jinn_chat_input::intent::handle_submit_message(
@@ -1737,7 +1739,7 @@ fn enter_normal_mode_preserves_streaming_phase() {
     // Then the session is still streaming (not cancelled).
     assert!(matches!(
         state.active_session().phase(),
-        PhaseKind::Streaming
+        PhaseView::Streaming
     ));
 }
 

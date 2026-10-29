@@ -32,12 +32,11 @@ use jinn_session_history::history_editor::{
     Chunk, HistoryEditor, Priv, SessionHistoryAccess, SessionHistoryAccessPriv, chunk_containing,
     chunking,
 };
-use jinn_session_msg::PhaseKind;
-use jinn_session_msg::phase_machine::PhaseTransitions;
 use jinn_session_store_msg::SessionState;
 use jinn_skills_msg::Skill;
 use jinn_skills_msg::loaded_skill_summary_label;
 use jinn_skills_msg::parse_loaded_skill_name;
+use jinn_slices::PhaseView;
 use jinn_token_count_msg::TokenRecord;
 use jinn_workflows_msg::Workflow;
 use marked_path::{Absolute, MarkedPathBuf};
@@ -394,7 +393,6 @@ impl ChatSessionState {
             self.core.history_work.history.remove(index);
             self.core
                 .ephemeral
-                .machine
                 .shift_streaming_indices_after_remove_at(index);
             true
         } else {
@@ -1030,10 +1028,9 @@ impl ChatSessionState {
     pub fn insert_entry_at(&mut self, index: usize, entry: ChatEntry) -> usize {
         let clamped = index.min(self.core.history_work.history.len());
         self.core.history_work.history.insert(clamped, entry);
-        // Delegate index shifting to the machine (handles all 4 streaming fields).
+        // Shift every live index the insert displaced (handles all 4 streaming fields).
         self.core
             .ephemeral
-            .machine
             .shift_streaming_indices_for_insert_at(clamped);
         clamped
     }
@@ -1044,13 +1041,8 @@ impl ChatSessionState {
     /// `begin_tool_call`, or `cancel_streaming`. No-op if the entry
     /// already exists or the session is not streaming.
     fn ensure_assistant_entry(&mut self, dispatched_at: jiff::Timestamp) {
-        if self
-            .core
-            .ephemeral
-            .machine
-            .streaming_entry_index()
-            .is_some()
-            || !matches!(self.core.ephemeral.machine.kind(), PhaseKind::Streaming)
+        if self.core.ephemeral.streaming_entry_index.is_some()
+            || self.core.ephemeral.phase != PhaseView::Streaming
         {
             return;
         }
@@ -1059,7 +1051,7 @@ impl ChatSessionState {
         entry.timing.set_first_token();
         stamp_entry_with_generation_model(&mut entry, self.stream_request_model().as_deref());
         let index = self.push_entry(entry);
-        self.core.ephemeral.machine.set_streaming_entry_index(index);
+        self.core.ephemeral.streaming_entry_index = Some(index);
     }
 
     fn finish_streaming_entry(&mut self, idx: usize) {
@@ -1080,38 +1072,15 @@ impl ChatSessionState {
         });
     }
 
-    /// Begin a new streaming response.
+    /// Mark a provider stream as begun (`Streaming`).
     ///
-    /// Delegates to [`PhaseTransitions::on_first_token`]. If the machine
-    /// rejects the transition (e.g. not in `Sending`), it logs a warning and
-    /// returns without changing state.
-    ///
-    /// The machine only accepts `Sending → Streaming`, so a session still in
-    /// `Idle` (a caller that skipped `begin_sending`) is first transitioned to
-    /// `Sending`.
-    ///
-    /// Exclusively called by the phase actor (see `apply_stream_begin`):
-    /// the validated edges live behind it, and every other caller of the
-    /// phase goes through a `PhaseCommand`.
+    /// A display projection: the turn ledger's mint paths call this after
+    /// admission, and nothing reads it for admission. Setting the phase
+    /// cannot fail — there is no validated machine left to refuse it — so
+    /// tests that seed a busy session by hand get exactly what production's
+    /// admitted mint would have written.
     pub fn begin_streaming(&mut self) {
-        // If Idle, first transition to Sending (some callers skip begin_sending()).
-        if matches!(self.core.ephemeral.machine.kind(), PhaseKind::Idle)
-            && let Err(e) = self.core.ephemeral.machine.on_dispatch_message()
-        {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.machine.kind(),
-                err = %e,
-                "begin_streaming: on_dispatch_message rejected - ignoring"
-            );
-            return;
-        }
-        if let Err(e) = self.core.ephemeral.machine.on_first_token() {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.machine.kind(),
-                err = %e,
-                "begin_streaming: machine rejected transition - ignoring"
-            );
-        }
+        self.core.ephemeral.phase = PhaseView::Streaming;
         self.core.identity.last_history_activity_at = Timestamp::now();
     }
 
@@ -1132,9 +1101,9 @@ impl ChatSessionState {
     where
         S: AsRef<str>,
     {
-        if !matches!(self.core.ephemeral.machine.kind(), PhaseKind::Streaming) {
+        if self.core.ephemeral.phase != PhaseView::Streaming {
             tracing::warn!(
-                current_phase = ?self.core.ephemeral.machine.kind(),
+                current_phase = ?self.core.ephemeral.phase,
                 "append_stream_token called while not streaming - ignoring"
             );
             return Err(StreamingError::NoStreamingEntry);
@@ -1145,8 +1114,7 @@ impl ChatSessionState {
         let index = self
             .core
             .ephemeral
-            .machine
-            .streaming_entry_index()
+            .streaming_entry_index
             .ok_or(StreamingError::NoStreamingEntry)?;
         if let Some(entry) = self.edit_history().with_entry_at_mut(index, |entry| {
             if let ChatEntryKind::Assistant(text) = &mut entry.kind {
@@ -1172,20 +1140,14 @@ impl ChatSessionState {
     /// Soft guard: if the session is not streaming or thinking has already begun,
     /// logs a warning and returns without changing state.
     pub fn begin_thinking(&mut self, dispatched_at: jiff::Timestamp) {
-        if !matches!(self.core.ephemeral.machine.kind(), PhaseKind::Streaming) {
+        if self.core.ephemeral.phase != PhaseView::Streaming {
             tracing::warn!(
-                current_phase = ?self.core.ephemeral.machine.kind(),
+                current_phase = ?self.core.ephemeral.phase,
                 "begin_thinking called while not streaming - ignoring"
             );
             return;
         }
-        if self
-            .core
-            .ephemeral
-            .machine
-            .streaming_thinking_entry_index()
-            .is_some()
-        {
+        if self.core.ephemeral.streaming_thinking_entry_index.is_some() {
             tracing::warn!("begin_thinking called while already thinking - ignoring");
             return;
         }
@@ -1197,16 +1159,12 @@ impl ChatSessionState {
         // already exists. Some providers (OpenRouter) send reasoning tokens
         // AFTER content tokens, so the assistant entry is already in history.
         // The thinking entry should appear before it in the chat log.
-        let index = if let Some(assistant_idx) = self.core.ephemeral.machine.streaming_entry_index()
-        {
+        let index = if let Some(assistant_idx) = self.core.ephemeral.streaming_entry_index {
             self.insert_entry_at(assistant_idx, entry)
         } else {
             self.push_entry(entry)
         };
-        self.core
-            .ephemeral
-            .machine
-            .set_streaming_thinking_entry_index(index);
+        self.core.ephemeral.streaming_thinking_entry_index = Some(index);
     }
 
     /// Append a thinking token to the streaming Thinking entry.
@@ -1225,8 +1183,7 @@ impl ChatSessionState {
         let index = self
             .core
             .ephemeral
-            .machine
-            .streaming_thinking_entry_index()
+            .streaming_thinking_entry_index
             .ok_or(StreamingError::NoThinkingEntry)?;
         self.core.identity.last_history_activity_at = Timestamp::now();
         self.core.identity.last_provider_activity_at = Timestamp::now();
@@ -1246,7 +1203,7 @@ impl ChatSessionState {
 
     /// The index of the streaming thinking entry, if thinking is being accumulated.
     pub fn streaming_thinking_entry_index(&self) -> Option<usize> {
-        self.core.ephemeral.machine.streaming_thinking_entry_index()
+        self.core.ephemeral.streaming_thinking_entry_index
     }
 
     /// The index of the entry accumulating assistant content, if any.
@@ -1255,74 +1212,57 @@ impl ChatSessionState {
     /// changes on every streamed token, as distinct from settled history.
     #[must_use]
     pub fn streaming_entry_index(&self) -> Option<usize> {
-        self.core.ephemeral.machine.streaming_entry_index()
+        self.core.ephemeral.streaming_entry_index
     }
 
-    /// Mark streaming as finished (normal completion).
+    /// Settle the session to `Idle` from any phase.
     ///
-    /// The machine edge alone: `Streaming → Idle`. Entry finalization —
-    /// the assistant entry's `finished_at`, the thinking safety net —
-    /// belongs to the session actor's completion fold, which runs before
-    /// the phase actor applies this edge.
+    /// The display projection of a turn settlement: the turn ledger's
+    /// settle paths call this after adjudicating the turn's end. Every
+    /// registration the turn owned is dropped here with the phase — a
+    /// settled session has no streaming indices and no tool tracking.
+    pub fn settle_to_idle(&mut self) {
+        self.core.ephemeral.phase = PhaseView::Idle;
+        self.core.ephemeral.clear_streaming_indices();
+    }
+
+    /// Rewind for a re-dispatch of the live turn: `Streaming` → `Working`.
     ///
-    /// Exclusively called by the phase actor.
-    pub fn finish_streaming_via_machine(&mut self) {
-        if let Err(e) = self.core.ephemeral.machine.on_stream_completed_finished() {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.machine.kind(),
-                err = %e,
-                "finish_streaming_via_machine: machine rejected transition"
+    /// Called by the stall-retry and rule-intercept paths, whose resumed
+    /// dispatch re-enters `Streaming` through the ledger's mint. The
+    /// streaming indices are dropped here, so the retried stream starts
+    /// from a clean slate; the caller must have consumed them first.
+    pub fn rewind_for_retry(&mut self) {
+        self.core.ephemeral.phase = PhaseView::Working;
+        self.core.ephemeral.streaming_entry_index = None;
+        self.core.ephemeral.streaming_thinking_entry_index = None;
+        self.core.ephemeral.clear_streaming_indices();
+    }
+
+    /// Sweeps every still-`Pending` tool result to `Failure`.
+    ///
+    /// The cancel drain's last step: a result whose call never completed
+    /// (a straggler the synthesized completions missed, or one refused by
+    /// the ledger) must not survive as `Pending` — an unresolved batch
+    /// makes the context converter strip the whole assistant tool-call
+    /// block (bug #21). Clearing the tracking indices keeps the machine
+    /// consistent with the history it just settled.
+    pub fn sweep_pending_tool_results_to_failure(&mut self) {
+        let swept = self.edit_history().sweep_pending_tool_results_to_failure();
+        self.core.ephemeral.streaming_tool_result_indices.clear();
+        if swept > 0 {
+            tracing::info!(
+                swept,
+                "swept pending tool results to Failure at cancel settle"
             );
         }
-        // The transition above cleared every tool-call and tool-result registration.
-    }
-
-    /// End the turn from either busy phase: `Streaming → Idle` or
-    /// `Sending → Idle`, dropping every tool registration.
-    ///
-    /// The machine edge behind [`PhaseCommand::StreamEndedFinished`],
-    /// which a normal completion applies from `Streaming` and a
-    /// tool-loop stop applies from `Sending`. Exclusively called by the
-    /// phase actor.
-    pub fn finish_turn_from_busy_via_machine(&mut self) {
-        match self.core.ephemeral.machine.kind() {
-            PhaseKind::Streaming => self.finish_streaming_via_machine(),
-            PhaseKind::Sending => {
-                if let Err(e) = self.core.ephemeral.machine.cancel() {
-                    tracing::warn!(
-                        current_phase = ?self.core.ephemeral.machine.kind(),
-                        err = %e,
-                        "finish_turn_from_busy_via_machine: machine rejected settle"
-                    );
-                }
-            }
-            PhaseKind::Idle => {}
-        }
-    }
-
-    /// Cancel the streaming phase via the machine's validated cancel.
-    ///
-    /// The machine edge alone: settle from either busy phase to `Idle`,
-    /// clearing every tool registration. Entry finalization belongs to
-    /// the session actor's completion fold.
-    ///
-    /// Exclusively called by the phase actor.
-    pub fn cancel_streaming_via_machine(&mut self) {
-        if let Err(e) = self.core.ephemeral.machine.cancel() {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.machine.kind(),
-                err = %e,
-                "cancel_streaming_via_machine: machine rejected cancel"
-            );
-        }
-        // cancel() cleared every tool-call and tool-result registration.
     }
 
     /// Finalize the streaming entries ahead of a normal (non-cancel)
     /// completion: ensure the assistant entry exists, stamp its
     /// `finished_at`, and resolve any still-pending thinking entry.
     ///
-    /// The entry half of [`Self::finish_streaming_via_machine`], run by
+    /// The entry half of [`Self::settle_to_idle`], run by
     /// the session actor's completion fold before the phase actor applies
     /// the machine edge.
     ///
@@ -1335,12 +1275,33 @@ impl ChatSessionState {
         if preserve_assistant {
             self.ensure_assistant_entry(dispatched_at);
         }
-        if let Some(idx) = self.core.ephemeral.machine.streaming_entry_index() {
+        if let Some(idx) = self.core.ephemeral.streaming_entry_index {
             self.finish_streaming_entry(idx);
         }
-        if let Some(idx) = self.core.ephemeral.machine.streaming_thinking_entry_index() {
+        if let Some(idx) = self.core.ephemeral.streaming_thinking_entry_index {
             self.finish_thinking_entry(idx);
         }
+    }
+
+    /// Ends one streaming round within a live turn: the assistant and
+    /// thinking entries are finalized, so their indices must not survive
+    /// into the next round.
+    ///
+    /// Called by the session actor's completion fold after the entries are
+    /// finalized and their models overridden. The old phase machine got
+    /// this for free — the `Streaming` phase struct carrying the indices
+    /// was dropped at the tool-use edge, so the next round lazily created
+    /// fresh entries below the tool calls. The projection write that
+    /// replaced the machine has no struct to drop, so the round boundary
+    /// clears them explicitly. Keeping them would append the next round's
+    /// tokens into the previous round's assistant entry, stacking every
+    /// round's tool calls and results below a single stale text block.
+    ///
+    /// The tool-call and tool-result tracking maps are untouched: they are
+    /// turn-scoped, and the batch the stream handed off to is still live.
+    pub fn finish_streaming_round(&mut self) {
+        self.core.ephemeral.streaming_entry_index = None;
+        self.core.ephemeral.streaming_thinking_entry_index = None;
     }
 
     /// Cancel streaming but keep partial text in history.
@@ -1348,21 +1309,21 @@ impl ChatSessionState {
     /// The entry half of a cancel: finalize the partial assistant entry
     /// and any still-pending thinking entry so their durations resolve.
     /// The machine edge is the phase actor's
-    /// [`Self::cancel_streaming_via_machine`], applied after this.
+    /// [`Self::settle_to_idle`], applied after this.
     ///
     /// Exclusively called by the session actor's completion fold.
     pub fn finalize_entries_for_cancel(&mut self, dispatched_at: jiff::Timestamp) {
         self.ensure_assistant_entry(dispatched_at);
 
         // Set finished_at on the assistant entry.
-        if let Some(idx) = self.core.ephemeral.machine.streaming_entry_index() {
+        if let Some(idx) = self.core.ephemeral.streaming_entry_index {
             self.finish_streaming_entry(idx);
         }
 
         // Safety net: finalize any still-pending thinking entry so its duration
         // resolves even if reasoning was interrupted. Must run before cancel()
         // drops the StreamingPhase and clears streaming_thinking_entry_index().
-        if let Some(idx) = self.core.ephemeral.machine.streaming_thinking_entry_index() {
+        if let Some(idx) = self.core.ephemeral.streaming_thinking_entry_index {
             self.finish_thinking_entry(idx);
         }
     }
@@ -1381,15 +1342,15 @@ impl ChatSessionState {
     /// runs before the phase actor's settle drops the `StreamingPhase`.
     pub fn override_live_entry_models(&mut self, model: Option<&str>) {
         let indices = {
-            let machine = &self.core.ephemeral.machine;
+            let eph = &self.core.ephemeral;
             let mut all = Vec::new();
-            if let Some(idx) = machine.streaming_entry_index() {
+            if let Some(idx) = eph.streaming_entry_index {
                 all.push(idx);
             }
-            if let Some(idx) = machine.streaming_thinking_entry_index() {
+            if let Some(idx) = eph.streaming_thinking_entry_index {
                 all.push(idx);
             }
-            all.extend(machine.active_tool_call_indices().values().copied());
+            all.extend(eph.streaming_tool_call_indices.values().copied());
             all
         };
         for idx in indices {
@@ -1417,27 +1378,6 @@ impl ChatSessionState {
         }
     }
 
-    /// Rewind a stalled generation so the retried dispatch can re-enter
-    /// `Streaming`.
-    ///
-    /// Called by the stall-retry path. The machine drops `StreamingPhase` —
-    /// and with it every streaming index — by construction, so the retried
-    /// stream starts from a clean slate. Warn-and-continue, like
-    /// [`Self::begin_sending`]: a rewind from the wrong phase is a lost race
-    /// with something that already resolved the turn, not a fault to abort on.
-    ///
-    /// Must run *after* [`Self::reset_streaming_entries_for_retry`], which
-    /// reads the streaming indices this transition discards.
-    pub fn rewind_for_retry(&mut self) {
-        if let Err(e) = self.core.ephemeral.machine.on_retry_rewind() {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.machine.kind(),
-                err = %e,
-                "rewind_for_retry: machine rejected transition - ignoring"
-            );
-        }
-    }
-
     /// The tool calls whose arguments are still streaming, as `(tool call id,
     /// tool name, arguments accumulated so far)`.
     ///
@@ -1456,8 +1396,7 @@ impl ChatSessionState {
         let history = &self.core.history_work.history;
         self.core
             .ephemeral
-            .machine
-            .active_tool_call_indices()
+            .streaming_tool_call_indices
             .values()
             .filter_map(|&index| history.get(index))
             .filter_map(|entry| match &entry.kind {
@@ -1594,7 +1533,7 @@ impl ChatSessionState {
         if !excluded.is_empty() {
             self.update_view(|v| v.shown_ignored_blocks.extend(excluded.iter().cloned()));
         }
-        self.core.ephemeral.machine.clear_streaming_indices();
+        self.core.ephemeral.clear_streaming_indices();
         excluded
     }
 
@@ -1661,25 +1600,23 @@ impl ChatSessionState {
     /// Every history entry index currently tracked by the streaming phase.
     fn collect_streaming_history_indices(&self) -> Vec<usize> {
         let mut indices = Vec::new();
-        if let Some(i) = self.core.ephemeral.machine.streaming_entry_index() {
+        if let Some(i) = self.core.ephemeral.streaming_entry_index {
             indices.push(i);
         }
-        if let Some(i) = self.core.ephemeral.machine.streaming_thinking_entry_index() {
+        if let Some(i) = self.core.ephemeral.streaming_thinking_entry_index {
             indices.push(i);
         }
         indices.extend(
             self.core
                 .ephemeral
-                .machine
-                .active_tool_call_indices()
+                .streaming_tool_call_indices
                 .values()
                 .copied(),
         );
         indices.extend(
             self.core
                 .ephemeral
-                .machine
-                .active_tool_result_indices()
+                .streaming_tool_result_indices
                 .values()
                 .copied(),
         );
@@ -1708,8 +1645,12 @@ impl ChatSessionState {
     }
 
     /// Returns the current session lifecycle phase.
-    pub fn phase(&self) -> PhaseKind {
-        self.core.ephemeral.machine.kind()
+    ///
+    /// A display projection: written by the turn ledger's admission and
+    /// settlement paths. Admission never reads it — the ledger decides.
+    #[must_use]
+    pub fn phase(&self) -> PhaseView {
+        self.core.ephemeral.phase
     }
 
     /// Create a placeholder `ToolCall` entry and record its history index.
@@ -1734,7 +1675,7 @@ impl ChatSessionState {
         // succeed must not leave an orphaned entry behind: it would render as a
         // bare tool name for the rest of the stream, and every later delta
         // addressed to it would be refused.
-        if matches!(self.core.ephemeral.machine.kind(), PhaseKind::Idle) {
+        if self.core.ephemeral.phase == PhaseView::Idle {
             tracing::warn!(
                 index,
                 "begin_tool_call called with no turn in flight - ignoring"
@@ -1746,13 +1687,12 @@ impl ChatSessionState {
         entry.timing.set_first_token();
         stamp_entry_with_generation_model(&mut entry, self.stream_request_model().as_deref());
         let history_index = self.push_entry(entry);
-        // The tracking map is machine-level and always present, so a
-        // registration made here survives every later phase transition — a
-        // prose token arriving mid-arguments no longer discards it.
+        // The tracking map is turn-scoped and always present, so a
+        // registration made here survives every later phase swap — a prose
+        // token arriving mid-arguments no longer discards it.
         self.core
             .ephemeral
-            .machine
-            .active_tool_call_indices_mut()
+            .streaming_tool_call_indices
             .insert(index, history_index);
     }
 
@@ -1776,8 +1716,7 @@ impl ChatSessionState {
         let history_index = self
             .core
             .ephemeral
-            .machine
-            .active_tool_call_indices()
+            .streaming_tool_call_indices
             .get(&index)
             .copied()
             .ok_or(StreamingError::NoToolCallIndex { index })?;
@@ -1849,19 +1788,11 @@ impl ChatSessionState {
         name: &str,
         dispatched_at: jiff::Timestamp,
     ) {
-        // Early return if neither busy phase is live — don't push orphaned
-        // entries. Checked before the push so a refused result leaves no
-        // half-written entry behind. The tracking map itself is always
-        // present, so the guard tests the phase rather than the map.
-        if matches!(self.core.ephemeral.machine.kind(), PhaseKind::Idle) {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.machine.kind(),
-                tool_call_id = %tool_call_id,
-                "begin_tool_result called while the session is not busy - ignoring"
-            );
-            return;
-        }
-
+        // No phase guard here: admission is the turn ledger's decision, and
+        // this method is only reached through an admitted path. A phase
+        // snapshot here would re-create the race the ledger exists to
+        // remove (a result created in `Streaming` was once dropped by a
+        // `Sending`-only finalizer — bug #21).
         let mut entry =
             ChatEntry::tool_result(tool_call_id.clone(), name, "", ToolResultStatus::Pending);
         entry.timing = EntryTiming::streamed(dispatched_at);
@@ -1871,8 +1802,7 @@ impl ChatSessionState {
         // Re-acquire the tracking map after push_entry releases &mut self.
         self.core
             .ephemeral
-            .machine
-            .active_tool_result_indices_mut()
+            .streaming_tool_result_indices
             .insert(tool_call_id.clone(), history_index);
     }
 
@@ -1892,8 +1822,7 @@ impl ChatSessionState {
         let Some(&history_index) = self
             .core
             .ephemeral
-            .machine
-            .active_tool_result_indices()
+            .streaming_tool_result_indices
             .get(tool_call_id)
         else {
             return;
@@ -1924,6 +1853,66 @@ impl ChatSessionState {
     /// Accepts optional truncation metadata and full content from the tool
     /// execution result. When truncation is present, stores both the truncated
     /// content and the original untruncated output.
+    ///
+    /// Finalizes an existing ToolResult entry only while it is still
+    /// `Pending`, returning whether one was found and resolved.
+    ///
+    /// The synthesized-cancellation path: a cancel's completion must resolve
+    /// a call that never finished but must never overwrite a real result
+    /// that landed first — real output wins over the drain's bookkeeping.
+    fn finalize_pending_tool_result(
+        &mut self,
+        tool_call_id: &ToolCallId,
+        content: &str,
+        status: ToolResultStatus,
+    ) -> bool {
+        // Untracked pending entry: scan history for the last pending result
+        // for this call.
+        let index = self
+            .core
+            .ephemeral
+            .streaming_tool_result_indices
+            .remove(tool_call_id)
+            .or_else(|| {
+                self.history().iter().rposition(|entry| {
+                    matches!(
+                        &entry.kind,
+                        ChatEntryKind::ToolResult { id, status, .. }
+                            if id == tool_call_id && *status == ToolResultStatus::Pending
+                    )
+                })
+            });
+        let Some(index) = index else {
+            return false;
+        };
+        self.edit_history()
+            .with_entry_at_mut(index, |entry| {
+                if let ChatEntryKind::ToolResult {
+                    content: entry_content,
+                    status: entry_status,
+                    is_alert,
+                    ..
+                } = &mut entry.kind
+                {
+                    // Pending only: a real completion that landed between the
+                    // snapshot and this write already resolved the entry, and
+                    // the synthesis must not clobber it.
+                    if *entry_status == ToolResultStatus::Pending {
+                        content.clone_into(entry_content);
+                        *entry_status = status;
+                        *is_alert = false;
+                        entry.timing.finish();
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            })
+            .unwrap_or(false)
+    }
+
     /// Finalizes an existing pending ToolResult entry (whichever busy phase
     /// tracks it, then a history scan), returning whether one was found.
     ///
@@ -1941,8 +1930,7 @@ impl ChatSessionState {
         let tracked_index = self
             .core
             .ephemeral
-            .machine
-            .active_tool_result_indices_mut()
+            .streaming_tool_result_indices
             .remove(tool_call_id);
 
         let apply = |entry: &mut ChatEntry| {
@@ -2006,11 +1994,18 @@ impl ChatSessionState {
             truncation,
             pin_position,
             Vec::new(),
+            None,
         );
     }
 
     /// [`Self::finalize_tool_result`] for results that produced non-text
     /// attachments (e.g. an image returned by `read_image`).
+    ///
+    /// `synthesized` is the cancel drain's mark: a synthesized completion
+    /// finalizes only an entry that is still `Pending` — a real result that
+    /// also landed already finalized it, and the synthesis must not overwrite
+    /// real output — and never pushes a new entry. `None` means an ordinary
+    /// completion, which keeps the historical push-on-miss behavior.
     #[expect(
         clippy::too_many_arguments,
         reason = "mirrors finalize_tool_result; struct-builder would ripple to all tool actors"
@@ -2025,6 +2020,7 @@ impl ChatSessionState {
         truncation: Option<jinn_core_types::tool_types::TruncationMeta>,
         pin_position: Option<PinPosition>,
         attachments: Vec<jinn_core_types::attachment::Attachment>,
+        synthesized: Option<bool>,
     ) {
         let status = if success {
             ToolResultStatus::Success
@@ -2033,17 +2029,24 @@ impl ChatSessionState {
         };
         let pin_position_result = pin_position;
 
-        let finalized = self.finalize_existing_tool_result(
-            tool_call_id,
-            content,
-            status,
-            full_content.clone(),
-            truncation.clone(),
-            pin_position,
-            attachments.clone(),
-        );
+        let finalized = if synthesized == Some(true) {
+            // A synthesized cancellation resolves a call whose entry is still
+            // pending; a completed one already carries the real result and is
+            // left alone.
+            self.finalize_pending_tool_result(tool_call_id, content, ToolResultStatus::Failure)
+        } else {
+            self.finalize_existing_tool_result(
+                tool_call_id,
+                content,
+                status,
+                full_content.clone(),
+                truncation.clone(),
+                pin_position,
+                attachments.clone(),
+            )
+        };
 
-        if !finalized {
+        if !finalized && synthesized != Some(true) {
             // No existing entry found - push a new one.
             let mut entry = if let Some(meta) = truncation {
                 let full = full_content.unwrap_or_default();
@@ -2315,17 +2318,13 @@ impl ChatSessionState {
         &self.core.integrations.profile.model
     }
 
-    /// Mark the session as having dispatched a message to the LLM.
+    /// Mark the session as preparing its next request (`Working`).
     ///
-    /// Delegates to [`PhaseTransitions::on_dispatch_message`].
+    /// The display projection of the tool-use edge: the tool loop has the
+    /// stream retired and the calls executing, and the continuation dispatch
+    /// re-enters `Streaming` through the ledger's mint.
     pub fn begin_sending(&mut self) {
-        if let Err(e) = self.core.ephemeral.machine.on_dispatch_message() {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.machine.kind(),
-                err = %e,
-                "begin_sending: machine rejected transition - ignoring"
-            );
-        }
+        self.core.ephemeral.phase = PhaseView::Working;
         self.core.identity.last_history_activity_at = Timestamp::now();
     }
 
@@ -3414,10 +3413,7 @@ impl ChatSessionState {
         else {
             return false;
         };
-        self.core
-            .ephemeral
-            .machine
-            .is_tool_call_at_history_index(idx)
+        self.core.ephemeral.is_tool_call_at_history_index(idx)
     }
 
     /// The ids of every `ToolCall` entry currently streaming arguments from the LLM.
@@ -3430,8 +3426,7 @@ impl ChatSessionState {
         let history: &[ChatEntry] = &self.core.history_work.history;
         self.core
             .ephemeral
-            .machine
-            .active_tool_call_indices()
+            .streaming_tool_call_indices
             .values()
             .filter_map(|&history_index| history.get(history_index))
             .map(|entry| entry.id.clone())
@@ -3805,23 +3800,20 @@ impl ChatSessionState {
 
     /// Disable the tool loop for this session's current turn.
     ///
-    /// Delegates to [`SessionPhaseMachine::set_tool_loop_disabled`].
     pub fn set_tool_loop_disabled(&mut self) {
-        self.core.ephemeral.machine.set_tool_loop_disabled();
+        self.core.ephemeral.set_tool_loop_disabled();
     }
 
     /// Take the tool-loop-disabled flag, clearing it.
     ///
-    /// Delegates to [`SessionPhaseMachine::take_tool_loop_disabled`].
     pub fn take_tool_loop_disabled(&mut self) -> bool {
-        self.core.ephemeral.machine.take_tool_loop_disabled()
+        self.core.ephemeral.take_tool_loop_disabled()
     }
 
     /// Check whether the tool loop is disabled, without clearing.
     ///
-    /// Delegates to [`SessionPhaseMachine::is_tool_loop_disabled`].
     pub fn is_tool_loop_disabled(&self) -> bool {
-        self.core.ephemeral.machine.is_tool_loop_disabled()
+        self.core.ephemeral.is_tool_loop_disabled()
     }
 
     /// Resolve a [`ChatEntryId`] to its current index in history.
@@ -3950,24 +3942,6 @@ impl ChatSessionState {
     #[must_use]
     pub fn has_in_flight_stream(&self) -> bool {
         self.core.ephemeral.stream_dispatched_at.is_some()
-    }
-
-    /// Buffer tool results that arrived before their stream completion.
-    pub fn buffer_tool_results(&mut self, results: Vec<jinn_core_types::tool_types::ToolResult>) {
-        self.core.ephemeral.pending_tool_batch = Some(results);
-    }
-
-    /// Take buffered tool results when a tool-use stream completes.
-    pub fn take_buffered_tool_results(
-        &mut self,
-    ) -> Option<Vec<jinn_core_types::tool_types::ToolResult>> {
-        self.core.ephemeral.pending_tool_batch.take()
-    }
-
-    /// Return whether tool results are waiting for their stream completion.
-    #[must_use]
-    pub fn has_buffered_tool_results(&self) -> bool {
-        self.core.ephemeral.pending_tool_batch.is_some()
     }
 
     /// Return the number of deferred history-mutation batches.

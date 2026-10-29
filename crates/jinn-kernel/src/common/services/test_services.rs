@@ -320,6 +320,7 @@ impl TestServices {
                 trouper::system::SystemConfig::production(),
             ),
             project_picker: None,
+            turn_ledger: crate::common::turn_ledger::TurnLedger::default(),
         }
     }
 }

@@ -162,8 +162,8 @@ pub fn handle_library_activate(state: &mut AppState) -> jinn_kernel::protocol::I
 /// is not in memory, and re-archiving it would be a no-op anyway, so the
 /// handler refuses when the cursor names a session that is not live.
 pub fn handle_library_archive(state: &mut AppState) -> jinn_kernel::protocol::IntentResult {
-    use jinn_session_msg::PhaseKind;
     use jinn_session_store_msg::ArchiveSession;
+    use jinn_slices::PhaseView;
 
     if state.frontend.sidebar_section() != Some(jinn_sidebar_msg::SidebarSectionId::Library) {
         return jinn_kernel::protocol::IntentResult::empty();
@@ -175,7 +175,7 @@ pub fn handle_library_archive(state: &mut AppState) -> jinn_kernel::protocol::In
         // Not in memory: already archived. Nothing to do.
         return jinn_kernel::protocol::IntentResult::empty();
     };
-    if !matches!(session.phase(), PhaseKind::Idle) {
+    if !matches!(session.phase(), PhaseView::Idle) {
         return jinn_kernel::protocol::IntentResult::empty();
     }
     crate::sections::sessions::state::mark_in_flight(state, std::slice::from_ref(&target_id));
@@ -302,10 +302,10 @@ struct MemberStatus {
 impl MemberStatus {
     /// Reads the live facts for one member from app state.
     fn of(state: &AppState, id: &jinn_core_types::SessionId, summary_is_bot: bool) -> Self {
-        use jinn_session_msg::PhaseKind;
+        use jinn_slices::PhaseView;
         match state.session.get(id) {
             Some(session) => Self {
-                is_idle: matches!(session.phase(), PhaseKind::Idle),
+                is_idle: matches!(session.phase(), PhaseView::Idle),
                 is_in_flight: crate::sections::sessions::state::is_in_flight(&state.frontend, id),
                 last_entry_is_error: session.history().last().is_some_and(|entry| {
                     matches!(&entry.kind, jinn_core_types::ChatEntryKind::Error(..))

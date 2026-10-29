@@ -36,9 +36,10 @@ impl SessionStoreActor {
         let busy = {
             let state = self.state.read();
             members.iter().any(|id| {
-                state.session.get(id).is_some_and(|session| {
-                    !matches!(session.phase(), jinn_session_msg::PhaseKind::Idle)
-                })
+                state
+                    .session
+                    .get(id)
+                    .is_some_and(|session| !matches!(session.phase(), jinn_slices::PhaseView::Idle))
             })
         };
         if busy {

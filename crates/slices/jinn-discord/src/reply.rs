@@ -1,6 +1,6 @@
 //! Extract the final reply from a session's history for Discord delivery.
 //!
-//! When a turn ends (`PhaseKind::Idle`), the gateway scans the history backward
+//! When a turn ends (`PhaseView::Idle`), the gateway scans the history backward
 //! to find the last meaningful entry: an `Assistant` message (the answer) or an
 //! `Error` (a failed turn). User/System/Tool entries are skipped so the Discord
 //! user only sees the model's final response, never the intermediate scratch.

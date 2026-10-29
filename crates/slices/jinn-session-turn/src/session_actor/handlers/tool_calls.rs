@@ -10,11 +10,10 @@ use jinn_core_types::PinPosition;
 use jinn_core_types::model_selection::ModelSelection;
 use jinn_inference_msg::SendToLlmProvider;
 use jinn_kernel::common::actor_deps::BusPublish;
-use jinn_session_msg::PhaseKind;
 use jinn_token_count_msg::TokenRecord;
 use jinn_tools_msg::{
-    ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
-    ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted,
+    ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolExecutionOutput,
+    ToolExecutionStarted, ToolUseStarted,
 };
 
 use super::super::SessionPersistenceActor;
@@ -61,41 +60,62 @@ impl SessionPersistenceActor {
         });
     }
     /// Pushes a tool result entry into the session history.
+    ///
+    /// Admission is the ledger's: a completion is admitted when its turn
+    /// names the live turn and the turn is not draining a cancel. No phase
+    /// snapshot is consulted — `Sending`, `Streaming`, whichever phase the
+    /// history happens to sit in, the check is identity, not timing. This
+    /// is the bug-21 fix: a result landing while the provider stream is
+    /// still open finalizes in place instead of being dropped.
     pub(in crate::session_actor) async fn on_tool_execution_completed(
         &self,
         event: &ToolExecutionCompleted,
     ) {
-        {
-            let should_continue = self.state.with_session(|view| -> bool {
-                let session = view.session.map().get_or_create(&event.session_id);
-                // Drop stale results that arrive after a cancel. Legitimate tool
-                // execution only ever runs in `Sending`; a result landing in any
-                // other phase (e.g. `Idle` after cancel) is a straggler whose
-                // background task has not yet been aborted.
-                if !matches!(session.phase(), PhaseKind::Sending) {
-                    tracing::debug!(
-                        current_phase = ?session.phase(),
-                        phase = ?session.phase(),
-                        "dropping stale ToolExecutionCompleted: session not in Sending"
-                    );
-                    return false;
-                }
-                session.finalize_tool_result_with_attachments(
-                    &event.result.tool_call_id,
-                    &event.result.name,
-                    &event.result.content,
-                    event.result.success,
-                    event.result.full_content.clone(),
-                    event.result.truncation.clone(),
-                    event.result.pin_position.map(PinPosition::from),
-                    event.result.attachments.clone(),
-                );
-                true
-            });
-            if !should_continue {
-                return;
-            }
+        // A legacy-turn event predates per-turn identity. It is admitted on
+        // live-turn existence alone — the transitional bridge for paths the
+        // mint has not reached yet.
+        let admitted = if event.turn == jinn_core_types::turn_identity::TurnToken::legacy() {
+            self.services.turn_ledger.live(&event.session_id).is_some()
+        } else {
+            self.services
+                .turn_ledger
+                .call(
+                    &event.session_id,
+                    &event.turn,
+                    jinn_kernel::common::turn_ledger::Req::TurnScoped,
+                    || (),
+                )
+                .is_ok()
         };
+        if !admitted {
+            tracing::debug!(
+                session_id = ?event.session_id,
+                turn = ?event.turn,
+                tool_call_id = %event.result.tool_call_id,
+                "dropping ToolExecutionCompleted: the turn ledger refused it"
+            );
+            return;
+        }
+
+        self.state.with_session(|view| {
+            let session = view.session.map().get_or_create(&event.session_id);
+            // A synthesized completion is the cancel drain's bookkeeping: it
+            // resolves a call that never finished but must never overwrite a
+            // real result that landed first, and it never pushes a detached
+            // entry. `None` keeps the ordinary completion's behavior.
+            let synthesized = event.synthesized.then_some(true);
+            session.finalize_tool_result_with_attachments(
+                &event.result.tool_call_id,
+                &event.result.name,
+                &event.result.content,
+                event.result.success,
+                event.result.full_content.clone(),
+                event.result.truncation.clone(),
+                event.result.pin_position.map(PinPosition::from),
+                event.result.attachments.clone(),
+                synthesized,
+            );
+        });
 
         super::super::helpers::emit_history_appended(self.bus(), &event.session_id).await;
         self.save_active_session(&event.session_id).await;
@@ -172,20 +192,19 @@ impl SessionPersistenceActor {
     /// downstream by the inference actor's tombstone.
     async fn assemble_and_send_continuation(&self, session_id: &jinn_core_types::SessionId) {
         let stamp = jiff::Timestamp::now();
-        let decision = crate::phase_actor::admit_stream(
-            &self.services,
+        // The continuation joins the live turn through the ledger, minting
+        // its stream id. A turn the cancel drained (or that already
+        // settled) refuses the join — nothing is sent for a dead turn.
+        let Some(grant) = self.services.turn_ledger.mint(
             session_id,
-            jinn_session_msg::phase_command::DispatchKind::ToolContinuation,
-            stamp,
-        )
-        .await;
-        if !decision.admitted {
+            jinn_kernel::common::turn_ledger::MintKind::ToolContinuation,
+        ) else {
             tracing::info!(
                 session_id = %session_id,
-                "tool continuation refused: its generation was cancelled"
+                "tool continuation refused: no live turn behind it"
             );
             return;
-        }
+        };
 
         let assembled = {
             let inputs = {
@@ -274,76 +293,49 @@ impl SessionPersistenceActor {
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
             dispatched_at: stamp,
+            turn: grant.turn,
+            stream: grant.stream,
         })
         .await;
     }
 
-    /// All tools in a batch have finished — route the continuation through
-    /// context assembly so token counting and prompt strategy apply.
+    /// Every open call in the turn has closed — the turn's work set is
+    /// empty. What happens next is the completion's recorded intent: a
+    /// tool-use stream retirement recorded `Continue` (dispatch the
+    /// continuation), a turn with no more streams coming recorded `End`.
     ///
-    /// By this point, the session history already contains `ToolCall`,
-    /// `ToolResult`, and `Assistant` entries from earlier event handlers,
-    /// and the session is already in sending state (set by `on_stream_completed`
-    /// for the `ToolUse` reason). We just need to assemble the prompt via
-    /// the full session history.
-    pub(in crate::session_actor) async fn on_tool_batch_completed(
+    /// There is no batch message and no buffering: order independence is
+    /// the work set's, not the bus's. Called by the stream-completion fold
+    /// and the tool-completion path when `close_call` reports a settlement.
+    pub(in crate::session_actor) async fn on_turn_work_settled(
         &self,
-        event: &ToolBatchCompleted,
+        session_id: &jinn_core_types::SessionId,
+        next: jinn_kernel::common::turn_ledger::Next,
     ) {
         tracing::info!(
-            session_id = ?event.session_id,
-            result_count = event.results.len(),
-            "on_tool_batch_completed"
+            session_id = ?session_id,
+            next = ?next,
+            "turn work settled"
         );
-
-        // Buffer-or-process: a legitimate `ToolBatchCompleted` arrives when the
-        // session is `Sending` (tools run between stream turns). If it arrives
-        // while still `Streaming`, the matching `StreamCompleted(ToolUse)` is
-        // in flight on the bus and hasn't transitioned the phase yet — buffer
-        // the results and let `on_stream_completed` drain them once the phase
-        // advances. Any other phase (e.g. `Idle` after cancel) is a stale
-        // straggler that must not restart the loop. Must precede the
-        // `tool_loop_disabled` branch.
-        {
-            let should_continue = self.state.with_session(|view| -> bool {
-                let session = view.session.map().get_or_create(&event.session_id);
-                match session.phase() {
-                    PhaseKind::Sending => { /* normal path — proceed below */ }
-                    PhaseKind::Streaming => {
-                        tracing::info!(
-                            session_id = ?event.session_id,
-                            result_count = event.results.len(),
-                            "buffering early ToolBatchCompleted: StreamCompleted(ToolUse) still in flight"
-                        );
-                        session.buffer_tool_results(event.results.clone());
-                        return false;
-                    }
-                    other => {
-                        tracing::warn!(
-                            session_id = ?event.session_id,
-                            phase = ?other,
-                            "dropping stale ToolBatchCompleted: session not in Sending"
-                        );
-                        return false;
-                    }
-                }
-                true
-            });
-            if !should_continue {
-                return;
+        match next {
+            jinn_kernel::common::turn_ledger::Next::Continue => {
+                self.continue_tool_loop(session_id).await;
             }
+            // End and Cancel settle through the stream-completion path,
+            // which owns the turn outcome and the cancel sweep. Nothing to
+            // dispatch here.
+            jinn_kernel::common::turn_ledger::Next::End
+            | jinn_kernel::common::turn_ledger::Next::Cancel => {}
         }
-
-        self.continue_tool_loop(&event.session_id).await;
     }
 
     /// Continues the tool loop after a batch completes: applies pending
     /// mutations, checks `tool_loop_disabled`, and dispatches the next
     /// `SendToLlmProvider` (or finishes sending if the loop is disabled).
     ///
-    /// Called from both `on_tool_batch_completed` (normal path, phase already
-    /// `Sending`) and `on_stream_completed` (draining a buffered batch that
-    /// raced ahead of `StreamCompleted(ToolUse)`).
+    /// Called from the work-settlement sites: the session actor's completion
+    /// handler when its close emptied the work set, and the stream-completion
+    /// fold when the retirement did.
     pub(in crate::session_actor) async fn continue_tool_loop(
         &self,
         session_id: &jinn_core_types::SessionId,
@@ -361,15 +353,17 @@ impl SessionPersistenceActor {
         });
 
         if tool_loop_disabled {
-            // The tool loop stops here: the turn ends through the phase
-            // actor (`Sending → Idle`), which publishes the transition.
-            let decision = crate::phase_actor::end_sending(&self.services, session_id).await;
-            if !decision.admitted {
-                tracing::warn!(
-                    session_id = %session_id,
-                    "tool-loop stop refused: the turn had already ended"
-                );
-            }
+            // The tool loop stops here: retire the live stream and end the
+            // turn. The ledger settles the turn (work set is empty by
+            // construction on this path); the machine edge below applies
+            // the session's `Idle` view.
+            let _ = self.services.turn_ledger.finish_streaming(session_id);
+            self.state.with_session(|view| {
+                view.session
+                    .map()
+                    .get_or_create(session_id)
+                    .settle_to_idle();
+            });
             return;
         }
 
@@ -393,47 +387,41 @@ mod tests {
     use jinn_core_types::tool_types::{ToolCall, ToolResult};
     use jinn_inference_msg::{StreamCompleted, StreamCompletedReason};
     use jinn_kernel::protocol::{ChangeSource, ChatEntry, ChatEntryKind};
-    use jinn_session_msg::PhaseKind;
+    use jinn_slices::PhaseView;
     use jinn_token_count_msg::TokenRecord;
     use jinn_tools_msg::{
-        ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionOutput,
+        ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolExecutionOutput,
         ToolExecutionStarted, ToolOutputKind, ToolUseStarted,
     };
 
     use super::SessionPersistenceActor;
 
     /// The actor half of a bus-harness test, driven through the bus.
+    /// Holds the one `Services` the actor was spawned with: `Services`
+    /// mints a fresh ledger per construction, so a second grab would mint
+    /// into a ledger nobody reads.
     struct BusActor {
         harness: jinn_testutil::bus_harness::TestHarness,
+        services: jinn_kernel::common::services::Services,
     }
 
     impl BusActor {
         /// Spawns the session actor onto the bus, wired to the harness.
-        async fn spawn(
+        fn spawn(
             harness: jinn_testutil::bus_harness::TestHarness,
-            state: jinn_kernel::common::state::State,
+            state: &jinn_kernel::common::state::State,
+            services: jinn_kernel::common::services::Services,
         ) -> Self {
             use crate::session_actor::SessionPersistenceActorDeps;
-            use jinn_kernel::common::bus::HarnessServices;
             use jinn_llm_support::token_estimator::TiktokenCounter;
 
-            let deps = {
-                let deps = harness.actor_deps().await;
-                ensure_context_assembly(&deps.services.trouper_system);
-                // The phase actor owns the phase; admission asks fail over
-                // to refused without it, and every mid-turn fixture needs a
-                // real mint.
-                let _ = crate::phase_actor::ensure_spawned(
-                    harness.system(),
-                    state.clone(),
-                    harness.bus(),
-                );
-                deps
-            };
+            ensure_context_assembly(&services.trouper_system);
             SessionPersistenceActor::spawn(
                 harness.system(),
                 SessionPersistenceActorDeps {
-                    deps,
+                    deps: jinn_kernel::common::actor_deps::ActorDeps {
+                        services: services.clone(),
+                    },
                     state: state.clone(),
                     counter: TiktokenCounter::o200k_base(),
                     token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
@@ -441,7 +429,7 @@ mod tests {
                         jinn_llm_support::image_convert::ImageConverterService::unavailable(),
                 },
             );
-            Self { harness }
+            Self { harness, services }
         }
 
         /// Publishes a message onto the bus.
@@ -468,9 +456,12 @@ mod tests {
         Vec<jinn_inference_msg::SendToLlmProvider>,
         jinn_kernel::common::state::State,
         jinn_core_types::SessionId,
+        jinn_core_types::turn_identity::TurnToken,
+        jinn_core_types::turn_identity::StreamId,
     ) {
         use jinn_inference_msg::SendToLlmProvider;
         use jinn_kernel::common::app_state::AppState;
+        use jinn_kernel::common::bus::HarnessServices;
         use jinn_kernel::common::state::State;
         use jinn_testutil::bus_harness::{TestHarness, await_recorded};
         use std::time::Duration;
@@ -490,38 +481,51 @@ mod tests {
             session.begin_streaming();
         }
         let session_id = state.read().session.active_session_id().clone();
-        let actor = BusActor::spawn(harness, state.clone()).await;
-        // Mint the turn the way the dispatch path would: the phase actor
-        // stamps the session, so the ToolUse completion below resolves.
-        {
-            use jinn_kernel::common::bus::HarnessServices;
-            let services = actor.harness.services().await;
-            let minted = jinn_kernel::common::phase_command::apply_phase(
-                &services,
-                jinn_session_msg::PhaseCommand::BeginStream {
-                    session_id: session_id.clone(),
-                    kind: jinn_session_msg::phase_command::DispatchKind::FreshTurn,
-                    dispatched_at: jiff::Timestamp::now(),
-                },
-            )
-            .await
-            .expect("phase actor reachable");
-            assert!(minted.admitted, "fixture mint must be admitted");
-        }
+        let services = harness.services().await;
+        let actor = BusActor::spawn(harness, &state, services.clone());
+        // Mint the turn the way the dispatch path would: the ledger mints
+        // the turn and stream, so the completion and ToolUse below resolve.
+        let (turn, stream) = {
+            let services = services.clone();
+            let grant = services
+                .turn_ledger
+                .mint(
+                    &session_id,
+                    jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+                )
+                .expect("fixture mint must be admitted");
+            // The batch's call is registered, as the orchestrator would.
+            services
+                .turn_ledger
+                .register_and_dispatch(
+                    &session_id,
+                    &grant.turn,
+                    vec![jinn_core_types::ToolCallId::from("tc-1")],
+                    || (),
+                )
+                .expect("registration on a live turn");
+            (grant.turn, grant.stream)
+        };
+        // The completion lands BEFORE the stream retirement — the bug-21
+        // order the work set makes safe.
         actor
-            .publish(ToolBatchCompleted {
+            .publish(ToolExecutionCompleted {
                 session_id: session_id.clone(),
-                results: vec![tool_result("tc-1", "sample_tool", "boom", false)],
+                result: tool_result("tc-1", "sample_tool", "boom", false),
+                turn,
+                synthesized: false,
             })
             .await;
         actor
-            .publish(stream_completed(
-                &session_id,
-                StreamCompletedReason::ToolUse,
-            ))
+            .publish({
+                let mut event = stream_completed(&session_id, StreamCompletedReason::ToolUse);
+                event.turn = turn;
+                event.stream = stream;
+                event
+            })
             .await;
         let sent = await_recorded::<SendToLlmProvider>(&recorder, 1, Duration::from_secs(2)).await;
-        (actor, sent, state, session_id)
+        (actor, sent, state, session_id, turn, stream)
     }
 
     /// Polls the session's phase until it reaches `Idle` or the deadline passes.
@@ -535,7 +539,7 @@ mod tests {
         loop {
             {
                 let s = state.read();
-                if s.session.get_unchecked(session_id).phase() == PhaseKind::Idle {
+                if s.session.get_unchecked(session_id).phase() == PhaseView::Idle {
                     return;
                 }
             }
@@ -564,14 +568,19 @@ mod tests {
             cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            stream: jinn_core_types::turn_identity::StreamId::legacy(),
         }
     }
 
     /// Builds the terminal `StreamCompleted(ToolUse)` a provider emits after
-    /// requesting tool calls, stamped with the dispatch time of its turn.
+    /// requesting tool calls, stamped with the dispatch time of its turn and
+    /// the identity the dispatch rode in on.
     fn terminal_tool_use_event(
         session_id: &jinn_core_types::SessionId,
         dispatched_at: jiff::Timestamp,
+        turn: jinn_core_types::turn_identity::TurnToken,
+        stream: jinn_core_types::turn_identity::StreamId,
     ) -> StreamCompleted {
         StreamCompleted {
             session_id: session_id.clone(),
@@ -585,6 +594,8 @@ mod tests {
             thinking_content: None,
             model_used: None,
             dispatched_at,
+            turn,
+            stream,
         }
     }
 
@@ -602,64 +613,63 @@ mod tests {
         }
     }
 
-    /// Mints a live turn for the named session through the phase actor.
-    /// The admission ask is the only writer of the phase now, so every
-    /// "session mid-turn" fixture starts here.
-    async fn mint_turn(actor: &SessionPersistenceActor, session_id: &jinn_core_types::SessionId) {
-        use jinn_kernel::common::phase_command::apply_phase;
-        use jinn_session_msg::phase_command::{DispatchKind, PhaseCommand};
-        let minted = apply_phase(
-            &actor.services,
-            PhaseCommand::BeginStream {
-                session_id: session_id.clone(),
-                kind: DispatchKind::FreshTurn,
-                dispatched_at: jiff::Timestamp::now(),
-            },
-        )
-        .await
-        .expect("phase actor reachable");
-        assert!(
-            minted.admitted,
-            "a fresh turn's mint must be admitted: {minted:?}"
+    /// Mints a live turn for the named session through the turn ledger.
+    /// The ledger is the only admission, so every "session mid-turn"
+    /// fixture starts here.
+    fn mint_turn(actor: &SessionPersistenceActor, session_id: &jinn_core_types::SessionId) {
+        let minted = actor.services.turn_ledger.mint(
+            session_id,
+            jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
         );
+        assert!(minted.is_some(), "a fresh turn's mint must be admitted");
     }
 
-    /// Applies the tool-use edge for a live generation, leaving the session
-    /// in the mid-tool-loop `Sending` phase — the shape a
-    /// `StreamCompleted(ToolUse)` leaves.
-    async fn apply_tool_use_edge(
+    /// Applies the tool-use edge for a live turn, leaving the session in the
+    /// mid-tool-loop shape a `StreamCompleted(ToolUse)` leaves: the stream
+    /// retired with `Continue`, the session machine advanced to `Sending`.
+    fn apply_tool_use_edge(
         actor: &SessionPersistenceActor,
         session_id: &jinn_core_types::SessionId,
     ) {
-        use jinn_kernel::common::phase_command::apply_phase;
-        use jinn_session_msg::phase_command::PhaseCommand;
-        let ended = apply_phase(
-            &actor.services,
-            PhaseCommand::StreamEndedToolUse {
-                session_id: session_id.clone(),
-                dispatched_at: jiff::Timestamp::now(),
-            },
-        )
-        .await
-        .expect("phase actor reachable");
-        assert!(
-            ended.admitted,
-            "a live generation's tool-use edge must be admitted: {ended:?}"
+        let token = actor
+            .services
+            .turn_ledger
+            .live(session_id)
+            .expect("live turn")
+            .turn;
+        let ack = actor.services.turn_ledger.ack_stream_ended(
+            session_id,
+            &token,
+            &actor
+                .services
+                .turn_ledger
+                .live(session_id)
+                .expect("live turn")
+                .stream
+                .expect("live stream"),
+            jinn_kernel::common::turn_ledger::Next::Continue,
         );
+        assert!(
+            ack.is_ok(),
+            "a live turn's tool-use edge must be admitted: {ack:?}"
+        );
+        actor.state.with_session(|view| {
+            view.session.map().get_or_create(session_id).begin_sending();
+        });
     }
 
     /// Puts the active session into the mid-tool-loop sending phase,
     /// returning its id.
-    async fn begin_sending_session(actor: &SessionPersistenceActor) -> jinn_core_types::SessionId {
+    fn begin_sending_session(actor: &SessionPersistenceActor) -> jinn_core_types::SessionId {
         let session_id = actor.state.read().session.active_session_id().clone();
-        mint_turn(actor, &session_id).await;
-        apply_tool_use_edge(actor, &session_id).await;
+        mint_turn(actor, &session_id);
+        apply_tool_use_edge(actor, &session_id);
         session_id
     }
 
     /// Puts the active session into sending phase with a tool call and one
     /// streamed assistant entry around it, returning its id.
-    async fn begin_sending_session_with_tool_call(
+    fn begin_sending_session_with_tool_call(
         actor: &SessionPersistenceActor,
     ) -> jinn_core_types::SessionId {
         {
@@ -671,14 +681,33 @@ mod tests {
             session.push_entry(ChatEntry::assistant("here are the files"));
         }
         let session_id = actor.state.read().session.active_session_id().clone();
-        mint_turn(actor, &session_id).await;
-        apply_tool_use_edge(actor, &session_id).await;
+        mint_turn(actor, &session_id);
+        // The orchestrator registers every call in the dispatch's ledger
+        // call; the fixture registers tc-1 the same way so its completion
+        // closes a call that is actually open.
+        let token = actor
+            .services
+            .turn_ledger
+            .live(&session_id)
+            .expect("live turn")
+            .turn;
+        actor
+            .services
+            .turn_ledger
+            .register_and_dispatch(
+                &session_id,
+                &token,
+                vec![jinn_core_types::ToolCallId::from("tc-1")],
+                || (),
+            )
+            .expect("registration on a live turn");
+        apply_tool_use_edge(actor, &session_id);
         session_id
     }
 
     /// Puts the active session into sending phase holding a complete tool loop
     /// and a buffered steering fragment, returning its id.
-    async fn seed_sending_session_with_steering_fragment(
+    fn seed_sending_session_with_steering_fragment(
         actor: &SessionPersistenceActor,
     ) -> jinn_core_types::SessionId {
         {
@@ -704,15 +733,15 @@ mod tests {
                 .push_fragment("stay at the foo part");
         }
         let session_id = actor.state.read().session.active_session_id().clone();
-        mint_turn(actor, &session_id).await;
-        apply_tool_use_edge(actor, &session_id).await;
+        mint_turn(actor, &session_id);
+        apply_tool_use_edge(actor, &session_id);
         session_id
     }
 
     /// Puts the active session into sending phase with a streamed assistant
     /// entry targeted by a queued context-override mutation, returning the
     /// targeted entry id and the session id.
-    async fn seed_sending_session_with_pending_mutation(
+    fn seed_sending_session_with_pending_mutation(
         actor: &SessionPersistenceActor,
     ) -> (jinn_core_types::ChatEntryId, jinn_core_types::SessionId) {
         let entry_id = {
@@ -727,8 +756,8 @@ mod tests {
             entry_id
         };
         let session_id = actor.state.read().session.active_session_id().clone();
-        mint_turn(actor, &session_id).await;
-        apply_tool_use_edge(actor, &session_id).await;
+        mint_turn(actor, &session_id);
+        apply_tool_use_edge(actor, &session_id);
         {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -745,17 +774,34 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn on_tool_batch_completed_emits_send_to_llm_provider() {
-        // Given a session in sending phase holding a completed tool loop.
+    async fn on_turn_work_settled_emits_send_to_llm_provider() {
+        // Given a session mid-tool-loop holding a completed tool call entry.
         let (actor, audit) = test_actor_recording().await;
-        let session_id = begin_sending_session_with_tool_call(&actor).await;
+        let session_id = begin_sending_session_with_tool_call(&actor);
 
-        // When the tool batch completes.
-        let event = ToolBatchCompleted {
-            session_id,
-            results: vec![tool_result("tc-1", "bash", "file1.txt", true)],
-        };
-        actor.on_tool_batch_completed(&event).await;
+        // When the call's completion closes it and the work set empties.
+        let turn = actor
+            .services
+            .turn_ledger
+            .live(&session_id)
+            .expect("live")
+            .turn;
+        actor
+            .on_tool_execution_completed(&ToolExecutionCompleted {
+                session_id: session_id.clone(),
+                result: tool_result("tc-1", "bash", "file1.txt", true),
+                turn,
+                synthesized: false,
+            })
+            .await;
+        let settlement = actor
+            .services
+            .turn_ledger
+            .close_call(&session_id, &jinn_core_types::ToolCallId::from("tc-1"))
+            .expect("the call was open");
+        actor
+            .on_turn_work_settled(&session_id, settlement.next)
+            .await;
 
         // Then a SendToLlmProvider command is emitted.
         assert!(
@@ -771,6 +817,7 @@ mod tests {
         // Given a spawned session actor with a tool-call entry in its history.
         use jinn_inference_msg::SendToLlmProvider;
         use jinn_kernel::common::app_state::AppState;
+        use jinn_kernel::common::bus::HarnessServices;
         use jinn_kernel::common::state::State;
         use jinn_testutil::bus_harness::{TestHarness, await_recorded};
         use std::time::Duration;
@@ -788,48 +835,56 @@ mod tests {
                 session.push_entry(ChatEntry::assistant("here are the files"));
             }
             let session_id = state.read().session.active_session_id().clone();
-            let actor = BusActor::spawn(harness, state).await;
+            let services = harness.services().await;
+            let actor = BusActor::spawn(harness, &state, services.clone());
             (actor, session_id, recorder)
         };
-        // The continuation's admission needs a live generation: mint the turn
-        // and apply the tool-use edge, the shape a StreamCompleted(ToolUse)
-        // leaves before the next batch.
-        {
-            use jinn_kernel::common::bus::HarnessServices;
-            let services = actor.harness.services().await;
-            let mint = |kind| jinn_session_msg::PhaseCommand::BeginStream {
-                session_id: session_id.clone(),
-                kind,
-                dispatched_at: jiff::Timestamp::now(),
-            };
-            let minted = jinn_kernel::common::phase_command::apply_phase(
-                &services,
-                mint(jinn_session_msg::phase_command::DispatchKind::FreshTurn),
-            )
-            .await
-            .expect("phase actor reachable");
-            assert!(minted.admitted, "fixture mint must be admitted");
-            let ended = jinn_kernel::common::phase_command::apply_phase(
-                &services,
-                jinn_session_msg::PhaseCommand::StreamEndedToolUse {
-                    session_id: session_id.clone(),
-                    dispatched_at: jiff::Timestamp::now(),
-                },
-            )
-            .await
-            .expect("phase actor reachable");
-            assert!(ended.admitted, "fixture tool-use edge must be admitted");
-        }
-
-        // When ToolBatchCompleted is published to the bus.
-        let event = ToolBatchCompleted {
-            session_id: session_id.clone(),
-            results: vec![tool_result("tc-1", "bash", "file1.txt", true)],
+        // The continuation's admission needs a live turn: mint it and apply
+        // the tool-use edge, the shape a StreamCompleted(ToolUse) leaves
+        // before the next batch.
+        let turn = {
+            let services = actor.services.clone();
+            let grant = services
+                .turn_ledger
+                .mint(
+                    &session_id,
+                    jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+                )
+                .expect("fixture mint must be admitted");
+            services
+                .turn_ledger
+                .register_and_dispatch(
+                    &session_id,
+                    &grant.turn,
+                    vec![jinn_core_types::ToolCallId::from("tc-1")],
+                    || (),
+                )
+                .expect("registration on a live turn");
+            services
+                .turn_ledger
+                .ack_stream_ended(
+                    &session_id,
+                    &grant.turn,
+                    &grant.stream,
+                    jinn_kernel::common::turn_ledger::Next::Continue,
+                )
+                .expect("the tool-use edge retires the live stream");
+            grant.turn
         };
-        actor.publish(event).await;
+
+        // When the completion is published to the bus, closing the call.
+        actor
+            .publish(ToolExecutionCompleted {
+                session_id: session_id.clone(),
+                result: tool_result("tc-1", "bash", "file1.txt", true),
+                turn,
+                synthesized: false,
+            })
+            .await;
         let sent = await_recorded::<SendToLlmProvider>(&recorder, 1, Duration::from_secs(2)).await;
 
-        // Then the actor published SendToLlmProvider via the MsgHandler.
+        // Then the actor published SendToLlmProvider via the MsgHandler —
+        // the close emptied the work set and the settlement dispatched it.
         assert!(
             sent.iter().any(|m| m.session_id == session_id),
             "expected SendToLlmProvider to reach the bus via the MsgHandler"
@@ -844,19 +899,25 @@ mod tests {
         use jinn_testutil::bus_harness::await_recorded;
         use std::time::Duration;
 
-        let (actor, sent, _state, session_id) = spawn_buffered_batch_actor().await;
+        let (actor, sent, _state, session_id, _turn, _stream) = spawn_buffered_batch_actor().await;
         assert!(
             sent.iter().any(|m| m.session_id == session_id),
             "precondition: the tool loop dispatched its continuation"
         );
         let recorder = actor.harness.spawn_recorder::<SendToLlmProvider>().await;
 
-        // When StreamCompleted(Canceled) arrives afterwards.
+        // When StreamCompleted(Canceled) arrives afterwards, stamped with
+        // the identity live at cancel time — the continuation swapped the
+        // stream, so the fixture reads the ledger now, as production's
+        // terminate_turn does.
+        let live = actor.services.turn_ledger.live(&session_id).expect("live");
         actor
-            .publish(stream_completed(
-                &session_id,
-                StreamCompletedReason::Canceled,
-            ))
+            .publish({
+                let mut event = stream_completed(&session_id, StreamCompletedReason::Canceled);
+                event.turn = live.turn;
+                event.stream = live.stream.expect("in-flight stream");
+                event
+            })
             .await;
 
         // Then no FURTHER SendToLlmProvider is dispatched — the Canceled
@@ -873,16 +934,21 @@ mod tests {
     #[tokio::test]
     async fn canceled_after_tool_use_appends_single_cancelled_entry() {
         // Given a spawned session actor in the buffered-batch pre-cancel state.
-        let (actor, _recorder, state, session_id) = spawn_buffered_batch_actor().await;
+        let (actor, _recorder, state, session_id, _turn, _stream) =
+            spawn_buffered_batch_actor().await;
 
-        // When StreamCompleted(Canceled) arrives afterwards. The cancel is
-        // handled asynchronously on the actor mailbox, so the terminal phase
-        // is polled rather than read straight away.
+        // When StreamCompleted(Canceled) arrives afterwards — stamped with
+        // the identity live at cancel time (the continuation swapped the
+        // stream). The cancel is handled asynchronously on the actor mailbox,
+        // so the terminal phase is polled rather than read straight away.
+        let live = actor.services.turn_ledger.live(&session_id).expect("live");
         actor
-            .publish(stream_completed(
-                &session_id,
-                StreamCompletedReason::Canceled,
-            ))
+            .publish({
+                let mut event = stream_completed(&session_id, StreamCompletedReason::Canceled);
+                event.turn = live.turn;
+                event.stream = live.stream.expect("in-flight stream");
+                event
+            })
             .await;
         await_phase_idle(&state, &session_id).await;
 
@@ -922,32 +988,37 @@ mod tests {
             let state = State::new(AppState::default());
             let session_id = state.read().session.active_session_id().clone();
             let dispatched_at = jiff::Timestamp::now();
-            {
-                let mut s = state.write();
-                let session = s.active_session_mut();
-                session.buffer_tool_results(vec![tool_result("tc-1", "bash", "ok", true)]);
-            }
-            let actor = BusActor::spawn(harness, state).await;
+            let actor = {
+                use jinn_kernel::common::bus::HarnessServices;
+                let services = harness.services().await;
+                BusActor::spawn(harness, &state, services.clone())
+            };
             (actor, session_id, recorder, dispatched_at)
         };
-        // A live generation behind the buffered batch: the terminal
-        // ToolUse resolves against the mint's stamp.
-        {
-            use jinn_kernel::common::bus::HarnessServices;
-            let services = actor.harness.services().await;
-            let minted = jinn_kernel::common::phase_command::apply_phase(
-                &services,
-                jinn_session_msg::PhaseCommand::BeginStream {
-                    session_id: session_id.clone(),
-                    kind: jinn_session_msg::phase_command::DispatchKind::FreshTurn,
-                    dispatched_at,
-                },
-            )
-            .await
-            .expect("phase actor reachable");
-            assert!(minted.admitted, "fixture mint must be admitted");
-        }
-        let terminal = terminal_tool_use_event(&session_id, dispatched_at);
+        // A live turn with the call registered (as the orchestrator would at
+        // dispatch): the terminal ToolUse retires the stream and the
+        // settlement dispatches the continuation.
+        let (turn, stream) = {
+            let services = actor.services.clone();
+            let grant = services
+                .turn_ledger
+                .mint(
+                    &session_id,
+                    jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+                )
+                .expect("fixture mint must be admitted");
+            services
+                .turn_ledger
+                .register_and_dispatch(
+                    &session_id,
+                    &grant.turn,
+                    vec![jinn_core_types::ToolCallId::from("tc-1")],
+                    || (),
+                )
+                .expect("registration on a live turn");
+            (grant.turn, grant.stream)
+        };
+        let terminal = terminal_tool_use_event(&session_id, dispatched_at, turn, stream);
 
         // When a >64-token burst is published, immediately followed by the
         // terminal StreamCompleted(ToolUse).
@@ -963,8 +1034,19 @@ mod tests {
                 .await;
         }
         actor.publish(terminal).await;
+        // The call's result closes the work set; the settlement dispatches
+        // the continuation. (The old buffered batch drained on the terminal
+        // alone; order independence is now the work set's.)
+        actor
+            .publish(ToolExecutionCompleted {
+                session_id: session_id.clone(),
+                result: tool_result("tc-1", "bash", "ok", true),
+                turn,
+                synthesized: false,
+            })
+            .await;
 
-        // Then the terminal was delivered: the buffered batch drained and a
+        // Then the terminal was delivered: the call closed and a
         // continuation (SendToLlmProvider) was dispatched. A dropped terminal
         // would leave the session wedged in Streaming with no dispatch.
         let sent = await_recorded::<SendToLlmProvider>(&recorder, 1, Duration::from_secs(2)).await;
@@ -976,111 +1058,148 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn on_tool_batch_completed_transitions_session_to_sending() {
-        // Given a session in sending phase.
+    async fn on_turn_work_settled_transitions_session_to_streaming() {
+        // Given a session mid-tool-loop with no open calls.
         let (actor, _audit) = test_actor_recording().await;
-        let session_id = begin_sending_session(&actor).await;
+        let session_id = begin_sending_session(&actor);
 
-        // When an empty tool batch completes.
-        let event = ToolBatchCompleted {
-            session_id: session_id.clone(),
-            results: vec![],
-        };
-        actor.on_tool_batch_completed(&event).await;
+        // When the work settlement dispatches the continuation.
+        actor
+            .on_turn_work_settled(
+                &session_id,
+                jinn_kernel::common::turn_ledger::Next::Continue,
+            )
+            .await;
 
-        // Then the session is Streaming again, waiting for the response.
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        assert!(matches!(session.phase(), PhaseKind::Streaming));
+        // Then the session is Streaming again, waiting for the response —
+        // derived from the ledger: the continuation joined the live turn
+        // with a fresh in-flight stream.
+        assert!(matches!(
+            actor.services.turn_ledger.view(&session_id),
+            jinn_kernel::common::turn_ledger::PhaseView::Streaming
+        ));
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn tool_batch_completed_buffers_when_session_is_streaming() {
-        // Given a session in Streaming phase (StreamCompleted(ToolUse) not yet processed).
-        let (actor, audit) = test_actor_recording().await;
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.begin_streaming();
-            state.session.active_session_id().clone()
-        };
-
-        let event = ToolBatchCompleted {
-            session_id: session_id.clone(),
-            results: vec![tool_result("tc-1", "read", "file", true)],
-        };
-
-        // When the tool batch completes.
-        actor.on_tool_batch_completed(&event).await;
-
-        // Then no continuation is dispatched yet (buffered, not dropped).
-        assert!(
-            !audit.contains_name("SendToLlmProvider"),
-            "ToolBatchCompleted during Streaming must not dispatch a continuation"
-        );
-        // And the results are buffered pending the matching StreamCompleted(ToolUse).
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        assert!(
-            session.has_buffered_tool_results(),
-            "results should be buffered while still Streaming"
-        );
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn stream_completed_tool_use_drains_buffered_tool_batch() {
-        // Given a streaming session with a live generation and a buffered
-        // ToolBatchCompleted — the batch arrived while the stream was still
-        // running, and the buffer survives outside the machine.
+    async fn completion_before_tool_use_waits_for_the_stream_retirement() {
+        // Given a streaming session with a live turn whose call is open —
+        // the batch landed while the stream still ran (bug #21's order).
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
             let session_id = actor.state.read().session.active_session_id().clone();
-            mint_turn(&actor, &session_id).await;
+            mint_turn(&actor, &session_id);
             session_id
         };
-        {
-            let mut state = actor.state.write();
-            let session = state.session.get_mut(&session_id).expect("session exists");
-            session.buffer_tool_results(vec![ToolResult {
-                tool_call_id: "tc-1".into(),
-                name: "read".to_owned(),
-                content: "file".to_owned(),
-                success: true,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-                attachments: Vec::new(),
-            }]);
+        actor
+            .services
+            .turn_ledger
+            .register_and_dispatch(
+                &session_id,
+                &actor
+                    .services
+                    .turn_ledger
+                    .live(&session_id)
+                    .expect("live")
+                    .turn,
+                vec![jinn_core_types::ToolCallId::from("tc-1")],
+                || (),
+            )
+            .expect("registration on a live turn");
+
+        // When the completion closes the call while the stream is live.
+        let settled = actor
+            .services
+            .turn_ledger
+            .close_call(&session_id, &jinn_core_types::ToolCallId::from("tc-1"))
+            .is_some();
+
+        // Then nothing settles yet — the stream is still in flight.
+        assert!(!settled, "no settlement while the stream has not retired");
+        assert!(
+            !audit.contains_name("SendToLlmProvider"),
+            "an early completion must not dispatch a continuation"
+        );
+
+        // And when the stream then retires with Continue, the settlement
+        // dispatches the continuation (TM-5's other half).
+        let live = actor.services.turn_ledger.live(&session_id).expect("live");
+        let ack = actor.services.turn_ledger.ack_stream_ended(
+            &session_id,
+            &live.turn,
+            &live.stream.expect("live stream"),
+            jinn_kernel::common::turn_ledger::Next::Continue,
+        );
+        assert!(
+            matches!(ack, Ok(Some(_))),
+            "the retirement that empties the work set settles: {ack:?}"
+        );
+        if let Ok(Some(settlement)) = ack {
+            actor
+                .on_turn_work_settled(&session_id, settlement.next)
+                .await;
         }
-
-        // When StreamCompleted(ToolUse) arrives, transitioning Streaming → Sending.
-        let event = StreamCompleted {
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::ToolUse,
-            tool_calls: Some(vec![]),
-            assistant_content: None,
-            thinking_content: None,
-            model_used: None,
-            dispatched_at: jiff::Timestamp::now(),
-            cost: None,
-            provider_completion_tokens: None,
-            provider_prompt_tokens: None,
-            cached_tokens: None,
-        };
-        actor.on_stream_completed(&event).await;
-
-        // Then the buffered batch is drained and the continuation dispatched.
         assert!(
             audit.contains_name("SendToLlmProvider"),
-            "drained buffered ToolBatchCompleted should dispatch a continuation"
+            "the stream retirement that empties the work set dispatches the continuation"
         );
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn tool_use_before_completion_waits_for_the_call_close() {
+        // Given a streaming session with a live turn whose call is open —
+        // the stream retired before the completion landed (the reverse of
+        // the buffered-batch order).
+        let (actor, audit) = test_actor_recording().await;
+        let session_id = {
+            let session_id = actor.state.read().session.active_session_id().clone();
+            mint_turn(&actor, &session_id);
+            session_id
+        };
+        let live = actor.services.turn_ledger.live(&session_id).expect("live");
+        actor
+            .services
+            .turn_ledger
+            .register_and_dispatch(
+                &session_id,
+                &live.turn,
+                vec![jinn_core_types::ToolCallId::from("tc-1")],
+                || (),
+            )
+            .expect("registration on a live turn");
+
+        // When the stream retires with Continue while the call is still open.
+        let ack = actor.services.turn_ledger.ack_stream_ended(
+            &session_id,
+            &live.turn,
+            &live.stream.expect("live stream"),
+            jinn_kernel::common::turn_ledger::Next::Continue,
+        );
+
+        // Then nothing settles yet — the call is still open.
         assert!(
-            !session.has_buffered_tool_results(),
-            "buffer should be drained after StreamCompleted(ToolUse)"
+            matches!(ack, Ok(None)),
+            "no settlement while a call is open: {ack:?}"
+        );
+        assert!(
+            !audit.contains_name("SendToLlmProvider"),
+            "a stream retirement with open calls must not dispatch a continuation"
+        );
+
+        // And when the call then closes, the settlement dispatches.
+        if let Some(settlement) = actor
+            .services
+            .turn_ledger
+            .close_call(&session_id, &jinn_core_types::ToolCallId::from("tc-1"))
+        {
+            actor
+                .on_turn_work_settled(&session_id, settlement.next)
+                .await;
+        }
+        assert!(
+            audit.contains_name("SendToLlmProvider"),
+            "the close that empties the work set dispatches the continuation"
         );
     }
 
@@ -1122,6 +1241,8 @@ mod tests {
             cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            stream: jinn_core_types::turn_identity::StreamId::legacy(),
         };
         actor.on_stream_completed(&event).await;
 
@@ -1157,6 +1278,8 @@ mod tests {
 
         // When the tool execution completes.
         let event = jinn_tools_msg::ToolExecutionCompleted {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            synthesized: false,
             session_id,
             result: tool_result("tc-1", "bash", "file1.txt", true),
         };
@@ -1172,7 +1295,11 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn on_tool_execution_completed_dropped_when_not_sending() {
-        // Given a session driven to Idle via the cancel path.
+        // Given a session whose turn is draining a cancel: the ledger's
+        // TurnScoped admission refuses completions while `next` is Cancel
+        // (the synthesized cancellations go through the close path, not
+        // admission). The fixture uses the minted token — production no
+        // longer sends legacy ones on this path.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -1183,16 +1310,21 @@ mod tests {
                 "bash",
                 r#"{\"command\":\"ls\"}"#,
             ));
-            session.begin_sending();
-            session.finalize_entries_for_cancel(jiff::Timestamp::now());
-            session.cancel_streaming_via_machine();
-            session.drain_cancelled_work_to_input();
             state.session.active_session_id().clone()
         };
+        let turn = actor
+            .services
+            .turn_ledger
+            .live(&session_id)
+            .expect("harness minted a live turn")
+            .turn;
+        let _ = actor.services.turn_ledger.begin_cancel(&session_id);
 
-        // When a stale ToolExecutionCompleted arrives post-cancel.
+        // When a completion for the cancelled turn arrives.
         let event = jinn_tools_msg::ToolExecutionCompleted {
+            turn,
             session_id: session_id.clone(),
+            synthesized: false,
             result: jinn_core_types::tool_types::ToolResult {
                 tool_call_id: "tc-1".into(),
                 name: "bash".to_owned(),
@@ -1228,7 +1360,7 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn on_tool_batch_completed_dropped_when_not_sending() {
+    async fn completion_dropped_when_no_live_turn() {
         // Given a session driven to Idle via the cancel path.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
@@ -1242,14 +1374,15 @@ mod tests {
             ));
             session.begin_sending();
             session.finalize_entries_for_cancel(jiff::Timestamp::now());
-            session.cancel_streaming_via_machine();
+            session.settle_to_idle();
             session.drain_cancelled_work_to_input();
             state.session.active_session_id().clone()
         };
 
-        let event = ToolBatchCompleted {
+        let event = ToolExecutionCompleted {
             session_id: session_id.clone(),
-            results: vec![ToolResult {
+            synthesized: false,
+            result: ToolResult {
                 tool_call_id: "tc-1".into(),
                 name: "bash".to_owned(),
                 content: "file1.txt".to_owned(),
@@ -1258,18 +1391,20 @@ mod tests {
                 truncation: None,
                 pin_position: None,
                 attachments: Vec::new(),
-            }],
+            },
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
         };
 
-        // When a stale ToolBatchCompleted arrives post-cancel.
-        actor.on_tool_batch_completed(&event).await;
+        // When a stale completion arrives post-cancel — no live turn to
+        // admit it, so the ledger refuses.
+        actor.on_tool_execution_completed(&event).await;
 
         // Then the loop is not restarted: phase stays Idle.
         {
             let state = actor.state.read();
             let session = state.session.get(&session_id).expect("session exists");
             assert!(
-                matches!(session.phase(), PhaseKind::Idle),
+                matches!(session.phase(), PhaseView::Idle),
                 "expected Idle after cancel, got {:?}",
                 session.phase()
             );
@@ -1278,35 +1413,36 @@ mod tests {
         // And no continuation send is emitted.
         assert!(
             !audit.contains_name("SendToLlmProvider"),
-            "expected no SendToLlmProvider for dropped stale batch"
+            "expected no SendToLlmProvider for dropped stale tool result"
         );
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn on_tool_batch_completed_skips_send_when_tool_loop_disabled() {
+    async fn work_settled_skips_send_when_tool_loop_disabled() {
         // Given a mid-tool-loop session whose tool loop is disabled — the
         // shape a `StreamCompleted(ToolUse)` leaves before the next batch.
         let (actor, audit) = test_actor_recording().await;
-        let session_id = begin_sending_session(&actor).await;
+        let session_id = begin_sending_session(&actor);
         {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.set_tool_loop_disabled();
         }
 
-        // When the tool batch completes.
-        let event = ToolBatchCompleted {
-            session_id: session_id.clone(),
-            results: vec![tool_result("tc-1", "bash", "file1.txt", true)],
-        };
-        actor.on_tool_batch_completed(&event).await;
+        // When the tool loop stops at the work settlement.
+        actor
+            .on_turn_work_settled(
+                &session_id,
+                jinn_kernel::common::turn_ledger::Next::Continue,
+            )
+            .await;
 
         // Then the turn ends in Idle without dispatching a continuation.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
-            matches!(session.phase(), PhaseKind::Idle),
+            matches!(session.phase(), PhaseView::Idle),
             "expected Idle after tool_loop_disabled, got {:?}",
             session.phase()
         );
@@ -1321,23 +1457,24 @@ mod tests {
         let session = state.session_mut_or_create(&session_id);
         assert!(
             !session.take_tool_loop_disabled(),
-            "tool_loop_disabled should be cleared after on_tool_batch_completed"
+            "tool_loop_disabled should be cleared after the work settlement"
         );
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn on_tool_batch_completed_unaffected_without_tool_loop_disabled() {
-        // Given a normal sending session holding a completed tool loop.
+    async fn on_turn_work_settled_unaffected_without_tool_loop_disabled() {
+        // Given a normal mid-tool-loop session holding a completed tool call.
         let (actor, audit) = test_actor_recording().await;
-        let session_id = begin_sending_session_with_tool_call(&actor).await;
+        let session_id = begin_sending_session_with_tool_call(&actor);
 
-        // When the tool batch completes.
-        let event = ToolBatchCompleted {
-            session_id,
-            results: vec![tool_result("tc-1", "bash", "file1.txt", true)],
-        };
-        actor.on_tool_batch_completed(&event).await;
+        // When the work settlement dispatches the continuation.
+        actor
+            .on_turn_work_settled(
+                &session_id,
+                jinn_kernel::common::turn_ledger::Next::Continue,
+            )
+            .await;
 
         // Then the continuation is dispatched as usual.
         assert!(
@@ -1591,7 +1728,7 @@ mod tests {
             "the refused delta should log its tool-call index; got: {contents}"
         );
         assert!(
-            contents.contains("current_phase=Sending"),
+            contents.contains("current_phase=Working"),
             "the refused delta should log the session phase; got: {contents}"
         );
     }
@@ -1611,6 +1748,7 @@ mod tests {
 
         // When a tool execution starts.
         actor.on_tool_execution_started(&ToolExecutionStarted {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             session_id: session_id.clone(),
             tool_call_id: "tc-1".into(),
             name: "bash".to_owned(),
@@ -1646,12 +1784,14 @@ mod tests {
 
         // When two output chunks arrive for that tool result.
         actor.on_tool_execution_output(&ToolExecutionOutput {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             session_id: session_id.clone(),
             tool_call_id: "tc-1".into(),
             output: "file1.txt\n".to_owned(),
             kind: ToolOutputKind::default(),
         });
         actor.on_tool_execution_output(&ToolExecutionOutput {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             session_id: session_id.clone(),
             tool_call_id: "tc-1".into(),
             output: "file2.txt\n".to_owned(),
@@ -1673,17 +1813,18 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn on_tool_batch_completed_applies_pending_mutations() {
-        // Given a sending session with one queued context-override mutation.
+    async fn on_turn_work_settled_applies_pending_mutations() {
+        // Given a mid-tool-loop session with one queued context-override mutation.
         let (actor, audit) = test_actor_recording().await;
-        let (entry_id, session_id) = seed_sending_session_with_pending_mutation(&actor).await;
+        let (entry_id, session_id) = seed_sending_session_with_pending_mutation(&actor);
 
-        // When the tool batch completes.
-        let event = ToolBatchCompleted {
-            session_id: session_id.clone(),
-            results: vec![tool_result("tc-1", "bash", "file1.txt", true)],
-        };
-        actor.on_tool_batch_completed(&event).await;
+        // When the work settlement dispatches the continuation.
+        actor
+            .on_turn_work_settled(
+                &session_id,
+                jinn_kernel::common::turn_ledger::Next::Continue,
+            )
+            .await;
 
         // Then the queued mutation is applied to the assistant entry.
         let state = actor.state.read();
@@ -1707,17 +1848,18 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn on_tool_batch_completed_empty_mutation_queue_is_noop() {
-        // Given a sending session with nothing queued for mutation application.
+    async fn on_turn_work_settled_empty_mutation_queue_is_noop() {
+        // Given a mid-tool-loop session with nothing queued for mutation application.
         let (actor, audit) = test_actor_recording().await;
-        let session_id = begin_sending_session_with_tool_call(&actor).await;
+        let session_id = begin_sending_session_with_tool_call(&actor);
 
-        // When the tool batch completes.
-        let event = ToolBatchCompleted {
-            session_id,
-            results: vec![tool_result("tc-1", "bash", "file1.txt", true)],
-        };
-        actor.on_tool_batch_completed(&event).await;
+        // When the work settlement dispatches the continuation.
+        actor
+            .on_turn_work_settled(
+                &session_id,
+                jinn_kernel::common::turn_ledger::Next::Continue,
+            )
+            .await;
 
         // Then the continuation is still dispatched.
         assert!(
@@ -1728,18 +1870,19 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn on_tool_batch_completed_drained_steering_entry_lands_after_tool_results() {
+    async fn work_settled_drained_steering_entry_lands_after_tool_results() {
         // Given a sending session holding a complete tool loop and a buffered
         // steering fragment the user typed while the tools ran.
         let (actor, _audit) = test_actor_recording().await;
-        let session_id = seed_sending_session_with_steering_fragment(&actor).await;
+        let session_id = seed_sending_session_with_steering_fragment(&actor);
 
-        // When the tool batch completes.
-        let event = ToolBatchCompleted {
-            session_id,
-            results: vec![tool_result("tc-1", "bash", "file1.txt", true)],
-        };
-        actor.on_tool_batch_completed(&event).await;
+        // When the work settlement dispatches the continuation.
+        actor
+            .on_turn_work_settled(
+                &session_id,
+                jinn_kernel::common::turn_ledger::Next::Continue,
+            )
+            .await;
 
         // Then the drained steering entry lands after every tool result.
         let state = actor.state.read();

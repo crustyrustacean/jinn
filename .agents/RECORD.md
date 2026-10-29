@@ -608,3 +608,10 @@ Entries are added or amended **only with human approval**.
 - (rules) Every shipped tool:bash condition that anchors on a compound separator requires whitespace after it, so a shell metacharacter inside quoted script content — a grep alternation, an awk program — is never read as a command separator.
 - (storage) The session prune actor (`session_prune_actor`) drains stale trees in short transactions — one session per 2-second tick, each chunk followed by a bounded incremental vacuum — and idles at an hourly sweep once drained, so an in-flight chunk never holds the write lock long enough to outlast graceful shutdown's deadline; a crash mid-drain re-finds the remainder because the selection is idempotent.
 - (dashboard) The session prune actor publishes its drain progress to its `session-prune` dashboard row via `ServiceStatusUpdate` — "N sessions pending" before each chunk, "prune up to date" once the queue reads empty — the same row name the runtime's lifecycle announcement carries. The actor was formerly `db_maintenance_actor`/`DbMaintenanceActor` at row `db-maintenance`; the `[maintenance]` config section name is unchanged and remains the home for future maintenance settings.
+- (turn-ledger) Turn admission is adjudicated solely by the turn ledger, a mutex'd map of live turns keyed by session; no entry means Idle.
+- (turn-ledger) The ledger registers each tool call at dispatch and retires it when its result arrives, so message arrival order never decides admission.
+- (turn-ledger) A turn entry carries the in-flight stream id, the open tool-call set, and what happens when the work set empties: continue, end, or cancel.
+- (turn-ledger) Phase is derived from the turn ledger for display and guards; the phase actor and phase machine no longer exist.
+- (tools) The tools orchestrator synthesizes a cancelled completion for every open call at cancel time, so the drain never waits on an unabortable call.
+- (cancel) A cancelled turn settles only when its work set empties, emits its cancellation once, and sweeps still-Pending tool results to Failure.
+- (sessions) A session load sweeps stored Pending tool results to Failure.

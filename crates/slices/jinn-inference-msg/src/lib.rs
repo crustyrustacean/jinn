@@ -117,6 +117,16 @@ pub struct SendToLlmProvider {
     /// while a session is tombstoned by a cancel.
     #[serde(default)]
     pub origin: StreamOrigin,
+    /// The turn this dispatch belongs to, minted by the turn ledger.
+    ///
+    /// Zero is the pre-ledger legacy value: a consumer resolving it against
+    /// a live turn refuses it, which is the admission a straggler from
+    /// before the upgrade deserves.
+    #[serde(default)]
+    pub turn: jinn_core_types::turn_identity::TurnToken,
+    /// The stream this dispatch starts, minted alongside `turn`.
+    #[serde(default)]
+    pub stream: jinn_core_types::turn_identity::StreamId,
 }
 
 impl jinn_slices::BusMessage for SendToLlmProvider {}
@@ -214,6 +224,14 @@ pub struct StreamCompleted {
     pub model_used: Option<String>,
     /// When the original LLM request was dispatched.
     pub dispatched_at: jiff::Timestamp,
+    /// The turn this completion belongs to, as minted by the turn ledger.
+    ///
+    /// Zero is the pre-ledger legacy value; see `SendToLlmProvider.turn`.
+    #[serde(default)]
+    pub turn: jinn_core_types::turn_identity::TurnToken,
+    /// The stream this completion retires.
+    #[serde(default)]
+    pub stream: jinn_core_types::turn_identity::StreamId,
 }
 
 impl jinn_slices::BusMessage for StreamCompleted {}
@@ -292,6 +310,8 @@ mod tests {
             endpoint_tag: None,
             dispatched_at: jiff::Timestamp::from_second(0).unwrap(),
             origin: StreamOrigin::User,
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            stream: jinn_core_types::turn_identity::StreamId::legacy(),
         };
 
         // When serializing and deserializing.

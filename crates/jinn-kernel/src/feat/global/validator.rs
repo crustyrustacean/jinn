@@ -1,7 +1,7 @@
 //! Global intent validators - quit, toggle which-key, and interrupt.
 
 use crate::common::app_state::AppState;
-use jinn_session_msg::PhaseKind;
+use jinn_slices::PhaseView;
 use wherror::Error;
 
 /// Validates the Quit intent.
@@ -34,7 +34,7 @@ pub fn validate_interrupt(state: &AppState) -> Result<(), InterruptError> {
     if state
         .active_session()
         .with_input(jinn_chat_input_msg::ChatInputBoxState::is_empty, || true)
-        && matches!(state.active_session().phase(), PhaseKind::Idle)
+        && matches!(state.active_session().phase(), PhaseView::Idle)
     {
         return Err(InterruptError::NothingToInterrupt);
     }

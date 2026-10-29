@@ -24,8 +24,8 @@ use jinn_chat_input_msg::EnqueueUserMessage;
 use jinn_core_types::chat_entry::ChatEntry;
 use jinn_core_types::session_id::SessionId;
 use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use jinn_session_msg::PhaseKind;
 use jinn_session_state::ChatSessionState;
+use jinn_slices::PhaseView;
 
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -223,7 +223,7 @@ fn delivery_for(
             // itself is the floor. Kept as a guard, not a reachable arm.
             return Delivery::Refused("run produced no dispatch");
         };
-        return if target.phase() == PhaseKind::Idle {
+        return if target.phase() == PhaseView::Idle {
             Delivery::Run { entry, reset }
         } else {
             Delivery::QueuedRun { entry }

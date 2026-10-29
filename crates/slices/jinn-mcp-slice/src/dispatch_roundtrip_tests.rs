@@ -128,6 +128,7 @@ async fn execute_tool_for_namespaced_echo_returns_server_response() {
     };
     harness
         .publish(ExecuteTool {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             session_id: session_id.clone(),
             tool_call,
             dispatched_at: jiff::Timestamp::now(),
@@ -195,6 +196,7 @@ async fn execute_tool_when_client_disconnected_yields_failed_result() {
     };
     harness
         .publish(ExecuteTool {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             session_id: session_id.clone(),
             tool_call,
             dispatched_at: jiff::Timestamp::now(),
@@ -250,6 +252,7 @@ async fn execute_tool_truncates_large_response_to_orchestrator_limits() {
     // When publishing an ExecuteTool with a 100-byte limit.
     harness
         .publish(ExecuteTool {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             session_id: session_id.clone(),
             tool_call,
             dispatched_at: jiff::Timestamp::now(),
@@ -561,6 +564,7 @@ async fn live_disable_cycle_call_succeeds_before_teardown() {
     // When calling the echo tool while the server is live.
     harness
         .publish(ExecuteTool {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             session_id: session_id.clone(),
             tool_call: ToolCall {
                 id: "tc_live".into(),
@@ -626,6 +630,7 @@ async fn disable_cycle_calls_fail_fast_after_teardown() {
     // pruned, session enablement flipped off — the confirm_mcp ordering).
     harness
         .publish(ExecuteTool {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             session_id: session_id.clone(),
             tool_call: ToolCall {
                 id: "tc_dead".into(),
@@ -771,6 +776,7 @@ async fn execute_tool_exceeding_timeout_yields_failed_result() {
     };
     harness
         .publish(ExecuteTool {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             session_id: session_id.clone(),
             tool_call,
             dispatched_at: jiff::Timestamp::now(),
@@ -845,6 +851,7 @@ async fn execute_tool_with_disabled_timeout_completes() {
     };
     harness
         .publish(ExecuteTool {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             session_id: session_id.clone(),
             tool_call,
             dispatched_at: jiff::Timestamp::now(),
