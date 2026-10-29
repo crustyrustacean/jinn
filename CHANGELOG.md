@@ -8,6 +8,25 @@
   - Some endpoints don't have this data, so will still report `-`
   - Endpoint `LAT p50` and `TP p50` data after this update will NOT be shown for existing users until the model cache expires (7 days)
     - To force an update, you'll need to manually refresh model data using `<c-r>` in the Model Market popup, OR delete `~/.cache/jinn/openrouter/models.json`
+- Enable incremental vacuum operation to database. Migration might take a long time at first run.
+- `jinn` logfile now caps at 10k lines, cleaned up at startup.
+- Add `jinn.toml` configuration to delete old sessions. Default behavior is to never delete anything.
+
+```toml
+[maintenance]
+# > Deletes session trees idle longer than this.
+# >
+# > Format: <number><unit> — a whole number followed by a unit suffix:
+# >
+# >   m  minutes      30m  = 30 minutes
+# >   h  hours        24h  = 1 day
+# >   d  days         90d  = 3 months
+# >   w  weeks        2w   = 2 weeks
+# >
+# > A tree is deleted only when EVERY member is archived, not in the
+# > Library, and idle past the threshold. Commented out = never delete.
+session_retention = "90d"
+```
 
 ## 2026-10-28 v1.12.0
 
