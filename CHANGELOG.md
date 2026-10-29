@@ -3,6 +3,11 @@
 ## (development)
 
 - The chat entry metadata popup now displays the context size of a chat entry and how much is actually in context.
+- "OpenRouter Model Search" popup renamed to "OpenRouter Model Market"
+- Fix: OpenRouter Model Market now reports `LAT p50` and `TP p50` on the endpoint page.
+  - Some endpoints don't have this data, so will still report `-`
+  - Endpoint `LAT p50` and `TP p50` data after this update will NOT be shown for existing users until the model cache expires (7 days)
+    - To force an update, you'll need to manually refresh model data using `<c-r>` in the Model Market popup, OR delete `~/.cache/jinn/openrouter/models.json`
 
 ## 2026-10-28 v1.12.0
 
