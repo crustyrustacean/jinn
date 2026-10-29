@@ -1,5 +1,9 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
+## (development)
+
+- The chat entry metadata popup now displays the context size of a chat entry and how much is actually in context.
+
 ## 2026-10-28 v1.12.0
 
 - Session picker fuzzy search now sorts by score.
