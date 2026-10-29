@@ -6,6 +6,10 @@ use serde::{Deserialize, Serialize};
 ///
 /// A session's place in the tree is represented separately by its parent ID and
 /// fork ordinal; this enum records the kind of creation path.
+///
+/// Serializes as `"bot"`. The pre-rename spelling `"attendant"` still
+/// deserializes, so sessions persisted before the rename load intact;
+/// anything written back carries the new name.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionOrigin {
@@ -19,7 +23,8 @@ pub enum SessionOrigin {
     /// A peer session that references a parent and re-runs when the parent's
     /// turn completes. Inherits the parent's environment but never its
     /// conversation, and reports what it concludes back to the user.
-    Attendant,
+    #[serde(alias = "attendant")]
+    Bot,
 }
 
 #[cfg(test)]
@@ -43,7 +48,7 @@ mod tests {
     #[case(SessionOrigin::User, "\"user\"")]
     #[case(SessionOrigin::Fork, "\"fork\"")]
     #[case(SessionOrigin::Subagent, "\"subagent\"")]
-    #[case(SessionOrigin::Attendant, "\"attendant\"")]
+    #[case(SessionOrigin::Bot, "\"bot\"")]
     fn session_origin_serializes_as_snake_case(
         #[case] origin: SessionOrigin,
         #[case] expected: &str,
@@ -61,7 +66,7 @@ mod tests {
     #[case("\"user\"", SessionOrigin::User)]
     #[case("\"fork\"", SessionOrigin::Fork)]
     #[case("\"subagent\"", SessionOrigin::Subagent)]
-    #[case("\"attendant\"", SessionOrigin::Attendant)]
+    #[case("\"bot\"", SessionOrigin::Bot)]
     fn session_origin_deserializes_from_snake_case(
         #[case] raw: &str,
         #[case] expected: SessionOrigin,
@@ -72,6 +77,22 @@ mod tests {
         let origin: SessionOrigin = serde_json::from_str(raw).unwrap();
 
         // Then the expected origin is restored.
+        assert_eq!(origin, expected);
+    }
+
+    #[rstest::rstest]
+    #[case("\"attendant\"", SessionOrigin::Bot)]
+    #[case("\"bot\"", SessionOrigin::Bot)]
+    fn session_origin_deserializes_the_legacy_attendant_spelling_as_bot(
+        #[case] raw: &str,
+        #[case] expected: SessionOrigin,
+    ) {
+        // Given a persisted origin spelled the pre-rename way.
+
+        // When deserializing it.
+        let origin: SessionOrigin = serde_json::from_str(raw).unwrap();
+
+        // Then it restores as a bot.
         assert_eq!(origin, expected);
     }
 }

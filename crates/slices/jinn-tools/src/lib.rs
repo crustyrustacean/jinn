@@ -15,13 +15,13 @@
 
 pub use jinn_tools_msg::BoxedToolFuture;
 
-pub mod attendant_tools;
 pub mod bash;
+pub mod bot_tools;
 pub mod capabilities;
 pub mod tell_session;
 
 #[cfg(test)]
-mod attendant_tools_tests;
+mod bot_tools_tests;
 
 #[cfg(test)]
 #[path = "load_attendant_tests.rs"]

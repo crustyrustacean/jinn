@@ -48,10 +48,15 @@ use wherror::Error;
 /// every `session_history` and `token_ledger` row. After the migrations
 /// complete (or fail), FK is re-enabled.
 ///
-/// The `foreign_key_check` integrity walk runs **only when migrations
-/// applied**. On an up-to-date database nothing changed, so there is nothing
-/// new to verify and the full walk (measured in seconds on large databases)
-/// is skipped.
+/// The `foreign_key_check` integrity walk runs after a migration-applied run,
+/// **in debug builds only**. The migrations run with FK enforcement off, so
+/// this walk is the only verification their key writes kept the database
+/// referentially sound — a developer's safety net for a broken migration,
+/// caught on the first upgrade run against a seeded test database. An
+/// end-user release build skips it: there is no automated repair for a
+/// violation (failing the launch would strand the user over data nothing
+/// can fix), and the walk is measured in seconds on large databases —
+/// invisible debug overhead it may be, but a startup stall it is not.
 ///
 /// Safe to call on an empty database (bootstraps the tracking table) and
 /// idempotent on a fully-migrated one (the version check short-circuits
@@ -59,9 +64,9 @@ use wherror::Error;
 ///
 /// # Errors
 ///
-/// Returns an error if any migration fails, if the FK pragma cannot be toggled,
-/// or if `foreign_key_check` reports integrity violations after a run that
-/// applied migrations.
+/// Returns an error if any migration fails or if the FK pragma cannot be
+/// toggled. In debug builds, also when `foreign_key_check` reports integrity
+/// violations after a run that applied migrations.
 pub fn run_migrations(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.pragma_update(None, "foreign_keys", "OFF")
         .change_context(SchemaMigrationError)
@@ -75,28 +80,32 @@ pub fn run_migrations(conn: &mut rusqlite::Connection) -> Result<(), Report<Sche
         .change_context(SchemaMigrationError)
         .attach("re-enable foreign_keys after migration")?;
 
-    let violations = match &migrate_result {
-        // Only a run that applied migrations can have changed referential
-        // integrity; a no-op run skips the full-table walk entirely.
-        Ok(true) => fk_violations(conn)?,
-        Ok(false) | Err(_) => Vec::new(),
-    };
-    match (migrate_result, violations) {
-        (Ok(_), empty) if empty.is_empty() => Ok(()),
-        (Ok(_), tables) => Err(Report::new(SchemaMigrationError)
-            .attach("foreign_key_check reported violations after migration")
-            .attach(format!("violating tables: {}", tables.join(", ")))),
-        (Err(e), _) => Err(e),
+    // The integrity walk runs only in debug builds, and only after a run
+    // that applied migrations — a no-op run changed nothing to verify, and
+    // a release build deliberately trusts the migration (see the doc above).
+    #[cfg(debug_assertions)]
+    if matches!(migrate_result, Ok(true)) {
+        debug_fk_check(conn)?;
+    }
+    match migrate_result {
+        Ok(_) => Ok(()),
+        Err(e) => Err(e),
     }
 }
 
-/// Returns the names of tables that violate foreign-key constraints.
+/// The debug-build integrity walk after a migration-applied run.
 ///
-/// `PRAGMA foreign_key_check` returns one row per violation (empty = clean).
-/// Columns: `table`, `rowid`, `parent`, `fkid` — only `table` is bound.
-fn fk_violations(
-    conn: &mut rusqlite::Connection,
-) -> Result<Vec<String>, Report<SchemaMigrationError>> {
+/// Announced through the same stderr channel the migration announcements use
+/// — the terminal is still in normal mode pre-TUI, so the line explains a
+/// wait that otherwise reads as a freeze — then fails the run on any
+/// violation. Returns the violating table names on failure.
+///
+/// # Errors
+///
+/// Returns an error if the check cannot run or reports violations.
+#[cfg(debug_assertions)]
+fn debug_fk_check(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+    eprintln!("{}", debug_fk_check_line());
     let mut stmt = conn
         .prepare("PRAGMA foreign_key_check")
         .change_context(SchemaMigrationError)
@@ -112,7 +121,23 @@ fn fk_violations(
                 .attach("collect foreign_key_check row")?,
         );
     }
-    Ok(tables)
+    drop(stmt);
+    if tables.is_empty() {
+        return Ok(());
+    }
+    Err(Report::new(SchemaMigrationError)
+        .attach("foreign_key_check reported violations after migration")
+        .attach(format!("violating tables: {}", tables.join(", "))))
+}
+
+/// The user-facing line printed before the debug-build integrity walk.
+///
+/// `pub` only so the `testing` module can re-export it to the format test;
+/// `#[doc(hidden)]` keeps it out of the crate's public surface.
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub fn debug_fk_check_line() -> String {
+    "jinn: checking foreign-key integrity\u{2026}".to_owned()
 }
 
 /// Error type for schema migration failures.

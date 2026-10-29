@@ -18,8 +18,8 @@ use jinn_llm_support::token_estimator::estimate_entry_tokens;
 /// attaches to a preceding `Assistant`; `ToolResult` needs a matching preceding
 /// `assistant.tool_calls[].id`). `Actor`/`Thinking`/`Transient`/`Error` render as
 /// prefixed `User` messages but are context-optional, not a guaranteed first turn.
-/// An `Intersession` must qualify because a parent→attendant dispatch — the
-/// attendant's standing instructions — is one: a cut landing on a leading
+/// An `Intersession` must qualify because a parent→bot dispatch — the
+/// bot's standing instructions — is one: a cut landing on a leading
 /// dispatch would otherwise walk past and silently drop it.
 ///
 /// This is the predicate for Pass 3 of [`adjust_cut_to_boundary`].
@@ -282,7 +282,7 @@ mod tests {
     #[rstest::rstest]
     #[test]
     fn is_valid_kept_opener_accepts_an_intersession_dispatch() {
-        // Given an Intersession entry — a parent→attendant dispatch, which
+        // Given an Intersession entry — a parent→bot dispatch, which
         // renders as a standalone user turn.
         let source = jinn_core_types::SessionId::new();
         let target = jinn_core_types::SessionId::new();
@@ -290,7 +290,7 @@ mod tests {
 
         // When checking it for a valid kept-region opener.
         // Then it is a valid opener: a compaction cut landing on a leading
-        // dispatch must keep it, or the attendant loses its standing
+        // dispatch must keep it, or the bot loses its standing
         // instructions from the kept region entirely.
         assert!(
             is_valid_kept_opener(&dispatch.kind),
@@ -381,6 +381,8 @@ mod tests {
             context_override: ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         };
 
         // When checking each for a valid kept-region opener.
@@ -425,6 +427,8 @@ mod tests {
                 context_override: ContextOverride::Default,
                 context_history: Vec::new(),
                 token_count: None,
+                model_used: None,
+                model_requested: None,
             },
             ChatEntry::user("world"),
         ];

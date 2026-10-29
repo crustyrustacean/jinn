@@ -61,11 +61,12 @@ the current truth — and echo that.
 | `references/keybindings.md`            | Every scope's default bindings, categorized                                                |
 | `references/context-management.md`     | Pinning, context toggles, isolate, compaction/pruning tuning                               |
 | `references/sessions-and-subagents.md` | Sessions, forks, the session tree, subagents/tasks                                         |
-| `references/attendants.md`            | Attendants: properties popup, triggers, `[[attendant.entry]]`, report history               |
+| `references/bots.md`                  | Bots: properties popup, triggers, `[[bot.entry]]`, report history, the Library               |
 | `references/pickers-and-search.md`     | The `<leader>s*` pickers, session search                                                   |
 | `references/terminal-overlay.md`       | Interactive terminal overlay, control mode                                                 |
 | `references/mcp-servers.md`            | MCP server config, enabling, the inspector                                                 |
 | `references/chat-input-tokens.md`      | `#prompt`, `@attachment`, `//` autocomplete tokens                                         |
+| `references/builtin-prompts.md`        | The builtin `#prompts`: what each is for, how they work, choosing between them             |
 | `references/models-and-providers.md`   | Model/provider pickers, alloys, endpoint pinning, reasoning effort                         |
 | `references/configuration.md`          | Config file map, snippets, apply-to-user-config protocol                                   |
 | `references/extending-jinn.md`         | Adding capabilities or extending jinn: MCP servers, skills, prompts, personas, themes, etc |

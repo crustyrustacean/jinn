@@ -82,6 +82,18 @@ pub(crate) struct PopulatedFakeStore {
     archived: parking_lot::Mutex<Vec<jinn_core_types::SessionId>>,
     saved: parking_lot::Mutex<Vec<jinn_session_state::SessionSnapshot>>,
     fail_load_summaries: parking_lot::Mutex<bool>,
+    /// The lock-release probe: when armed with the actor's state handle,
+    /// every `save` attempts one `try_write` and records whether it
+    /// succeeded. A save that ran while the actor still held the write lock
+    /// (the regression this detects) records `false`; the released-lock flow
+    /// records `true` every time — one bit per save, no timing to flake.
+    write_probe: parking_lot::Mutex<Option<WriteProbe>>,
+}
+
+#[cfg(test)]
+struct WriteProbe {
+    state: jinn_kernel::common::state::State,
+    can_write: std::sync::Arc<parking_lot::Mutex<bool>>,
 }
 
 #[cfg(test)]
@@ -95,6 +107,8 @@ impl PopulatedFakeStore {
                 updated_at: *s.updated_at(),
                 created_at: *s.created_at(),
                 session_state: jinn_session_store_msg::SessionState::Loaded,
+                in_library: s.in_library(),
+                is_bot: s.is_bot(),
                 parent_session: s.parent_session().clone(),
                 project: s.project().cloned(),
             })
@@ -110,7 +124,18 @@ impl PopulatedFakeStore {
             archived: Mutex::new(Vec::new()),
             saved: Mutex::new(Vec::new()),
             fail_load_summaries: Mutex::new(false),
+            write_probe: Mutex::new(None),
         }
+    }
+
+    /// Arms the lock-release probe against the actor's state: every save
+    /// attempts one `try_write` and ANDs the result into `can_write`.
+    pub(super) fn arm_write_probe(
+        &self,
+        state: jinn_kernel::common::state::State,
+        can_write: std::sync::Arc<parking_lot::Mutex<bool>>,
+    ) {
+        *self.write_probe.lock() = Some(WriteProbe { state, can_write });
     }
 
     pub(super) fn last_saved_session(
@@ -137,6 +162,15 @@ impl jinn_session_state::SessionStore for PopulatedFakeStore {
         &self,
         snapshot: &jinn_session_state::SessionSnapshot,
     ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
+        // The lock-release probe runs inside the store's save — the point
+        // the save flow reaches only after the capture clone has fully
+        // resolved. A try_write here fails exactly when the actor's write
+        // lock is still held across the clone, which is the regression the
+        // old sampling probe approximated with ratios.
+        if let Some(probe) = self.write_probe.lock().as_ref() {
+            let acquired = probe.state.try_write().is_some();
+            *probe.can_write.lock() &= acquired;
+        }
         self.saved.lock().push(snapshot.clone());
         // Upsert into the readable sessions vec (the real store persists the
         // session so later reads — fork, load — see it).
@@ -230,6 +264,8 @@ impl jinn_session_state::SessionStore for PopulatedFakeStore {
                 updated_at: source.metadata.updated_at,
                 created_at: source.metadata.created_at,
                 session_state: jinn_session_store_msg::SessionState::Loaded,
+                in_library: false,
+                is_bot: false,
                 parent_session: Some(source_session_id.clone()),
                 project: source.metadata.project.clone(),
             });
@@ -255,6 +291,19 @@ impl jinn_session_state::SessionStore for PopulatedFakeStore {
         if archived {
             let mut archived = self.archived.lock();
             archived.extend(session_ids.iter().cloned());
+        }
+        Ok(())
+    }
+
+    async fn set_in_library(
+        &self,
+        session_id: &jinn_core_types::SessionId,
+        in_library: bool,
+    ) -> Result<(), error_stack::Report<jinn_session_state::SessionStoreError>> {
+        for summary in self.summaries.lock().iter_mut() {
+            if &summary.session_id == session_id {
+                summary.in_library = in_library;
+            }
         }
         Ok(())
     }

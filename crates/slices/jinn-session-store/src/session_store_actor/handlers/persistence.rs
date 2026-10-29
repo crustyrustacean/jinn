@@ -38,8 +38,14 @@ impl SessionStoreActor {
     }
 
     /// Persists the requested session immediately.
+    ///
+    /// After the write lands, a Library-cell refresh is scheduled: the
+    /// library sorts members by `updated_at` and shows each member's title,
+    /// and a rename (or any persist of a member) changes both. Detached, not
+    /// awaited — see [`SessionStoreActor::schedule_library_refresh`].
     pub(crate) async fn handle_persist_session(&self, payload: &PersistSession) {
         self.save_active_session(&payload.session_id).await;
+        self.schedule_library_refresh();
     }
 
     /// This session's recorded working intervals, read from the work-time cell.

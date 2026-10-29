@@ -6,7 +6,7 @@
 //! `Paragraph` never extends a line's style into the cells after its content.
 //! The band's text is [`gutter_bg`](jinn_theme::Theme::gutter_bg), the
 //! sidebar's own background, so a selected row is a literal inversion of the
-//! panel it sits on. State colors are untouched by selection: an attendant
+//! panel it sits on. State colors are untouched by selection: a bot
 //! stays pink until it is selected, and selection is the only thing that
 //! overrides it.
 //!

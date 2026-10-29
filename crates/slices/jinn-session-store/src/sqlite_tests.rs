@@ -1875,9 +1875,9 @@ fn metadata_blob_is_unchanged_by_group_composition() {
     .expect("serialize metadata");
 
     // Then the legacy flat JSON shape is unchanged, with runtime-only home and
-    // row-backed session state still absent. The attendant group appends four
+    // row-backed session state still absent. The bot group appends four
     // defaulted keys (activation, trigger, seed_template, reports) — flat, as
-    // with every group; a blob written before attendants lacks them and
+    // with every group; a blob written before bots lacks them and
     // deserializes to the same defaults. The cwd is spliced in from the
     // constructed fixture path, escaped for JSON (a no-op on Unix).
     let expected_blob = format!(
@@ -1892,7 +1892,7 @@ fn metadata_blob_is_unchanged_by_group_composition() {
             r#""lifecycle_script_state":"setup_ran","task_list":{{"phases":[]}},"#,
             r#""enabled_mcp_servers":[],"persist":false,"#,
             r#""behavior":"reset","prep_mode":true,"trigger":"manual","#,
-            r#""seed_template":"The previous run of this attendant reported: <prior report>.","#,
+            r#""seed_template":"The parent session's id is <parent_id>. The previous run of this bot reported: <prior_report>.","#,
             r#""reports":[]}}"#
         ),
         cwd.as_path().to_string_lossy().replace('\\', "\\\\")
@@ -1945,13 +1945,13 @@ async fn legacy_pre_v8_row_loads_after_v20_backfill() {
         "pre-v8 row must load persona after v20 backfill"
     );
 }
-/// After v20, the `sessions` table has exactly the 9 authoritative columns —
+/// After v20, the `sessions` table has exactly the authoritative columns —
 /// the zombie columns (`profile`, `blobs`, `cwd`, `lifecycle_script_state`,
 /// `lifecycle_args`) are gone. A saved session's real data lives entirely
 /// in the `metadata` blob.
 #[rstest::rstest]
 #[tokio::test]
-async fn sessions_table_has_exactly_nine_columns() {
+async fn sessions_table_has_exactly_the_authoritative_columns() {
     // Given a saved session.
     let (dir, store) = make_store().await;
     let session_id = SessionId::new();
@@ -1970,7 +1970,7 @@ async fn sessions_table_has_exactly_nine_columns() {
         .await
         .expect("table_info");
 
-    // Then exactly the 9 authoritative columns exist (no zombies).
+    // Then exactly the authoritative columns exist (no zombies).
     let names: Vec<&str> = cols.iter().map(|c| c.name.as_str()).collect();
     assert_eq!(
         names,
@@ -1983,9 +1983,11 @@ async fn sessions_table_has_exactly_nine_columns() {
             "archived",
             "metadata",
             "is_automated",
-            "persist"
+            "persist",
+            "in_library",
+            "is_bot"
         ],
-        "sessions table must have exactly the 9 authoritative columns post-v20"
+        "sessions table must have exactly the authoritative columns post-v20"
     );
 
     // And metadata carries the real model.
@@ -3490,18 +3492,18 @@ async fn fts_and_map_counts(pool: &daow::Pool, session_id: &str) -> (i64, i64) {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn attendant_fields_round_trip_through_save_and_load() {
-    // Given a store with an attendant session carrying activation, trigger,
+async fn bot_fields_round_trip_through_save_and_load() {
+    // Given a store with a bot session carrying activation, trigger,
     // seed template, and a report.
     let (_dir, store) = make_store().await;
     let session_id = SessionId::new();
-    let mut session = ChatSessionState::new_attendant(&ChatSessionState::new(), true);
+    let mut session = ChatSessionState::new_bot(&ChatSessionState::new(), true);
     session.set_session_id(session_id.clone());
     session.set_title("Judge".to_owned());
-    session.set_attendant_behavior(jinn_attendant_msg::AttendantBehavior::Reset);
-    session.set_attendant_trigger(jinn_attendant_msg::AttendantTrigger::ParentCompleted);
-    session.set_seed_template("check: <prior report>".to_owned());
-    session.append_attendant_report("the build was actually green".to_owned());
+    session.set_bot_behavior(jinn_bot_msg::BotBehavior::Reset);
+    session.set_bot_trigger(jinn_bot_msg::BotTrigger::ParentCompleted);
+    session.set_seed_template("check: <prior_report>".to_owned());
+    session.append_bot_report("the build was actually green".to_owned());
 
     // When saving and loading.
     store.save(&session.capture_snapshot()).await.expect("save");
@@ -3511,19 +3513,261 @@ async fn attendant_fields_round_trip_through_save_and_load() {
         .expect("load")
         .expect("should exist");
 
-    // Then every attendant field is preserved.
+    // Then every bot field is preserved.
     let metadata = &snapshot.metadata;
-    assert_eq!(metadata.origin, jinn_session_msg::SessionOrigin::Attendant);
-    assert_eq!(
-        metadata.behavior,
-        jinn_attendant_msg::AttendantBehavior::Reset
-    );
-    assert_eq!(
-        metadata.trigger,
-        jinn_attendant_msg::AttendantTrigger::ParentCompleted
-    );
-    assert_eq!(metadata.seed_template, "check: <prior report>");
+    assert_eq!(metadata.origin, jinn_session_msg::SessionOrigin::Bot);
+    assert_eq!(metadata.behavior, jinn_bot_msg::BotBehavior::Reset);
+    assert_eq!(metadata.trigger, jinn_bot_msg::BotTrigger::ParentCompleted);
+    assert_eq!(metadata.seed_template, "check: <prior_report>");
     assert_eq!(metadata.reports.len(), 1);
     assert_eq!(metadata.reports[0].body, "the build was actually green");
     assert_eq!(metadata.reports[0].run, 1);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn entry_model_survives_persist_roundtrip() {
+    // Given a session whose entries carry model stamps.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("Model Attribution".to_owned());
+
+    let mut routed = ChatEntry::assistant("routed answer");
+    routed.restore_model_used(Some("anthropic/claude-sonnet-4.5".to_owned()));
+    routed.restore_model_requested(Some("openrouter/auto".to_owned()));
+    let mut plain = ChatEntry::assistant("plain answer");
+    plain.restore_model_used(Some("openai/gpt-5.1".to_owned()));
+    plain.restore_model_requested(Some("openai/gpt-5.1".to_owned()));
+    session.push_entry(routed);
+    session.push_entry(plain);
+
+    // When saving and loading.
+    store.save(&session.capture_snapshot()).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then both stamps are restored on both entries.
+    assert_eq!(loaded.history().len(), 2);
+    assert_eq!(
+        loaded.history()[0].model_used.as_deref(),
+        Some("anthropic/claude-sonnet-4.5")
+    );
+    assert_eq!(
+        loaded.history()[0].model_requested.as_deref(),
+        Some("openrouter/auto")
+    );
+    assert_eq!(
+        loaded.history()[1].model_used.as_deref(),
+        Some("openai/gpt-5.1")
+    );
+    assert_eq!(
+        loaded.history()[1].model_requested.as_deref(),
+        Some("openai/gpt-5.1")
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn legacy_row_without_model_loads_as_none() {
+    // Given a session saved without any model stamps (as a pre-v29 row).
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.push_entry(ChatEntry::assistant("old answer"));
+
+    // When saving and loading.
+    store.save(&session.capture_snapshot()).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then the entry loads with no model rather than failing.
+    assert_eq!(loaded.history()[0].model_used, None);
+    assert_eq!(loaded.history()[0].model_requested, None);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn conflicting_save_keeps_stored_model_over_null() {
+    // Given a shared entry whose model another session already persisted.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    let shared = ChatEntry::user("shared entry");
+    let shared_id = shared.id.clone();
+    session.push_entry(shared);
+    store
+        .save(&session.capture_snapshot())
+        .await
+        .expect("first save");
+
+    // (Seed a persisted model directly, as if another session's save had.)
+    store
+        .pool()
+        .execute(
+            "UPDATE entries SET model_used = 'anthropic/claude-sonnet-4.5', \
+             model_requested = 'openrouter/auto' WHERE id = ?",
+            vec![Box::new(shared_id.to_string())],
+        )
+        .await
+        .expect("seed persisted model");
+
+    // When saving a second session sharing the same entry, but with no model
+    // in memory (as a session from before attribution would).
+    let other_id = SessionId::new();
+    let mut other = ChatSessionState::new();
+    other.set_session_id(other_id.clone());
+    other.push_entry({
+        let mut clone = ChatEntry::user("shared entry");
+        clone.id = shared_id.clone();
+        clone
+    });
+    store
+        .save(&other.capture_snapshot())
+        .await
+        .expect("second save");
+
+    // Then the previously persisted model is not clobbered by the NULL.
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+    assert_eq!(
+        loaded.history()[0].model_used.as_deref(),
+        Some("anthropic/claude-sonnet-4.5")
+    );
+    assert_eq!(
+        loaded.history()[0].model_requested.as_deref(),
+        Some("openrouter/auto")
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn setting_in_library_round_trips_through_the_store() {
+    // Given a store with one saved session.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let session = make_session(&session_id, "Shelved");
+    store.save(&session.capture_snapshot()).await.expect("save");
+
+    // When marking it as a library member and reloading.
+    store
+        .set_in_library(&session_id, true)
+        .await
+        .expect("set_in_library");
+    let snapshot = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+    let summaries = store.load_summaries().await.expect("summaries");
+
+    // Then the roundtrip preserved the flag on both projections.
+    assert!(
+        snapshot.metadata.in_library,
+        "the flag must survive a save/load roundtrip"
+    );
+    assert!(summaries[0].in_library, "the summary must carry the flag");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn clearing_in_library_round_trips_through_the_store() {
+    // Given a saved session already marked as a library member.
+    let (_dir, store) = make_store().await;
+    let session_id = SessionId::new();
+    let mut session = make_session(&session_id, "Shelved");
+    session.set_in_library(true);
+    store.save(&session.capture_snapshot()).await.expect("save");
+
+    // When clearing the flag and reloading.
+    store
+        .set_in_library(&session_id, false)
+        .await
+        .expect("set_in_library");
+    let cleared = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then the flag is cleared.
+    assert!(!cleared.metadata.in_library);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn summaries_carry_is_bot_for_bots_and_ordinary_sessions() {
+    // Given a store holding one bot and one ordinary session.
+    let (_dir, store) = make_store().await;
+    let bot_id = SessionId::new();
+    let mut bot = {
+        // A bot of the ordinary session carries `origin == Bot`.
+        let parent = make_session(&SessionId::new(), "Parent");
+        jinn_session_state::ChatSessionState::new_bot(&parent, true)
+    };
+    bot.set_session_id(bot_id.clone());
+    bot.set_title("Watcher".to_owned());
+    let plain_id = SessionId::new();
+    let plain = make_session(&plain_id, "Plain");
+    store.save(&bot.capture_snapshot()).await.expect("save bot");
+    store.save(&plain.capture_snapshot()).await.expect("save");
+
+    // When both summaries are read back.
+    let summaries = store.load_summaries().await.expect("summaries");
+    let bot_summary = summaries
+        .iter()
+        .find(|s| s.session_id == bot_id)
+        .expect("bot summary");
+    let plain_summary = summaries
+        .iter()
+        .find(|s| s.session_id == plain_id)
+        .expect("plain summary");
+
+    // Then only the bot's summary is flagged.
+    assert!(bot_summary.is_bot, "the bot's summary must carry is_bot");
+    assert!(
+        !plain_summary.is_bot,
+        "an ordinary session's summary must not"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn is_bot_survives_reloading_the_session() {
+    // Given a store holding one saved bot.
+    let (_dir, store) = make_store().await;
+    let bot_id = SessionId::new();
+    let mut bot = {
+        // A bot of the ordinary session carries `origin == Bot`.
+        let parent = make_session(&SessionId::new(), "Parent");
+        jinn_session_state::ChatSessionState::new_bot(&parent, true)
+    };
+    bot.set_session_id(bot_id.clone());
+    bot.set_title("Watcher".to_owned());
+    store.save(&bot.capture_snapshot()).await.expect("save bot");
+
+    // When the bot is loaded back.
+    let loaded = store
+        .load_session(&bot_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then it is still a bot.
+    assert!(
+        loaded.metadata.origin == jinn_session_msg::SessionOrigin::Bot,
+        "the bot must still be a bot after a reload"
+    );
 }

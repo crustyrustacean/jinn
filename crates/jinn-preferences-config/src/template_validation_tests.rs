@@ -158,7 +158,7 @@ const OWNED_KEYS: &[&str] = &[
     // Read on demand (`ConfigList`).
     "session_lifecycle",
     "project",
-    "attendant",
+    "bot",
     "stream_rules",
 ];
 

@@ -891,3 +891,126 @@ fn tree_continuations_correct_with_sibling_filtering() {
         vec![false]
     );
 }
+
+// ---------------------------------------------------------------------------
+// Cross-root ordering (filtered trees ranked by best match score)
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
+#[test]
+fn filter_orders_trees_by_best_match_score_not_dfs_order() {
+    // Given: newer trees whose titles only scattered-match "there", and an older
+    // tree whose title contains "there" - the screenshot scenario.
+    let items = vec![
+        item("r1", None, "Anthropic incentives and business regulations"),
+        item("r2", None, "T-shirt hierarchy eras"),
+        item("r3", None, "Whether rendering deserves caching"),
+        item("r4", None, "Theater rehearsal ethics"),
+    ];
+    let mut state = TreePickerState::with_items(items);
+
+    // When filtering for "there" (all four admit as fuzzy subsequence matches).
+    state.insert_text("there");
+
+    // Then the exact-match tree ranks first, not the newest scattered match.
+    assert_eq!(state.filtered_item(0).unwrap().id, "r4");
+    // And the weaker scattered matches follow in score order.
+    assert_eq!(state.filtered_item(1).unwrap().id, "r3");
+    assert_eq!(state.filtered_item(2).unwrap().id, "r2");
+    assert_eq!(state.filtered_item(3).unwrap().id, "r1");
+}
+
+#[rstest::rstest]
+#[test]
+fn contiguous_match_outranks_scattered_match_across_trees() {
+    // Given: two roots whose labels both admit the filter as subsequence matches.
+    let items = vec![
+        item("scattered", None, "Whether we ship it"),
+        item("contiguous", None, "Somewhere the parking deck"),
+    ];
+    let mut state = TreePickerState::with_items(items);
+
+    // When filtering for "where" (both admit; only one contains it contiguously).
+    state.insert_text("where");
+
+    // Then the contiguous match ranks first despite listing order.
+    assert_eq!(state.filtered_item(0).unwrap().id, "contiguous");
+    assert_eq!(state.filtered_item(1).unwrap().id, "scattered");
+}
+
+#[rstest::rstest]
+#[test]
+fn matched_descendant_score_orders_its_whole_tree() {
+    // Given: a root whose grandchild carries a strong "delta" match, listed after
+    // a root whose own label scattered-matches weakly.
+    let items = vec![
+        item("weak", None, "Delineated tally alpha"),
+        item("strong-root", None, "Infra"),
+        item("child", Some("strong-root"), "Charts"),
+        item("grandchild", Some("child"), "Delta pipeline metrics"),
+    ];
+    let mut state = TreePickerState::with_items(items);
+
+    // When filtering for "delta" (all admit; the grandchild matches strongly).
+    state.insert_text("delta");
+
+    // Then the grandchild's tree ranks first, with nesting intact.
+    assert_eq!(state.filtered_item(0).unwrap().id, "strong-root");
+    assert_eq!(state.filtered_item(1).unwrap().id, "child");
+    assert_eq!(state.filtered_item(2).unwrap().id, "grandchild");
+    // And the weak tree follows.
+    assert_eq!(state.filtered_item(3).unwrap().id, "weak");
+}
+
+#[rstest::rstest]
+#[test]
+fn equal_best_scores_keep_original_root_order() {
+    // Given: two identical labels admitted by the filter, newest first.
+    let items = vec![
+        item("newer", None, "Deploy notes"),
+        item("older", None, "Deploy notes"),
+    ];
+    let mut state = TreePickerState::with_items(items);
+
+    // When filtering for "deploy" (both scores identical).
+    state.insert_text("deploy");
+
+    // Then the tie keeps the original (recency) order.
+    assert_eq!(state.filtered_item(0).unwrap().id, "newer");
+    assert_eq!(state.filtered_item(1).unwrap().id, "older");
+}
+
+#[rstest::rstest]
+#[test]
+fn reordered_roots_keep_correct_tree_metadata() {
+    // Given: a weakly matching tree listed first and a strongly matching tree
+    // second, whose root matches only as an ancestor of its child.
+    let items = vec![
+        item("weak-root", None, "Delineated tally alpha"),
+        item("weak-child", Some("weak-root"), "Chores"),
+        item("strong-root", None, "Infra"),
+        item("strong-child", Some("strong-root"), "Delta pipeline"),
+    ];
+    let mut state = TreePickerState::with_items(items);
+
+    // When filtering for "delta" ("Delta pipeline" ranks first; the weak tree's
+    // child does not match and is excluded).
+    state.insert_text("delta");
+
+    // Then roots are reordered by score with nesting intact.
+    assert_eq!(state.filtered_item(0).unwrap().id, "strong-root");
+    assert_eq!(state.filtered_item(1).unwrap().id, "strong-child");
+    assert_eq!(state.filtered_item(2).unwrap().id, "weak-root");
+    // And the tree metadata is recomputed for the reordered set: the first root
+    // is not the last child, the last root is.
+    assert!(!state.visible_entry(0).unwrap().is_last_child);
+    assert!(state.visible_entry(2).unwrap().is_last_child);
+    // And the reordered child carries depth and continuation metadata: its
+    // parent root is not the last visible root, so the continuation is true.
+    assert_eq!(state.visible_entry(1).unwrap().depth, 1);
+    assert!(state.visible_entry(1).unwrap().is_last_child);
+    assert_eq!(
+        state.visible_entry(1).unwrap().ancestor_continuations,
+        vec![true]
+    );
+}

@@ -9,15 +9,18 @@ pub enum SidebarSectionId {
     Pins,
     /// The active persona display section.
     Persona,
-    /// The attendants section: sessions watching a parent, with their
+    /// The bots section: sessions watching a parent, with their
     /// latest reports.
-    Attendant,
+    Bot,
     /// The task list section (collapsible phases, expandable when focused).
     TaskList,
     /// The open sessions section.
     Sessions,
     /// The MCP servers section (per-session enabled servers + live status).
     McpServers,
+    /// The library section: sessions moved here with `L`, listed flat
+    /// regardless of loaded/archived state.
+    Library,
 }
 
 impl std::fmt::Display for SidebarSectionId {
@@ -25,10 +28,11 @@ impl std::fmt::Display for SidebarSectionId {
         match self {
             Self::Pins => write!(f, "Pins"),
             Self::Persona => write!(f, "Persona"),
-            Self::Attendant => write!(f, "Attendants"),
+            Self::Bot => write!(f, "Bots"),
             Self::TaskList => write!(f, "TaskList"),
             Self::Sessions => write!(f, "Sessions"),
             Self::McpServers => write!(f, "McpServers"),
+            Self::Library => write!(f, "Library"),
         }
     }
 }
@@ -49,10 +53,11 @@ impl SidebarSectionId {
         match name {
             "pins" => Some(Self::Pins),
             "persona" => Some(Self::Persona),
-            "attendants" => Some(Self::Attendant),
+            "bots" => Some(Self::Bot),
             "task-list" => Some(Self::TaskList),
             "sessions" => Some(Self::Sessions),
             "mcp-servers" => Some(Self::McpServers),
+            "library" => Some(Self::Library),
             _ => None,
         }
     }
@@ -67,10 +72,11 @@ impl SidebarSectionId {
             match self {
                 Self::Pins => "pins",
                 Self::Persona => "persona",
-                Self::Attendant => "attendants",
+                Self::Bot => "bots",
                 Self::TaskList => "task-list",
                 Self::Sessions => "sessions",
                 Self::McpServers => "mcp-servers",
+                Self::Library => "library",
             },
         )
     }

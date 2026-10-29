@@ -1,5 +1,40 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
+## (development)
+
+- The chat entry metadata popup now displays the context size of a chat entry and how much is actually in context.
+
+## 2026-10-28 v1.12.0
+
+- Session picker fuzzy search now sorts by score.
+- `#approve-plan` prompt no longer requires a _verbatim_ copy of the decision ledger. This should fix the issue where an agent refuses to amend the ledger even after human approval to do so.
+- Pinning a tool call/result chunk now only displays the tool result in the sidebar. This reduces the noise from pinning saved plans and skill loads.
+- Add new `builtin-prompts.md` to `jinn-usage` skill that explains how to use the builtin prompts.
+- Add new "Library" sidebar section that acts as a way to bookmark sessions.
+  - `L` key moves a session to/from the Library
+- The chat entry audit popup (`a` in chat history view) now shows the model + routing configuration that generated the response.
+  - This was motivated by OpenRouter's "auto" routing strategy so you can see which model was used.
+- The estimated context used by various subsystems is now displayed in pickers.
+  - All pickers: if an entry is disabled (has an "x"), then the context used is 0 (except for loaded skills). If an entry is enabled (checkmark), then there is inherently some amount of context used (detailed below).
+  - Skills: "list" and "loaded" context usage. "list" includes names + descriptions. "loaded" counts context used when the skill body is loaded into the chat.
+  - MCP: context used by _strictly_ for advertising the existence of the MCP server. MCP tools are _not_ included.
+  - Tools: includes names, schemas, descriptions, guidelines. This _includes_ MCP tooling.
+- Big attendant overhaul:
+  - "Attendants" renamed to "Bots"
+  - Old attendant configuration values should still import fine
+  - Bots can be created and run as standalone sessions
+  - `b` in session sidebar: Add new bot to session
+  - `B` in session sidebar: Create new standalone bot
+  - `R` (rerun) changed to `G` (go)
+  - `R` now resets the bot's context
+  - Picker keybind changed from `<leader>sa` to `<leader>sb`
+  - `<c-enter>` in bot picker creates the bot in it's own session (`<c-a>` and `<enter>` keybinds unchanged)
+  - The replacement tokens for bot seed messages has changed:
+    - `<parent_id>`: The ID of the parent session (if any)
+    - `<prior_report>`: The previous `conclude` value for the bot
+  - Manual `jinn.toml` update will be needed. Recommend changing `seed_template` on the two builtins (`gap-check` and `auto-nudge`) to:
+    - `seed_template = "The parent session's id is <parent_id>. The previous run of this bot reported: <prior_report>."`
+
 ## 2026-10-22 v1.11.2
 
 - Test suite now passes on Windows.

@@ -454,6 +454,9 @@ impl SessionStoreActor {
                 self.restore_loaded_session(ctx, session).await;
                 self.hydrate_tree_frozen_nodes(&store, &payload.session_id)
                     .await;
+                // Unarchiving changes what a library member's row shows
+                // (archived → loaded), so the section refreshes.
+                self.refresh_library_cell().await;
             }
             Ok(None) => {
                 tracing::warn!(

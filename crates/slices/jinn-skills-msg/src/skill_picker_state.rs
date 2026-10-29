@@ -6,6 +6,7 @@
 //! opened, which lets ESC restore exactly the set of enabled skills that was
 //! in force before any toggles.
 
+use crate::skill::Skill;
 use crate::skill::SkillSource;
 use jinn_core_types::NameFilter;
 use jinn_picker::RowCtx;
@@ -68,6 +69,31 @@ pub struct SkillPickerState {
     /// The theme the rows were built with, so a background repaint recolors
     /// them consistently instead of stranding them on a stale palette.
     pub theme: jinn_theme::Theme,
+    /// The discovered skills, as of open.
+    ///
+    /// Kept whole (paths included) so the list-cost figure is counted from
+    /// exactly the block a prompt would carry — the picker rows hold neither
+    /// `<location>` nor `<base_dir>`. Data only; the counting lives in
+    /// `jinn-skills` and `jinn-llm-support`.
+    pub discovered: Vec<Skill>,
+    /// The in-context `skill` tool results captured at open, as
+    /// `(tool name, full content)` pairs.
+    ///
+    /// Captured rather than re-derived from disk so a skill deleted from disk
+    /// still counts while its body rides in context — pinned or not, any
+    /// in-context result is billed by the assembler. Each occurrence appears;
+    /// no dedup.
+    pub loaded_contents: Vec<(String, String)>,
+    /// Context cost in tokens of the enabled skills' `<available_skills>` block
+    /// (the list term), counted with the assembler's shaping at the last
+    /// recompute. Pending semantics: what the next prompt pays if the picker
+    /// were confirmed right now.
+    pub list_tokens: usize,
+    /// Context cost in tokens of the pinned skill bodies already in context
+    /// (the loaded term). Toggling a row never moves this — disabling a skill
+    /// removes only its list line; the pinned body keeps costing until it is
+    /// actually unloaded.
+    pub loaded_tokens: usize,
 }
 
 impl Default for SkillPickerState {
@@ -84,6 +110,10 @@ impl Default for SkillPickerState {
             // keypress before any render behaves as it always has.
             results_viewport: RESULTS_VIEWPORT_FALLBACK,
             theme: jinn_theme::default_theme(),
+            discovered: Vec::new(),
+            loaded_contents: Vec::new(),
+            list_tokens: 0,
+            loaded_tokens: 0,
         }
     }
 }

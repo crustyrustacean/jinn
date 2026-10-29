@@ -27,7 +27,7 @@ impl SessionPersistenceActor {
     ///
     /// Every path that ends a turn without a provider stream to end goes through
     /// here: a person pressing Escape, a watchdog giving up, a subagent teardown,
-    /// an attendant rerun. There is no second way to report a turn's end, which is
+    /// a bot rerun. There is no second way to report a turn's end, which is
     /// what makes the report reliable enough to hang a phase transition on.
     ///
     /// Unconditional, and that is load-bearing. A watchdog cancel lands *after*
@@ -177,7 +177,7 @@ impl SessionPersistenceActor {
     ///
     /// The actor subscribes to its own event so the outcome is visible to any
     /// in-actor follow-up work without a second derivation. Currently a
-    /// log-only sink; the attendant slice runs its own subscriber for the
+    /// log-only sink; the bot slice runs its own subscriber for the
     /// re-run trigger.
     #[expect(
         clippy::unused_async,
@@ -398,6 +398,26 @@ impl SessionPersistenceActor {
                     );
                     session.finalize_entries_for_finish(preserve_assistant, event.dispatched_at);
                 }
+
+                // Response-reported model override: a normal completion knows
+                // which model actually answered, so the live entries' stamps
+                // move from the requested model to the response's. The
+                // requested model is never touched — the difference is the
+                // interesting fact. Must run while the machine's indices are
+                // intact, i.e. before the phase actor's settle, and after
+                // finalization so an assistant entry created lazily by it
+                // (empty streams) is stamped too.
+                if matches!(
+                    event.reason,
+                    StreamCompletedReason::Finished | StreamCompletedReason::ToolUse
+                ) {
+                    session.override_live_entry_models(event.model_used.as_deref());
+                }
+                // The generation is over (Finished/Error) or about to hand off
+                // to its continuation dispatch — either way this generation's
+                // request stamp is consumed. ToolUse relies on the continuation
+                // dispatch receipt to restamp before any new entry is created.
+                session.clear_stream_request_model();
 
                 // Hard cancel: force-exclude dangling tool calls left by the interrupted stream.
                 if event.reason == StreamCompletedReason::Canceled {

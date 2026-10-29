@@ -16,16 +16,17 @@ use super::super::SessionPersistenceActor;
 /// Compute sorted pinned-entry IDs from a session, matching
 /// `AppState::sorted_pinned_ids` but operating on a session directly so the
 /// pins handler can run inside a [`SessionPinsView`] without `&AppState`.
+///
+/// The ids are the sidebar's display rows, so the unpin cursor clamps over
+/// exactly the rows the user sees.
 fn sorted_pinned_ids_from_session(
     session: &jinn_session_state::ChatSessionState,
 ) -> Vec<jinn_core_types::ChatEntryId> {
     use jinn_core_types::ChatEntryId;
-    use jinn_kernel::common::app_state::pin_sort_key;
-    let mut pinned = session.pinned_entries();
-    pinned.sort_by_key(|entry| pin_sort_key(entry.pin_position));
-    pinned
-        .iter()
-        .map(|e| e.id.clone())
+    session
+        .pinned_display_rows()
+        .into_iter()
+        .map(|row| row.entry_id)
         .collect::<Vec<ChatEntryId>>()
 }
 

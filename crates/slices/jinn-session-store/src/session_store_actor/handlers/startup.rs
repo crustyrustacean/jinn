@@ -29,6 +29,14 @@ impl SessionStoreActor {
         if !self.load_unarchived_sessions(ctx).await {
             return;
         }
+        // The Library cell fill sits behind the hydration dispatch rather
+        // than in front of it — startup I/O keeps its declared order — and
+        // the members-only read is cheap enough that ordering it after costs
+        // nothing. A failed hydration dispatch skips it too; in that state
+        // the store itself is failing, and the section's entry-time refresh
+        // covers recovery.
+        self.refresh_library_cell().await;
+
         self.publish(UpdateAppState {
             updates: vec![AppStateUpdate::SetLastModel(app_state.last_model.clone())],
         })

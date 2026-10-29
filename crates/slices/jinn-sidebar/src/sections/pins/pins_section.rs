@@ -10,11 +10,11 @@ use crate::sections::section_trait::{
 use jinn_chat_log_view::chat_log::strip_ansi;
 use jinn_core_types::SessionId;
 use jinn_kernel::common::app_state::AppState;
-use jinn_kernel::common::app_state::pin_sort_key;
-use jinn_kernel::protocol::ToolResultStatus;
-use jinn_kernel::protocol::{ChatEntryId, ChatEntryKind, IntentResult, PinPosition};
+use jinn_kernel::protocol::ChatEntryId;
+use jinn_kernel::protocol::ChatEntryKind;
+use jinn_kernel::protocol::{IntentResult, PinPosition};
 use jinn_session_history_msg::{PinChatEntry, UnpinChatEntry};
-use jinn_skills::loaded_skill_summary_label;
+use jinn_session_state::{PinDisplayRow, PinRowLabel};
 use jinn_slices::DrawContext;
 use jinn_slices::route::ScopeSignal;
 use jinn_theme::Theme;
@@ -112,9 +112,7 @@ impl SidebarSection for PinsSection {
     ) {
         let state = ctx.state();
         let sorted_ids = state.sorted_pinned_ids();
-        let mut pinned = state.active_session().pinned_entries();
-        // Sort to match sorted_ids order (TOP → REL → BOT, stable by history).
-        pinned.sort_by_key(|entry| pin_sort_key(entry.pin_position));
+        let rows = state.active_session().pinned_display_rows();
 
         let selected_index = if state
             .frontend
@@ -126,7 +124,7 @@ impl SidebarSection for PinsSection {
         } else {
             usize::MAX // No pin will match this index.
         };
-        let lines = if pinned.is_empty() {
+        let lines = if rows.is_empty() {
             vec![Line::from(vec![Span::styled(
                 " Pinned Context - 0",
                 Style::default()
@@ -140,11 +138,19 @@ impl SidebarSection for PinsSection {
                     Some(jinn_sidebar_msg::SidebarSectionId::Pins)
                 );
             build_entry_list(
-                &pinned,
+                &rows,
                 selected_index,
                 area.width,
                 section_focused,
                 &state.frontend.theme,
+                |id| {
+                    state
+                        .active_session()
+                        .history()
+                        .iter()
+                        .find(|entry| entry.id == *id)
+                        .map(|entry| &entry.kind)
+                },
             )
         };
 
@@ -161,7 +167,7 @@ impl SidebarSection for PinsSection {
         ctx: &dyn DrawContext<jinn_kernel::common::app_state::AppState>,
     ) -> u16 {
         let state = ctx.state();
-        let count = state.active_session().pinned_entries().len();
+        let count = state.active_session().pinned_display_count();
         // Hide the section entirely when there are no pins.
         if count == 0 {
             return 0;
@@ -176,12 +182,12 @@ impl SidebarSection for PinsSection {
 ///
 /// Mirrors [`PinsSection::content_height`] so the task list preview popup
 /// can determine where the task list section starts without needing the
-/// section instance. Hides (0) when there are no pinned entries.
+/// section instance. Hides (0) when there are no display rows.
 ///
 /// [`PinsSection::content_height`]: PinsSection::content_height
 #[must_use]
 pub fn pins_section_content_height(state: &AppState) -> u16 {
-    let count = state.active_session().pinned_entries().len();
+    let count = state.active_session().pinned_display_count();
     if count == 0 {
         return 0;
     }
@@ -252,15 +258,13 @@ pub fn handle_pins_pin_cycle(state: &mut AppState) -> IntentResult {
     let index = state
         .frontend
         .with_sections(|s| s.pins.selection_index(&sorted_ids), || 0);
-    let mut pinned = state.active_session().pinned_entries();
-    pinned.sort_by_key(|entry| pin_sort_key(entry.pin_position));
-    let Some(entry) = pinned.get(index) else {
+    let rows = state.active_session().pinned_display_rows();
+    let Some(row) = rows.get(index) else {
         return IntentResult::empty();
     };
-    let current = entry.pin_position.unwrap_or(PinPosition::Relative);
-    let next = cycle_position(current);
+    let next = cycle_position(row.position);
     let session_id = state.session.active_session_id().clone();
-    let entry_id = entry.id.clone();
+    let entry_id = row.entry_id.clone();
     IntentResult::new_message(PinChatEntry {
         session_id,
         entry_id,
@@ -300,11 +304,10 @@ fn resolve_selected_entry_id(state: &AppState) -> Option<(SessionId, ChatEntryId
         .with_sections(|s| s.pins.selection_index(&sorted_ids), || 0);
     let session_id = state.session.active_session_id().clone();
 
-    let mut pinned = state.active_session().pinned_entries();
-    pinned.sort_by_key(|entry| pin_sort_key(entry.pin_position));
+    let rows = state.active_session().pinned_display_rows();
 
-    let entry = pinned.get(index)?;
-    Some((session_id, entry.id.clone()))
+    let row = rows.get(index)?;
+    Some((session_id, row.entry_id.clone()))
 }
 
 /// Cycles a pin position to the next value in the rotation: Top → Bottom → Relative → Top.
@@ -329,8 +332,45 @@ fn position_badge(position: PinPosition) -> (&'static str, Color) {
     }
 }
 
-/// Returns the display prefix and truncated content for a chat entry kind.
-fn entry_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
+/// Returns the display prefix and truncated content for a display row.
+///
+/// `kind` is the resolved entry kind for `Verbatim` rows (or `None` when the
+/// entry no longer exists in history, which renders as an empty preview).
+/// Tool rows (`Result`/`SkillResult`/`Call`) assemble their text from the
+/// label and carry no kind prefix (`⚒` for a call).
+fn entry_prefix_and_content(
+    kind: Option<&ChatEntryKind>,
+    label: &PinRowLabel,
+) -> (&'static str, String) {
+    match label {
+        PinRowLabel::Verbatim => match kind {
+            Some(resolved) => verbatim_prefix_and_content(resolved),
+            None => ("", String::new()),
+        },
+        PinRowLabel::Result {
+            name,
+            content,
+            success,
+        } => {
+            let icon = if *success { "✓" } else { "✗" };
+            (
+                "",
+                format!(
+                    "{} {}: {}",
+                    icon,
+                    truncate_str(name, 15),
+                    truncate_str(content, 20)
+                ),
+            )
+        }
+        PinRowLabel::SkillResult { content } => ("", truncate_str(content, 40)),
+        PinRowLabel::Call { name } => ("\u{2692} ", format!("{}(...)", truncate_str(name, 20))),
+    }
+}
+
+/// The per-kind prefix and content a `Verbatim` row shows, exactly as
+/// the sidebar has always rendered non-tool entries.
+fn verbatim_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
     match kind {
         ChatEntryKind::User { display, .. } => ("> ", truncate_str(display, 40)),
         ChatEntryKind::Assistant(text) => ("\u{2666} ", truncate_str(text, 40)),
@@ -343,35 +383,6 @@ fn entry_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
         // Inter-session mail is self-describing: the text already carries the
         // sender's attribution, so the preview is the text alone.
         ChatEntryKind::Intersession { text, .. } => ("", truncate_str(text, 25)),
-        ChatEntryKind::ToolCall { name, .. } => {
-            ("\u{2692} ", format!("{}(...)", truncate_str(name, 20)))
-        }
-        ChatEntryKind::ToolResult {
-            name,
-            content,
-            status,
-            ..
-        } => {
-            // Loaded skills are pinned as `<skill name="X" ...>` XML.
-            // Show a clean single-line label instead of the raw XML.
-            if *name == "skill" {
-                return ("", truncate_str(&loaded_skill_summary_label(content), 40));
-            }
-            let icon = if *status == ToolResultStatus::Success {
-                "✓"
-            } else {
-                "✗"
-            };
-            (
-                "",
-                format!(
-                    "{} {}: {}",
-                    icon,
-                    truncate_str(name, 15),
-                    truncate_str(content, 20)
-                ),
-            )
-        }
         // Table entries and annotations are not shown in the pinned panel summary.
         ChatEntryKind::Compaction { .. } | ChatEntryKind::Annotation { .. } => ("", String::new()),
         // Rule guidance shows the rule that fired, not the guidance body.
@@ -380,6 +391,9 @@ fn entry_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
         ChatEntryKind::Thinking(text) => ("", truncate_str(text, 40)),
 
         ChatEntryKind::Transient(s) => ("\u{2139} ", truncate_str(s, 40)),
+        // Tool kinds on a Verbatim row cannot occur: the projection labels
+        // every tool result/call with a tool label variant.
+        ChatEntryKind::ToolCall { .. } | ChatEntryKind::ToolResult { .. } => ("", String::new()),
     }
 }
 
@@ -429,18 +443,22 @@ pub(crate) fn truncate_str(s: &str, max_width: usize) -> String {
 }
 
 /// Builds the list of lines for the pinned entries panel.
-fn build_entry_list(
-    pinned: &[&jinn_kernel::protocol::ChatEntry],
+///
+/// `resolve_kind` supplies the `ChatEntryKind` for a row's entry id; it is
+/// only consulted for `Verbatim` rows (tool rows render from their label).
+fn build_entry_list<'a>(
+    rows: &[PinDisplayRow],
     selected_index: usize,
     area_width: u16,
     section_focused: bool,
     theme: &Theme,
+    resolve_kind: impl Fn(&ChatEntryId) -> Option<&'a ChatEntryKind>,
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     // Header
     lines.push(Line::from(vec![Span::styled(
-        format!(" Pinned Context - {}", pinned.len()),
+        format!(" Pinned Context - {}", rows.len()),
         Style::default()
             .fg(theme.primary_text)
             .add_modifier(Modifier::BOLD),
@@ -451,13 +469,14 @@ fn build_entry_list(
     let fixed_overhead: u16 = 9;
     let content_budget = area_width.saturating_sub(fixed_overhead) as usize;
 
-    for (i, entry) in pinned.iter().enumerate() {
+    for (i, row) in rows.iter().enumerate() {
         let is_selected = section_focused && i == selected_index;
 
-        let (badge_text, badge_color) =
-            position_badge(entry.pin_position.unwrap_or(PinPosition::Relative));
+        let (badge_text, badge_color) = position_badge(row.position);
 
-        let (prefix, content) = entry_prefix_and_content(&entry.kind);
+        // A Verbatim row resolves its entry by id for its kind prefix; tool
+        // rows render from the label alone and never consult the resolver.
+        let (prefix, content) = entry_prefix_and_content(resolve_kind(&row.entry_id), &row.label);
 
         // Truncate the assembled content to the remaining cell budget.
         let full_content = format!("{prefix}{content}");

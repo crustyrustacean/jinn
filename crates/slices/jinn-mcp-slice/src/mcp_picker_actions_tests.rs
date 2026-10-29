@@ -60,3 +60,88 @@ fn tool_def(name: &str, description: &str) -> jinn_core_types::ToolDefinition {
         server_tool_type: None,
     }
 }
+
+#[rstest::rstest]
+#[test]
+fn registered_mcp_defs_collect_only_the_mcp_prefixed_definitions() {
+    // Given a registry mixing built-ins, an mcp server's tools, and another
+    // prefix that merely begins with `mcp_`.
+    let defs = vec![
+        tool_def("read", "builtin"),
+        tool_def("mcp__excalimate__draw", "Draw"),
+        tool_def("mcp__excalimate__shapes", "Shapes"),
+        tool_def("mcp_server", "not an mcp tool"),
+    ];
+
+    // When projecting the registered MCP definitions.
+    let mcp = super::mcp_picker_actions::registered_mcp_defs(&defs);
+
+    // Then only the `mcp__`-prefixed definitions survive.
+    let names: Vec<&str> = mcp.iter().map(|d| d.name.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["mcp__excalimate__draw", "mcp__excalimate__shapes"]
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn refresh_cost_figure_counts_registered_tools_only() {
+    // Given a session registry holding one enabled server's two tools and a
+    // built-in; a disabled server's tools would not be registered at all.
+    let defs = vec![
+        tool_def("read", "builtin"),
+        tool_def("mcp__a__one", "First"),
+        tool_def("mcp__a__two", "Second"),
+    ];
+
+    // When refreshing the figure.
+    let mut state = jinn_mcp_msg::McpPickerState::default();
+    super::mcp_picker_actions::refresh_cost_figure(&mut state, &defs);
+
+    // Then the figure equals the schema cost of the two MCP tools — and no
+    // built-in is folded in.
+    let counter = jinn_llm_support::token_estimator::TiktokenCounter::o200k_base();
+    let expected = jinn_llm_support::token_estimator::toolset_context_tokens(
+        &[
+            tool_def("mcp__a__one", "First"),
+            tool_def("mcp__a__two", "Second"),
+        ],
+        &counter,
+    );
+    assert_eq!(state.context_tokens, expected);
+    assert!(state.context_tokens > 0);
+    let names: Vec<&str> = state
+        .context_definitions
+        .iter()
+        .map(|d| d.name.as_str())
+        .collect();
+    assert_eq!(names, vec!["mcp__a__one", "mcp__a__two"]);
+}
+
+#[rstest::rstest]
+#[test]
+fn refresh_cost_figure_skips_an_unchanged_registry() {
+    // Given a state whose figure was computed from a registry.
+    let defs = vec![tool_def("mcp__a__one", "First")];
+    let mut state = jinn_mcp_msg::McpPickerState::default();
+    super::mcp_picker_actions::refresh_cost_figure(&mut state, &defs);
+    let figure = state.context_tokens;
+
+    // When refreshing again over the same registry.
+    super::mcp_picker_actions::refresh_cost_figure(&mut state, &defs);
+
+    // Then the figure is stable and the signature guard held.
+    assert_eq!(state.context_tokens, figure);
+
+    // When the registry gains a tool.
+    let grown = vec![
+        tool_def("mcp__a__one", "First"),
+        tool_def("mcp__a__two", "Second"),
+    ];
+
+    // Then the next refresh picks the growth up — the figure follows the
+    // live registry, not the open-time state.
+    super::mcp_picker_actions::refresh_cost_figure(&mut state, &grown);
+    assert!(state.context_tokens > figure);
+}

@@ -74,6 +74,15 @@ impl SessionStoreService {
         self.svc.load_summaries().await
     }
 
+    /// Load summaries for library members only.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the database cannot be read.
+    pub async fn library_members(&self) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
+        self.svc.library_members().await
+    }
+
     /// Load a full session by ID.
     ///
     /// # Errors
@@ -133,6 +142,19 @@ impl SessionStoreService {
         archived: bool,
     ) -> Result<(), Report<SessionStoreError>> {
         self.svc.set_archived_many(session_ids, archived).await
+    }
+
+    /// Set the `in_library` flag for a session.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the update fails.
+    pub async fn set_in_library(
+        &self,
+        session_id: &SessionId,
+        in_library: bool,
+    ) -> Result<(), Report<SessionStoreError>> {
+        self.svc.set_in_library(session_id, in_library).await
     }
 
     /// Load lightweight summaries for all unarchived sessions.

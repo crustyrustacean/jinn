@@ -587,6 +587,8 @@ fn compaction_entry_produces_user_message_with_summary() {
         context_override: jinn_core_types::ContextOverride::Default,
         context_history: Vec::new(),
         token_count: None,
+        model_used: None,
+        model_requested: None,
     }];
 
     // When converting to messages.
@@ -751,6 +753,8 @@ fn message_order_after_compaction() {
             context_override: jinn_core_types::ContextOverride::Default,
             context_history: Vec::new(),
             token_count: None,
+            model_used: None,
+            model_requested: None,
         },
         ChatEntry::user("new question"),
         ChatEntry::assistant("new answer"),
@@ -1517,6 +1521,8 @@ fn compaction_entry(summary: &str) -> ChatEntry {
         context_override: jinn_core_types::ContextOverride::Default,
         context_history: Vec::new(),
         token_count: None,
+        model_used: None,
+        model_requested: None,
     }
 }
 

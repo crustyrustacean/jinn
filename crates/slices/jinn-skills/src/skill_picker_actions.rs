@@ -8,8 +8,10 @@
 use std::collections::HashSet;
 
 use jinn_core_types::NameFilter;
+use jinn_llm_support::token_estimator::TiktokenCounter;
 use jinn_skills_msg::{Skill, SkillPickerState};
 
+use crate::format::{loaded_skill_tokens, skills_list_tokens};
 use crate::skill_picker_reload::build_skill_entries;
 
 /// Opening the picker: fresh filter and selection, snapshot the session's
@@ -27,6 +29,38 @@ pub fn open(
     state
         .selection
         .set_items(build_skill_entries(discovered, skill_filter, theme));
+    // The full discovered skills ride along (paths included) so the list-cost
+    // figure is counted from exactly the block a prompt would carry.
+    state.discovered = discovered.to_vec();
+    recompute_tokens(state);
+}
+
+/// Recomputes both cost terms of the picker's pending figure.
+///
+/// The **list term** counts the `<available_skills>` block of the enabled rows
+/// — the block a confirmed filter would ship — with an empty loaded set: the
+/// picker's pending list carries no `loaded="true"` marks, because loaded-ness
+/// is a fact about history, not a picker toggle. The **loaded term** counts
+/// the captured pinned bodies; toggling never touches it, since disabling a
+/// skill removes only its list line while the body stays pinned.
+pub fn recompute_tokens(state: &mut SkillPickerState) {
+    let enabled: HashSet<&str> = state
+        .selection
+        .items()
+        .iter()
+        .filter(|item| item.entry().enabled)
+        .map(|item| item.entry().name.as_str())
+        .collect();
+    let counter = TiktokenCounter::o200k_base();
+    let enabled_skills: Vec<Skill> = state
+        .discovered
+        .iter()
+        .filter(|skill| enabled.contains(skill.name.as_str()))
+        .cloned()
+        .collect();
+    let loaded: std::collections::HashSet<String> = std::collections::HashSet::new();
+    state.list_tokens = skills_list_tokens(&enabled_skills, &loaded, &counter);
+    state.loaded_tokens = loaded_skill_tokens(&state.loaded_contents, &counter);
 }
 
 /// Enter: commit the toggled set as the session's disabled skills, and return
@@ -61,10 +95,14 @@ pub fn cancel_filter(state: &mut SkillPickerState) -> Option<Option<NameFilter>>
 }
 
 /// Toggle the highlighted skill's enabled flag. The picker stays open.
+///
+/// The list-cost term follows the flip; the loaded term does not — disabling
+/// a loaded skill removes only its list line, not its pinned body.
 pub fn toggle_highlighted(state: &mut SkillPickerState) {
     state
         .selection
         .with_selected_mut(|item| item.entry_mut().enabled = !item.entry().enabled);
+    recompute_tokens(state);
 }
 
 /// The highlighted skill's name, if any row is selected.
@@ -74,6 +112,14 @@ pub fn highlighted_name(state: &SkillPickerState) -> Option<String> {
         .selection
         .selected_item()
         .map(|item| item.entry().name.clone())
+}
+
+/// How many skills are currently enabled, and how many the picker offers.
+#[must_use]
+pub fn enabled_count(state: &SkillPickerState) -> (usize, usize) {
+    let items = state.selection.items();
+    let enabled = items.iter().filter(|item| item.entry().enabled).count();
+    (enabled, items.len())
 }
 
 #[cfg(test)]
@@ -226,5 +272,114 @@ mod tests {
 
         // Then nothing is restored, so the session's filter is left alone.
         assert!(restored.is_none());
+    }
+
+    #[rstest::rstest]
+    fn list_term_counts_the_enabled_skills_block() {
+        // Given a picker over two skills with one withheld.
+        let dir = jinn_testutil::tempdir();
+        let state = opened(&dir.path, &["beta"]);
+
+        // When reading the list term.
+        // Then it equals the counted block of the enabled skill alone.
+        let counter = jinn_llm_support::token_estimator::TiktokenCounter::o200k_base();
+        let expected = crate::format::skills_list_tokens(
+            &[skill(&dir.path, "alpha")],
+            &std::collections::HashSet::new(),
+            &counter,
+        );
+        assert_eq!(state.list_tokens, expected);
+        assert!(state.list_tokens > 0, "one enabled skill must cost tokens");
+    }
+
+    #[rstest::rstest]
+    fn loaded_term_counts_the_captured_pinned_contents() {
+        // Given a picker whose loaded pairs hold two pinned bodies.
+        let dir = jinn_testutil::tempdir();
+        let mut state = opened(&dir.path, &[]);
+        state.loaded_contents = vec![
+            (
+                "skill".to_owned(),
+                "<skill name=\"a\">body a</skill>".to_owned(),
+            ),
+            (
+                "skill".to_owned(),
+                "<skill name=\"b\">body b</skill>".to_owned(),
+            ),
+        ];
+
+        // When recomputing the terms.
+        super::recompute_tokens(&mut state);
+
+        // Then the loaded term prices each pair as name + content, exactly
+        // as the assembler's Tool term would.
+        let counter = jinn_llm_support::token_estimator::TiktokenCounter::o200k_base();
+        let expected = crate::format::loaded_skill_tokens(
+            &[
+                (
+                    "skill".to_owned(),
+                    "<skill name=\"a\">body a</skill>".to_owned(),
+                ),
+                (
+                    "skill".to_owned(),
+                    "<skill name=\"b\">body b</skill>".to_owned(),
+                ),
+            ],
+            &counter,
+        );
+        assert_eq!(state.loaded_tokens, expected);
+        assert!(state.loaded_tokens > 0);
+    }
+
+    #[rstest::rstest]
+    fn disabling_a_loaded_skill_keeps_the_loaded_term() {
+        // Given a picker with one loaded (pinned) skill and one plain skill.
+        let dir = jinn_testutil::tempdir();
+        let mut state = opened(&dir.path, &[]);
+        state.loaded_contents = vec![(
+            "skill".to_owned(),
+            "<skill name=\"alpha\">pinned</skill>".to_owned(),
+        )];
+        super::recompute_tokens(&mut state);
+        let list_before = state.list_tokens;
+        let loaded_before = state.loaded_tokens;
+
+        // When disabling the loaded skill's row (alpha is highlighted first).
+        super::toggle_highlighted(&mut state);
+
+        // Then the loaded term is unchanged: the pinned body keeps costing
+        // until it is unloaded.
+        assert_eq!(state.loaded_tokens, loaded_before);
+        // And the list term now counts beta's block alone.
+        let counter = jinn_llm_support::token_estimator::TiktokenCounter::o200k_base();
+        let expected = crate::format::skills_list_tokens(
+            &[skill(&dir.path, "beta")],
+            &std::collections::HashSet::new(),
+            &counter,
+        );
+        assert_eq!(state.list_tokens, expected);
+        assert!(
+            state.list_tokens < list_before,
+            "alpha's line left the list"
+        );
+    }
+
+    #[rstest::rstest]
+    fn loading_a_skill_raises_the_loaded_term() {
+        // Given an open picker.
+        let dir = jinn_testutil::tempdir();
+        let mut state = opened(&dir.path, &[]);
+        let loaded_before = state.loaded_tokens;
+
+        // When a load appends the pinned pair and recomputes (the route's
+        // load path).
+        state.loaded_contents.push((
+            "skill".to_owned(),
+            "<skill name=\"alpha\">body</skill>".to_owned(),
+        ));
+        super::recompute_tokens(&mut state);
+
+        // Then the loaded term has grown by that body's cost.
+        assert!(state.loaded_tokens > loaded_before);
     }
 }

@@ -6,9 +6,9 @@
 //! So the row is captured here, while the frame that shows it still exists, and
 //! the removal reads it back.
 //!
-//! The same holds for the attendants cursor, in the attendants section's own
+//! The same holds for the bots cursor, in the bots section's own
 //! units — a row *index* into that list, not a screen row, since the section
-//! draws two screen lines per attendant.
+//! draws two screen lines per bot.
 //!
 //! Capture runs unconditionally, on every frame, whichever scope holds focus.
 //! A frame drawn in a full-width tab has no sidebar column at all, and a frame
@@ -43,22 +43,41 @@ pub fn capture_sessions_cursor_row(state: &AppState) {
     }
 }
 
-/// Records which attendant the attendants cursor is on, if it is on one.
-pub fn capture_attendant_cursor_row(state: &AppState) {
+/// Records which bot the bots cursor is on, if it is on one.
+pub fn capture_bot_cursor_row(state: &AppState) {
     let row = state.frontend.with_sections(
         |sections| {
             sections
-                .attendant
+                .bot
                 .selected_id
                 .clone()
-                .and_then(|id| super::attendants_section::row_of(state, &id))
+                .and_then(|id| super::bots_section::row_of(state, &id))
         },
         || None,
     );
     if let Some(row) = row {
         state
             .frontend
-            .update_sections(|sections| sections.attendant.last_cursor_row = Some(row));
+            .update_sections(|sections| sections.bot.last_cursor_row = Some(row));
+    }
+}
+
+/// Records which member the library cursor is on, if it is on one.
+pub fn capture_library_cursor_row(state: &AppState) {
+    let row = state.frontend.with_sections(
+        |sections| {
+            sections
+                .library
+                .selected_id
+                .clone()
+                .and_then(|id| super::library_section::row_of(state, &id))
+        },
+        || None,
+    );
+    if let Some(row) = row {
+        state
+            .frontend
+            .update_sections(|sections| sections.library.last_cursor_row = Some(row));
     }
 }
 
@@ -89,24 +108,24 @@ pub fn restored_sessions_row_split(
         .min(len - 1)
 }
 
-/// The attendant row the attendants cursor would return to after a removal.
+/// The bot row the bots cursor would return to after a removal.
 #[must_use]
-pub fn restored_attendant_row(state: &AppState) -> usize {
-    restored_attendant_row_split(&state.session, &state.frontend)
+pub fn restored_bot_row(state: &AppState) -> usize {
+    restored_bot_row_split(&state.session, &state.frontend)
 }
 
-/// Split-borrow variant of [`restored_attendant_row`].
+/// Split-borrow variant of [`restored_bot_row`].
 #[must_use]
-pub fn restored_attendant_row_split(
+pub fn restored_bot_row_split(
     session: &jinn_session_state::SessionMap,
     frontend: &jinn_kernel::state::frontend_state::FrontendState,
 ) -> usize {
-    let len = super::attendants_section::row_count_split(session, frontend);
+    let len = super::bots_section::row_count_split(session, frontend);
     if len == 0 {
         return 0;
     }
     frontend
-        .with_sections(|sections| sections.attendant.last_cursor_row, || None)
+        .with_sections(|sections| sections.bot.last_cursor_row, || None)
         .unwrap_or(0)
         .min(len - 1)
 }
@@ -127,7 +146,7 @@ mod tests {
 
     use super::super::sessions::state::sorted_open_sessions;
     use super::{
-        capture_attendant_cursor_row, capture_sessions_cursor_row, restored_attendant_row,
+        capture_bot_cursor_row, capture_sessions_cursor_row, restored_bot_row,
         restored_sessions_row,
     };
 
@@ -154,8 +173,8 @@ mod tests {
     }
 
     /// State whose active session is a fresh parent holding `names` named
-    /// attendants, one each, in the order given.
-    fn state_viewing_attendants(names: &[&str]) -> AppState {
+    /// bots, one each, in the order given.
+    fn state_viewing_bots(names: &[&str]) -> AppState {
         let parent = ChatSessionState::new();
         let parent_id = parent.session_id().clone();
         let mut state = AppState::default_with_scope_focus();
@@ -164,10 +183,9 @@ mod tests {
         state.session.insert(parent);
         state.session.set_active(parent_id.clone());
         for name in names {
-            let mut attendant =
-                ChatSessionState::new_attendant(state.session.get_unchecked(&parent_id), true);
-            attendant.set_title((*name).to_owned());
-            state.session.insert(attendant);
+            let mut bot = ChatSessionState::new_bot(state.session.get_unchecked(&parent_id), true);
+            bot.set_title((*name).to_owned());
+            state.session.insert(bot);
         }
         state
     }
@@ -281,44 +299,44 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn the_attendant_cursor_row_is_captured_from_the_attendant_it_names() {
-        // Given a parent holding attendants "zulu" and "alpha", with the
+    fn the_bot_cursor_row_is_captured_from_the_bot_it_names() {
+        // Given a parent holding bots "zulu" and "alpha", with the
         // cursor on the one named "zulu" — which sorts into row 1.
-        let mut state = state_viewing_attendants(&["zulu", "alpha"]);
+        let mut state = state_viewing_bots(&["zulu", "alpha"]);
         let zulu = state
             .session
             .iter()
             .map(|(id, session)| (id.clone(), session.title().map(str::to_owned)))
             .find(|(_, title)| title.as_deref() == Some("zulu"))
             .map(|(id, _)| id)
-            .expect("the zulu attendant is loaded");
+            .expect("the zulu bot is loaded");
         state
             .frontend
-            .update_sections(|s| s.attendant.selected_id = Some(zulu));
+            .update_sections(|s| s.bot.selected_id = Some(zulu));
 
         // When the frame captures the cursor's row.
-        capture_attendant_cursor_row(&state);
+        capture_bot_cursor_row(&state);
 
-        // Then the capture is that attendant's row in the rendered order.
+        // Then the capture is that bot's row in the rendered order.
         let captured = state
             .frontend
-            .with_sections(|s| s.attendant.last_cursor_row, || None);
+            .with_sections(|s| s.bot.last_cursor_row, || None);
         assert_eq!(captured, Some(1));
     }
 
     #[rstest::rstest]
-    fn a_restored_attendant_row_is_clamped_to_the_last_one() {
-        // Given a state whose captured attendant row is 2 and whose list now
-        // holds a single attendant.
-        let mut state = state_viewing_attendants(&["only"]);
+    fn a_restored_bot_row_is_clamped_to_the_last_one() {
+        // Given a state whose captured bot row is 2 and whose list now
+        // holds a single bot.
+        let mut state = state_viewing_bots(&["only"]);
         state
             .frontend
-            .update_sections(|s| s.attendant.last_cursor_row = Some(2));
+            .update_sections(|s| s.bot.last_cursor_row = Some(2));
 
         // When the captured row is read back.
-        let row = restored_attendant_row(&state);
+        let row = restored_bot_row(&state);
 
-        // Then it is clamped to the only attendant there is.
+        // Then it is clamped to the only bot there is.
         assert_eq!(row, 0);
     }
 }

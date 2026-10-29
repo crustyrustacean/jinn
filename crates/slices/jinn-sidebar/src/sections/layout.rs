@@ -143,7 +143,8 @@ impl DocumentLayout {
     /// Whether `id` is the trailing section of the document.
     ///
     /// The trailing section is the one pushed down to the bottom of a column
-    /// that has rows to spare; every other section stays at the top.
+    /// that has rows to spare; every other section stays at the top. Sessions,
+    /// the tail, always draws rows, so the anchor always lands on it.
     #[must_use]
     pub fn is_last(&self, id: SidebarSectionId) -> bool {
         self.spans.last().is_some_and(|span| span.id == id)
@@ -172,7 +173,7 @@ pub fn persona_rows(_state: &AppState) -> u16 {
 /// Pins section content height in rows; zero when nothing is pinned.
 #[must_use]
 pub fn pins_rows(state: &AppState) -> u16 {
-    let count = state.active_session().pinned_entries().len();
+    let count = state.active_session().pinned_display_count();
     if count == 0 {
         return 0;
     }
@@ -226,13 +227,16 @@ pub fn sessions_rows(state: &AppState) -> u16 {
 ///
 /// The `SidebarSectionId` enum declares a different order; this list is
 /// authoritative because `Sidebar` stores sections in registration order and
-/// renders them top-down. Sessions must stay last — it is the document tail.
-pub const REGISTRATION_ORDER: [SidebarSectionId; 6] = [
+/// renders them top-down. Sessions is the document tail — it always draws rows
+/// (the session map keeps the active session present), so the bottom anchor
+/// resolves to it.
+pub const REGISTRATION_ORDER: [SidebarSectionId; 7] = [
     SidebarSectionId::Persona,
-    SidebarSectionId::Attendant,
+    SidebarSectionId::Bot,
     SidebarSectionId::Pins,
     SidebarSectionId::TaskList,
     SidebarSectionId::McpServers,
+    SidebarSectionId::Library,
     SidebarSectionId::Sessions,
 ];
 
@@ -242,10 +246,11 @@ pub fn content_height_of(state: &AppState, config: &ConfigLayer, id: SidebarSect
     match id {
         SidebarSectionId::Persona => persona_rows(state),
         SidebarSectionId::Pins => pins_rows(state),
-        SidebarSectionId::Attendant => super::attendants_section::rows(state),
+        SidebarSectionId::Bot => super::bots_section::rows(state),
         SidebarSectionId::TaskList => task_list_rows(state),
         SidebarSectionId::McpServers => mcp_servers_rows(state, config),
         SidebarSectionId::Sessions => sessions_rows(state),
+        SidebarSectionId::Library => super::library_section::rows(state),
     }
 }
 
@@ -367,10 +372,11 @@ pub fn cursor_row_in_section(state: &AppState, id: SidebarSectionId) -> Option<u
     match id {
         SidebarSectionId::Persona => persona_cursor_row(state),
         SidebarSectionId::Pins => pins_cursor_row(state),
-        SidebarSectionId::Attendant => super::attendants_section::cursor_row(state),
+        SidebarSectionId::Bot => super::bots_section::cursor_row(state),
         SidebarSectionId::TaskList => task_list_cursor_row(state),
         SidebarSectionId::McpServers => mcp_servers_cursor_row(state),
         SidebarSectionId::Sessions => sessions_cursor_row(state),
+        SidebarSectionId::Library => super::library_section::cursor_row(state),
     }
 }
 

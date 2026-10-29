@@ -44,9 +44,9 @@ fn tree_entry(
         is_last_child,
         is_subagent,
         has_live_term: false,
-        is_attendant: false,
-        is_attendant_prepping: false,
-        attendant_fires_on_parent_completion: false,
+        is_bot: false,
+        is_bot_prepping: false,
+        bot_fires_on_parent_completion: false,
         is_in_flight: false,
     }
 }
@@ -199,9 +199,9 @@ fn assembled_line_includes_tree_prefix_for_non_root() {
         ancestor_continuations: vec![true],
         is_last_child: true,
         is_subagent: false,
-        is_attendant: false,
-        is_attendant_prepping: false,
-        attendant_fires_on_parent_completion: false,
+        is_bot: false,
+        is_bot_prepping: false,
+        bot_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -234,9 +234,9 @@ fn assembled_line_has_no_tree_prefix_for_root() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent: false,
-        is_attendant: false,
-        is_attendant_prepping: false,
-        attendant_fires_on_parent_completion: false,
+        is_bot: false,
+        is_bot_prepping: false,
+        bot_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -270,9 +270,9 @@ fn assembled_line_has_tree_prefix_span_for_child() {
         ancestor_continuations: vec![true],
         is_last_child: false,
         is_subagent: false,
-        is_attendant: false,
-        is_attendant_prepping: false,
-        attendant_fires_on_parent_completion: false,
+        is_bot: false,
+        is_bot_prepping: false,
+        bot_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -310,9 +310,9 @@ fn title_is_truncated_more_at_higher_depth() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent: false,
-        is_attendant: false,
-        is_attendant_prepping: false,
-        attendant_fires_on_parent_completion: false,
+        is_bot: false,
+        is_bot_prepping: false,
+        bot_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -329,9 +329,9 @@ fn title_is_truncated_more_at_higher_depth() {
         ancestor_continuations: vec![true, true, true],
         is_last_child: true,
         is_subagent: false,
-        is_attendant: false,
-        is_attendant_prepping: false,
-        attendant_fires_on_parent_completion: false,
+        is_bot: false,
+        is_bot_prepping: false,
+        bot_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -354,17 +354,17 @@ fn title_is_truncated_more_at_higher_depth() {
 }
 
 // ---------------------------------------------------------------------------
-// attendant rows render in the attendant theme token
+// bot rows render in the bot theme token
 // ---------------------------------------------------------------------------
 
 #[rstest::rstest]
-fn attendant_row_uses_the_attendant_theme_token() {
-    // Given an attendant entry, not selected, not active.
+fn bot_row_uses_the_bot_theme_token() {
+    // Given a bot entry, not selected, not active.
     let theme = default_theme();
     let entry = SessionEntry {
-        is_attendant: true,
-        is_attendant_prepping: false,
-        attendant_fires_on_parent_completion: false,
+        is_bot: true,
+        is_bot_prepping: false,
+        bot_fires_on_parent_completion: false,
         is_active: false,
         ..tree_entry(0, vec![], true, false)
     };
@@ -372,19 +372,19 @@ fn attendant_row_uses_the_attendant_theme_token() {
     // When the entry's title style is computed.
     let style = crate::sections::sessions::render::entry_line::entry_title_style(&entry, &theme);
 
-    // Then the row is tinted with the attendant token, not the subagent or
+    // Then the row is tinted with the bot token, not the subagent or
     // error token.
-    assert_eq!(style.fg, Some(theme.attendant_fg));
+    assert_eq!(style.fg, Some(theme.bot_fg));
 }
 
 #[rstest::rstest]
-fn non_attendant_row_does_not_use_the_attendant_theme_token() {
+fn non_bot_row_does_not_use_the_bot_theme_token() {
     // Given a plain user session entry, not selected, not active.
     let theme = default_theme();
     let entry = SessionEntry {
-        is_attendant: false,
-        is_attendant_prepping: false,
-        attendant_fires_on_parent_completion: false,
+        is_bot: false,
+        is_bot_prepping: false,
+        bot_fires_on_parent_completion: false,
         is_active: false,
         ..tree_entry(0, vec![], true, false)
     };
@@ -392,9 +392,9 @@ fn non_attendant_row_does_not_use_the_attendant_theme_token() {
     // When the entry's title style is computed.
     let style = crate::sections::sessions::render::entry_line::entry_title_style(&entry, &theme);
 
-    // Then the row keeps the muted base, and the attendant token is nowhere.
+    // Then the row keeps the muted base, and the bot token is nowhere.
     assert_eq!(style.fg, Some(theme.muted_text));
-    assert_ne!(style.fg, Some(theme.attendant_fg));
+    assert_ne!(style.fg, Some(theme.bot_fg));
 }
 
 // ---------------------------------------------------------------------------
@@ -417,9 +417,9 @@ fn active_arrow_shows_at_depth_greater_than_zero() {
         ancestor_continuations: vec![true, true],
         is_last_child: true,
         is_subagent: false,
-        is_attendant: false,
-        is_attendant_prepping: false,
-        attendant_fires_on_parent_completion: false,
+        is_bot: false,
+        is_bot_prepping: false,
+        bot_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -457,9 +457,9 @@ fn tree_prefix_uses_muted_text_color() {
         ancestor_continuations: vec![true],
         is_last_child: true,
         is_subagent: false,
-        is_attendant: false,
-        is_attendant_prepping: false,
-        attendant_fires_on_parent_completion: false,
+        is_bot: false,
+        is_bot_prepping: false,
+        bot_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -527,9 +527,9 @@ fn sidebar_marks_child_with_symbol() {
         ancestor_continuations: vec![true],
         is_last_child: true,
         is_subagent: true,
-        is_attendant: false,
-        is_attendant_prepping: false,
-        attendant_fires_on_parent_completion: false,
+        is_bot: false,
+        is_bot_prepping: false,
+        bot_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -576,9 +576,9 @@ fn sidebar_omits_symbol_for_regular_session() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent: false,
-        is_attendant: false,
-        is_attendant_prepping: false,
-        attendant_fires_on_parent_completion: false,
+        is_bot: false,
+        is_bot_prepping: false,
+        bot_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -611,9 +611,9 @@ fn sidebar_shows_live_term_symbol_for_session_with_terminal() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent: false,
-        is_attendant: false,
-        is_attendant_prepping: false,
-        attendant_fires_on_parent_completion: false,
+        is_bot: false,
+        is_bot_prepping: false,
+        bot_fires_on_parent_completion: false,
         has_live_term: true,
         is_in_flight: false,
     };
@@ -647,9 +647,9 @@ fn sidebar_omits_live_term_symbol_for_session_without_terminal() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent: false,
-        is_attendant: false,
-        is_attendant_prepping: false,
-        attendant_fires_on_parent_completion: false,
+        is_bot: false,
+        is_bot_prepping: false,
+        bot_fires_on_parent_completion: false,
         has_live_term: false,
         is_in_flight: false,
     };
@@ -682,9 +682,9 @@ fn sidebar_live_term_symbol_consumes_truncation_budget() {
         ancestor_continuations: vec![],
         is_last_child: true,
         is_subagent,
-        is_attendant: false,
-        is_attendant_prepping: false,
-        attendant_fires_on_parent_completion: false,
+        is_bot: false,
+        is_bot_prepping: false,
+        bot_fires_on_parent_completion: false,
         has_live_term: true,
         is_in_flight: false,
     };
@@ -737,9 +737,9 @@ fn sidebar_symbol_consumes_truncation_budget() {
         is_last_child: true,
         is_subagent,
         has_live_term: false,
-        is_attendant: false,
-        is_attendant_prepping: false,
-        attendant_fires_on_parent_completion: false,
+        is_bot: false,
+        is_bot_prepping: false,
+        bot_fires_on_parent_completion: false,
         is_in_flight: false,
     };
     let plain = make(false);
@@ -964,14 +964,14 @@ fn selected_in_flight_row_text_contrasts_with_its_background() {
     );
 }
 
-/// A seed-mode attendant row carries the pause marker beside its title.
+/// A seed-mode bot row carries the pause marker beside its title.
 #[rstest::rstest]
 #[test]
-fn a_seed_mode_attendant_row_shows_the_pause_marker() {
-    // Given an attendant in seed mode.
+fn a_seed_mode_bot_row_shows_the_pause_marker() {
+    // Given a bot in seed mode.
     let mut entry = tree_entry(0, vec![], true, false);
-    entry.is_attendant = true;
-    entry.is_attendant_prepping = true;
+    entry.is_bot = true;
+    entry.is_bot_prepping = true;
 
     // When the row is rendered.
     let line = crate::sections::sessions::render::entry_line::assemble_entry_line(
@@ -990,18 +990,18 @@ fn a_seed_mode_attendant_row_shows_the_pause_marker() {
     // Then the marker appears beside the title.
     assert!(
         text.contains('\u{23F8}'),
-        "a seed attendant must be marked: {text:?}"
+        "a seed bot must be marked: {text:?}"
     );
 }
 
-/// A reset-mode attendant is not marked — it still dispatches.
+/// A reset-mode bot is not marked — it still dispatches.
 #[rstest::rstest]
 #[test]
-fn a_dispatching_attendant_row_has_no_pause_marker() {
-    // Given an attendant that is not in seed mode.
+fn a_dispatching_bot_row_has_no_pause_marker() {
+    // Given a bot that is not in seed mode.
     let mut entry = tree_entry(0, vec![], true, false);
-    entry.is_attendant = true;
-    entry.is_attendant_prepping = false;
+    entry.is_bot = true;
+    entry.is_bot_prepping = false;
 
     // When the row is rendered.
     let line = crate::sections::sessions::render::entry_line::assemble_entry_line(
@@ -1020,7 +1020,7 @@ fn a_dispatching_attendant_row_has_no_pause_marker() {
     // Then no pause marker is drawn.
     assert!(
         !text.contains('\u{23F8}'),
-        "a dispatching attendant must not be marked: {text:?}"
+        "a dispatching bot must not be marked: {text:?}"
     );
 }
 
@@ -1028,10 +1028,10 @@ fn a_dispatching_attendant_row_has_no_pause_marker() {
 #[rstest::rstest]
 #[test]
 fn the_pause_marker_sits_outside_the_title() {
-    // Given a seed-mode attendant whose title does not contain the glyph.
+    // Given a seed-mode bot whose title does not contain the glyph.
     let mut entry = tree_entry(0, vec![], true, false);
-    entry.is_attendant = true;
-    entry.is_attendant_prepping = true;
+    entry.is_bot = true;
+    entry.is_bot_prepping = true;
     entry.title = "reviewer".to_owned();
 
     // When the row is rendered.

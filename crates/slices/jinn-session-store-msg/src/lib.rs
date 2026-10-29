@@ -7,6 +7,7 @@
 
 pub mod command;
 pub mod event;
+pub mod library_state;
 pub mod projections;
 pub mod session_picker_state;
 pub mod session_search;
@@ -14,10 +15,11 @@ pub mod session_state;
 pub mod session_tree_entry;
 
 pub use command::{
-    ArchiveSession, ArchiveSessionTree, LoadSessionPickerEntries, LoadSessionTree, PersistSession,
-    SessionForkRequested, SessionLoadRequested,
+    ArchiveSession, ArchiveSessionTree, LoadLibraryEntries, LoadSessionPickerEntries,
+    LoadSessionTree, PersistSession, SessionForkRequested, SessionLoadRequested, SetSessionLibrary,
 };
-pub use event::SessionLoadCompleted;
+pub use event::{SessionLibraryMembershipChanged, SessionLoadCompleted};
+pub use library_state::{LibraryState, library_slot};
 pub use projections::{FrozenTreeNode, SessionSummary};
 pub use session_search::{
     SearchHit, SearchOutcome, SearchParams, SearchableEntry, SearchableRole, TranscriptEntry,

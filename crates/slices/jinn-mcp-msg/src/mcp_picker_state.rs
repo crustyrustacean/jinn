@@ -50,6 +50,27 @@ pub struct McpPickerState {
     /// and tools are all per-session, so a stale id would show the wrong
     /// server's health.
     pub session_id: Option<jinn_core_types::SessionId>,
+    /// The registered tools of the enabled servers, as the live refresh last
+    /// read the registry.
+    ///
+    /// Kept whole so a signature change can recompute the cost figure without
+    /// a second registry read, and so tests can assert against the exact set
+    /// the figure was counted from.
+    pub context_definitions: Vec<jinn_core_types::ToolDefinition>,
+    /// Context cost in tokens of the enabled servers' registered tool
+    /// definitions — their namespaced names, descriptions, and schemas —
+    /// counted with the assembler's shaping at the last registry change.
+    ///
+    /// This figure is *live*, not pending: a server's tools register and
+    /// unregister only when a confirm reconciles the connection set, so
+    /// consumption has not changed until it has. Toggling a row moves nothing.
+    pub context_tokens: usize,
+    /// Change signature of the registry subset the figure was last computed
+    /// from: `(definition count, Σ name + description + schema byte lengths)`.
+    ///
+    /// The refresh path runs every frame; this lets it skip the tokenizer
+    /// entirely when nothing registered or unregistered.
+    pub registry_sig: Option<(usize, usize)>,
 }
 
 impl McpPickerState {

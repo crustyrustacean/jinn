@@ -1,9 +1,9 @@
 # Chat Input Tokens
 
 While typing a message (input mode — `i` from normal mode), three token kinds
-unlock inline powers. Each has an autocomplete popup that anchors to the token
-you're typing; `<tab>` confirms the highlighted suggestion, arrows move the
-selection, typing narrows it.
+have special behavior. Each has an autocomplete popup that anchors to the
+token you're typing; `<tab>` confirms the highlighted suggestion, arrows move
+the selection, typing narrows it.
 
 ## `#name` — prompt templates
 

@@ -13,9 +13,7 @@ use std::ops::Range;
 use std::sync::atomic::Ordering;
 
 use jiff::Timestamp;
-use jinn_attendant_msg::{
-    AttendantBehavior, AttendantModelSetting, AttendantReport, AttendantTrigger,
-};
+use jinn_bot_msg::{BotBehavior, BotModelSetting, BotReport, BotTrigger};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
@@ -31,12 +29,14 @@ use jinn_core_types::{
     HistoryMutation, NameFilter, PinPosition, SessionId, ToolCallId, ToolResultStatus,
 };
 use jinn_session_history::history_editor::{
-    HistoryEditor, Priv, SessionHistoryAccess, SessionHistoryAccessPriv,
+    Chunk, HistoryEditor, Priv, SessionHistoryAccess, SessionHistoryAccessPriv, chunk_containing,
+    chunking,
 };
 use jinn_session_msg::PhaseKind;
 use jinn_session_msg::phase_machine::PhaseTransitions;
 use jinn_session_store_msg::SessionState;
 use jinn_skills_msg::Skill;
+use jinn_skills_msg::loaded_skill_summary_label;
 use jinn_skills_msg::parse_loaded_skill_name;
 use jinn_token_count_msg::TokenRecord;
 use jinn_workflows_msg::Workflow;
@@ -86,6 +86,19 @@ fn interrupted_call_result(tool_name: &str, arguments: &str) -> String {
 /// emptiness means nothing at all.
 fn permits_or_inherits(filter: Option<&NameFilter>, name: &str) -> bool {
     filter.as_ref().is_none_or(|filter| filter.permits(name))
+}
+
+/// Stamps an entry with the dispatching generation's requested model.
+///
+/// Both fields get the same value: `model_requested` is the generation's
+/// request-time fact and is never overridden, while `model_used` starts
+/// here and is later replaced by the response-reported model when the
+/// stream completes normally. Tool results are deliberately unstamped —
+/// they are produced locally by the tool executor after the stream ended;
+/// the audit popup derives their model from the paired tool call instead.
+fn stamp_entry_with_generation_model(entry: &mut ChatEntry, model: Option<&str>) {
+    entry.model_used = model.map(str::to_owned);
+    entry.model_requested = model.map(str::to_owned);
 }
 
 /// Error returned when a streaming operation fails.
@@ -441,7 +454,7 @@ impl ChatSessionState {
         }
     }
 
-    /// Create an attendant session: a peer that references a parent without
+    /// Create a bot session: a peer that references a parent without
     /// inheriting its conversation.
     ///
     /// Copies the parent's environment — profile, cwd, project, home, and
@@ -450,12 +463,12 @@ impl ChatSessionState {
     /// before anything dispatches.
     ///
     /// Does not reuse [`new_child`](Self::new_child): that constructor
-    /// hard-codes the `Subagent` origin, and an attendant is a different
+    /// hard-codes the `Subagent` origin, and a bot is a different
     /// creation path.
     #[must_use]
-    pub fn new_attendant(parent: &Self, persist: bool) -> Self {
+    pub fn new_bot(parent: &Self, persist: bool) -> Self {
         {
-            let mut attendant = Self {
+            let mut bot = Self {
                 core: SessionCore::default(),
                 ui: SessionUi::default(),
                 slices: std::sync::OnceLock::new(),
@@ -463,68 +476,89 @@ impl ChatSessionState {
                     jinn_chat_log_view_msg::ChatLogViewUi::default(),
                 ),
             };
-            let attendant_core = &mut attendant.core;
-            attendant_core.identity.parent_session = Some(parent.core.identity.session_id.clone());
-            attendant_core.identity.origin = SessionOrigin::Attendant;
-            attendant_core
+            let bot_core = &mut bot.core;
+            bot_core.identity.parent_session = Some(parent.core.identity.session_id.clone());
+            bot_core.identity.origin = SessionOrigin::Bot;
+            bot_core
                 .identity
                 .project
                 .clone_from(&parent.core.identity.project);
-            attendant_core.storage.persist = persist;
-            attendant_core.integrations.profile = parent.core.integrations.profile.clone();
-            attendant_core
+            bot_core.storage.persist = persist;
+            bot_core.integrations.profile = parent.core.integrations.profile.clone();
+            bot_core
                 .lifecycle
                 .cwd
                 .clone_from(&parent.core.lifecycle.cwd);
-            attendant_core
+            bot_core
                 .lifecycle
                 .home
                 .clone_from(&parent.core.lifecycle.home);
-            attendant_core
+            bot_core
                 .integrations
                 .enabled_mcp_servers
                 .clone_from(&parent.core.integrations.enabled_mcp_servers);
-            attendant
+            bot
         }
     }
 
-    /// Whether this session is an attendant of another session.
+    /// Creates a standalone bot: a bot with no parent, inheriting the
+    /// *environment* of `source` but nothing else about it.
+    ///
+    /// A standalone bot is the same session kind as [`Self::new_bot`] —
+    /// origin [`SessionOrigin::Bot`], prep mode on, the same
+    /// copy-the-environment rule — minus the parent link. Its seed
+    /// template starts empty, because the parent line an attached bot's
+    /// default names is a line a parentless bot cannot fill, and the
+    /// dispatched message is meant to be its whole prompt.
+    ///
+    /// `source` supplies the project, profile, cwd, home, and enabled MCP
+    /// servers exactly as a parent would; the conversation, pins, and bot
+    /// configuration of the source are not carried over.
     #[must_use]
-    pub fn is_attendant(&self) -> bool {
-        self.core.identity.origin == SessionOrigin::Attendant
+    pub fn new_standalone_bot(source: &Self, persist: bool) -> Self {
+        let mut bot = Self::new_bot(source, persist);
+        bot.core.identity.parent_session = None;
+        bot.core.bot.seed_template = jinn_bot_msg::empty_seed_template();
+        bot
+    }
+
+    /// Whether this session is a bot of another session.
+    #[must_use]
+    pub fn is_bot(&self) -> bool {
+        self.core.identity.origin == SessionOrigin::Bot
     }
 
     /// What a run in this session sees of the conversation.
     #[must_use]
-    pub fn attendant_behavior(&self) -> AttendantBehavior {
-        self.core.attendant.behavior
+    pub fn bot_behavior(&self) -> BotBehavior {
+        self.core.bot.behavior
     }
 
     /// Set what a run in this session sees of the conversation.
-    pub fn set_attendant_behavior(&mut self, behavior: AttendantBehavior) {
-        self.core.attendant.behavior = behavior;
+    pub fn set_bot_behavior(&mut self, behavior: BotBehavior) {
+        self.core.bot.behavior = behavior;
     }
 
-    /// Whether this attendant is still being composed.
+    /// Whether this bot is still being composed.
     ///
     /// Composition is the only configuration that stops a dispatch, and it
     /// says so on its own: a manual trigger stops a *fire*, not the user
     /// pressing `R`, so conflating the two would mark a perfectly runnable
-    /// attendant as stopped. Everything else runs on its own terms.
+    /// bot as stopped. Everything else runs on its own terms.
     ///
-    /// Only meaningful for an attendant — an ordinary session carries the
+    /// Only meaningful for a bot — an ordinary session carries the
     /// same default fields and would answer `true`.
     #[must_use]
-    pub fn attendant_is_prepping(&self) -> bool {
-        self.core.attendant.prep_mode
+    pub fn bot_is_prepping(&self) -> bool {
+        self.core.bot.prep_mode
     }
 
-    /// Set whether this attendant is still being composed.
-    pub fn set_attendant_is_prepping(&mut self, prep_mode: bool) {
-        self.core.attendant.prep_mode = prep_mode;
+    /// Set whether this bot is still being composed.
+    pub fn set_bot_is_prepping(&mut self, prep_mode: bool) {
+        self.core.bot.prep_mode = prep_mode;
     }
 
-    /// Whether this attendant runs on its parent's completion.
+    /// Whether this bot runs on its parent's completion.
     ///
     /// The sidebar marks this with its own glyph. It is a fact about the
     /// configuration rather than a derived state, so it is asked of the
@@ -532,60 +566,60 @@ impl ChatSessionState {
     /// meaning is a few fields away is a marker the two surfaces can
     /// disagree about.
     #[must_use]
-    pub fn attendant_fires_on_parent_completion(&self) -> bool {
-        self.attendant_trigger() == AttendantTrigger::ParentCompleted
+    pub fn bot_fires_on_parent_completion(&self) -> bool {
+        self.bot_trigger() == BotTrigger::ParentCompleted
     }
 
     /// The condition that causes an automatic re-run.
     #[must_use]
-    pub fn attendant_trigger(&self) -> AttendantTrigger {
-        self.core.attendant.trigger
+    pub fn bot_trigger(&self) -> BotTrigger {
+        self.core.bot.trigger
     }
 
     /// Set the condition that causes an automatic re-run.
-    pub fn set_attendant_trigger(&mut self, trigger: AttendantTrigger) {
-        self.core.attendant.trigger = trigger;
+    pub fn set_bot_trigger(&mut self, trigger: BotTrigger) {
+        self.core.bot.trigger = trigger;
     }
 
     /// The user-editable seed text injected ahead of the prior report.
     #[must_use]
     pub fn seed_template(&self) -> &str {
-        &self.core.attendant.seed_template
+        &self.core.bot.seed_template
     }
 
     /// Set the user-editable seed text injected ahead of the prior report.
     pub fn set_seed_template(&mut self, template: String) {
-        self.core.attendant.seed_template = template;
+        self.core.bot.seed_template = template;
     }
 
-    /// Whether this attendant's model is its own or the one it inherited.
+    /// Whether this bot's model is its own or the one it inherited.
     ///
-    /// A fact about the attendant's configuration rather than a reading of
+    /// A fact about the bot's configuration rather than a reading of
     /// its model: the model is always concrete, and this says whether the
-    /// attendant claimed it. Never infer one from the other.
+    /// bot claimed it. Never infer one from the other.
     #[must_use]
-    pub fn attendant_model_setting(&self) -> AttendantModelSetting {
-        self.core.attendant.model_setting
+    pub fn bot_model_setting(&self) -> BotModelSetting {
+        self.core.bot.model_setting
     }
 
-    /// Set whether this attendant's model is its own or inherited.
-    pub fn set_attendant_model_setting(&mut self, setting: AttendantModelSetting) {
-        self.core.attendant.model_setting = setting;
+    /// Set whether this bot's model is its own or inherited.
+    pub fn set_bot_model_setting(&mut self, setting: BotModelSetting) {
+        self.core.bot.model_setting = setting;
     }
 
-    /// The attendant's append-only report log, oldest first.
+    /// The bot's append-only report log, oldest first.
     #[must_use]
-    pub fn attendant_reports(&self) -> &[AttendantReport] {
-        &self.core.attendant.reports
+    pub fn bot_reports(&self) -> &[BotReport] {
+        &self.core.bot.reports
     }
 
-    /// Append one report to this attendant's log.
+    /// Append one report to this bot's log.
     ///
     /// Append-only by design: the harness never removes or edits a report,
     /// and the next run is seeded from the most recent entry.
-    pub fn append_attendant_report(&mut self, body: String) -> AttendantReport {
-        let reports = &mut self.core.attendant.reports;
-        let report = AttendantReport {
+    pub fn append_bot_report(&mut self, body: String) -> BotReport {
+        let reports = &mut self.core.bot.reports;
+        let report = BotReport {
             run: reports.len() + 1,
             published_at: Timestamp::now(),
             body,
@@ -594,22 +628,22 @@ impl ChatSessionState {
         report
     }
 
-    /// The most recent report, if this attendant has ever reported.
+    /// The most recent report, if this bot has ever reported.
     #[must_use]
-    pub fn latest_attendant_report(&self) -> Option<&AttendantReport> {
-        self.core.attendant.reports.last()
+    pub fn latest_bot_report(&self) -> Option<&BotReport> {
+        self.core.bot.reports.last()
     }
 
-    /// The workflow-local TOML file this attendant was loaded from, when
-    /// it belongs to a workflow. `None` for personal attendants.
+    /// The workflow-local TOML file this bot was loaded from, when
+    /// it belongs to a workflow. `None` for personal bots.
     #[must_use]
-    pub fn workflow_source(&self) -> Option<&jinn_core_types::AttendantSourcePath> {
-        self.core.attendant.workflow_source.as_ref()
+    pub fn workflow_source(&self) -> Option<&jinn_core_types::BotSourcePath> {
+        self.core.bot.workflow_source.as_ref()
     }
 
-    /// Stamp this attendant as loaded from the workflow-local file `source`.
-    pub fn set_workflow_source(&mut self, source: jinn_core_types::AttendantSourcePath) {
-        self.core.attendant.workflow_source = Some(source);
+    /// Stamp this bot as loaded from the workflow-local file `source`.
+    pub fn set_workflow_source(&mut self, source: jinn_core_types::BotSourcePath) {
+        self.core.bot.workflow_source = Some(source);
     }
 
     /// Immutable access to this session's steering buffer.
@@ -1023,6 +1057,7 @@ impl ChatSessionState {
         let mut entry = ChatEntry::assistant("");
         entry.timing = EntryTiming::streamed(dispatched_at);
         entry.timing.set_first_token();
+        stamp_entry_with_generation_model(&mut entry, self.stream_request_model().as_deref());
         let index = self.push_entry(entry);
         self.core.ephemeral.machine.set_streaming_entry_index(index);
     }
@@ -1157,6 +1192,7 @@ impl ChatSessionState {
         let mut entry = ChatEntry::thinking("");
         entry.timing = EntryTiming::streamed(dispatched_at);
         entry.timing.set_first_token();
+        stamp_entry_with_generation_model(&mut entry, self.stream_request_model().as_deref());
         // Insert thinking BEFORE the assistant entry when the assistant entry
         // already exists. Some providers (OpenRouter) send reasoning tokens
         // AFTER content tokens, so the assistant entry is already in history.
@@ -1328,6 +1364,38 @@ impl ChatSessionState {
         // drops the StreamingPhase and clears streaming_thinking_entry_index().
         if let Some(idx) = self.core.ephemeral.machine.streaming_thinking_entry_index() {
             self.finish_thinking_entry(idx);
+        }
+    }
+
+    /// Sets the response-reported model on every live entry of the current
+    /// generation, replacing only `model_used`.
+    ///
+    /// `model_requested` is never touched: it is the request-time fact and
+    /// the whole point of the two fields is that they can differ. Live
+    /// entries are the ones the machine's indices still name — the
+    /// streaming assistant entry, the thinking entry, and every in-flight
+    /// tool call. Entries created before the stream started (the user's
+    /// message) are not provider-produced and are not stamped.
+    ///
+    /// Callers must invoke this while the indices are intact: the fold
+    /// runs before the phase actor's settle drops the `StreamingPhase`.
+    pub fn override_live_entry_models(&mut self, model: Option<&str>) {
+        let indices = {
+            let machine = &self.core.ephemeral.machine;
+            let mut all = Vec::new();
+            if let Some(idx) = machine.streaming_entry_index() {
+                all.push(idx);
+            }
+            if let Some(idx) = machine.streaming_thinking_entry_index() {
+                all.push(idx);
+            }
+            all.extend(machine.active_tool_call_indices().values().copied());
+            all
+        };
+        for idx in indices {
+            self.edit_history().with_entry_at_mut(idx, |entry| {
+                entry.model_used = model.map(str::to_owned);
+            });
         }
     }
 
@@ -1676,6 +1744,7 @@ impl ChatSessionState {
         let mut entry = ChatEntry::tool_call(id.clone(), name, "");
         entry.timing = EntryTiming::streamed(dispatched_at);
         entry.timing.set_first_token();
+        stamp_entry_with_generation_model(&mut entry, self.stream_request_model().as_deref());
         let history_index = self.push_entry(entry);
         // The tracking map is machine-level and always present, so a
         // registration made here survives every later phase transition — a
@@ -2104,8 +2173,8 @@ impl ChatSessionState {
     ///
     /// This gate is independent of the provider gate (`ToolDefinition::
     /// available_for_provider`), which needs the provider name and stays
-    /// where it is. An attendant's filter composes as filter ∧ provider ∧
-    /// the attendant-only gate.
+    /// where it is. A bot's filter composes as filter ∧ provider ∧
+    /// the bot-only gate.
     #[must_use]
     pub fn is_tool_enabled(&self, tool_name: &str) -> bool {
         permits_or_inherits(
@@ -2128,7 +2197,7 @@ impl ChatSessionState {
     /// Replace the tool filter for this session.
     ///
     /// `None` releases it, sending the session back to inheriting. Used by
-    /// the tool picker to commit toggle state and by the attendant panel to
+    /// the tool picker to commit toggle state and by the bot panel to
     /// thaw a frozen set.
     pub fn set_tool_filter(&mut self, filter: Option<NameFilter>) {
         self.core.integrations.profile.tool_filter = filter;
@@ -2199,7 +2268,7 @@ impl ChatSessionState {
     /// Replace the skill filter for this session.
     ///
     /// `None` releases it, sending the session back to inheriting. Used by
-    /// the skill picker to commit toggle state and by the attendant panel to
+    /// the skill picker to commit toggle state and by the bot panel to
     /// thaw a frozen set.
     pub fn set_skill_filter(&mut self, filter: Option<NameFilter>) {
         self.core.integrations.profile.skill_filter = filter;
@@ -2754,6 +2823,35 @@ impl ChatSessionState {
             .iter()
             .filter(|e| e.is_pinned())
             .collect()
+    }
+
+    /// Projects the pinned entries into pins-sidebar display rows.
+    ///
+    /// A pinned tool loop is pinned as a whole (provider APIs require intact
+    /// call/result structure), but it displays as one row per completed
+    /// `ToolResult` — plus one `⚒` row per call with no completed result in
+    /// the loop — while every non-loop pinned entry keeps its own row.
+    /// Rows sort TOP → RELATIVE → BOTTOM, stable by history order within
+    /// each group, matching the `pin_sort_key` order of sidebar consumers.
+    ///
+    /// This is a display projection only: pin state itself is unchanged, so
+    /// unpinning a row's entry still clears the whole loop's pins.
+    #[must_use]
+    pub fn pinned_display_rows(&self) -> Vec<PinDisplayRow> {
+        let mut rows = display_rows(self.history());
+        // Stable sort by display position: TOP, then RELATIVE/None, then
+        // BOTTOM, preserving history order within each group.
+        rows.sort_by_key(|row| pin_display_sort_key(row.position));
+        rows
+    }
+
+    /// The number of rows the pins sidebar displays for this session.
+    ///
+    /// Sidebar consumers must count display rows, not pinned entries: a
+    /// pinned tool loop contributes its result rows, not its member count.
+    #[must_use]
+    pub fn pinned_display_count(&self) -> usize {
+        self.pinned_display_rows().len()
     }
 
     /// Select the next entry (moving toward newer messages).
@@ -3471,7 +3569,7 @@ impl ChatSessionState {
     /// Set the session origin for construction paths that decide the kind
     /// after building the session (forks built from snapshots, test
     /// fixtures). Construction paths that know the kind up front use a
-    /// dedicated constructor (`new_child`, `new_attendant`) instead.
+    /// dedicated constructor (`new_child`, `new_bot`) instead.
     pub fn set_origin(&mut self, origin: SessionOrigin) {
         self.core.identity.origin = origin;
     }
@@ -3649,6 +3747,16 @@ impl ChatSessionState {
         self.core.storage.session_state = state;
     }
 
+    /// Whether this session belongs to the sidebar's Library section.
+    pub fn in_library(&self) -> bool {
+        self.core.storage.in_library
+    }
+
+    /// Sets this session's Library membership.
+    pub fn set_in_library(&mut self, in_library: bool) {
+        self.core.storage.in_library = in_library;
+    }
+
     /// Returns the lifecycle script state.
     pub fn lifecycle_script_state(&self) -> LifecycleScriptState {
         self.core.lifecycle.lifecycle_script_state
@@ -3804,6 +3912,29 @@ impl ChatSessionState {
         self.core.ephemeral.stream_dispatched_at = Some(dispatched_at);
     }
 
+    /// Record the model requested for the current inference-stream generation.
+    ///
+    /// An empty string (the no-provider sentinel `accum.model_id`) is
+    /// normalized to `None` so no entry carries an empty model id. A
+    /// dispatch without a receipt always leaves the previous generation's
+    /// value in place — overwrite-on-dispatch is the mechanism that keeps
+    /// the stamp with its generation.
+    pub fn set_stream_request_model(&mut self, model: Option<String>) {
+        let normalized = model.filter(|m| !m.is_empty());
+        self.core.ephemeral.stream_request_model = normalized;
+    }
+
+    /// Return the model requested for the active inference-stream generation.
+    #[must_use]
+    pub fn stream_request_model(&self) -> Option<String> {
+        self.core.ephemeral.stream_request_model.clone()
+    }
+
+    /// Drop the requested-model stamp along with the generation it belongs to.
+    pub fn clear_stream_request_model(&mut self) {
+        self.core.ephemeral.stream_request_model = None;
+    }
+
     /// Return the active inference-stream generation marker.
     #[must_use]
     pub fn stream_dispatched_at(&self) -> Option<Timestamp> {
@@ -3877,6 +4008,217 @@ impl ChatSessionState {
         } else {
             false
         }
+    }
+}
+
+/// One row of the pins sidebar: a representative entry plus how to label it.
+///
+/// The projection from pinned entries to rows lives in
+/// [`ChatSessionState::pinned_display_rows`]; this type is only its output.
+/// A row's `entry_id` is always a real history entry id, so selection,
+/// unpin, and pin-cycle operations address it like any pinned entry, while
+/// chunk pin semantics stay unchanged (unpinning still clears the loop).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PinDisplayRow {
+    /// The id the row's selection, unpin, and pin-cycle operations address:
+    /// the id of the representative entry itself.
+    pub entry_id: ChatEntryId,
+    /// The pin position the row's badge shows, inherited from the entry.
+    pub position: PinPosition,
+    /// What the row displays.
+    pub label: PinRowLabel,
+}
+
+/// What a pins-sidebar display row shows.
+///
+/// The sidebar turns a label into styled text; the prefix is rendered from
+/// the variant (`Verbatim` keeps the entry kind's usual prefix, `Result` and
+/// `SkillResult` render with no prefix, `Call` renders with the `⚒` prefix).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PinRowLabel {
+    /// Every non-tool-loop entry kind, displayed exactly as today under its
+    /// existing per-kind prefix.
+    Verbatim,
+    /// A completed tool result: `✓ name: content` on success,
+    /// `✗ name: content` on failure.
+    Result {
+        /// The tool's name.
+        name: String,
+        /// The result content.
+        content: String,
+        /// Whether the result completed successfully (`✗` otherwise).
+        success: bool,
+    },
+    /// A loaded-skill tool result: the skill summary label, no prefix.
+    SkillResult {
+        /// The result content, parsed into the skill summary label.
+        content: String,
+    },
+    /// A tool call without a completed result in its loop: `name(...)`.
+    Call {
+        /// The tool's name.
+        name: String,
+    },
+}
+
+/// The display sort weight for a pin position: TOP first, then RELATIVE
+/// (or absent), then BOTTOM — the same order the sidebar consumers apply.
+fn pin_display_sort_key(position: PinPosition) -> u8 {
+    match position {
+        PinPosition::Top => 0,
+        PinPosition::Relative => 1,
+        PinPosition::Bottom => 2,
+    }
+}
+
+/// Projects a history into display rows in history order (unsorted).
+///
+/// Standalone pinned entries become one row each. A pinned tool loop
+/// contributes one row per completed result, one row per call with no
+/// completed result, and nothing for the opener or interstitials. Call rows
+/// appear where the call sits; result rows where the result sits — history
+/// order, so parallel calls/results interleave naturally.
+fn display_rows(history: &[ChatEntry]) -> Vec<PinDisplayRow> {
+    let chunks = chunking(history);
+
+    let mut rows = Vec::new();
+    for (index, entry) in history.iter().enumerate() {
+        let Some(position) = entry.pin_position else {
+            continue;
+        };
+        // Every index below history.len() lies in some chunk, so this can
+        // only miss if `chunking` and the enumerate disagree — skip, not panic.
+        let Some(row_chunk) = chunk_containing(&chunks, index) else {
+            continue;
+        };
+
+        if is_standalone(&row_chunk) {
+            rows.push(standalone_row(entry, position));
+            continue;
+        }
+
+        let Some(row) = loop_member_row(entry, &row_chunk, history, position) else {
+            continue;
+        };
+        rows.push(row);
+    }
+    rows
+}
+
+/// Whether a chunk is a single standalone entry rather than a tool loop.
+fn is_standalone(chunk: &Chunk) -> bool {
+    chunk.range.len() == 1
+}
+
+/// The display row for a standalone pinned entry (a single-entry chunk).
+///
+/// Every non-loop kind keeps its own row under its existing prefix; tool
+/// kinds pinned on their own (never produced by normal flow, but legal in
+/// restored history) project the same label text a loop member would.
+fn standalone_row(entry: &ChatEntry, position: PinPosition) -> PinDisplayRow {
+    let label = match &entry.kind {
+        ChatEntryKind::ToolResult {
+            name,
+            content,
+            status,
+            ..
+        } => result_label(content, name, *status),
+        ChatEntryKind::ToolCall { name, .. } => call_label(name),
+        _ => PinRowLabel::Verbatim,
+    };
+    PinDisplayRow {
+        entry_id: entry.id.clone(),
+        position,
+        label,
+    }
+}
+
+/// The display row for one member of a pinned multi-entry tool loop.
+///
+/// Returns `None` for members that render no row: the assistant opener,
+/// interstitial entries (system, actor, thinking, transient, annotation,
+/// rule-interrupt guidance), and *pending* results — a pending result is
+/// represented by its call's row, so when the result completes the call's
+/// ⚒ row becomes the result's ✓ row in place and the row count is stable.
+/// A completed result always renders its row; a call renders only when no
+/// completed result for its id exists anywhere in the same chunk.
+fn loop_member_row(
+    entry: &ChatEntry,
+    chunk: &Chunk,
+    history: &[ChatEntry],
+    position: PinPosition,
+) -> Option<PinDisplayRow> {
+    match &entry.kind {
+        ChatEntryKind::ToolResult {
+            name,
+            content,
+            status,
+            ..
+        } if *status != ToolResultStatus::Pending => Some(PinDisplayRow {
+            entry_id: entry.id.clone(),
+            position,
+            label: result_label(content, name, *status),
+        }),
+        ChatEntryKind::ToolCall { id, name, .. } => {
+            if chunk_has_completed_result_for(history, chunk, id) {
+                return None;
+            }
+            Some(PinDisplayRow {
+                entry_id: entry.id.clone(),
+                position,
+                label: call_label(name),
+            })
+        }
+        // Assistant opener and interstitials never display a row.
+        _ => None,
+    }
+}
+
+/// Whether any completed (non-pending) result for `call_id` sits inside
+/// `chunk`.
+///
+/// Matching is by id within the chunk, never by adjacency, so a loop whose
+/// calls and results are separated by interstitials still resolves — and a
+/// result outside the chunk can never satisfy a call inside it.
+fn chunk_has_completed_result_for(
+    history: &[ChatEntry],
+    chunk: &Chunk,
+    call_id: &ToolCallId,
+) -> bool {
+    let members = history.get(chunk.range.start..chunk.range.end);
+    members.is_some_and(|members| {
+        members.iter().any(|member| {
+            matches!(
+                &member.kind,
+                ChatEntryKind::ToolResult { id, status, .. }
+                    if id == call_id && *status != ToolResultStatus::Pending
+            )
+        })
+    })
+}
+
+/// Assembles the label for a tool result row.
+///
+/// Loaded skills are pinned as `<skill name="X" ...>` XML; they display the
+/// parsed skill summary instead of the raw content. Every other result is
+/// `icon name: content`, `✓` for success and `✗` for failure.
+fn result_label(content: &str, name: &str, status: ToolResultStatus) -> PinRowLabel {
+    if name == "skill" {
+        return PinRowLabel::SkillResult {
+            content: loaded_skill_summary_label(content),
+        };
+    }
+    PinRowLabel::Result {
+        name: name.to_owned(),
+        content: content.to_owned(),
+        success: status == ToolResultStatus::Success,
+    }
+}
+
+/// Assembles the label for a pending-call row.
+fn call_label(name: &str) -> PinRowLabel {
+    PinRowLabel::Call {
+        name: name.to_owned(),
     }
 }
 

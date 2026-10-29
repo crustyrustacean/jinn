@@ -21,8 +21,8 @@
 //! (`config.get::<T>()` / `get_list::<T>()`), so a section type is pure
 //! data with no dependency back on the code that reads it.
 
-pub mod attendant;
 pub mod auto_prune;
+pub mod bot;
 pub mod chat_log;
 pub mod compaction;
 pub mod cwd_selector;
@@ -43,13 +43,13 @@ pub mod term;
 pub mod tool_call_watchdog;
 pub mod tools;
 
-pub use attendant::{AttendantEntryConfig, AttendantPinConfig, AttendantPinRole};
 pub use auto_prune::{
     AnchoredAssistantAutoPruneConfig, AutoPruneConfig, BrokenEditAutoPruneConfig,
     ConsecutiveReadsAutoPruneConfig, DoubleEditAutoPruneConfig, EditReadAutoPruneConfig,
     ReadEditAutoPruneConfig, RegexAutoPruneConfig, RegexPruneRule, TodoAutoPruneConfig,
     ToolAgeWindowAutoPruneConfig, TrivialAssistantAutoPruneConfig,
 };
+pub use bot::{BotEntryConfig, BotPinConfig, BotPinRole};
 pub use chat_log::ChatLogConfig;
 pub use compaction::CompactionConfig;
 pub use cwd_selector::CwdSelectorConfig;

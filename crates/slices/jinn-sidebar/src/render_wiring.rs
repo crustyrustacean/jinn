@@ -48,9 +48,10 @@ pub fn register_hints(slices: &jinn_slices::Slices) {
     for section in [
         SidebarSectionId::Pins,
         SidebarSectionId::Persona,
-        SidebarSectionId::Attendant,
+        SidebarSectionId::Bot,
         SidebarSectionId::TaskList,
         SidebarSectionId::McpServers,
+        SidebarSectionId::Library,
     ] {
         slices.register_scope_hint(section.scope_id(), ScopeRenderHint::focused());
     }
@@ -113,7 +114,8 @@ fn record_cursor_rows(
     _ctx: &PreRenderCtx<'_>,
 ) -> Vec<jinn_slices::route::PublishClosure> {
     crate::sections::capture_rows::capture_sessions_cursor_row(state);
-    crate::sections::capture_rows::capture_attendant_cursor_row(state);
+    crate::sections::capture_rows::capture_bot_cursor_row(state);
+    crate::sections::capture_rows::capture_library_cursor_row(state);
     Vec::new()
 }
 
@@ -295,7 +297,7 @@ pub fn draw_floating_surfaces(
         frame_area,
         ctx,
     );
-    crate::sections::attendants_reports::render_attendant_reports_for_state(
+    crate::sections::bots_reports::render_bot_reports_for_state(
         frame,
         sidebar_rect,
         frame_area,

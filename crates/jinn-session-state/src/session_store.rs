@@ -95,6 +95,26 @@ pub trait SessionStore: Send + Sync + 'static {
     /// Returns [`SessionStoreError`] if the database cannot be read.
     async fn load_summaries(&self) -> Result<Vec<SessionSummary>, Report<SessionStoreError>>;
 
+    /// Load summaries for library members only.
+    ///
+    /// Membership is a column, not a blob key, so the read touches the scalar
+    /// columns of the matching rows and parses no metadata — the cheap query
+    /// the Library section's cell refreshes run on. The default falls back to
+    /// filtering [`Self::load_summaries`], so backends without a dedicated
+    /// query stay correct, just slower.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the database cannot be read.
+    async fn library_members(&self) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
+        Ok(self
+            .load_summaries()
+            .await?
+            .into_iter()
+            .filter(|summary| summary.in_library)
+            .collect())
+    }
+
     /// Load a full session by ID.
     ///
     /// Returns `None` if no session with the given ID exists.
@@ -162,6 +182,20 @@ pub trait SessionStore: Send + Sync + 'static {
         &self,
         session_ids: &[SessionId],
         archived: bool,
+    ) -> Result<(), Report<SessionStoreError>>;
+
+    /// Set the `in_library` flag for a session.
+    ///
+    /// Library membership is a durable per-session flag, orthogonal to
+    /// `archived`. Unknown IDs match no rows and are not an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the update fails.
+    async fn set_in_library(
+        &self,
+        session_id: &SessionId,
+        in_library: bool,
     ) -> Result<(), Report<SessionStoreError>>;
 
     /// Load lightweight summaries for all unarchived sessions.

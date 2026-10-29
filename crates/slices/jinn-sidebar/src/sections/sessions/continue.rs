@@ -5,12 +5,12 @@
 //! kill. In both cases the model needs only the existing history; no new
 //! `User` entry is required.
 
-use crate::sections::sessions::state::{SessionEntryKind, sorted_open_sessions};
+use crate::sections::sessions::bot_actions::selected_section_session;
 use jinn_chat_input_msg::EnqueueResumeTurn;
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::protocol::IntentResult;
 
-/// Resume the session under the sidebar cursor.
+/// Resume the session the focused section's cursor names.
 ///
 /// Emits `Command::EnqueueResumeTurn` for the selected session. No new
 /// `User` or `Assistant` entry is created — the session actor will push
@@ -19,40 +19,26 @@ use jinn_kernel::protocol::IntentResult;
 /// the existing history.
 ///
 /// No-op when:
-/// - the sidebar scope is not `Sessions`,
-/// - no session is selected,
-/// - the selection is not a Session.
+/// - the sidebar focus is not one of the sections that list a session
+///   (sessions, bots, or library),
+/// - no session is under that section's cursor,
+/// - the cursor names a session not in memory — an archived library member
+///   has no live phase to resume until `<enter>` loads it.
 ///
 /// The target session's phase (Idle/Sending/Streaming) is checked
 /// downstream in `session_actor::handle_enqueue_resume_turn`; the
 /// intent itself always emits the command and lets the actor decide
 /// whether to dispatch or ignore.
 pub fn handle_session_continue(state: &mut AppState) -> IntentResult {
-    if !matches!(
-        state.frontend.sidebar_section(),
-        Some(jinn_sidebar_msg::SidebarSectionId::Sessions)
-    ) {
-        return IntentResult::empty();
-    }
-
-    let Some(id) = state
-        .frontend
-        .with_sections(|s| s.sessions.selected_id.clone(), || None)
-    else {
+    let Some(session_id) = selected_section_session(state) else {
         return IntentResult::empty();
     };
 
-    let sessions = sorted_open_sessions(state);
-    let Some(entry) = sessions.iter().find(|entry| entry.id == id) else {
-        return IntentResult::empty();
-    };
-
-    // Non-session entries are a no-op for resume.
-    if !matches!(entry.kind, SessionEntryKind::Session) {
+    // The cursor names the session, but the map proves it is loaded: an
+    // archived member's id is a name without a conversation.
+    if state.session.get(&session_id).is_none() {
         return IntentResult::empty();
     }
-
-    let session_id = entry.id.clone();
 
     IntentResult::new_message(EnqueueResumeTurn { session_id })
 }
@@ -165,6 +151,85 @@ mod tests {
             state.frontend.scope(),
             scope_before,
             "scope should not change after session continue"
+        );
+    }
+
+    #[rstest::rstest]
+    fn continues_the_library_member_the_cursor_names() {
+        // Given a live session in the library, the library section focused,
+        // its cursor on that member — and the sessions cursor naming a
+        // different session, so a resolver that fell back to the wrong
+        // section's cursor is caught.
+        let mut state = AppState::default_with_scope_focus();
+        let mut member = jinn_session_state::ChatSessionState::new();
+        member.set_in_library(true);
+        let member_id = member.session_id().clone();
+        state.session.insert(member);
+        let active_id = state.session.active_session_id().clone();
+        state
+            .frontend
+            .scope_push(jinn_sidebar_msg::SidebarSectionId::Library.focus_scope());
+        state.frontend.update_sections(|s| {
+            s.library.selected_id = Some(member_id.clone());
+            s.sessions.selected_id = Some(active_id);
+        });
+
+        // When handling session continue.
+        let result = handle_session_continue(&mut state);
+
+        // Then the resume command names the member.
+        assert_eq!(result.message_names.len(), 1);
+        assert!(result.message_names[0].contains("EnqueueResumeTurn"));
+    }
+
+    #[rstest::rstest]
+    fn continues_the_bot_the_bots_cursor_names() {
+        // Given the bots section focused with its cursor on a bot.
+        let mut state = AppState::default_with_scope_focus();
+        let parent = jinn_session_state::ChatSessionState::new();
+        state.session.insert(parent);
+        let bot = {
+            let parent_ref = state.session.active_session().clone();
+            jinn_session_state::ChatSessionState::new_bot(&parent_ref, true)
+        };
+        let bot_id = bot.session_id().clone();
+        state.session.insert(bot);
+        state
+            .frontend
+            .scope_push(jinn_sidebar_msg::SidebarSectionId::Bot.focus_scope());
+        state
+            .frontend
+            .update_sections(|s| s.bot.selected_id = Some(bot_id.clone()));
+
+        // When handling session continue.
+        let result = handle_session_continue(&mut state);
+
+        // Then the resume command names the bot.
+        assert_eq!(result.message_names.len(), 1);
+        assert!(result.message_names[0].contains("EnqueueResumeTurn"));
+    }
+
+    #[rstest::rstest]
+    fn an_archived_library_member_is_not_resumed() {
+        // Given the library focused with its cursor naming a member that is
+        // not in memory.
+        let ghost = jinn_core_types::SessionId::new();
+        let mut state = AppState::default_with_scope_focus();
+        state
+            .frontend
+            .scope_push(jinn_sidebar_msg::SidebarSectionId::Library.focus_scope());
+        state
+            .frontend
+            .update_sections(|s| s.library.selected_id = Some(ghost));
+
+        // When handling session continue.
+        let result = handle_session_continue(&mut state);
+
+        // Then nothing is dispatched: there is no live phase to resume until
+        // the member is loaded with `<enter>`.
+        assert!(
+            result.message_names.is_empty(),
+            "an archived member has no phase to resume"
         );
     }
 }

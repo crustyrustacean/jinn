@@ -142,10 +142,10 @@ mod tests {
             chat_log_area.x + chat_log_area.width,
             "popup right edge should align to chat-log right edge"
         );
-        // And its height is content + 2 borders: 3 Metadata lines
-        // (title, Sent, blank) + 1 audit header + 1 audit body = 7.
+        // And its height is content + 2 borders: 4 Metadata lines
+        // (title, Sent, Ctx, blank) + 1 Context header + 1 Context body = 8.
         assert_eq!(
-            popup.height, 7,
+            popup.height, 8,
             "popup height should be content + 2 borders"
         );
     }
@@ -187,10 +187,10 @@ mod tests {
         let (buffer, _chat_log_area, rects) = render_popup_buffer().await;
         let popup = only_popup_rect(&rects);
 
-        // When reading the audit header and event body rows, past the
-        // Metadata title, Sent line, and their blank row.
-        let audit_header_y = popup.y + 4;
-        let body_y = popup.y + 5;
+        // When reading the Context header and event body rows, past the
+        // Metadata title, Sent line, Ctx line, and their blank row.
+        let audit_header_y = popup.y + 5;
+        let body_y = popup.y + 6;
         let row_text = |y: u16| -> String {
             (popup.x..popup.x + popup.width)
                 .filter_map(|x| buffer.cell((x, y)).map(|c| c.symbol().to_owned()))
@@ -199,11 +199,9 @@ mod tests {
         let audit_header_row = row_text(audit_header_y);
         let body_row = row_text(body_y);
 
-        // Then the header row names the event count and the excluded tool.
+        // Then the header row names the section and the entry's override.
         assert!(
-            audit_header_row.contains("audit")
-                && audit_header_row.contains("1 events")
-                && audit_header_row.contains("ForcedExclude"),
+            audit_header_row.contains("Context") && audit_header_row.contains("ForcedExclude"),
             "audit header row at y={audit_header_y}: {audit_header_row:?}"
         );
         // And the body row names the role and decision.

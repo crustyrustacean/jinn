@@ -2,11 +2,11 @@
 //!
 //! One tool, four deliveries, none of them silent:
 //!
-//! - **Idle manual-trigger attendant** — starts a run now, seeded through
-//!   its template with the message folded in (see `jinn_attendant::
+//! - **Idle manual-trigger bot** — starts a run now, seeded through
+//!   its template with the message folded in (see `jinn_bot::
 //!   run_runtime`; the composition, not the cancel-happy manual path).
-//! - **Busy attendant** — the seeded entry queues behind the in-flight
-//!   turn through the ordinary enqueue handler. A busy attendant is doing
+//! - **Busy bot** — the seeded entry queues behind the in-flight
+//!   turn through the ordinary enqueue handler. A busy bot is doing
 //!   real work; delivery never cancels it.
 //! - **Any other live session** — receives an inter-session entry whose
 //!   text names its origin: `[Message from session <id> (<title>)]: `
@@ -15,11 +15,11 @@
 //! - **Unknown id** — a failed result naming the target. No send is ever
 //!   silently dropped.
 //!
-//! Attendant-only gates still apply: an attendant in prep mode is still
+//! Bot-only gates still apply: a bot in prep mode is still
 //! being composed, so a message to it fails rather than dispatching a
 //! half-written prompt.
 
-use jinn_attendant::run_runtime;
+use jinn_bot::run_runtime;
 use jinn_chat_input_msg::EnqueueUserMessage;
 use jinn_core_types::chat_entry::ChatEntry;
 use jinn_core_types::session_id::SessionId;
@@ -67,14 +67,14 @@ pub(crate) fn processed_title(title: Option<&str>) -> Option<String> {
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
         name: "tell_session".to_owned(),
-        description: "Send a message to another session by its session id. An idle attendant starts a run seeded from its template plus your message; a busy attendant receives it when its current turn finishes; any other session receives it as a new user turn."
+        description: "Send a message to another session by its session id. An idle bot starts a run seeded from its template plus your message; a busy bot receives it when its current turn finishes; any other session receives it as a new user turn."
             .to_owned(),
         prompt_snippet: Some(
             "Deliver a message to a named session: `tell_session` with the target session id and the text."
                 .to_owned(),
         ),
         prompt_guidelines: vec![
-            "Use `tell_session` to hand work to a specific session — a stage attendant in a workflow run, or any session whose id you know. Never guess an id; use one you were given or can read."
+            "Use `tell_session` to hand work to a specific session — a stage bot in a workflow run, or any session whose id you know. Never guess an id; use one you were given or can read."
                 .to_owned(),
         ],
         parameters: serde_json::json!({
@@ -144,7 +144,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         match outcome {
             Delivery::Run { entry, reset } => {
                 // Persist a reset that actually excluded something, or a
-                // restarted attendant would regain the full history.
+                // restarted bot would regain the full history.
                 if !reset.is_empty() {
                     bus.publish(jinn_session_store_msg::PersistSession {
                         session_id: target_id.clone(),
@@ -158,7 +158,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 .await;
                 succeeded(
                     call,
-                    &format!("Message delivered to attendant {target_id}; run dispatched."),
+                    &format!("Message delivered to bot {target_id}; run dispatched."),
                 )
             }
             Delivery::QueuedRun { entry } => {
@@ -170,7 +170,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 succeeded(
                     call,
                     &format!(
-                        "Message delivered to attendant {target_id}; queued behind its \
+                        "Message delivered to bot {target_id}; queued behind its \
                          current turn."
                     ),
                 )
@@ -193,12 +193,12 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
 /// The delivery a target session takes for an inbound message.
 enum Delivery {
-    /// An idle attendant: dispatch a seeded run now.
+    /// An idle bot: dispatch a seeded run now.
     Run {
         entry: ChatEntry,
         reset: Vec<jinn_core_types::ChatEntryId>,
     },
-    /// A busy attendant: the seeded entry queues behind the in-flight turn.
+    /// A busy bot: the seeded entry queues behind the in-flight turn.
     QueuedRun { entry: ChatEntry },
     /// Any other session: an ordinary user turn.
     Turn(ChatEntry),
@@ -213,9 +213,9 @@ fn delivery_for(
     target: &mut ChatSessionState,
     message: &str,
 ) -> Delivery {
-    if target.is_attendant() {
-        if target.attendant_is_prepping() {
-            return Delivery::Refused("attendant is in prep mode; nothing runs for it yet");
+    if target.is_bot() {
+        if target.bot_is_prepping() {
+            return Delivery::Refused("bot is in prep mode; nothing runs for it yet");
         }
         let (entry, reset) = run_runtime::prepare_message_run(target, message);
         let Some(entry) = entry else {
@@ -229,7 +229,7 @@ fn delivery_for(
             Delivery::QueuedRun { entry }
         };
     }
-    // Non-attendant: the message rides as an inter-session entry whose text
+    // Non-bot: the message rides as an inter-session entry whose text
     // names its origin. The prefix is baked in here — the one composition
     // site — so the model, the transcript, search, and export all read the
     // same self-describing string. The title is not minted by delivery:

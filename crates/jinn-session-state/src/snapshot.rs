@@ -6,9 +6,7 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
-use jinn_attendant_msg::{
-    AttendantBehavior, AttendantReport, AttendantTrigger, default_seed_template,
-};
+use jinn_bot_msg::{BotBehavior, BotReport, BotTrigger, default_seed_template};
 use jinn_core_types::WorkingInterval;
 use jinn_core_types::{ChatEntry, ChatEntryKind, NameFilter, SessionId, SessionProfile};
 use jinn_session_lifecycle_msg::LifecycleScriptState;
@@ -114,29 +112,32 @@ pub struct SessionSnapshotMetadata {
     /// Loaded/archived state, reconstructed from the sessions table.
     #[serde(skip, default)]
     pub session_state: SessionState,
-    /// What a run in an attendant sees of the conversation.
+    /// Library membership, reconstructed from the sessions table.
+    #[serde(skip, default)]
+    pub in_library: bool,
+    /// What a run in a bot sees of the conversation.
     #[serde(default)]
-    pub behavior: AttendantBehavior,
-    /// Whether the attendant is still being composed.
+    pub behavior: BotBehavior,
+    /// Whether the bot is still being composed.
     ///
-    /// Absent means composing, the state `N` creates an attendant in: a
+    /// Absent means composing, the state `N` creates a bot in: a
     /// bool has no third value, so the default is the answer rather than a
     /// sentinel standing in for one.
     #[serde(default = "default_prep_mode")]
     pub prep_mode: bool,
-    /// The condition that causes an automatic attendant re-run.
+    /// The condition that causes an automatic bot re-run.
     #[serde(default)]
-    pub trigger: AttendantTrigger,
+    pub trigger: BotTrigger,
     /// User-editable seed text used to inject the prior report.
     #[serde(default = "default_seed_template")]
     pub seed_template: String,
-    /// The attendant's append-only report log.
+    /// The bot's append-only report log.
     #[serde(default)]
-    pub reports: Vec<AttendantReport>,
-    /// The workflow-local TOML file a workflow attendant loaded from.
-    /// Absent for personal attendants.
+    pub reports: Vec<BotReport>,
+    /// The workflow-local TOML file a workflow bot loaded from.
+    /// Absent for personal bots.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workflow_source: Option<jinn_core_types::AttendantSourcePath>,
+    pub workflow_source: Option<jinn_core_types::BotSourcePath>,
     /// Wall-clock intervals during which this session was working.
     ///
     /// Persisted in the metadata blob, so working time survives a restart.
@@ -172,12 +173,13 @@ impl From<&SessionCore> for SessionSnapshotMetadata {
             enabled_mcp_servers: core.integrations.enabled_mcp_servers.clone(),
             persist: core.storage.persist,
             session_state: core.storage.session_state,
-            behavior: core.attendant.behavior,
-            prep_mode: core.attendant.prep_mode,
-            trigger: core.attendant.trigger,
-            seed_template: core.attendant.seed_template.clone(),
-            reports: core.attendant.reports.clone(),
-            workflow_source: core.attendant.workflow_source.clone(),
+            in_library: core.storage.in_library,
+            behavior: core.bot.behavior,
+            prep_mode: core.bot.prep_mode,
+            trigger: core.bot.trigger,
+            seed_template: core.bot.seed_template.clone(),
+            reports: core.bot.reports.clone(),
+            workflow_source: core.bot.workflow_source.clone(),
             // Working time is NOT read from the core. It lives in the
             // work-time slice's cell, and copying it onto the core would give
             // it a second home with a second writer. The store actor stamps it
@@ -211,12 +213,13 @@ impl From<SessionSnapshotMetadata> for SessionCore {
         core.integrations.enabled_mcp_servers = metadata.enabled_mcp_servers;
         core.storage.persist = metadata.persist;
         core.storage.session_state = metadata.session_state;
-        core.attendant.behavior = metadata.behavior;
-        core.attendant.prep_mode = metadata.prep_mode;
-        core.attendant.trigger = metadata.trigger;
-        core.attendant.seed_template = metadata.seed_template;
-        core.attendant.reports = metadata.reports;
-        core.attendant.workflow_source = metadata.workflow_source;
+        core.storage.in_library = metadata.in_library;
+        core.bot.behavior = metadata.behavior;
+        core.bot.prep_mode = metadata.prep_mode;
+        core.bot.trigger = metadata.trigger;
+        core.bot.seed_template = metadata.seed_template;
+        core.bot.reports = metadata.reports;
+        core.bot.workflow_source = metadata.workflow_source;
         core
     }
 }
@@ -255,6 +258,10 @@ impl SessionSnapshot {
         metadata.fork_ordinal = Some(at_ordinal);
         metadata.origin = SessionOrigin::Fork;
         metadata.session_state = SessionState::Loaded;
+        // A fork is a new session with its own list membership: it does not
+        // inherit its source's library placement, any more than it inherits
+        // its source's archived state.
+        metadata.in_library = false;
         // A fork of a session with no tool filter still has to have the task
         // tool permitted, and "no filter" cannot be edited in place: a
         // subagent inheriting nothing needs its filter to name the task tool

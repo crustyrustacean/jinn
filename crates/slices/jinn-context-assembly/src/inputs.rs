@@ -1,10 +1,28 @@
 //! State capture for the stateless context-assembly service.
 
-use jinn_attendant_msg::is_attendant_tool_definition;
+use jinn_bot_msg::is_bot_tool_definition;
 use jinn_context_assembly_msg::AssemblyInputs;
 use jinn_core_types::{DEFAULT_PERSONA_NAME, SessionId};
 use jinn_kernel::common::app_state::AppState;
 use jinn_session_state::AssemblySessionProjection;
+
+/// Whether `session` is offered the tool definition `def`.
+///
+/// A non-bot sees none of the bot-only tools. A bot sees `conclude`
+/// always — recording a conclusion needs no parent — and `notify_parent`
+/// only when it has one to notify.
+fn bot_sees_tool(
+    session: &AssemblySessionProjection,
+    def: &jinn_core_types::tool_types::ToolDefinition,
+) -> bool {
+    if !session.is_bot {
+        return !is_bot_tool_definition(def);
+    }
+    if !is_bot_tool_definition(def) {
+        return true;
+    }
+    session.bot_has_parent || def.name == "conclude"
+}
 
 /// Builds a coherent assembly request from the current application state.
 ///
@@ -24,16 +42,19 @@ pub fn build_assembly_inputs(state: &AppState, session_id: &SessionId) -> Assemb
             .resolve_for(&session.persona_name, DEFAULT_PERSONA_NAME)
             .cloned()
     });
-    // Attendant-only tools are filtered per session, the same way server
+    // Bot-only tools are filtered per session, the same way server
     // tools are filtered per provider in `assemble`: they are dropped
-    // before the prompt is built, so a session that is not an attendant
+    // before the prompt is built, so a session that is not a bot
     // never sees them offered rather than being offered and refused.
+    // Of the bot tools, a parentless bot sees `conclude` only —
+    // `notify_parent` has no parent to wake, and offering it would be
+    // offering a call that can only fail.
     let tools = state
         .tool_registry()
         .map(|cell| cell.read().tools_for_session(session_id))
         .unwrap_or_default()
         .into_iter()
-        .filter(|def| session.is_attendant || !is_attendant_tool_definition(def))
+        .filter(|def| bot_sees_tool(&session, def))
         .collect();
 
     AssemblyInputs {
@@ -52,36 +73,36 @@ pub fn build_assembly_inputs(state: &AppState, session_id: &SessionId) -> Assemb
 }
 
 #[cfg(test)]
-mod attendant_tool_visibility_tests {
+mod bot_tool_visibility_tests {
     #![allow(clippy::expect_used, clippy::unwrap_used, reason = "test module")]
 
     use super::*;
-    use jinn_attendant_msg::ATTENDANT_TOOL_NAMES;
+    use jinn_bot_msg::BOT_TOOL_NAMES;
     use jinn_core_types::tool_types::ToolDefinition;
     use jinn_core_types::{FilterMode, NameFilter};
     use jinn_kernel::common::app_state::AppState;
     use jinn_kernel::common::state::State;
     use jinn_session_state::ChatSessionState;
 
-    /// Ordinary built-ins every session keeps, attendant or not.
+    /// Ordinary built-ins every session keeps, bot or not.
     const ORDINARY_TOOL_NAMES: &[&str] = &["read", "bash", "grep"];
 
     #[rstest::rstest]
     #[test]
-    fn an_ordinary_session_is_offered_no_attendant_tool() {
+    fn an_ordinary_session_is_offered_no_bot_tool() {
         // Given a plain user session with the built-ins registered.
         let (state, session_id) = state_with_session(ChatSessionState::new());
 
         // When its assembly inputs are built.
         let names = tool_names(&state, &session_id);
 
-        // Then neither attendant tool appears. A user session is not a
+        // Then neither bot tool appears. A user session is not a
         // judge and has no parent to wake, so offering the tools invites
         // calls that can only fail.
-        for name in ATTENDANT_TOOL_NAMES {
+        for name in BOT_TOOL_NAMES {
             assert!(
                 !names.iter().any(|n| n == name),
-                "{name} must not be offered to a non-attendant session"
+                "{name} must not be offered to a non-bot session"
             );
         }
         // And the other built-ins are untouched.
@@ -92,58 +113,85 @@ mod attendant_tool_visibility_tests {
 
     #[rstest::rstest]
     #[test]
-    fn an_attendant_is_offered_both_of_its_tools() {
-        // Given an attendant session.
+    fn an_attached_bot_is_offered_both_of_its_tools() {
+        // Given an attached bot session.
         let parent = ChatSessionState::new();
-        let (state, session_id) =
-            state_with_session(ChatSessionState::new_attendant(&parent, true));
+        let (state, session_id) = state_with_session(ChatSessionState::new_bot(&parent, true));
 
         // When its assembly inputs are built.
         let names = tool_names(&state, &session_id);
 
-        // Then both are present. Filtering must not starve the tools an
-        // attendant exists to use.
-        for name in ATTENDANT_TOOL_NAMES {
-            assert!(
-                names.iter().any(|n| n == name),
-                "{name} must reach an attendant"
-            );
+        // Then both are present. Filtering must not starve the tools a
+        // bot exists to use.
+        for name in BOT_TOOL_NAMES {
+            assert!(names.iter().any(|n| n == name), "{name} must reach a bot");
         }
-        // And so are the ordinary ones. The attendant filter subtracts from
-        // a full list rather than replacing it — an attendant that only
+        // And so are the ordinary ones. The bot filter subtracts from
+        // a full list rather than replacing it — a bot that only
         // sees its own two tools cannot read, search or edit anything.
         for name in ORDINARY_TOOL_NAMES {
             assert!(
                 names.iter().any(|n| n == name),
-                "{name} must remain available to an attendant"
+                "{name} must remain available to a bot"
+            );
+        }
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn a_standalone_bot_keeps_conclude_and_loses_notify_parent() {
+        // Given a parentless bot session.
+        let source = ChatSessionState::new();
+        let (state, session_id) =
+            state_with_session(ChatSessionState::new_standalone_bot(&source, true));
+
+        // When its assembly inputs are built.
+        let names = tool_names(&state, &session_id);
+
+        // Then `conclude` is still offered — recording a conclusion needs
+        // no parent — while `notify_parent` is withheld, because waking a
+        // parent that does not exist is a call that can only fail.
+        assert!(
+            names.iter().any(|n| n == "conclude"),
+            "a standalone bot must keep conclude"
+        );
+        assert!(
+            !names.iter().any(|n| n == "notify_parent"),
+            "a standalone bot must not be offered notify_parent"
+        );
+        // And the ordinary tools are untouched.
+        for name in ORDINARY_TOOL_NAMES {
+            assert!(
+                names.iter().any(|n| n == name),
+                "{name} must remain available to a standalone bot"
             );
         }
     }
 
     /// An allow filter narrows which of the session's own tools it may use.
     /// It must not be read as "these are the only tools that exist" — that
-    /// reading would strip an attendant of `report` and `notify_parent`, the
+    /// reading would strip a bot of `conclude` and `notify_parent`, the
     /// two tools it exists to call.
     #[rstest::rstest]
     #[test]
-    fn an_allow_filtered_attendant_keeps_its_own_tools() {
-        // Given an attendant permitted exactly one ordinary tool.
+    fn an_allow_filtered_bot_keeps_its_own_tools() {
+        // Given a bot permitted exactly one ordinary tool.
         let parent = ChatSessionState::new();
-        let mut attendant = ChatSessionState::new_attendant(&parent, true);
-        attendant.set_tool_filter(Some(NameFilter {
+        let mut bot = ChatSessionState::new_bot(&parent, true);
+        bot.set_tool_filter(Some(NameFilter {
             mode: FilterMode::Allow,
             names: ["read".to_owned()].into_iter().collect(),
         }));
-        let (state, session_id) = state_with_session(attendant);
+        let (state, session_id) = state_with_session(bot);
 
         // When its assembly inputs are built.
         let names = tool_names(&state, &session_id);
 
-        // Then both attendant tools are still offered.
-        for name in ATTENDANT_TOOL_NAMES {
+        // Then both bot tools are still offered.
+        for name in BOT_TOOL_NAMES {
             assert!(
                 names.iter().any(|n| n == name),
-                "{name} must survive an allow filter on an attendant"
+                "{name} must survive an allow filter on a bot"
             );
         }
     }
@@ -153,28 +201,28 @@ mod attendant_tool_visibility_tests {
     /// ignored entirely.
     #[rstest::rstest]
     #[test]
-    fn an_allow_filtered_attendant_loses_the_tools_it_did_not_name() {
-        // Given an attendant permitted exactly one ordinary tool.
+    fn an_allow_filtered_bot_loses_the_tools_it_did_not_name() {
+        // Given a bot permitted exactly one ordinary tool.
         let parent = ChatSessionState::new();
-        let mut attendant = ChatSessionState::new_attendant(&parent, true);
-        attendant.set_tool_filter(Some(NameFilter {
+        let mut bot = ChatSessionState::new_bot(&parent, true);
+        bot.set_tool_filter(Some(NameFilter {
             mode: FilterMode::Allow,
             names: ["read".to_owned()].into_iter().collect(),
         }));
-        let (state, session_id) = state_with_session(attendant);
+        let (state, session_id) = state_with_session(bot);
 
         // When its assembly inputs are built.
         let inputs = build_assembly_inputs(&state.read(), &session_id);
 
         // Then `read` is permitted and the other ordinary tools are not.
-        let filter = inputs.tool_filter.expect("attendant carries a filter");
+        let filter = inputs.tool_filter.expect("bot carries a filter");
         assert!(filter.permits("read"));
         assert!(!filter.permits("bash"));
         assert!(!filter.permits("grep"));
     }
 
     /// A state holding `session` as its active session, with the
-    /// attendant built-ins and one ordinary tool registered.
+    /// bot built-ins and one ordinary tool registered.
     fn state_with_session(session: ChatSessionState) -> (State, SessionId) {
         let state = State::new(AppState::default_with_scope_focus());
         let session_id = session.session_id().clone();
@@ -183,7 +231,7 @@ mod attendant_tool_visibility_tests {
             guard.session.insert(session);
             let cell = guard.tool_registry().expect("registry cell attached");
             cell.update(|r| {
-                for name in ATTENDANT_TOOL_NAMES
+                for name in BOT_TOOL_NAMES
                     .iter()
                     .chain(ORDINARY_TOOL_NAMES.iter())
                     .copied()

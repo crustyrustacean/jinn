@@ -3,7 +3,7 @@
 The second jinn workflow architecture. Where a sequential workflow is a
 pipeline of one-shot subagents, an event-driven workflow is a **topology
 of sessions** that exchange messages and react to completion events: an
-orchestrator session, specialist attendants, and workers attached on
+orchestrator session, specialist bots, and workers attached on
 demand. Use it when the flow needs concurrency, recursion, or
 long-lived workers; use the sequential architecture otherwise.
 
@@ -26,22 +26,22 @@ Every event-driven workflow has the same shape:
 ```
 
 - **One orchestrator** — the human-facing session that started the workflow. It holds the task list, the ledger, and every decision. It is the only session that talks to every other session.
-- **Attendants** — child sessions, each from one TOML seed file. Specialists load once each (planner, reviewer, any other role whose procedure is too big to be dispatch data); workers attach on demand, one session per unit of work, from one shared seed.
-- **Hub-and-spoke messaging.** Every arrow goes through the orchestrator. Attendants learn only their parent's id (the harness appends it to every dispatch); sibling ids never enter their context, and dispatch payloads carry file paths, not session ids. Attendants cannot create attendants. If two attendants seem to need to talk, the workflow is missing an orchestrator step — route it through the hub.
+- **Bots** — child sessions, each from one TOML seed file. Specialists load once each (planner, reviewer, any other role whose procedure is too big to be dispatch data); workers attach on demand, one session per unit of work, from one shared seed.
+- **Hub-and-spoke messaging.** Every arrow goes through the orchestrator. Bots learn only their parent's id (the harness appends it to every dispatch); sibling ids never enter their context, and dispatch payloads carry file paths, not session ids. Bots cannot create bots. If two bots seem to need to talk, the workflow is missing an orchestrator step — route it through the hub.
 
 The fanout bound is structural: only the orchestrator attaches, only from
 the workflow's fixed set of seed files, and concurrency is bounded by
 the work actually claimable — an idle pre-attached pool is waste, and an
 orchestrator attaching sessions with no dispatch behind them is broken.
-An attendant that spawns anything is impossible.
+A bot that spawns anything is impossible.
 
 ## The wake model — how work actually moves
 
 Sessions cannot start themselves. Everything moves through two
 mechanisms, and both are turn-boundary:
 
-1. **`tell_session`** (orchestrator → attendant): an idle attendant starts a run immediately, seeded from its template plus the message; a busy one queues the message and runs it when its current turn ends. Nothing cancels; nothing races. One queued message is the most a worker should ever hold — the tracker/state files hold the real queue.
-2. **`notify_parent`** (attendant → orchestrator): lands as a user message that starts the parent's next turn. If the parent is mid-turn, the report **queues until that turn ends**.
+1. **`tell_session`** (orchestrator → bot): an idle bot starts a run immediately, seeded from its template plus the message; a busy one queues the message and runs it when its current turn ends. Nothing cancels; nothing races. One queued message is the most a worker should ever hold — the tracker/state files hold the real queue.
+2. **`notify_parent`** (bot → orchestrator): lands as a user message that starts the parent's next turn. If the parent is mid-turn, the report **queues until that turn ends**.
 
 The consequence that shapes every event-driven orchestrator: **end your
 turn.** After dispatching, or whenever nothing is left to do this
@@ -61,16 +61,16 @@ silently), it is plain shell inside the turn — sleep, rescan state
 files, act, end turn — bounded, and named in the instructions as the
 stall detector it is. Events do the actual waking.
 
-## Attendant seed files
+## Bot seed files
 
 One file per role, TOML, living beside the workflow (loaded by absolute
-path via `load_attendant`; the same shape as an `[[attendant.entry]]`
+path via `load_attendant`; the same shape as an `[[bot.entry]]`
 block in `jinn.toml`, but workflow-scoped — it cannot be saved to user
 config). Load one file **K times to get K workers of that role**; a
 pool is one seed loaded repeatedly, not K files.
 
 ```toml
-[[attendant.entry]]
+[[bot.entry]]
 name = "implementor"
 behavior = "reset"          # reset | preserve — context across dispatches
 trigger = "manual"          # ALWAYS manual for dispatch-driven roles
@@ -81,10 +81,10 @@ pins = [{ role = "user", text = """ ...standing instructions... """ }]
 
 Fields that matter:
 
-- **`trigger`** — `"manual"` for anything the orchestrator dispatches. A completion trigger fires on every parent turn end, which is the opposite of dispatch-driven work: a manual-trigger attendant runs only when messaged, so idle workers cost nothing.
+- **`trigger`** — `"manual"` for anything the orchestrator dispatches. A completion trigger fires on every parent turn end, which is the opposite of dispatch-driven work: a manual-trigger bot runs only when messaged, so idle workers cost nothing.
 - **`behavior`** — `"reset"` wipes context at each dispatch: the run sees its pins plus the one dispatch, so dispatches must be self-contained. Right for fungible workers. `"preserve"` keeps the conversation, so the session's exploration (a repo map, a codebase orientation) survives across dispatches. Right for specialists whose value compounds — and it comes with a hygiene rule: state in the pin what persists (geography, maps) and what must not (verdicts, judgments about past work), or the session starts assuming from its own history.
-- **`seed_template`** — the standing text prepended to every dispatch. The `<prior report>` token is the **only** way a `conclude` report re-enters context. Put the token in a template only when the attendant's conclusions arrive in an order that makes the previous one relevant (one work unit per run: a worker). Leave it out otherwise (a reviewer judging many issues in arbitrary order) — a template without the token never receives reports. A template with no token still needs its own text: it is what the attendant reads first on every dispatch.
-- **`pins`** — the attendant's standing instructions: role, what it must never do, how it reports. Written for a stranger; every dispatch assumes the pins are all the context there is (reset) or the durable part of it (preserve).
+- **`seed_template`** — the standing text prepended to every dispatch. The `<prior report>` token is the **only** way a `conclude` report re-enters context. Put the token in a template only when the bot's conclusions arrive in an order that makes the previous one relevant (one work unit per run: a worker). Leave it out otherwise (a reviewer judging many issues in arbitrary order) — a template without the token never receives reports. A template with no token still needs its own text: it is what the bot reads first on every dispatch.
+- **`pins`** — the bot's standing instructions: role, what it must never do, how it reports. Written for a stranger; every dispatch assumes the pins are all the context there is (reset) or the durable part of it (preserve).
 
 A seed's pins should always carry: the role in one sentence, the hard
 boundaries (never touch the tracker / never write product code / never
@@ -98,7 +98,7 @@ lets information travel any other way.
 playback of what setup recorded. Together they are the workflow's
 checkout machine — use them fully or not at all:
 
-- **Spawning a worker = `load_attendant` the seed → lifecycle setup → dispatch.** The attendant call creates the session and stamps it; the setup is issued **by the orchestrator, targeting the new session's id**, immediately after — the worker wakes up already sitting in its own checkout or worktree. There is no standing pool to pre-open seats for: on-demand spawn per unit of work keeps every seat owned by a live session, and teardown retires it.
+- **Spawning a worker = `load_attendant` the seed → lifecycle setup → dispatch.** The bot call creates the session and stamps it; the setup is issued **by the orchestrator, targeting the new session's id**, immediately after — the worker wakes up already sitting in its own checkout or worktree. There is no standing pool to pre-open seats for: on-demand spawn per unit of work keeps every seat owned by a live session, and teardown retires it.
 - **Landing = lifecycle teardown.** The script's teardown command does the merge-back, the commit, the checkout removal, and the branch retirement, replaying setup's recorded coordinates (session id only — the args are remembered). Because teardown is the cleanup, cleanup cannot be skipped, forgotten, or aimed at the wrong run's seat: a session that never existed holds no coordinates, so there is nothing to mis-teardown.
 - **Order teardown's steps so conflicts fail before anything irreversible.** Both `fossil merge` and `git merge` exit 0 on conflict — gate on markers/unmerged paths and exit nonzero _before_ the branch close/delete. Everything before that point is retryable (a re-run's merges are no-ops); a closed branch cannot accept the retry. A conflicted teardown should leave the worker session alive: it knows the code, so the fix dispatch goes to it, and teardown is re-issued after its report.
 - **Never nest `bash -c` in a lifecycle command.** The runner already executes every command through `bash -c`; a wrapper spawns a second shell for nothing, and its single quotes clash with the shell-quoted values the runner substitutes for placeholders.
@@ -129,21 +129,21 @@ one is instructions. It must carry, in order:
 
 1. **Frontmatter** — same as always (`name`, `description`; discovery reads nothing else).
 2. **Constants** — the declared numbers and names: branch-naming conventions, tracker and artifact paths, stall thresholds, retry bounds. Every number a session could otherwise improvise.
-3. **Startup** — the ordered setup: probe the seat, record the ledger, ensure run state is ignored (never committable), file the goal, load the standing attendants, stamp the task list.
+3. **Startup** — the ordered setup: probe the seat, record the ledger, ensure run state is ignored (never committable), file the goal, load the standing bots, stamp the task list.
 4. **The loop** — numbered stages naming their step files, with the turn-end rule stated explicitly: end the turn after dispatching and whenever nothing is left to do; reports wake you.
-5. **Amendment** — how the run behaves when the human edits the workflow mid-run: re-read everything, migrate the standing attendants (load new seeds, retire old sessions by never messaging them again), let in-flight workers finish under the old seed, append a cycle section to the ledger, and continue — a prompt update is never a restart.
+5. **Amendment** — how the run behaves when the human edits the workflow mid-run: re-read everything, migrate the standing bots (load new seeds, retire old sessions by never messaging them again), let in-flight workers finish under the old seed, append a cycle section to the ledger, and continue — a prompt update is never a restart.
 6. **Boundaries** — who writes what, what no session may do, what gates exist (and the statement that none exist beyond the declared human contacts).
 
 ## Steps, reports, and routing
 
-- Step files are per-stage procedures the instructions name — written for the orchestrator executing them, not for a stranger subagent (the attendants get their procedures through their seed pins and their dispatches).
+- Step files are per-stage procedures the instructions name — written for the orchestrator executing them, not for a stranger subagent (the bots get their procedures through their seed pins and their dispatches).
 - Every dispatch states the **report format** the orchestrator will parse (autodev: `DONE <issue-id>-<slug> <branch>` / `BLOCKED <issue-id>-<slug>`; `READY <issue-id>-<slug> <contract-path>`; `APPROVE|REJECT <issue-id>-<slug>`). Short, greppable, first-line-parseable. **Work-item ids carry a title slug everywhere a human might read** — task lists, reports, verdicts, ledgers — never a bare number: `003` alone is opaque to the person watching the run, and every surface is a surface they can watch.
 - Every non-success report routes somewhere explicit: a BLOCKED report files its facts as new work items; a REJECT re-dispatches the same worker with the findings verbatim; a stall re-queues the work. Nothing ever just disappears, and the orchestrator never does the worker's job itself to unblock a stage.
-- **No escalation paths.** If the flow must assume attendants can do what is asked, say so in the pins and the instructions: a dead end is reported as facts (BLOCKED), not as a request for a human. The orchestrator files the facts and re-sequences.
+- **No escalation paths.** If the flow must assume bots can do what is asked, say so in the pins and the instructions: a dead end is reported as facts (BLOCKED), not as a request for a human. The orchestrator files the facts and re-sequences.
 
 ## The human's real presence, gates, and baselines
 
-- **Scheduled contacts are not the only contacts.** A design that says "the human appears only at the goal ask and the QA brief" describes the schedule, not reality: the human can open any attendant session, read its work live, and message it directly. Write the seed pins to match — a direct human message is authoritative input, followed and then disclosed in the next report ("the human told me directly"), never silently folded into the plan. An orchestrator that receives a surprising claim ("the human approved this") checks the channel before doubting the reporter: the human _can_ have said it.
+- **Scheduled contacts are not the only contacts.** A design that says "the human appears only at the goal ask and the QA brief" describes the schedule, not reality: the human can open any bot session, read its work live, and message it directly. Write the seed pins to match — a direct human message is authoritative input, followed and then disclosed in the next report ("the human told me directly"), never silently folded into the plan. An orchestrator that receives a surprising claim ("the human approved this") checks the channel before doubting the reporter: the human _can_ have said it.
 - **Human sequencing remarks are quality guidance, not scheduling orders.** "Fix X before landing Y" gets a one-sentence reading at the top of the next turn, then the normal loop proceeds — never a re-ordering into a ceremony the workflow doesn't have.
 - **State the feature-model sentence.** The orchestrator should know in one line what "the feature" physically is (autodev: the human's own branch, assembled incrementally by teardowns; no landing step). Without it, an orchestrator invents big-bang landing ceremonies and ordering constraints from ambiguous phrasing.
 - **Gates are measured against a recorded baseline.** Any "green before you commit" rule needs the starting state recorded: run the gate on the parent once during planning, write pre-existing failures into the contract, and measure the worker against that. Without a baseline the worker faces an impossible dilemma — commit on red (a rule violation) or stall forever on failures it didn't cause — and it will invent a justification, which reads as dishonesty.
@@ -161,15 +161,15 @@ attention signal, and no watchdog for wedged turns. Design for it:
 
 ## Anti-patterns
 
-- **Action verbs without a mechanism.** "Create a session" with no tool named sends the executor hunting; it improvises `spawn_subagent` and silently discards the attendant seed. Every prescribed action names its exact tool call.
-- **Attendant-to-attendant messaging.** Sibling ids never enter context; routes go through the orchestrator. A workflow that wants workers to coordinate directly is missing an orchestrator stage.
+- **Action verbs without a mechanism.** "Create a session" with no tool named sends the executor hunting; it improvises `spawn_subagent` and silently discards the bot seed. Every prescribed action names its exact tool call.
+- **Bot-to-bot messaging.** Sibling ids never enter context; routes go through the orchestrator. A workflow that wants workers to coordinate directly is missing an orchestrator stage.
 - **The held turn.** Sleeping in a loop to "wait" for reports. Turn-end is the delivery mechanism; a turn that never ends never receives them.
 - **A pool of duplicate files.** Workers are one seed; on-demand attaches load the same file per session. N copies of one TOML drift.
 - **The ad-hoc cleanup carve-out.** Lifecycle scripts used for setup but teardown-as-checklist — "trash-move it with this shell recipe." Halfway usage means cleanup correctness rides on the orchestrator's diligence instead of recorded coordinates; use the scripts fully or not at all.
 - **Branch/seat names a second run would collide with.** Fixed names (`autodev-main`, a shared trash dir) make two concurrent runs merge into each other silently or purge each other's seats. Name per-run artifacts after the run — or better, derive them from the session's own branch so runs on different branches can never share a seat.
 - **The startup purge.** A run that deletes "stale" state at startup cannot tell stale from active. Cleanup belongs to teardown of the run that created the debris — never to the next run's morning.
 - **The preserve everything seed.** Preserve without a geography-not-verdict hygiene rule turns a specialist into a grudges-by-email machine: it starts judging from its history instead of the work in front of it.
-- **Completion triggers on dispatch-driven attendants.** The attendant fires on every orchestrator turn end and invents work. Manual trigger, always, for anything the orchestrator dispatches.
+- **Completion triggers on dispatch-driven bots.** The bot fires on every orchestrator turn end and invents work. Manual trigger, always, for anything the orchestrator dispatches.
 - **Reset where re-dispatch loops exist.** A worker that will receive fix-rounds (review rejects, teardown conflicts) must be preserve — a reset seed re-explores its own code on every round.
 - **The improvise number.** A retry count, or timeout that lives in the orchestrator's judgment instead of the instructions' constants. Every number is data.
 - **Tracker writes from workers.** Single-writer is what makes the file-based queue safe. A worker that edits its own issue file is a race the tracker cannot survive.

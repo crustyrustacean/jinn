@@ -2,6 +2,7 @@
 //!
 //! Uses the Agent Skills standard format. See: <https://agentskills.io/integrate-skills>
 
+use jinn_llm_support::token_estimator::TokenCounter;
 use jinn_skills_msg::Skill;
 
 /// Formats the available skills list as an XML block for inclusion in the LLM prompt.
@@ -77,6 +78,44 @@ fn escape_xml(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
+}
+
+/// Counts the context cost of the available-skills block: the same string
+/// [`format_skills_for_prompt`] produces for the given skills, as the prompt
+/// assembler counts it.
+///
+/// `loaded` marks which skills render with `loaded="true"`; the token count
+/// reflects those attribute bytes exactly as a prompt would carry them. An
+/// empty skills list produces no block and counts 0.
+#[must_use]
+pub fn skills_list_tokens<S>(
+    skills: &[Skill],
+    loaded: &std::collections::HashSet<String, S>,
+    counter: &dyn TokenCounter,
+) -> usize
+where
+    S: std::hash::BuildHasher,
+{
+    if skills.is_empty() {
+        return 0;
+    }
+    counter.count(&format_skills_for_prompt(skills, loaded))
+}
+
+/// Counts the context cost of loaded skill bodies pinned into history.
+///
+/// Each pair is `(tool name, pinned content)`; the shaping matches the
+/// assembler's `LlmMessage::Tool` term (`name + content`) so a skill's pinned
+/// body is priced the same here as it is in the assembled prompt.
+#[must_use]
+pub fn loaded_skill_tokens(
+    loaded_contents: &[(String, String)],
+    counter: &dyn TokenCounter,
+) -> usize {
+    loaded_contents
+        .iter()
+        .map(|(name, content)| counter.count(name) + counter.count(content))
+        .sum()
 }
 
 #[cfg(test)]

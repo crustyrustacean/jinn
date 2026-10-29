@@ -32,21 +32,21 @@ pub struct Theme {
     /// sessions apart from user-initiated ones.
     pub subagent_fg: Color,
     pub subagent_bg: Color,
-    /// Attendant session rows in the session tree — distinct from the error
+    /// Bot session rows in the session tree — distinct from the error
     /// colour and from the subagent pair.
-    pub attendant_fg: Color,
-    /// Marker for an attendant that will not dispatch on this run.
+    pub bot_fg: Color,
+    /// Marker for a bot that will not dispatch on this run.
     ///
     /// Carries the streaming color's meaning — a session with no messages
     /// moving through it — without sharing the key, because a session can
     /// be both a stream's target and paused on its own row.
-    pub attendant_paused: Color,
-    /// Marker for an attendant that runs on its parent's completion, with
-    /// no one asking. Defaulted to the attendant's own pink: the glyph
-    /// marks the same rows `attendant_fg` already marks, and saying so
+    pub bot_paused: Color,
+    /// Marker for a bot that runs on its parent's completion, with
+    /// no one asking. Defaulted to the bot's own pink: the glyph
+    /// marks the same rows `bot_fg` already marks, and saying so
     /// with a second pink would be noise.
-    pub attendant_parent_trigger: Color,
-    pub attendant_bg: Color,
+    pub bot_parent_trigger: Color,
+    pub bot_bg: Color,
     /// Error text color.
     pub error_text: Color,
     /// Dormant-but-healthy state color (a passivated actor in the
@@ -141,11 +141,11 @@ pub struct Theme {
     /// Stale data age color.
     pub age_stale: Color,
 
-    // Attendant properties popup
-    /// The selected choice in an attendant properties row. Mirrors
+    // Bot properties popup
+    /// The selected choice in a bot properties row. Mirrors
     /// `age_fresh` by default but is an independent key, so the two can
     /// diverge without a theme-file breaking change.
-    pub attendant_option_active: Color,
+    pub bot_option_active: Color,
 
     // Scroll indicator
     /// Scroll indicator background.
@@ -198,9 +198,9 @@ impl Theme {
             "primary_text" => primary_text,
             "muted_text" => muted_text,
             "subagent_fg" => subagent_fg,
-            "attendant_fg" => attendant_fg,
-            "attendant_paused" => attendant_paused,
-            "attendant_parent_trigger" => attendant_parent_trigger,
+            "bot_fg" => bot_fg,
+            "bot_paused" => bot_paused,
+            "bot_parent_trigger" => bot_parent_trigger,
             "error_text" => error_text,
             "dormant_fg" => dormant_fg,
             "success" => success,
@@ -234,7 +234,7 @@ impl Theme {
             "accent_action" => accent_action,
             "age_fresh" => age_fresh,
             "age_stale" => age_stale,
-            "attendant_option_active" => attendant_option_active,
+            "bot_option_active" => bot_option_active,
             "scroll_indicator_bg" => scroll_indicator_bg,
             "sidebar_resize_accent" => sidebar_resize_accent,
             "input_mode_queue" => input_mode_queue,
@@ -245,7 +245,7 @@ impl Theme {
             "infopopup_fg" => infopopup_fg,
             } bg: {
             "subagent_bg" => subagent_bg,
-            "attendant_bg" => attendant_bg,
+            "bot_bg" => bot_bg,
             "quake_bar_bg" => quake_bar_bg,
             }
         }
@@ -275,16 +275,16 @@ pub struct ThemeFile {
     /// Subagent block background shown on `spawn_subagent` tool calls and their results.
     #[serde(default)]
     pub subagent_bg: Option<ThemeColor>,
-    /// Attendant session rows in the session tree.
+    /// Bot session rows in the session tree.
     #[serde(default)]
-    pub attendant_fg: Option<ThemeColor>,
+    pub bot_fg: Option<ThemeColor>,
     #[serde(default)]
-    pub attendant_paused: Option<ThemeColor>,
+    pub bot_paused: Option<ThemeColor>,
     #[serde(default)]
-    pub attendant_parent_trigger: Option<ThemeColor>,
-    /// Attendant row background, paired with `attendant_fg`.
+    pub bot_parent_trigger: Option<ThemeColor>,
+    /// Bot row background, paired with `bot_fg`.
     #[serde(default)]
-    pub attendant_bg: Option<ThemeColor>,
+    pub bot_bg: Option<ThemeColor>,
     #[serde(default)]
     pub error_text: Option<ThemeColor>,
     pub dormant_fg: Option<ThemeColor>,
@@ -362,7 +362,7 @@ pub struct ThemeFile {
     #[serde(default)]
     pub age_stale: Option<ThemeColor>,
     #[serde(default)]
-    pub attendant_option_active: Option<ThemeColor>,
+    pub bot_option_active: Option<ThemeColor>,
 
     #[serde(default)]
     pub scroll_indicator_bg: Option<ThemeColor>,
@@ -427,19 +427,18 @@ impl ThemeFile {
             subagent_bg: self
                 .subagent_bg
                 .map_or(fallback.subagent_bg, crate::color::ThemeColor::inner),
-            attendant_fg: self
-                .attendant_fg
-                .map_or(fallback.attendant_fg, crate::color::ThemeColor::inner),
-            attendant_paused: self
-                .attendant_paused
-                .map_or(fallback.attendant_paused, crate::color::ThemeColor::inner),
-            attendant_parent_trigger: self.attendant_parent_trigger.map_or(
-                fallback.attendant_parent_trigger,
-                crate::color::ThemeColor::inner,
-            ),
-            attendant_bg: self
-                .attendant_bg
-                .map_or(fallback.attendant_bg, crate::color::ThemeColor::inner),
+            bot_fg: self
+                .bot_fg
+                .map_or(fallback.bot_fg, crate::color::ThemeColor::inner),
+            bot_paused: self
+                .bot_paused
+                .map_or(fallback.bot_paused, crate::color::ThemeColor::inner),
+            bot_parent_trigger: self
+                .bot_parent_trigger
+                .map_or(fallback.bot_parent_trigger, crate::color::ThemeColor::inner),
+            bot_bg: self
+                .bot_bg
+                .map_or(fallback.bot_bg, crate::color::ThemeColor::inner),
             error_text: self
                 .error_text
                 .map_or(fallback.error_text, crate::color::ThemeColor::inner),
@@ -544,10 +543,9 @@ impl ThemeFile {
             age_stale: self
                 .age_stale
                 .map_or(fallback.age_stale, crate::color::ThemeColor::inner),
-            attendant_option_active: self.attendant_option_active.map_or(
-                fallback.attendant_option_active,
-                crate::color::ThemeColor::inner,
-            ),
+            bot_option_active: self
+                .bot_option_active
+                .map_or(fallback.bot_option_active, crate::color::ThemeColor::inner),
             scroll_indicator_bg: self.scroll_indicator_bg.map_or(
                 fallback.scroll_indicator_bg,
                 crate::color::ThemeColor::inner,
@@ -601,10 +599,10 @@ impl ThemeFile {
             muted_text: Self::resolve_field(self.muted_text),
             subagent_fg: Self::resolve_field(self.subagent_fg),
             subagent_bg: Self::resolve_field(self.subagent_bg),
-            attendant_fg: Self::resolve_field(self.attendant_fg),
-            attendant_paused: Self::resolve_field(self.attendant_paused),
-            attendant_parent_trigger: Self::resolve_field(self.attendant_parent_trigger),
-            attendant_bg: Self::resolve_field(self.attendant_bg),
+            bot_fg: Self::resolve_field(self.bot_fg),
+            bot_paused: Self::resolve_field(self.bot_paused),
+            bot_parent_trigger: Self::resolve_field(self.bot_parent_trigger),
+            bot_bg: Self::resolve_field(self.bot_bg),
             error_text: Self::resolve_field(self.error_text),
             dormant_fg: Self::resolve_field(self.dormant_fg),
             success: Self::resolve_field(self.success),
@@ -639,7 +637,7 @@ impl ThemeFile {
             accent_action: Self::resolve_field(self.accent_action),
             age_fresh: Self::resolve_field(self.age_fresh),
             age_stale: Self::resolve_field(self.age_stale),
-            attendant_option_active: Self::resolve_field(self.attendant_option_active),
+            bot_option_active: Self::resolve_field(self.bot_option_active),
             scroll_indicator_bg: Self::resolve_field(self.scroll_indicator_bg),
             sidebar_resize_accent: Self::resolve_field(self.sidebar_resize_accent),
             infopopup_bg: Self::resolve_field(self.infopopup_bg),
@@ -673,10 +671,10 @@ mod tests {
             muted_text: None,
             subagent_fg: None,
             subagent_bg: None,
-            attendant_fg: None,
-            attendant_paused: None,
-            attendant_parent_trigger: None,
-            attendant_bg: None,
+            bot_fg: None,
+            bot_paused: None,
+            bot_parent_trigger: None,
+            bot_bg: None,
             error_text: None,
             dormant_fg: None,
             success: None,
@@ -711,7 +709,7 @@ mod tests {
             accent_action: None,
             age_fresh: None,
             age_stale: None,
-            attendant_option_active: None,
+            bot_option_active: None,
             scroll_indicator_bg: None,
             sidebar_resize_accent: None,
             input_mode_queue: None,
@@ -733,10 +731,10 @@ mod tests {
             muted_text: Some(ThemeColor(Color::DarkGray)),
             subagent_fg: Some(ThemeColor(Color::Rgb(152, 128, 208))),
             subagent_bg: Some(ThemeColor(Color::Rgb(70, 58, 105))),
-            attendant_fg: Some(ThemeColor(Color::Rgb(255, 105, 180))),
-            attendant_bg: Some(ThemeColor(Color::Rgb(56, 48, 17))),
-            attendant_paused: Some(ThemeColor(Color::Rgb(128, 132, 144))),
-            attendant_parent_trigger: Some(ThemeColor(Color::Rgb(255, 105, 180))),
+            bot_fg: Some(ThemeColor(Color::Rgb(255, 105, 180))),
+            bot_bg: Some(ThemeColor(Color::Rgb(56, 48, 17))),
+            bot_paused: Some(ThemeColor(Color::Rgb(128, 132, 144))),
+            bot_parent_trigger: Some(ThemeColor(Color::Rgb(255, 105, 180))),
             error_text: Some(ThemeColor(Color::Red)),
             dormant_fg: Some(ThemeColor(Color::Blue)),
             success: Some(ThemeColor(Color::Green)),
@@ -775,7 +773,7 @@ mod tests {
             accent_action: Some(ThemeColor(Color::Rgb(255, 165, 0))),
             age_fresh: Some(ThemeColor(Color::LightGreen)),
             age_stale: Some(ThemeColor(Color::Red)),
-            attendant_option_active: Some(ThemeColor(Color::LightGreen)),
+            bot_option_active: Some(ThemeColor(Color::LightGreen)),
             scroll_indicator_bg: Some(ThemeColor(Color::Black)),
             sidebar_resize_accent: Some(ThemeColor(Color::Green)),
             infopopup_bg: Some(ThemeColor(Color::Rgb(40, 44, 52))),

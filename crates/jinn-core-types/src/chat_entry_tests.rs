@@ -1431,6 +1431,8 @@ fn content_signature_differs_across_kinds() {
         context_override: ContextOverride::Default,
         context_history: Vec::new(),
         token_count: None,
+        model_used: None,
+        model_requested: None,
     },
     ChatEntry {
         id: ChatEntryId::new(),
@@ -1446,6 +1448,8 @@ fn content_signature_differs_across_kinds() {
         context_override: ContextOverride::Default,
         context_history: Vec::new(),
         token_count: None,
+        model_used: None,
+        model_requested: None,
     }
 )]
 fn content_signature_changes_when_a_fingerprinted_field_changes(

@@ -95,6 +95,14 @@ impl SessionStore for FakeSessionStore {
         Ok(())
     }
 
+    async fn set_in_library(
+        &self,
+        _session_id: &SessionId,
+        _in_library: bool,
+    ) -> Result<(), Report<SessionStoreError>> {
+        Ok(())
+    }
+
     async fn load_unarchived_summaries(
         &self,
     ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {

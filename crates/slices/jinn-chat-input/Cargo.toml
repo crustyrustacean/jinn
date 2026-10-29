@@ -14,7 +14,7 @@ jinn-context-curation-msg = { workspace = true }
 jinn-export-msg = { workspace = true }
 jinn-core-types = { workspace = true }
 jinn-session-msg = { workspace = true }
-jinn-attendant-msg = { workspace = true }
+jinn-bot-msg = { workspace = true }
 jinn-session-history-msg = { workspace = true }
 jinn-session-store-msg = { workspace = true }
 jinn-preferences-config = { workspace = true }

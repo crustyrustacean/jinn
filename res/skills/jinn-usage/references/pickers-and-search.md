@@ -1,9 +1,9 @@
 # Pickers & Search
 
-Pickers are Telescope-style popups for changing models, sessions, themes,
-tools, and more. Open them from normal mode with the `<leader>s` family
-(`<leader>` = Space); every picker is also listed under the `<leader>s` group
-in the which-key popup (`?`).
+Pickers are popups for changing models, sessions, themes, tools, and more.
+Open them from normal mode with the `<leader>s` family (`<leader>` = Space);
+every picker is also listed under the `<leader>s` group in the which-key
+popup (`?`).
 
 ## The picker family
 
@@ -20,6 +20,7 @@ in the which-key popup (`?`).
 | `<leader>sE` | Endpoint         | OpenRouter routing endpoint pin                       |
 | `<leader>sp` | Project          | Curated project dirs for quick session creation       |
 | `<leader>sl` | Lifecycle        | Lifecycle recipes for new sessions                    |
+| `<leader>sb` | Bot              | Saved bots from `jinn.toml` (`[[bot.entry]]`)         |
 | `<leader>sw` | Workflow         | Discovered workflows; enter loads one into the current session, ctrl+enter starts a new session |
 
 ## Inside a picker
@@ -53,8 +54,36 @@ highlights:
   `mcp-servers.md`).
 - **Endpoint**: `<c-r>` re-fetches OpenRouter endpoint listings (see
   `models-and-providers.md`).
+- **Bot**: `<enter>` attaches the highlighted saved bot to the active
+  session, `<c-a>` attaches and keeps the picker open, `<c-enter>` spawns
+  it as a **standalone** bot (no parent) in its own session and switches
+  to it (see `bots.md`).
 - **Project**: `<c-n>` starts a new session, `<c-d>` removes the
   highlighted one, `<c-enter>` starts a session there with a lifecycle recipe.
+
+### Context-cost footers
+
+The tool, skill, and MCP pickers show a context-cost figure in the footer,
+counted with the same builders the prompt assembler uses:
+
+- **Tool** picker — the enabled toolset's context block (names, schemas,
+  descriptions, guidelines), including MCP tools.
+- **Skill** picker — a *list* term (names + descriptions of enabled skills)
+  and a *loaded* term (pinned skill bodies). A disabled skill that is still
+  loaded keeps its body cost until it is unloaded.
+- **MCP** inspector — the registered **tool definitions of enabled servers
+  only**. The other MCP cost is advertising the server itself; MCP tools are
+  also counted inside the tool picker's figure, so the two figures overlap and
+  must not be added.
+- A disabled entry (marked with an `x`) contributes zero, except a skill
+  that is still loaded.
+
+### Filter ranking
+
+With an active filter, flat pickers sort results by fuzzy-match score
+(strongest first, position tiebreak). Tree-mode pickers (e.g. the session
+picker) sort whole trees by their best-matching member, so an exact title
+match ranks above weaker matches. An empty filter keeps recency order.
 
 ## Sidebar navigation doubles as picker preview
 
@@ -77,5 +106,5 @@ session.
 - Indexing trails saves by up to ~one heartbeat (5s); a dashboard row shows
   live reindex progress.
 
-This is jinn's cross-session memory: nothing is silently recalled — you (or
-the agent) search for it explicitly.
+This index is how jinn finds information across sessions: nothing is recalled
+automatically — you (or the agent) search for it explicitly.

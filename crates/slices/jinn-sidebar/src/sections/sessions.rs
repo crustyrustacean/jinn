@@ -7,8 +7,8 @@
 pub mod activate;
 pub mod archive;
 pub mod archive_tree;
-pub mod attendant_actions;
-pub mod attendant_properties;
+pub mod bot_actions;
+pub mod bot_properties;
 pub mod close;
 pub mod r#continue;
 pub mod load_subagent;
@@ -24,7 +24,7 @@ pub mod teardown;
 pub mod yank;
 
 #[cfg(test)]
-mod attendant_actions_tests;
+mod bot_actions_tests;
 #[cfg(test)]
 mod preview_tests;
 

@@ -8,7 +8,7 @@
 //! columns and semantics — the on-screen facts, not the key inventory
 //! (the footer carries that).
 //!
-//! The shape follows the attendant's properties help card: a
+//! The shape follows the bot's properties help card: a
 //! variable-height document measured against the popup's inner width,
 //! wrapped here (the card must know its height before it can be
 //! placed), and painted with theme-semantic colors — explanation text

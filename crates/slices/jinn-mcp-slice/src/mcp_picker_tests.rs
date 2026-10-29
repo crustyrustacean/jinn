@@ -265,7 +265,12 @@ impl Wired {
         };
         let total = guard.selection.items().len();
         let footers = vec![
-            crate::mcp_picker_render::mcp_picker_status(enabled, total, &theme),
+            crate::mcp_picker_render::mcp_picker_status(
+                enabled,
+                total,
+                guard.context_tokens,
+                &theme,
+            ),
             ratatui::text::Line::from(keybind.0),
         ];
         terminal

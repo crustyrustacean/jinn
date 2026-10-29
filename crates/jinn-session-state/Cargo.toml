@@ -8,7 +8,7 @@ description = "Authoritative live session aggregate, session registry, runtime s
 [dependencies]
 marked-path = { workspace = true }
 jinn-chat-input-msg = { workspace = true }
-jinn-attendant-msg = { workspace = true }
+jinn-bot-msg = { workspace = true }
 jinn-chat-log-view-msg = { workspace = true }
 jinn-context = { workspace = true }
 jinn-core-types = { workspace = true }

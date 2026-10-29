@@ -18,8 +18,8 @@ use jinn_session_msg::{SessionArchiveFailed, SessionArchived, SessionClosed};
 use jinn_session_state::ChatSessionState;
 use jinn_session_state::{SessionStore, SessionStoreService};
 use jinn_session_store_msg::{
-    ArchiveSession, ArchiveSessionTree, LoadSessionPickerEntries, PersistSession,
-    SessionLoadCompleted, SessionLoadRequested, SessionState,
+    ArchiveSession, ArchiveSessionTree, LoadLibraryEntries, LoadSessionPickerEntries,
+    PersistSession, SessionLoadCompleted, SessionLoadRequested, SessionState, SetSessionLibrary,
 };
 use jinn_testutil::bus_harness::{Recorder, TestHarness, await_recorded};
 
@@ -46,6 +46,16 @@ struct ActorFixture {
     /// The store actor's path — a test that must know the actor has
     /// processed its inbox drains it through this.
     actor_path: trouper::actor::ActorPath,
+    /// The library cell, from the same `Slices` as the actor's own handle —
+    /// the same reason as `status_bar`.
+    library_cell: jinn_slices::cell::TypedCell<jinn_session_store_msg::LibraryState>,
+}
+
+impl ActorFixture {
+    /// The library entries currently in the cell.
+    fn library_entries(&self) -> Vec<jinn_session_store_msg::SessionSummary> {
+        self.library_cell.update(|library| library.entries.clone())
+    }
 }
 
 async fn actor_fixture() -> ActorFixture {
@@ -80,6 +90,10 @@ async fn actor_fixture() -> ActorFixture {
         .slices
         .reader::<jinn_work_time_msg::WorkingTimeState>(&jinn_work_time_msg::work_time_slot())
         .expect("the cell catalog registers the work-time slot");
+    let library_cell = services
+        .slices
+        .reader::<jinn_session_store_msg::LibraryState>(&jinn_session_store_msg::library_slot())
+        .expect("the cell catalog registers the library slot");
     let state = State::new(AppState::default());
     let actor_path = SessionStoreActor::spawn(
         harness.system(),
@@ -87,6 +101,7 @@ async fn actor_fixture() -> ActorFixture {
             services,
             state: state.clone(),
             session_picker_cell: session_picker_cell.clone(),
+            library_cell: library_cell.clone(),
         },
     );
     // The monitor is the work-time cell's single writer, and the load path's
@@ -100,6 +115,7 @@ async fn actor_fixture() -> ActorFixture {
         status_bar,
         work_time,
         actor_path,
+        library_cell,
     }
 }
 
@@ -130,6 +146,10 @@ async fn controlled_actor_fixture(store: Arc<dyn SessionStore>) -> ControlledFix
             &jinn_session_store_msg::session_picker_slot(),
         )
         .expect("the cell catalog registers the session picker slot");
+    let library_cell = services
+        .slices
+        .reader::<jinn_session_store_msg::LibraryState>(&jinn_session_store_msg::library_slot())
+        .expect("the cell catalog registers the library slot");
     let state = State::new(AppState::default());
     let actor_path = SessionStoreActor::spawn(
         harness.system(),
@@ -137,6 +157,7 @@ async fn controlled_actor_fixture(store: Arc<dyn SessionStore>) -> ControlledFix
             services,
             state: state.clone(),
             session_picker_cell: session_picker_cell.clone(),
+            library_cell,
         },
     );
     (harness, state, session_picker_cell, actor_path)
@@ -1146,6 +1167,78 @@ async fn persist_session_writes_interacted_session_to_store() {
     assert!(
         saved,
         "PersistSession should write the session to the store"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn persist_session_refreshes_the_library_cell_for_a_member() {
+    // Given a running store actor whose session is saved and flagged as a
+    // library member, so its summary row is in the cell under the old title.
+    let fixture = actor_fixture().await;
+    let session_id = {
+        let mut state = fixture.state.write();
+        let session = state.active_session_mut();
+        session.mark_interacted();
+        session.push_entry(jinn_core_types::ChatEntry::user("persist me"));
+        session.set_in_library(true);
+        session.session_id().clone()
+    };
+    let seed = fixture.store.load_session(&session_id).await.ok().flatten();
+    if seed.is_none() {
+        fixture
+            .store
+            .save(&fixture.state.read().active_session().capture_snapshot())
+            .await
+            .expect("seed member row");
+    }
+    fixture
+        .store
+        .set_in_library(&session_id, true)
+        .await
+        .expect("flag the member");
+    fixture.harness.publish(LoadLibraryEntries).await;
+    let seeded = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        fixture
+            .library_cell
+            .read()
+            .entries
+            .iter()
+            .any(|member| member.session_id == session_id)
+    })
+    .await;
+    assert!(seeded, "precondition: the member is in the cell");
+
+    // When the session is renamed and PersistSession is published — the
+    // rename confirm's exact chain.
+    let renamed = {
+        let mut state = fixture.state.write();
+        let session = state.active_session_mut();
+        session.set_title("renamed member".to_owned());
+        session.session_id().clone()
+    };
+    fixture
+        .harness
+        .publish(PersistSession {
+            session_id: renamed,
+        })
+        .await;
+
+    // Then the cell shows the new title without any section re-entry —
+    // the persist itself scheduled the refresh.
+    let retitle = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        fixture
+            .library_cell
+            .read()
+            .entries
+            .iter()
+            .any(|member| member.title == "renamed member")
+    })
+    .await;
+    assert!(
+        retitle,
+        "a persist of a member must refresh the library cell; entries: {:?}",
+        fixture.library_cell.read().entries
     );
 }
 
@@ -2652,6 +2745,14 @@ mod fork_tests {
             Ok(())
         }
 
+        async fn set_in_library(
+            &self,
+            _session_id: &SessionId,
+            _in_library: bool,
+        ) -> Result<(), Report<SessionStoreError>> {
+            Ok(())
+        }
+
         async fn load_unarchived_summaries(
             &self,
         ) -> Result<Vec<jinn_session_store_msg::SessionSummary>, Report<SessionStoreError>>
@@ -2976,4 +3077,208 @@ mod fork_tests {
         );
         assert_eq!(state.read().session.active_session_id(), &source_id);
     }
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn set_library_writes_in_memory_flag_when_loaded() {
+    // Given an actor whose session is live in the session map and saved
+    // to the store.
+    let (fixture, session_id) = {
+        let fixture = actor_fixture().await;
+        let session_id = SessionId::new();
+        let mut live = ChatSessionState::new();
+        live.set_session_id(session_id.clone());
+        live.set_title("to shelve".to_owned());
+        live.mark_interacted();
+        fixture.state.with_session(|view| {
+            view.session.map().insert(live.clone());
+        });
+        fixture
+            .store
+            .save(&live.capture_snapshot())
+            .await
+            .expect("save session");
+        (fixture, session_id)
+    };
+
+    // When the membership command lands.
+    fixture
+        .harness
+        .publish(SetSessionLibrary {
+            session_id: session_id.clone(),
+            in_library: true,
+        })
+        .await;
+    let flagged = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        fixture
+            .state
+            .read()
+            .session
+            .get(&session_id)
+            .is_some_and(jinn_session_state::ChatSessionState::in_library)
+    })
+    .await;
+
+    // Then the live session's flag is set...
+    assert!(
+        flagged,
+        "the store actor must set the in-memory flag on a loaded session"
+    );
+    // ...and the flag is durable.
+    let stored = fixture
+        .store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+    assert!(
+        stored.metadata.in_library,
+        "the column write must land, not just the memory write"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn clearing_library_clears_the_in_memory_flag() {
+    // Given an actor whose session is live in the session map and saved
+    // as a library member.
+    let (fixture, session_id) = {
+        let fixture = actor_fixture().await;
+        let session_id = SessionId::new();
+        let mut live = ChatSessionState::new();
+        live.set_session_id(session_id.clone());
+        live.set_title("shelved".to_owned());
+        live.mark_interacted();
+        live.set_in_library(true);
+        fixture.state.with_session(|view| {
+            view.session.map().insert(live.clone());
+        });
+        fixture
+            .store
+            .save(&live.capture_snapshot())
+            .await
+            .expect("save session");
+        (fixture, session_id)
+    };
+
+    // When the membership-clear command lands.
+    fixture
+        .harness
+        .publish(SetSessionLibrary {
+            session_id: session_id.clone(),
+            in_library: false,
+        })
+        .await;
+    let cleared = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        fixture
+            .state
+            .read()
+            .session
+            .get(&session_id)
+            .is_some_and(|session| !session.in_library())
+    })
+    .await;
+
+    // Then the flag clears in memory too.
+    assert!(cleared, "clearing membership must reach the live session");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn library_cell_lists_members_from_summaries() {
+    // Given an actor with one saved, archived member and one plain session —
+    // membership is orthogonal to archived state, so the archived one lists.
+    let fixture = {
+        let fixture = actor_fixture().await;
+        for (title, member, archive) in [
+            ("shelved member", true, true),
+            ("plain session", false, false),
+        ] {
+            let session_id = SessionId::new();
+            let mut live = ChatSessionState::new();
+            live.set_session_id(session_id.clone());
+            live.set_title(title.to_owned());
+            live.mark_interacted();
+            if member {
+                live.set_in_library(true);
+            }
+            if archive {
+                live.set_session_state(SessionState::Archived);
+            }
+            fixture
+                .store
+                .save(&live.capture_snapshot())
+                .await
+                .expect("save session");
+        }
+        fixture
+    };
+
+    // When the library load lands.
+    fixture.harness.publish(LoadLibraryEntries).await;
+    let listed = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        !fixture.library_entries().is_empty()
+    })
+    .await;
+
+    // Then exactly the member lists, archived or not.
+    assert!(listed, "the library cell must fill from the summaries");
+    let entries = fixture.library_entries();
+    assert_eq!(entries.len(), 1, "only members list, got: {entries:?}");
+    assert_eq!(entries[0].title, "shelved member");
+    assert!(
+        entries[0].in_library,
+        "the summary must carry the membership flag"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn library_cell_fills_at_startup() {
+    // Given an actor with one saved library member and one plain session,
+    // and no `LoadLibraryEntries` published — the section has never been
+    // entered.
+    let fixture = {
+        let fixture = actor_fixture().await;
+        for (title, member) in [("shelved member", true), ("plain session", false)] {
+            let session_id = SessionId::new();
+            let mut live = ChatSessionState::new();
+            live.set_session_id(session_id.clone());
+            live.set_title(title.to_owned());
+            live.mark_interacted();
+            if member {
+                live.set_in_library(true);
+            }
+            fixture
+                .store
+                .save(&live.capture_snapshot())
+                .await
+                .expect("save session");
+        }
+        fixture
+    };
+
+    // When the environment-loaded event fires — the store actor's startup
+    // path.
+    fixture
+        .harness
+        .publish(EnvironmentLoaded {
+            config: empty_providers_config(),
+        })
+        .await;
+    let listed = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        !fixture.library_entries().is_empty()
+    })
+    .await;
+
+    // Then the cell holds the member without anyone entering the section.
+    assert!(
+        listed,
+        "startup must fill the library cell so members are visible without \
+         visiting the section"
+    );
+    let entries = fixture.library_entries();
+    assert_eq!(entries.len(), 1, "only members list, got: {entries:?}");
+    assert_eq!(entries[0].title, "shelved member");
 }
