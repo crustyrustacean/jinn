@@ -4107,6 +4107,7 @@ dependencies = [
  "jinn-chat-log-view",
  "jinn-chat-log-view-msg",
  "jinn-common",
+ "jinn-config",
  "jinn-core-types",
  "jinn-kernel",
  "jinn-mcp-msg",

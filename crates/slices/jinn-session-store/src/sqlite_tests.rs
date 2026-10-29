@@ -543,6 +543,120 @@ async fn delete_is_noop_for_unknown_id() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn bulk_delete_removes_every_member() {
+    // Given a store with three saved sessions.
+    let (_dir, store) = make_store().await;
+    let ids: Vec<SessionId> = std::iter::repeat_with(SessionId::new).take(3).collect();
+    for (i, id) in ids.iter().enumerate() {
+        store
+            .save(&make_session(id, &format!("s{i}")).capture_snapshot())
+            .await
+            .expect("save");
+    }
+
+    // When bulk-deleting all three.
+    store.delete_many(&ids).await.expect("delete_many");
+
+    // Then none of them loads, and summaries are empty.
+    for id in &ids {
+        let loaded = store.load_session(id).await.expect("load_session");
+        assert!(loaded.is_none(), "{id} must be gone after the bulk delete");
+    }
+    let summaries = store.load_summaries().await.expect("load_summaries");
+    assert!(summaries.is_empty(), "no sessions may remain");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn bulk_delete_is_noop_for_unknown_ids() {
+    // Given a store with one saved session.
+    let (_dir, store) = make_store().await;
+    let kept = SessionId::new();
+    store
+        .save(&make_session(&kept, "kept").capture_snapshot())
+        .await
+        .expect("save");
+
+    // When bulk-deleting only unknown ids.
+    store
+        .delete_many(&[SessionId::new(), SessionId::new()])
+        .await
+        .expect("delete_many");
+
+    // Then no error occurs and the saved session survives.
+    let loaded = store.load_session(&kept).await.expect("load_session");
+    assert!(loaded.is_some(), "the kept session must survive");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn bulk_delete_reaps_only_unclaimed_entries() {
+    // Given two sessions where the first was forked into the second, so the
+    // shared entry is claimed by both junction rows, plus an entry unique to
+    // the doomed session.
+    let (_dir, store) = make_store().await;
+    let doomed = SessionId::new();
+    store
+        .save(&make_session(&doomed, "doomed").capture_snapshot())
+        .await
+        .expect("save doomed");
+    let fork = store
+        .fork(&doomed, 1)
+        .await
+        .expect("fork makes a child sharing the first entry");
+    // A second entry, unique to the doomed session.
+    {
+        let snapshot = store
+            .load_session(&doomed)
+            .await
+            .expect("load doomed")
+            .expect("doomed exists");
+        let mut live = snapshot.restore_live();
+        live.push_entry(ChatEntry::user("doomed-only"));
+        store.save(&live.capture_snapshot()).await.expect("save");
+    }
+
+    // When bulk-deleting the doomed session (fork survives).
+    store
+        .delete_many(std::slice::from_ref(&doomed))
+        .await
+        .expect("delete_many");
+
+    // Then the fork still loads with its shared entry intact.
+    let forked = store
+        .load_session(&fork)
+        .await
+        .expect("load fork")
+        .expect("fork survives");
+    let texts: Vec<String> = forked.history().iter().map(|e| e.text().clone()).collect();
+    assert!(
+        texts.contains(&"hello".to_owned()),
+        "the shared entry must survive the prune; got {texts:?}"
+    );
+
+    // And the entry unique to the deleted session is gone — the fork's
+    // transcript holds only the shared prefix, not the pruned session's
+    // later entry.
+    assert!(
+        !texts.contains(&"doomed-only".to_owned()),
+        "the doomed session's unique entry must be reaped; got {texts:?}"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn bulk_delete_allows_empty_batch() {
+    // Given a store.
+    let (_dir, store) = make_store().await;
+
+    // When bulk-deleting an empty id list.
+    store.delete_many(&[]).await.expect("delete_many");
+
+    // Then no error occurs.
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn fork_creates_new_session_with_entries_up_to_ordinal() {
     // Given a store with a session that has 3 entries.
     let (_dir, store) = make_store().await;

@@ -54,6 +54,7 @@ pub use schemas::auto_prune::{AnchoredAssistantAutoPruneConfig, TodoAutoPruneCon
 // Watchdog sections: consumed by the `jinn-watchdog` slice at activation.
 pub use schemas::StallWatchdogConfig;
 pub use schemas::ToolCallWatchdogConfig;
+pub use schemas::maintenance::{MaintenanceConfig, retention_duration};
 
 // The configuration layer lives in its own kernel-free crate so
 // `jinn-slices` can hold one without a dependency cycle. Re-exported here

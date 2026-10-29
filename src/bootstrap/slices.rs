@@ -374,6 +374,22 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
         },
     );
 
+    // The database maintenance actor: hourly sweeps that prune session trees
+    // idle past the configured `[maintenance]` retention (no section
+    // configured = never delete) and hand the freed pages back to the
+    // filesystem. Consumes nothing — its writes land in the store and the
+    // log; no cell, no routes.
+    let _db_maintenance = jinn_session_store::db_maintenance_actor::DbMaintenanceActor::spawn(
+        &ctx.services().trouper_system,
+        jinn_session_store::db_maintenance_actor::DbMaintenanceActorDeps {
+            deps: jinn_kernel::common::actor_deps::ActorDeps {
+                services: ctx.services().clone(),
+            },
+            initial_delay: jinn_session_store::db_maintenance_actor::INITIAL_DELAY,
+            sweep_interval: jinn_session_store::db_maintenance_actor::SWEEP_INTERVAL,
+        },
+    );
+
     // Session lifecycle: the arg-input overlay plus the actor that runs
     // setup and teardown. The session picker's cell was minted by
     // `jinn_session_store::activate` in Block 1.

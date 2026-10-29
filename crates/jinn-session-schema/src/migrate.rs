@@ -1,4 +1,4 @@
-//! The migration runner and individual migrations (v0..=v29).
+//! The migration runner and individual migrations (v0..=v32).
 //!
 //! This crate is the single source of truth for the session schema. Note the
 //! deliberate version pins, which keep the migrations immutable:
@@ -23,8 +23,9 @@ use crate::legacy::LegacySessionColumns;
 /// `run_pending` skips `BEGIN` when the DB is already at this version, so an
 /// up-to-date database pays no transaction cost on startup.
 ///
-/// MUST be bumped in lockstep with [`apply_migration_chain`]: every new
-/// `migrate_vN` block requires this constant set to `N`. The drift-guard test
+/// MUST be bumped in lockstep with [`apply_migration_chain_with`]'s chain
+/// table: every new `migrate_vN` block requires this constant set to `N`.
+/// The drift-guard test
 /// (`upgrade_from_every_seedable_version_reaches_latest`) fails otherwise. A
 /// stale value is the worst kind of bug: fresh databases still run the whole
 /// chain (so row-count tests pass) while already-migrated databases silently
@@ -68,6 +69,21 @@ pub(crate) fn run_pending(
         return Ok(false);
     }
 
+    // Migration v32's real work cannot run inside the chain's transaction
+    // (SQLite forbids VACUUM inside one), so it runs out-of-band here, before
+    // the BEGIN, gated on the version check above. The chain entry is a
+    // documented no-op (see [`migrate_v32`]); the announcer closure suppresses
+    // its in-chain announcement so the user sees the migration exactly once.
+    if current < 32 {
+        announce_migration(32, "convert_database_to_incremental_auto_vacuum");
+        convert_to_incremental_auto_vacuum(conn)?;
+    }
+    let announce_v32 = |version: i32, name: &str| {
+        if version != 32 {
+            announce_migration(version, name);
+        }
+    };
+
     let applied = current < LATEST_VERSION;
 
     // Raw BEGIN/COMMIT/ROLLBACK (not rusqlite's Transaction) because the
@@ -79,7 +95,7 @@ pub(crate) fn run_pending(
         .change_context(SchemaMigrationError)
         .attach("begin migration transaction")?;
 
-    match apply_migration_chain(conn, current) {
+    match apply_migration_chain_with(conn, current, &announce_v32) {
         Ok(()) => {
             conn.execute_batch("COMMIT")
                 .change_context(SchemaMigrationError)
@@ -105,7 +121,7 @@ pub struct Migration {
 ///
 /// One row per migration: version number, stable name (recorded in
 /// `_migrations`), and the DDL function. This table is the single source of
-/// truth for both [`apply_migration_chain`] (production) and
+/// truth for both [`apply_migration_chain_with`] (production) and
 /// [`apply_migrations_inner`] (test seeding), so a new migration cannot
 /// appear in one list and be missing from the other.
 ///
@@ -272,27 +288,25 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "add_sessions_is_bot_column",
         apply: migrate_v31,
     },
+    Migration {
+        version: 32,
+        name: "convert_database_to_incremental_auto_vacuum",
+        apply: migrate_v32,
+    },
 ];
 
 /// The newest migration in [`MIGRATIONS`], kept in lockstep with
 /// [`LATEST_VERSION`] (which is asserted equal to this by
 /// `latest_version_matches_chain`).
-pub const CHAIN_LATEST_VERSION: i32 = 31;
+pub const CHAIN_LATEST_VERSION: i32 = 32;
 
-/// Applies every migration above `current`, announcing each to stderr.
+/// Applies every migration above `current` under the given announcer.
 ///
 /// Runs inside the caller's open transaction; the `?` on each step
 /// short-circuits on the first failure, at which point `run_pending` rolls
-/// back.
-fn apply_migration_chain(
-    conn: &mut rusqlite::Connection,
-    current: i32,
-) -> Result<(), Report<SchemaMigrationError>> {
-    apply_migration_chain_with(conn, current, &announce_migration)
-}
-
-/// [`apply_migration_chain`] with an injectable announcer, so tests can
-/// observe announcements without capturing stderr.
+/// back. `run_pending` passes an announcer, not this function's former
+/// default, because v32's announcement is emitted out-of-band (its real
+/// work precedes the transaction) and must not repeat in-chain.
 fn apply_migration_chain_with(
     conn: &mut rusqlite::Connection,
     current: i32,
@@ -1339,6 +1353,53 @@ pub fn migrate_v31(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaM
     Ok(())
 }
 
+/// v32: Convert the database to incremental auto-vacuum.
+///
+/// **The real work does not run here.** `PRAGMA auto_vacuum` is a no-op
+/// outside an empty database unless followed by a full `VACUUM`, and SQLite
+/// forbids `VACUUM` inside a transaction — while every migration in the
+/// chain runs inside `run_pending`'s `BEGIN IMMEDIATE … COMMIT`. This chain
+/// entry is therefore a documented no-op that exists to (a) keep the version
+/// numbering monotonic and recorded like any other migration and (b) put the
+/// user-facing stderr announcement in the normal place. The conversion
+/// itself executes out-of-band in [`run_pending`], before the `BEGIN`,
+/// gated on `current < 32` so it runs exactly once.
+///
+/// Incremental auto-vacuum is what lets the database maintenance actor hand
+/// freed pages back to the filesystem (`PRAGMA incremental_vacuum`) after
+/// prune sweeps, instead of leaving them on a freelist forever.
+pub fn migrate_v32(_conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+    Ok(())
+}
+
+/// The out-of-band body of migration v32: flip the database to incremental
+/// auto-vacuum and pay for it with a full `VACUUM`.
+///
+/// Must run on a connection with **no open transaction** (SQLite forbids
+/// `VACUUM` inside one) and before the chain's `BEGIN IMMEDIATE`, gated on
+/// `current < 32`. The conversion is persistent in the database header, and
+/// the pool builder never touches `auto_vacuum`, so every later connection
+/// inherits it.
+///
+/// `VACUUM` is atomic: an interrupt (Ctrl+C / SIGKILL) mid-vacuum rolls back
+/// to the original file, `_migrations` never records v32, and the next
+/// startup redoes the work. A vacuum *failure* propagates like any failed
+/// migration, leaving the database at v31 for a retry.
+fn convert_to_incremental_auto_vacuum(
+    conn: &mut rusqlite::Connection,
+) -> Result<(), Report<SchemaMigrationError>> {
+    eprintln!(
+        "jinn: this migration rewrites the entire database and can take 10+ minutes on large installations"
+    );
+    conn.pragma_update(None, "auto_vacuum", "incremental")
+        .change_context(SchemaMigrationError)
+        .attach("v32: set auto_vacuum=incremental")?;
+    conn.execute_batch("VACUUM")
+        .change_context(SchemaMigrationError)
+        .attach("v32: vacuum to apply the auto_vacuum conversion")?;
+    Ok(())
+}
+
 /// Rewrites the `session_id` and `parent_session` string values inside the
 /// `sessions.metadata` JSON blob, stripping a leading `s-` where present.
 ///
@@ -1384,11 +1445,11 @@ fn strip_prefix_in_blob(raw: &str) -> String {
     };
     let mut changed = false;
     for key in ["session_id", "parent_session"] {
-        if let Some(serde_json::Value::String(s)) = map.get_mut(key) {
-            if let Some(rest) = s.strip_prefix('s').and_then(|t| t.strip_prefix('-')) {
-                *s = rest.to_owned();
-                changed = true;
-            }
+        if let Some(serde_json::Value::String(s)) = map.get_mut(key)
+            && let Some(rest) = s.strip_prefix('s').and_then(|t| t.strip_prefix('-'))
+        {
+            *s = rest.to_owned();
+            changed = true;
         }
     }
     if changed {
@@ -1515,7 +1576,7 @@ pub mod testing {
         CHAIN_LATEST_VERSION, LATEST_VERSION, MIGRATIONS, announcement_line,
         apply_migrations_inner, bootstrap_tracking_table, migrate_v10, migrate_v15, migrate_v16,
         migrate_v17, migrate_v18, migrate_v19, migrate_v21, migrate_v22, migrate_v23, migrate_v25,
-        migrate_v26, record_version,
+        migrate_v26, migrate_v31, migrate_v32, record_version,
     };
 
     /// The debug-build integrity-walk announcement, re-exported for the

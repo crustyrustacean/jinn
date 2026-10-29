@@ -600,3 +600,8 @@ Entries are added or amended **only with human approval**.
 - (mcp) The MCP inspector's footer counts the registered tool definitions of enabled servers only, so a disabled server contributes zero.
 - (chat-log-view) The audit popup's context section header names the entry's context override, not its computed inclusion state.
 - (chat-log-view) The audit popup's metadata block reports an entry's context cost as tokens currently included over the entry's total token count.
+- (storage) The sessions database runs incremental auto-vacuum, converted from none by migration v32's full VACUUM.
+- (storage) The `[maintenance]` section in jinn.toml carries session retention; an absent retention means the maintenance actor never deletes.
+- (storage) The database maintenance actor deletes whole session trees whose members are all archived, outside the Library, and idle past the retention threshold.
+- (storage) The maintenance actor returns freed pages to the filesystem with a bounded incremental vacuum after each prune sweep.
+- (logging) Startup truncates jinn.log to its last 10,000 lines before opening the append handle.

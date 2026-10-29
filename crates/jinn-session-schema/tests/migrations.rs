@@ -873,11 +873,104 @@ fn v28_backfills_rowid_map_from_existing_fts() {
         "one map row per FTS row, sessions preserved"
     );
 
-    // And the recorded migration version is the chain's latest (31) —
+    // And the recorded migration version is the chain's latest (32) —
     // `run_migrations` runs the full chain, so every later version has
     // landed on top of v28.
     let version: i64 = conn
         .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
         .expect("current version");
-    assert_eq!(version, 31, "v28 and later recorded");
+    assert_eq!(version, 32, "v28 and later recorded");
+}
+
+/// v32 converts the database to incremental auto-vacuum so freed pages can
+/// later be handed back to the filesystem (`PRAGMA incremental_vacuum`).
+/// The conversion runs out-of-band (a full `VACUUM` cannot run inside the
+/// chain's transaction), but its effect is observable after any upgrade to
+/// latest.
+#[rstest::rstest]
+#[test]
+fn migration_v32_converts_auto_vacuum_to_incremental() {
+    use jinn_session_schema::testing::{apply_migrations_inner, bootstrap_tracking_table};
+
+    // Given a database migrated to exactly v31, with a data row.
+    let mut conn = rusqlite::Connection::open_in_memory().expect("open db");
+    bootstrap_tracking_table(&mut conn).expect("bootstrap");
+    apply_migrations_inner(&mut conn, 31);
+    conn.execute(
+        "INSERT INTO sessions (id, title, updated_at, created_at) VALUES ('x', 'X', 't', 't')",
+        [],
+    )
+    .expect("insert sentinel row");
+
+    // When running the pending migrations.
+    run_migrations(&mut conn).expect("upgrade from v31");
+
+    // Then auto_vacuum reports incremental (2 — 0=none, 1=full, 2=incremental).
+    let auto_vacuum: i64 = conn
+        .query_row("PRAGMA auto_vacuum", [], |row| row.get(0))
+        .expect("read auto_vacuum");
+    assert_eq!(auto_vacuum, 2, "auto_vacuum must be incremental after v32");
+
+    // And all data survived the conversion.
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
+        .expect("count sessions");
+    assert_eq!(count, 1, "the conversion must not lose rows");
+
+    // And v32 is recorded like any other migration.
+    let version: i64 = conn
+        .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
+        .expect("current version");
+    assert_eq!(version, 32, "v32 recorded after the out-of-band conversion");
+}
+
+/// A fresh database (seeded through the full chain from empty) ends at v32
+/// with incremental auto-vacuum already in effect — the out-of-band step
+/// gates on `current < 32`, which a first-ever run satisfies too.
+#[rstest::rstest]
+#[test]
+fn fresh_database_lands_on_incremental_auto_vacuum() {
+    // Given a fresh in-memory database.
+    let mut conn = rusqlite::Connection::open_in_memory().expect("open db");
+
+    // When running all migrations.
+    run_migrations(&mut conn).expect("run migrations");
+
+    // Then the database is at v32 with incremental auto-vacuum.
+    let auto_vacuum: i64 = conn
+        .query_row("PRAGMA auto_vacuum", [], |row| row.get(0))
+        .expect("read auto_vacuum");
+    assert_eq!(auto_vacuum, 2, "fresh db converts to incremental");
+    let version: i64 = conn
+        .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
+        .expect("current version");
+    assert_eq!(version, 32, "fresh db records v32");
+}
+
+/// Re-running migrations after v32 never re-runs the out-of-band conversion
+/// (a second full `VACUUM` on a big database would stall every startup).
+#[rstest::rstest]
+#[test]
+fn migration_v32_conversion_does_not_rerun_after_latest() {
+    // Given a fully-migrated database.
+    let mut conn = rusqlite::Connection::open_in_memory().expect("open db");
+    run_migrations(&mut conn).expect("first run");
+
+    // When running migrations again.
+    run_migrations(&mut conn).expect("second run");
+
+    // Then the database is unchanged at v32 — the no-op early-return fires
+    // before the out-of-band conversion gate.
+    let version: i64 = conn
+        .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
+        .expect("current version");
+    assert_eq!(version, 32, "still at latest after a re-run");
+    let rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM _migrations WHERE version = 32",
+            [],
+            |r| r.get(0),
+        )
+        .expect("count v32 rows");
+    assert_eq!(rows, 1, "exactly one v32 tracking row, no duplicates");
 }
