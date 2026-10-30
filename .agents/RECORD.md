@@ -615,3 +615,4 @@ Entries are added or amended **only with human approval**.
 - (tools) The tools orchestrator synthesizes a cancelled completion for every open call at cancel time, so the drain never waits on an unabortable call.
 - (cancel) A cancelled turn settles only when its work set empties, emits its cancellation once, and sweeps still-Pending tool results to Failure.
 - (sessions) A session load sweeps stored Pending tool results to Failure.
+- (cli) A relative `--log-file`, `--db-path`, or `--dump-requests` value resolves against the process cwd at the CLI boundary, with a leading `~` expanding against the user's home.

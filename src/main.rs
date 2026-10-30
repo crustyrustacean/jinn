@@ -3,7 +3,6 @@
 use clap::Parser;
 use jinn::tracing::{TracingMode, init as init_tracing};
 use jinn_cli::Cli;
-use marked_path::{Absolute, MarkedPathBuf};
 
 fn main() {
     // TLS clients (reqwest) need a rustls provider; `rustls-no-provider` is in
@@ -24,8 +23,15 @@ fn main() {
     }
 
     let paths = jinn_kernel::AppPaths::default();
-    let log_path = match cli.log_file.clone() {
-        Some(file) => MarkedPathBuf::<Absolute>::new(file).expect("--log-file is absolute"),
+    let log_path = match cli.log_file.as_deref() {
+        Some(file) => match jinn::cli_paths::resolve_cli_path("--log-file", file, paths.home_dir())
+        {
+            Ok(typed) => typed,
+            Err(report) => {
+                eprintln!("error: {report:?}");
+                std::process::exit(2);
+            }
+        },
         None => paths.log_path(),
     };
 

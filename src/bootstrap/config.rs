@@ -477,24 +477,25 @@ fn read_config(cli: &jinn_cli::cli::Cli) -> Result<ConfigTriple, Report<AppError
 ///
 /// A relative argument is the user's cwd-relative shorthand: it resolves
 /// against the process cwd, the same rule every relative CLI path in jinn
-/// follows.
+/// follows, and a leading `~` expands against the home directory. The
+/// resolution rules live in [`crate::cli_paths`], shared with `--log-file`
+/// and `--dump-requests`.
 ///
 /// # Errors
 ///
 /// Returns an error when the process cwd is unavailable (needed to resolve
 /// a relative argument) or when the value cannot be an absolute path.
 fn resolve_db_path(path: &std::path::Path) -> Result<MarkedPathBuf<Absolute>, Report<AppError>> {
-    let absolute = if path.is_absolute() {
-        path.to_owned()
-    } else {
-        std::env::current_dir()
-            .change_context(AppError)
-            .attach("cannot resolve a relative --db-path: process cwd is unavailable")?
-            .join(path)
-    };
-    MarkedPathBuf::<Absolute>::new(absolute)
-        .map_err(|_| AppError)
-        .attach("--db-path must not escape the filesystem root")
+    resolve_db_path_with(path, jinn_kernel::AppPaths::default().home_dir())
+}
+
+/// [`resolve_db_path`] with the home directory injected, so tests expand a
+/// tilde against a temp home instead of the process home.
+fn resolve_db_path_with(
+    path: &std::path::Path,
+    home: &MarkedPathBuf<Absolute>,
+) -> Result<MarkedPathBuf<Absolute>, Report<AppError>> {
+    crate::cli_paths::resolve_cli_path("--db-path", path, home).change_context(AppError)
 }
 
 /// Opens the session database, honouring `--db-path`.
@@ -535,6 +536,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::resolve_db_path;
+    use super::resolve_db_path_with;
 
     use super::providers_load_error_report;
     #[rstest::rstest]
@@ -596,6 +598,21 @@ mod tests {
 
         // Then it round-trips unchanged.
         assert_eq!(resolved, arg);
+    }
+
+    #[rstest::rstest]
+    fn resolve_db_path_expands_a_tilde_argument_against_the_injected_home() {
+        // Given a `~/`-prefixed db path argument and an injected temp home.
+        let dir = jinn_testutil::tempdir();
+        let home = dir.path.join("home").expect("temp root joins a bare name");
+        let arg = std::path::Path::new("~/sessions.db");
+
+        // When resolving it.
+        let resolved = resolve_db_path_with(arg, &home).expect("tilde arg resolves");
+
+        // Then it lands under the injected home, not the process home.
+        let expected = home.join("sessions.db").expect("home joins a bare name");
+        assert_eq!(resolved, expected);
     }
 
     #[rstest::rstest]
