@@ -105,6 +105,12 @@ async fn emit_stream_error(
         cached_tokens: None,
         thinking_content: None,
         dispatched_at,
+        // The error paths that reach here before a stream was admitted (or
+        // after its identity was consumed) carry the legacy zero: the
+        // session actor refuses them against a live turn exactly when the
+        // error genuinely does not belong to it.
+        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+        stream: jinn_core_types::turn_identity::StreamId::legacy(),
     })
     .await;
 }
@@ -137,15 +143,15 @@ impl jinn_kernel::common::actor_deps::BusPublish for InferenceActor {
 impl ServiceActor for InferenceActor {
     #[expect(
         clippy::unused_async_trait_impl,
-        reason = "trait contract: start is never called (spawn uses start_with)"
+        reason = "trait contract: init is never called (spawn uses init_with)"
     )]
-    async fn start(
+    async fn init(
         _args: &trouper::json::Json,
     ) -> Result<Self, Report<trouper::registry::RegistryError>> {
-        // Never called: the spawn helper injects services via `start_with`.
+        // Never called: the spawn helper injects services via `init_with`.
         Err(
             error_stack::IntoReport::into_report(trouper::registry::RegistryError::InvalidSpec)
-                .attach("InferenceActor is spawned via start_with"),
+                .attach("InferenceActor is spawned via init_with"),
         )
     }
 }
@@ -162,7 +168,7 @@ impl InferenceActor {
     ) -> ActorPath {
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new(INFERENCE_PATH))
-            .start_with({
+            .init_with({
                 move || {
                     let state = state.clone();
                     let services = services.clone();
@@ -284,6 +290,8 @@ async fn process_stream_events(
     sid: &SessionId,
     model_id: &str,
     dispatched_at: jiff::Timestamp,
+    turn: jinn_core_types::turn_identity::TurnToken,
+    stream_id: jinn_core_types::turn_identity::StreamId,
     mut rules: Option<&mut (dyn StreamRuleSession + '_)>,
 ) -> StreamOutcome {
     let mut accum = StreamAccumulator::new(model_id);
@@ -306,7 +314,16 @@ async fn process_stream_events(
                     )
                     .await;
                     if let Some(fired) = fired {
-                        return apply_rule_match(bus, sid, &mut accum, fired, dispatched_at).await;
+                        return apply_rule_match(
+                            bus,
+                            sid,
+                            &mut accum,
+                            fired,
+                            dispatched_at,
+                            turn,
+                            stream_id,
+                        )
+                        .await;
                     }
                 }
                 StreamEvent::Reasoning(token) => {
@@ -322,7 +339,16 @@ async fn process_stream_events(
                     )
                     .await;
                     if let Some(fired) = fired {
-                        return apply_rule_match(bus, sid, &mut accum, fired, dispatched_at).await;
+                        return apply_rule_match(
+                            bus,
+                            sid,
+                            &mut accum,
+                            fired,
+                            dispatched_at,
+                            turn,
+                            stream_id,
+                        )
+                        .await;
                     }
                 }
                 StreamEvent::ToolUseStart { index, id, name } => {
@@ -371,7 +397,16 @@ async fn process_stream_events(
                     })
                     .await;
                     if let Some(fired) = fired {
-                        return apply_rule_match(bus, sid, &mut accum, fired, dispatched_at).await;
+                        return apply_rule_match(
+                            bus,
+                            sid,
+                            &mut accum,
+                            fired,
+                            dispatched_at,
+                            turn,
+                            stream_id,
+                        )
+                        .await;
                     }
                 }
                 StreamEvent::ToolUseComplete { tool_call, .. } => {
@@ -407,7 +442,16 @@ async fn process_stream_events(
                         .as_deref_mut()
                         .and_then(jinn_slices::StreamRuleSession::finalize);
                     if let Some(fired) = finalized {
-                        return apply_rule_match(bus, sid, &mut accum, fired, dispatched_at).await;
+                        return apply_rule_match(
+                            bus,
+                            sid,
+                            &mut accum,
+                            fired,
+                            dispatched_at,
+                            turn,
+                            stream_id,
+                        )
+                        .await;
                     }
                     handle_done_event(
                         bus,
@@ -417,6 +461,8 @@ async fn process_stream_events(
                         usage,
                         model,
                         dispatched_at,
+                        turn,
+                        stream_id,
                     )
                     .await;
                     return StreamOutcome::Completed;
@@ -479,8 +525,10 @@ async fn apply_rule_match(
     accum: &mut StreamAccumulator,
     fired: RuleFired,
     dispatched_at: jiff::Timestamp,
+    turn: jinn_core_types::turn_identity::TurnToken,
+    stream: jinn_core_types::turn_identity::StreamId,
 ) -> StreamOutcome {
-    intercept_and_resume(bus, sid, accum, fired, dispatched_at).await;
+    intercept_and_resume(bus, sid, accum, fired, dispatched_at, turn, stream).await;
     StreamOutcome::Interrupted
 }
 
@@ -511,6 +559,8 @@ async fn intercept_and_resume(
     accum: &mut StreamAccumulator,
     fired: RuleFired,
     dispatched_at: jiff::Timestamp,
+    turn: jinn_core_types::turn_identity::TurnToken,
+    stream: jinn_core_types::turn_identity::StreamId,
 ) {
     tracing::warn!(
         session_id = ?sid,
@@ -545,6 +595,8 @@ async fn intercept_and_resume(
         cached_tokens: None,
         thinking_content: None,
         dispatched_at,
+        turn,
+        stream,
     })
     .await;
 
@@ -683,6 +735,8 @@ async fn publish_stream_completed(
     cached_tokens: Option<u64>,
     response_model: Option<String>,
     dispatched_at: jiff::Timestamp,
+    turn: jinn_core_types::turn_identity::TurnToken,
+    stream: jinn_core_types::turn_identity::StreamId,
 ) {
     let model_used = {
         let requested = accum.model_id.clone();
@@ -702,6 +756,8 @@ async fn publish_stream_completed(
         provider_prompt_tokens,
         cached_tokens,
         dispatched_at,
+        turn,
+        stream,
     })
     .await;
 }
@@ -789,6 +845,8 @@ async fn handle_done_event(
     usage: Option<jinn_provider::StreamUsage>,
     model: Option<String>,
     dispatched_at: jiff::Timestamp,
+    turn: jinn_core_types::turn_identity::TurnToken,
+    stream_id: jinn_core_types::turn_identity::StreamId,
 ) {
     tracing::trace!(
         session_id = ?sid,
@@ -809,11 +867,10 @@ async fn handle_done_event(
     let provider_prompt_tokens = usage.as_ref().and_then(|u| u.prompt_tokens);
     let cached_tokens = usage.as_ref().and_then(|u| u.cached_tokens);
     if stop_reason == StopReason::ToolUse {
-        // Publish StreamCompleted(ToolUse) BEFORE ExecuteToolBatch so the
-        // session actor transitions Streaming → Sending first. Otherwise
-        // ToolBatchCompleted can race ahead, requiring the buffering path.
-        // If ExecuteToolBatch's publish backpressures, we still receive the
-        // StreamCompleted and can recover via the watchdog buffer-drain.
+        // Order on the bus does not decide anything: the session actor
+        // registers the model's calls from the StreamCompleted(ToolUse) and
+        // the orchestrator registers them again idempotently at dispatch,
+        // so either message may land first.
         let tool_calls = std::mem::take(&mut accum.tool_calls);
         publish_stream_completed(
             bus,
@@ -827,12 +884,15 @@ async fn handle_done_event(
             cached_tokens,
             model,
             dispatched_at,
+            turn,
+            stream_id,
         )
         .await;
         bus.publish(ExecuteToolBatch {
             session_id: sid.clone(),
             tool_calls,
             dispatched_at,
+            turn,
         })
         .await;
     } else {
@@ -848,6 +908,8 @@ async fn handle_done_event(
             cached_tokens,
             model,
             dispatched_at,
+            turn,
+            stream_id,
         )
         .await;
     }
@@ -980,6 +1042,8 @@ impl InferenceActor {
             messages,
             tools,
             dispatched_at,
+            payload.turn,
+            payload.stream,
             retry_config,
             rules,
         ));
@@ -1035,8 +1099,9 @@ impl InferenceActor {
 
         match payload.reason {
             StreamCompletedReason::ToolUse => {
-                // Session stays tracked - the continuation is handled by the
-                // session actor when ToolBatchCompleted arrives. The next
+                // Session stays tracked - the continuation runs when the
+                // session actor sees the turn's work set empty (the calls'
+                // results landed and the tool-use stream retired). The next
                 // start_stream call will reset this session.
                 tracing::trace!(
                     session_id = ?payload.session_id,
@@ -1143,6 +1208,8 @@ async fn run_stream(
     messages: Vec<LlmMessage>,
     tools: Vec<ToolDefinition>,
     dispatched_at: jiff::Timestamp,
+    turn: jinn_core_types::turn_identity::TurnToken,
+    stream_id: jinn_core_types::turn_identity::StreamId,
     retry_config: RequestRetryConfig,
     rules: Option<Box<dyn StreamRuleSession + '_>>,
 ) {
@@ -1179,6 +1246,8 @@ async fn run_stream(
         &sid,
         &model_id,
         dispatched_at,
+        turn,
+        stream_id,
         rules
             .as_mut()
             .map(|boxed| boxed.as_mut() as &mut (dyn StreamRuleSession + '_)),

@@ -72,6 +72,10 @@ struct World {
     /// The market cache dir (a tempdir under the harness).
     #[expect(dead_code, reason = "kept so the tempdir outlives the test")]
     cache_dir: MarkedPathBuf<Absolute>,
+    /// A clone of the actor's own API-key store handle. Clones share
+    /// one `Arc<RwLock<…>>`, so inserting here after the spawn is
+    /// exactly what production's env ask does after the actor spawns.
+    api_keys: jinn_provider_config::ApiKeysService,
     /// The epoch cache dir inside the market cache dir — the epoch
     /// actor's own drop target.
     epoch_dir: MarkedPathBuf<Absolute>,
@@ -87,6 +91,7 @@ impl World {
     async fn start(base_url: &str, cache_dir: MarkedPathBuf<Absolute>) -> Self {
         let harness = TestHarness::new().await;
         let deps = harness.actor_deps().await;
+        let api_keys = deps.services.api_keys.clone();
         let slices = Slices::new();
         let data = seed_cell(&slices, &market_data_slot(), MarketDataState::default());
         let ui = seed_cell(&slices, &market_ui_slot(), MarketUiState::default());
@@ -105,6 +110,7 @@ impl World {
             data,
             ui,
             base_url: base_url.to_owned(),
+            api_keys,
             epoch_dir: cache_dir
                 .join("epoch")
                 .expect("cache root joins a bare name"),
@@ -710,6 +716,141 @@ async fn fetch_models_without_a_key_still_serves_the_table() {
     assert_eq!(loaded.len(), 1);
     assert!(!loaded[0].from_cache);
     mock.assert_async().await;
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn key_inserted_after_spawn_rides_the_bearer_header() {
+    // Given a world whose API-key store was EMPTY when the actor
+    // spawned — the production ordering: the env ask fills the store in
+    // the startup tail, after every actor exists.
+    let mut server = mockito::Server::new_async().await;
+    let dir = jinn_testutil::tempdir();
+    let world = World::start(&server.url(), dir.path.clone()).await;
+    assert!(
+        world.api_keys.is_empty(),
+        "precondition: the store is empty at spawn"
+    );
+    let recorder = world.models_recorder().await;
+    let mock = server
+        .mock("GET", "/models")
+        .match_header("authorization", "Bearer sk-test-after-spawn")
+        .with_status(200)
+        .with_body(catalog_body())
+        .create_async()
+        .await;
+
+    // When the key lands in the store post-spawn (the env ask's move),
+    // then a FetchModels is published.
+    world.api_keys.insert(
+        crate::openrouter_actor::OPENROUTER_API_KEY_ENV.to_owned(),
+        "sk-test-after-spawn".to_owned(),
+    );
+    world.harness.publish(FetchModels).await;
+    let loaded = await_recorded(&recorder, 1, SETTLE).await;
+
+    // Then the fetch carried the bearer header — the key was read at
+    // request time, not frozen at spawn. Under the old spawn-time
+    // snapshot this request went out headerless and mockito 404s it.
+    assert_eq!(loaded.len(), 1);
+    assert!(!loaded[0].from_cache);
+    mock.assert_async().await;
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn key_landing_after_spawn_also_rides_the_endpoints_fetch() {
+    // Given the same post-spawn key ordering, with an endpoints mock
+    // requiring the bearer header.
+    let mut server = mockito::Server::new_async().await;
+    let dir = jinn_testutil::tempdir();
+    let world = World::start(&server.url(), dir.path.clone()).await;
+    let recorder = world.endpoints_recorder().await;
+    let mock = server
+        .mock("GET", "/models/test/model/endpoints")
+        .match_header("authorization", "Bearer sk-test-after-spawn")
+        .with_status(200)
+        .with_body(endpoints_body())
+        .create_async()
+        .await;
+
+    // When the key lands in the store post-spawn, then an
+    // EndpointsLoaded fetch is published.
+    world.api_keys.insert(
+        crate::openrouter_actor::OPENROUTER_API_KEY_ENV.to_owned(),
+        "sk-test-after-spawn".to_owned(),
+    );
+    world
+        .harness
+        .publish(FetchEndpoints {
+            model_id: "openrouter/test/model".to_owned(),
+            seq: 0,
+        })
+        .await;
+    let loaded = await_recorded(&recorder, 1, SETTLE).await;
+
+    // Then the detail fetch carried the bearer header too — both fetch
+    // paths read the store at request time.
+    assert_eq!(loaded.len(), 1);
+    mock.assert_async().await;
+    // And the authenticated percentile blocks parsed through to the
+    // detail row.
+    let detail = world.data.read().detail.clone().expect("detail written");
+    assert_eq!(detail.endpoints[0].tag, "testup");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn endpoints_fetch_serves_unauthenticated_when_the_store_stays_empty() {
+    // Given a world whose API-key store never fills, and an endpoints
+    // mock serving the unauthenticated wire shape: the percentile
+    // blocks come back null without a usable key. (The header shape on
+    // this path — an empty bearer token, no header — is the provider
+    // crate's detail; upstream answers both as unauthenticated.)
+    let mut server = mockito::Server::new_async().await;
+    let dir = jinn_testutil::tempdir();
+    let world = World::start(&server.url(), dir.path.clone()).await;
+    let recorder = world.endpoints_recorder().await;
+    let unauth_body = serde_json::json!({
+        "data": {
+            "endpoints": [
+                {
+                    "provider_name": "TestUp",
+                    "tag": "testup",
+                    "pricing": {"prompt": "0.000003", "completion": "0.000015"},
+                    "uptime_last_1d": 99.0,
+                    "latency_last_30m": null,
+                    "throughput_last_30m": null
+                }
+            ]
+        }
+    })
+    .to_string();
+    let mock = server
+        .mock("GET", "/models/test/model/endpoints")
+        .with_status(200)
+        .with_body(unauth_body)
+        .create_async()
+        .await;
+
+    // When publishing the detail fetch with the store still empty.
+    world
+        .harness
+        .publish(FetchEndpoints {
+            model_id: "openrouter/test/model".to_owned(),
+            seq: 0,
+        })
+        .await;
+    let loaded = await_recorded(&recorder, 1, SETTLE).await;
+
+    // Then the unauthenticated fetch still served: an absent key must
+    // not gate the detail, and the percentile fields parse as None
+    // (the row's auth-gated fields).
+    assert_eq!(loaded.len(), 1);
+    mock.assert_async().await;
+    let detail = world.data.read().detail.clone().expect("detail written");
+    assert!(detail.endpoints[0].latency_p50_ms.is_none());
+    assert!(detail.endpoints[0].throughput_p50.is_none());
 }
 
 #[rstest::rstest]

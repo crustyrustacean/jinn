@@ -59,16 +59,14 @@ impl TokenEstimator for TiktokenEstimator {
 impl ServiceActor for TokenCountActor {
     #[expect(
         clippy::unused_async_trait_impl,
-        reason = "trait contract: start is never called (spawn uses start_with)"
+        reason = "trait contract: init is never called (spawn uses init_with)"
     )]
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the state handle and
-        // counter via `start_with`.
+        // counter via `init_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
-                .attach("TokenCountActor is spawned via start_with"),
+                .attach("TokenCountActor is spawned via init_with"),
         )
     }
 }
@@ -81,7 +79,7 @@ impl TokenCountActor {
     pub fn spawn(system: &ActorSystem, state: State) -> ActorPath {
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new(TOKEN_COUNT_PATH))
-            .start_with({
+            .init_with({
                 move || {
                     let state = state.clone();
                     Box::pin(async move {

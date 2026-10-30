@@ -88,7 +88,7 @@ impl DiscordBridgeSubscriber {
         } = deps;
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new("discord-bridge"))
-            .start_with({
+            .init_with({
                 move || {
                     Box::pin(async move {
                         Ok(Self {
@@ -111,14 +111,12 @@ impl DiscordBridgeSubscriber {
 }
 
 impl ServiceActor for DiscordBridgeSubscriber {
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the channels and state
-        // via `start_with`.
+        // via `init_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
-                .attach("DiscordBridgeSubscriber is spawned via start_with"),
+                .attach("DiscordBridgeSubscriber is spawned via init_with"),
         )
     }
 }
@@ -186,7 +184,7 @@ impl DiscordBridgeSubscriber {
     /// Forward phase changes to the gateway **only** when the new phase is
     /// `Idle`. Non-idle transitions (Streaming, Sending, …) are dropped.
     pub(super) fn handle_session_phase_changed(&self, payload: &SessionPhaseChanged) {
-        if payload.new_phase != jinn_session_msg::PhaseKind::Idle {
+        if payload.new_phase != jinn_slices::PhaseView::Idle {
             return;
         }
         self.forward(BridgeEvent::TurnFinished {
@@ -478,7 +476,7 @@ mod tests {
     // assert the subscriber's output channels, so they fail if any
     // subscription is dropped.
 
-    use jinn_session_msg::PhaseKind;
+    use jinn_slices::PhaseView;
     use std::time::Duration;
 
     #[rstest::rstest]
@@ -503,8 +501,8 @@ mod tests {
         fabric
             .send_to_topic(SessionPhaseChanged {
                 session_id: sid.clone(),
-                old_phase: PhaseKind::Streaming,
-                new_phase: PhaseKind::Idle,
+                old_phase: PhaseView::Streaming,
+                new_phase: PhaseView::Idle,
                 at: jinn_session_msg::PhaseEventAt::now(),
             })
             .await;
@@ -540,8 +538,8 @@ mod tests {
         fabric
             .send_to_topic(SessionPhaseChanged {
                 session_id: sid.clone(),
-                old_phase: PhaseKind::Idle,
-                new_phase: PhaseKind::Streaming,
+                old_phase: PhaseView::Idle,
+                new_phase: PhaseView::Streaming,
                 at: jinn_session_msg::PhaseEventAt::now(),
             })
             .await;

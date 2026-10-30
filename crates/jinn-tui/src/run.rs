@@ -418,12 +418,12 @@ mod tests {
     impl trouper::actor::ServiceActor for CwdRecorder {
         #[expect(
             clippy::unreachable,
-            reason = "trouper ServiceActor contract: this actor is spawned via start_with; JSON-arg start is never called"
+            reason = "trouper ServiceActor contract: this actor is spawned via init_with; JSON-arg init is never called"
         )]
-        async fn start(
+        async fn init(
             _args: &trouper::json::Json,
         ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
-            unreachable!("spawned via start_with");
+            unreachable!("spawned via init_with");
         }
     }
 
@@ -478,7 +478,7 @@ mod tests {
         ));
         trouper::builder::spawn_service_builder::<CwdRecorder>(&system)
             .at(path.clone())
-            .start_with({
+            .init_with({
                 let buffer = buffer.clone();
                 let acks = acks.clone();
                 move || {

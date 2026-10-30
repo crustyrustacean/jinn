@@ -12,9 +12,9 @@
 
 use jiff::Timestamp;
 use jinn_core_types::SessionId;
-use jinn_session_msg::PhaseKind;
 use jinn_session_msg::SessionPhaseChanged;
 use jinn_session_msg::WorkStateChanged;
+use jinn_slices::PhaseView;
 
 use crate::common::services::bus_service::BusService;
 
@@ -26,8 +26,8 @@ use crate::common::services::bus_service::BusService;
 pub async fn publish_phase_change(
     bus: &BusService,
     session_id: &SessionId,
-    old_phase: PhaseKind,
-    new_phase: PhaseKind,
+    old_phase: PhaseView,
+    new_phase: PhaseView,
 ) {
     let at = Timestamp::now();
     bus.publish(SessionPhaseChanged {
@@ -69,7 +69,7 @@ mod tests {
 
         // When publishing an Idle -> Sending phase change.
         let id = SessionId::new();
-        publish_phase_change(&bus, &id, PhaseKind::Idle, PhaseKind::Sending).await;
+        publish_phase_change(&bus, &id, PhaseView::Idle, PhaseView::Streaming).await;
 
         // Then the working state says the session is working.
         let events = audit.of_type::<WorkStateChanged>();
@@ -85,7 +85,7 @@ mod tests {
 
         // When publishing a Streaming -> Idle phase change.
         let id = SessionId::new();
-        publish_phase_change(&bus, &id, PhaseKind::Streaming, PhaseKind::Idle).await;
+        publish_phase_change(&bus, &id, PhaseView::Streaming, PhaseView::Idle).await;
 
         // Then the working state says the session stopped.
         let events = audit.of_type::<WorkStateChanged>();
@@ -101,7 +101,7 @@ mod tests {
 
         // When publishing a phase change.
         let id = SessionId::new();
-        publish_phase_change(&bus, &id, PhaseKind::Idle, PhaseKind::Sending).await;
+        publish_phase_change(&bus, &id, PhaseView::Idle, PhaseView::Streaming).await;
 
         // Then the phase event and the working event agree on the moment, so
         // every subscriber measures the same boundary.

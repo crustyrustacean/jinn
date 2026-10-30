@@ -119,8 +119,10 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     let ask_timeout = max_wait + ASK_MARGIN;
 
     // Stream context for the settle wait's delta events (watchdog keepalive).
+    let turn = ctx.turn;
     let stream_ctx = ctx.session_id.clone().map(|session_id| StreamCtx {
         session_id,
+        turn,
         tool_call_id: tool_call_id.clone(),
     });
 

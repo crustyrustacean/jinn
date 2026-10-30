@@ -299,6 +299,7 @@ mod tests {
     /// calling test.
     fn test_ctx(cwd: &MarkedPathBuf<Absolute>) -> crate::tool_types::ToolContext {
         crate::tool_types::ToolContext {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
             cwd: cwd.clone(),
@@ -408,6 +409,7 @@ mod tests {
         std::fs::write(&file_path, "relative content").expect("write temp file");
 
         let ctx = crate::tool_types::ToolContext {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             cwd: dir.path.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
@@ -501,6 +503,7 @@ mod tests {
         std::fs::write(&file_path, &content).expect("write temp file");
 
         let ctx = ToolContext {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             cwd: dir.path.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
@@ -554,6 +557,7 @@ mod tests {
         std::fs::write(&file_path, &content).expect("write temp file");
 
         let ctx = ToolContext {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             cwd: dir.path.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),

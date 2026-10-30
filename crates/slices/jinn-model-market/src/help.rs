@@ -147,7 +147,7 @@ fn detail_section(theme: &Theme) -> Vec<Line<'static>> {
 /// the card's inner width.
 fn help_lines(theme: &Theme) -> Vec<Line<'static>> {
     let mut lines = vec![Line::from(Span::styled(
-        "Search OpenRouter Models help",
+        "OpenRouter Model Market help",
         name_style(theme).add_modifier(Modifier::BOLD),
     ))];
     lines.extend(column_section(theme));

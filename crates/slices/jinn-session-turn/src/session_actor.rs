@@ -44,8 +44,8 @@ use jinn_session_history_msg::{ChatEntryPinChanged, PinChatEntry, PushChatEntry,
 use jinn_session_msg::{MarkSessionInteracted, RetryStalledSession, TurnCompleted};
 use jinn_skills_msg::SkillsLoaded;
 use jinn_tools_msg::{
-    ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
-    ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted,
+    ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolExecutionOutput,
+    ToolExecutionStarted, ToolUseStarted,
 };
 
 /// The session actor's static trouper path.
@@ -107,16 +107,14 @@ pub struct SessionPersistenceActorDeps {
 impl ServiceActor for SessionPersistenceActor {
     #[expect(
         clippy::unused_async_trait_impl,
-        reason = "trait contract: start is never called (spawn uses start_with)"
+        reason = "trait contract: init is never called (spawn uses init_with)"
     )]
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: the spawn helper injects the deps via `start_with`
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
+        // Never called: the spawn helper injects the deps via `init_with`
         // (Deps carries typed handles that cannot ride JSON args).
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
-                .attach("SessionPersistenceActor is spawned via start_with"),
+                .attach("SessionPersistenceActor is spawned via init_with"),
         )
     }
 }
@@ -133,13 +131,13 @@ impl SessionPersistenceActor {
     /// subscription fails — both mean a wiring bug at composition.
     #[expect(
         clippy::needless_pass_by_value,
-        reason = "port convention: spawn takes owned deps and clones into start_with"
+        reason = "port convention: spawn takes owned deps and clones into init_with"
     )]
     pub fn spawn(system: &ActorSystem, deps: SessionPersistenceActorDeps) -> ActorPath {
         let path = ActorPath::new(SESSION_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())
-            .start_with({
+            .init_with({
                 let deps = deps.clone();
                 move || {
                     let deps = deps.clone();
@@ -183,7 +181,6 @@ impl SessionPersistenceActor {
             .handles::<ToolCallReceived>()
             .handles::<ToolCallStreaming>()
             .handles::<ToolExecutionCompleted>()
-            .handles::<ToolBatchCompleted>()
             .handles::<ToolExecutionStarted>()
             .handles::<ToolExecutionOutput>()
             .handles::<CitationsReceived>()
@@ -320,12 +317,18 @@ impl MsgHandler<ToolCallStreaming> for SessionPersistenceActor {
 impl MsgHandler<ToolExecutionCompleted> for SessionPersistenceActor {
     async fn handle(&mut self, msg: &ToolExecutionCompleted, _ctx: &mut MsgCtx<'_>) {
         self.on_tool_execution_completed(msg).await;
-    }
-}
-
-impl MsgHandler<ToolBatchCompleted> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &ToolBatchCompleted, _ctx: &mut MsgCtx<'_>) {
-        self.on_tool_batch_completed(msg).await;
+        // The consumer closes: the close's settlement drives what happens
+        // when the work set empties. Legacy-turn events carry no call to
+        // close.
+        if msg.turn != jinn_core_types::turn_identity::TurnToken::legacy()
+            && let Some(settlement) = self
+                .services
+                .turn_ledger
+                .close_call(&msg.session_id, &msg.result.tool_call_id)
+        {
+            self.on_turn_work_settled(&msg.session_id, settlement.next)
+                .await;
+        }
     }
 }
 

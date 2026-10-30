@@ -336,6 +336,33 @@ impl SessionStore for SqliteSessionStore {
         Ok(())
     }
 
+    async fn delete_many(
+        &self,
+        session_ids: &[SessionId],
+    ) -> Result<(), Report<SessionStoreError>> {
+        let id_strs: Vec<String> = session_ids.iter().map(ToString::to_string).collect();
+        self.pool
+            .with_conn(move |conn| delete_many_in_transaction(conn, &id_strs))
+            .await
+            .change_context(SessionStoreError)
+            .attach("failed to delete sessions")?;
+        Ok(())
+    }
+
+    async fn incremental_vacuum(&self, max_pages: u32) -> Result<(), Report<SessionStoreError>> {
+        // PRAGMA arguments cannot be bound parameters; the count is a u32
+        // formatted into the statement.
+        let statement = format!("PRAGMA incremental_vacuum({max_pages})");
+        let trimmed: Option<i64> = self
+            .pool
+            .query_one(&statement, vec![])
+            .await
+            .change_context(SessionStoreError)
+            .attach("failed to run incremental_vacuum")?;
+        tracing::debug!(?trimmed, max_pages, "incremental vacuum pass complete");
+        Ok(())
+    }
+
     async fn fork(
         &self,
         source_session_id: &SessionId,
@@ -1491,6 +1518,63 @@ fn repeat_placeholders(n: usize) -> String {
     std::iter::repeat_n("?", n).collect::<Vec<_>>().join(", ")
 }
 
+/// Deletes many sessions and reaps their orphaned entries in one transaction.
+///
+/// The bulk form of [`delete_with_scoped_reaping`] for the maintenance
+/// actor's prune sweep — all-or-nothing: either every session is removed or
+/// none is. Reaping stays scoped to the deleted set's own former entries, so
+/// an entry shared with any surviving session (a kept fork of a pruned
+/// session, most commonly) is never touched.
+///
+/// Free function (not a DAO method) because the dynamic `IN (…)` placeholder
+/// list cannot be statically validated against the compile-time schema DB.
+fn delete_many_in_transaction(
+    conn: &mut rusqlite::Connection,
+    session_id_strs: &[String],
+) -> daow::Result<()> {
+    if session_id_strs.is_empty() {
+        return Ok(());
+    }
+    let tx = conn.transaction()?;
+    // Capture the deleted set's entry references before the FK cascade
+    // removes their junction rows. These are the only reap candidates.
+    let placeholders = repeat_placeholders(session_id_strs.len());
+    let candidates: Vec<String> = {
+        let sql = format!(
+            "SELECT DISTINCT entry_id FROM session_history WHERE session_id IN ({placeholders})"
+        );
+        let params = session_id_strs
+            .iter()
+            .map(|s| s as &dyn rusqlite::ToSql)
+            .collect::<Vec<_>>();
+        tx.prepare(&sql)?
+            .query_map(params.as_slice(), |row| row.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+
+    // Delete every session. With FK=ON this cascades to remove each one's
+    // session_history and token_ledger rows.
+    {
+        let sql = format!("DELETE FROM sessions WHERE id IN ({placeholders})");
+        let params = session_id_strs
+            .iter()
+            .map(|s| s as &dyn rusqlite::ToSql)
+            .collect::<Vec<_>>();
+        tx.execute(&sql, params.as_slice())?;
+    }
+
+    if !candidates.is_empty() {
+        // After the cascade, session_history holds only surviving sessions'
+        // references. Reap a candidate only if no surviving session claims it.
+        let orphaned = unreferenced_entries(&tx, &candidates)?;
+        if !orphaned.is_empty() {
+            delete_entries(&tx, &orphaned)?;
+        }
+    }
+    tx.commit()?;
+    Ok(())
+}
+
 // ── Archived-tree updates ────────────────────────────────────────────────
 /// Sets the `archived` flag for many sessions in one transaction.
 ///
@@ -1541,7 +1625,7 @@ fn summary_from_row(row: SessionRow) -> Result<SessionSummary, Report<SessionSto
         row.parent_session.as_deref(),
         row.archived,
         row.in_library,
-        is_bot_of(&row.metadata),
+        is_bot_of(row.metadata.as_ref()),
         project,
     )
 }
@@ -1551,9 +1635,8 @@ fn summary_from_row(row: SessionRow) -> Result<SessionSummary, Report<SessionSto
 /// Parse failure (corrupt/legacy row) yields `false`: the summary stays
 /// servable, and the only consequence is a bot rendered untinted — the same
 /// degradation a NULL column would give.
-fn is_bot_of(metadata: &Option<String>) -> bool {
+fn is_bot_of(metadata: Option<&String>) -> bool {
     metadata
-        .as_deref()
         .and_then(|json| serde_json::from_str::<PersistableCore>(json).ok())
         .is_some_and(|core| core.origin == jinn_session_msg::SessionOrigin::Bot)
 }

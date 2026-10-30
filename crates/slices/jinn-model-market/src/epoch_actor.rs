@@ -101,15 +101,13 @@ pub struct EpochMarketActor {
 impl ServiceActor for EpochMarketActor {
     #[expect(
         clippy::unused_async_trait_impl,
-        reason = "trait contract: start is never called (spawn uses start_with)"
+        reason = "trait contract: init is never called (spawn uses init_with)"
     )]
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: the spawn helper injects the deps via `start_with`.
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
+        // Never called: the spawn helper injects the deps via `init_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
-                .attach("EpochMarketActor is spawned via start_with"),
+                .attach("EpochMarketActor is spawned via init_with"),
         )
     }
 }
@@ -124,13 +122,13 @@ impl EpochMarketActor {
     /// Spawns the actor at its static path and returns the path.
     #[expect(
         clippy::needless_pass_by_value,
-        reason = "port convention: spawn takes owned deps and clones into start_with"
+        reason = "port convention: spawn takes owned deps and clones into init_with"
     )]
     pub fn spawn(system: &ActorSystem, actor_deps: EpochMarketActorDeps) -> ActorPath {
         let path = ActorPath::new(EPOCH_ACTOR_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())
-            .start_with({
+            .init_with({
                 let actor_deps = actor_deps.clone();
                 move || {
                     let actor_deps = actor_deps.clone();
@@ -197,7 +195,7 @@ pub async fn load_seed(actor: &EpochMarketActor) {
         }
         Err(report) => {
             actor
-                .fail_load(format!("shipped epoch seed failed to parse — {report}"))
+                .fail_load(format!("shipped epoch seed failed to parse: {report}"))
                 .await;
         }
     }

@@ -4,18 +4,17 @@
 //! The "MCP tools never returning" bug class was caused by tool-completion
 //! messages lost on the pre-trouper fabric. These tests drive the REAL
 //! delivery path — `ExecuteToolBatch` published on the trouper bus, the
-//! spawned orchestrator executing a builtin, `ToolBatchCompleted` broadcast
-//! back, and the spawned session actor emitting `SendToLlmProvider` — so a
-//! fabric regression cannot silently reintroduce it.
+//! spawned orchestrator executing a builtin, `ToolExecutionCompleted`
+//! broadcast back, and the spawned session actor emitting `SendToLlmProvider`
+//! — so a fabric regression cannot silently reintroduce it.
 
 use crate::orchestrator::{ToolOrchestratorActor, ToolOrchestratorActorDeps};
 use jinn_core_types::tool_types::ToolCall;
 use jinn_inference_msg::SendToLlmProvider;
 use jinn_kernel::common::actor_deps::BusPublish;
-use jinn_kernel::common::bus::HarnessServices;
 use jinn_kernel::common::state::State;
 use jinn_testutil::bus_harness::{TestHarness, await_recorded};
-use jinn_tools_msg::{ExecuteToolBatch, ToolBatchCompleted};
+use jinn_tools_msg::{ExecuteToolBatch, ToolExecutionCompleted};
 use std::time::Duration;
 
 /// A state whose active session holds one `bash` tool call, phase Sending.
@@ -41,15 +40,21 @@ fn bash_batch_state() -> (State, jinn_core_types::SessionId) {
 
 /// Spawns the session-turn actor that turns a completed batch into the next
 /// provider call.
-async fn spawn_session_actor(harness: &TestHarness, state: State) {
+/// Spawns the session actor over the test's own `services` — its ledger must
+/// be the instance the orchestrator and the fixture see.
+async fn spawn_session_actor_with(
+    harness: &TestHarness,
+    state: State,
+    services: jinn_kernel::common::services::Services,
+) {
     jinn_session_turn::activate(
         harness.system(),
         jinn_session_turn::session_actor::SessionPersistenceActorDeps {
             deps: {
-                let deps = harness.actor_deps().await;
-                let _ =
-                    jinn_context_assembly::service::ensure_spawned(&deps.services.trouper_system);
-                deps
+                let _ = jinn_context_assembly::service::ensure_spawned(&services.trouper_system);
+                jinn_kernel::common::actor_deps::ActorDeps {
+                    services: services.clone(),
+                }
             },
             state,
             counter: jinn_llm_support::token_estimator::TiktokenCounter::o200k_base(),
@@ -73,12 +78,12 @@ impl BusPublish for StubProvider {
 }
 
 impl trouper::actor::ServiceActor for StubProvider {
-    async fn start(
+    async fn init(
         _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
         Err(
             error_stack::Report::new(trouper::registry::RegistryError::InvalidSpec)
-                .attach("StubProvider is spawned via start_with"),
+                .attach("StubProvider is spawned via init_with"),
         )
     }
 }
@@ -92,6 +97,8 @@ impl trouper::actor::MsgHandler<jinn_tools_msg::ExecuteTool> for StubProvider {
         use jinn_tools_msg::ToolExecutionCompleted;
 
         self.publish(ToolExecutionCompleted {
+            turn: msg.turn,
+            synthesized: false,
             session_id: self.session_id.clone(),
             result: jinn_core_types::tool_types::ToolResult {
                 tool_call_id: msg.tool_call.id.clone(),
@@ -112,7 +119,7 @@ impl trouper::actor::MsgHandler<jinn_tools_msg::ExecuteTool> for StubProvider {
 fn spawn_stub_provider(harness: &TestHarness, session_id: jinn_core_types::SessionId) {
     let _ = trouper::builder::spawn_service_builder::<StubProvider>(harness.system())
         .at(trouper::actor::ActorPath::new("test.stub-mcp-provider"))
-        .start_with({
+        .init_with({
             let bus = harness.bus();
             move || {
                 let bus = bus.clone();
@@ -143,7 +150,7 @@ async fn register_stub_tool(harness: &TestHarness, session_id: &jinn_core_types:
 }
 
 /// The orchestrator executes a real builtin (`bash`) dispatched over the bus
-/// and emits `ToolBatchCompleted` with the tool's output.
+/// and emits `ToolExecutionCompleted` with the tool's output.
 #[rstest::rstest]
 #[tokio::test]
 async fn orchestrator_completes_builtin_bash_batch_dispatched_over_the_bus() {
@@ -151,15 +158,20 @@ async fn orchestrator_completes_builtin_bash_batch_dispatched_over_the_bus() {
     // requirement is asserted here: the failure names the missing
     // dependency instead of surfacing as a tool-result assertion.
     jinn_testutil::shell_required();
-    // Given a spawned orchestrator with the bash builtin registered.
+    // Given a spawned orchestrator with the bash builtin registered, over
+    // the same services the fixture mints into.
+    use jinn_kernel::common::bus::HarnessServices;
     let harness = TestHarness::new().await;
-    let recorder = harness.spawn_recorder::<ToolBatchCompleted>().await;
+    let services = harness.services().await;
+    let recorder = harness.spawn_recorder::<ToolExecutionCompleted>().await;
     ToolOrchestratorActor::spawn(
         harness.system(),
         ToolOrchestratorActorDeps {
-            deps: harness.actor_deps().await,
+            deps: jinn_kernel::common::actor_deps::ActorDeps {
+                services: services.clone(),
+            },
             state: State::new(jinn_kernel::AppState::default()),
-            services: harness.services().await,
+            services: services.clone(),
             builtin_filter: Some(vec!["bash".to_owned()]),
         },
     );
@@ -167,6 +179,13 @@ async fn orchestrator_completes_builtin_bash_batch_dispatched_over_the_bus() {
     let session_id = jinn_core_types::SessionId::new();
 
     // When an ExecuteToolBatch carrying one bash call is published on the bus.
+    services
+        .turn_ledger
+        .mint(
+            &session_id,
+            jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+        )
+        .expect("fixture mint");
     harness
         .publish(ExecuteToolBatch {
             session_id: session_id.clone(),
@@ -176,25 +195,25 @@ async fn orchestrator_completes_builtin_bash_batch_dispatched_over_the_bus() {
                 arguments: r#"{"command":"echo fabric-loop-ok"}"#.to_owned(),
             }],
             dispatched_at: jiff::Timestamp::now(),
+            turn: services.turn_ledger.live(&session_id).expect("live").turn,
         })
         .await;
-    let batches = await_recorded::<ToolBatchCompleted>(&recorder, 1, Duration::from_secs(10)).await;
+    let completions =
+        await_recorded::<ToolExecutionCompleted>(&recorder, 1, Duration::from_secs(10)).await;
 
-    // Then exactly one batch completed, for this session.
-    let batches: Vec<_> = batches
+    // Then exactly one completion landed, for this session.
+    let completions: Vec<_> = completions
         .into_iter()
-        .filter(|b| b.session_id == session_id)
+        .filter(|c| c.session_id == session_id)
         .collect();
     assert_eq!(
-        batches.len(),
+        completions.len(),
         1,
-        "expected exactly one ToolBatchCompleted for the session"
+        "expected exactly one ToolExecutionCompleted for the session"
     );
 
     // And it carries the bash tool's successful result.
-    let results = &batches[0].results;
-    assert_eq!(results.len(), 1, "expected one tool result in the batch");
-    let result = &results[0];
+    let result = &completions[0].result;
     assert_eq!(result.name, "bash");
     assert!(result.success, "bash tool call should succeed");
     assert!(
@@ -204,80 +223,75 @@ async fn orchestrator_completes_builtin_bash_batch_dispatched_over_the_bus() {
     );
 }
 
-/// The full tool loop closes over the fabric: `ToolBatchCompleted` published
-/// by the orchestrator reaches the spawned session actor, which emits
-/// `SendToLlmProvider` to continue the conversation.
+/// The full tool loop closes over the fabric: the completion closing the
+/// ledger's open call empties the work set, and the spawned session actor
+/// emits `SendToLlmProvider` to continue the conversation.
 #[rstest::rstest]
 #[tokio::test]
-async fn tool_batch_completed_over_the_bus_continues_the_tool_loop() {
+async fn completion_over_the_bus_continues_the_tool_loop() {
     // Given a spawned orchestrator (bash) and a spawned session actor with a
     // tool-call entry in its history, phase Sending.
-    let (harness, loop_recorder, session_id) = {
-        let harness = TestHarness::new().await;
-        let loop_recorder = harness.spawn_recorder::<SendToLlmProvider>().await;
-        let (state, session_id) = bash_batch_state();
+    use jinn_kernel::common::bus::HarnessServices;
+    let harness = TestHarness::new().await;
+    let services = harness.services().await;
+    let loop_recorder = harness.spawn_recorder::<SendToLlmProvider>().await;
+    let (state, session_id) = bash_batch_state();
 
-        ToolOrchestratorActor::spawn(
-            harness.system(),
-            ToolOrchestratorActorDeps {
-                deps: harness.actor_deps().await,
-                state: state.clone(),
-                services: harness.services().await,
-                builtin_filter: Some(vec!["bash".to_owned()]),
+    ToolOrchestratorActor::spawn(
+        harness.system(),
+        ToolOrchestratorActorDeps {
+            deps: jinn_kernel::common::actor_deps::ActorDeps {
+                services: services.clone(),
             },
-        );
-        spawn_session_actor(&harness, state.clone()).await;
-        (harness, loop_recorder, session_id)
-    };
+            state: state.clone(),
+            services: services.clone(),
+            builtin_filter: Some(vec!["bash".to_owned()]),
+        },
+    );
+    spawn_session_actor_with(&harness, state.clone(), services.clone()).await;
 
-    // The live generation and the mid-tool-loop shape. Production mints at
-    // dispatch (the phase actor applies the fused streaming edge) and the
-    // `StreamCompleted(ToolUse)` settle leaves the session in `Sending` —
-    // the phase the batch handler's buffer-or-process gate reads. Minting
-    // the fused edge *without* the tool-use edge would leave the session in
-    // `Streaming`, and the batch would be buffered as an early arrival
-    // nothing ever drains. Without the mint the continuation's admission
-    // ask refuses and the loop ends here.
+    // The live turn and the mid-tool-loop shape. Production mints at
+    // dispatch, and the `StreamCompleted(ToolUse)` ack retires the stream
+    // while registering the model's calls — the batch can trail the ack,
+    // and the work set must not read empty before the results land.
     {
-        use jinn_kernel::common::bus::HarnessServices;
-        let services = harness.services().await;
-        use jinn_session_msg::phase_command::DispatchKind;
-        let minted = jinn_kernel::common::phase_command::apply_phase(
-            &services,
-            jinn_session_msg::PhaseCommand::BeginStream {
-                session_id: session_id.clone(),
-                kind: DispatchKind::FreshTurn,
-                dispatched_at: jiff::Timestamp::now(),
-            },
-        )
-        .await
-        .expect("phase actor reachable");
-        assert!(minted.admitted, "fixture mint must be admitted");
-        let settled = jinn_kernel::common::phase_command::apply_phase(
-            &services,
-            jinn_session_msg::PhaseCommand::StreamEndedToolUse {
-                session_id: session_id.clone(),
-                dispatched_at: jiff::Timestamp::now(),
-            },
-        )
-        .await
-        .expect("phase actor reachable");
-        assert!(settled.admitted, "fixture tool-use edge must be admitted");
+        let grant = services
+            .turn_ledger
+            .mint(
+                &session_id,
+                jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+            )
+            .expect("fixture mint must be admitted");
+        services
+            .turn_ledger
+            .ack_stream_with_calls(
+                &session_id,
+                &grant.turn,
+                &grant.stream,
+                jinn_kernel::common::turn_ledger::Next::Continue,
+                vec![jinn_core_types::ToolCallId::from("tc-bash-2")],
+            )
+            .expect("the tool-use edge retires the live stream");
     }
 
-    // When the batch is dispatched over the bus (the orchestrator executes the
-    // builtin and publishes ToolBatchCompleted itself).
-    harness
-        .publish(ExecuteToolBatch {
-            session_id: session_id.clone(),
-            tool_calls: vec![ToolCall {
-                id: "tc-bash-2".into(),
-                name: "bash".into(),
-                arguments: r#"{"command":"echo loop-continues"}"#.to_owned(),
-            }],
-            dispatched_at: jiff::Timestamp::now(),
-        })
-        .await;
+    // When the batch is dispatched over the bus with the live turn's token
+    // (the orchestrator registers the call in the ledger and executes the
+    // builtin; the completion closes the call).
+    {
+        let live = services.turn_ledger.live(&session_id).expect("live turn");
+        harness
+            .publish(ExecuteToolBatch {
+                session_id: session_id.clone(),
+                tool_calls: vec![ToolCall {
+                    id: "tc-bash-2".into(),
+                    name: "bash".into(),
+                    arguments: r#"{"command":"echo loop-continues"}"#.to_owned(),
+                }],
+                dispatched_at: jiff::Timestamp::now(),
+                turn: live.turn,
+            })
+            .await;
+    }
     let sent =
         await_recorded::<SendToLlmProvider>(&loop_recorder, 1, Duration::from_secs(10)).await;
 
@@ -296,25 +310,37 @@ async fn tool_batch_completed_over_the_bus_continues_the_tool_loop() {
 #[tokio::test]
 async fn registered_session_scoped_actor_tool_completes_its_batch() {
     // Given a stub provider actor that answers ExecuteTool with a completed
-    // result (like an MCP server would), and a spawned orchestrator.
+    // result (like an MCP server would), and a spawned orchestrator over the
+    // same services, so its ledger is the one the fixture mints into.
+    use jinn_kernel::common::bus::HarnessServices;
     let harness = TestHarness::new().await;
-    let batch_recorder = harness.spawn_recorder::<ToolBatchCompleted>().await;
+    let services = harness.services().await;
+    let batch_recorder = harness.spawn_recorder::<ToolExecutionCompleted>().await;
     let session_id = jinn_core_types::SessionId::new();
     spawn_stub_provider(&harness, session_id.clone());
 
     ToolOrchestratorActor::spawn(
         harness.system(),
         ToolOrchestratorActorDeps {
-            deps: harness.actor_deps().await,
+            deps: jinn_kernel::common::actor_deps::ActorDeps {
+                services: services.clone(),
+            },
             state: State::new(jinn_kernel::AppState::default()),
-            services: harness.services().await,
+            services: services.clone(),
             builtin_filter: Some(vec![]),
         },
     );
 
     // When the provider registers an actor tool and a batch referencing it is
-    // dispatched.
+    // dispatched under a minted turn.
     register_stub_tool(&harness, &session_id).await;
+    services
+        .turn_ledger
+        .mint(
+            &session_id,
+            jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+        )
+        .expect("fixture mint");
     harness
         .publish(ExecuteToolBatch {
             session_id: session_id.clone(),
@@ -324,22 +350,23 @@ async fn registered_session_scoped_actor_tool_completes_its_batch() {
                 arguments: r#"{"x":1}"#.to_owned(),
             }],
             dispatched_at: jiff::Timestamp::now(),
+            turn: services.turn_ledger.live(&session_id).expect("live").turn,
         })
         .await;
-    let batches =
-        await_recorded::<ToolBatchCompleted>(&batch_recorder, 1, Duration::from_secs(10)).await;
+    let completions =
+        await_recorded::<ToolExecutionCompleted>(&batch_recorder, 1, Duration::from_secs(10)).await;
 
-    // Then the batch completed with the provider's answer.
-    let batches: Vec<_> = batches
+    // Then the completion arrived with the provider's answer.
+    let completions: Vec<_> = completions
         .into_iter()
-        .filter(|b| b.session_id == session_id)
+        .filter(|c| c.session_id == session_id)
         .collect();
     assert_eq!(
-        batches.len(),
+        completions.len(),
         1,
-        "expected the MCP-shaped batch to complete"
+        "expected the MCP-shaped call to complete"
     );
-    let result = &batches[0].results[0];
+    let result = &completions[0].result;
     assert_eq!(result.name, "mcp__stub__echo");
     assert!(result.success);
     assert_eq!(result.content, "mcp-stub-answer");

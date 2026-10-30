@@ -33,7 +33,7 @@
 //! stateless fold into shared state, no journaling). The cell handle
 //! cannot ride the runtime's JSON start args, so it is injected
 //! through the builder's
-//! [`start_with`](trouper::builder::ServiceBuilder::start_with)
+//! [`init_with`](trouper::builder::ServiceBuilder::init_with)
 //! override.
 
 use trouper::actor::ActorPath;
@@ -57,13 +57,11 @@ pub struct DashboardCanvasActor {
 }
 
 impl ServiceActor for DashboardCanvasActor {
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: the spawn helper injects the cell via `start_with`.
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
+        // Never called: the spawn helper injects the cell via `init_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec).attach(
-                "DashboardCanvasActor is spawned via start_with; start requires the typed cell",
+                "DashboardCanvasActor is spawned via init_with; start requires the typed cell",
             ),
         )
     }
@@ -91,7 +89,7 @@ impl DashboardCanvasActor {
             // dispatch while the retained log evicts, silently dropping
             // rows.
             .mailbox(64 * 1024, trouper::inbox::OverloadPolicy::Block)
-            .start_with({
+            .init_with({
                 let cell = cell.clone();
                 move || Box::pin(async move { Ok(Self { cell }) })
             })
@@ -272,7 +270,7 @@ mod tests {
         fn manifest() -> trouper::schema::ActorManifest {
             trouper::schema::ActorManifest::new()
         }
-        async fn start(
+        async fn init(
             _args: &trouper::json::Json,
         ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
             Ok(Self)

@@ -69,21 +69,19 @@ fn repair_bot_cursor(
 
 /// Actor that adjusts sidebar cursor state in response to session close.
 ///
-/// Holds the shared [`State`] handle, injected at spawn via `start_with`
+/// Holds the shared [`State`] handle, injected at spawn via `init_with`
 /// because it cannot ride trouper's JSON args.
 pub struct SidebarStateActor {
     state: State,
 }
 
 impl ServiceActor for SidebarStateActor {
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the state handle via
-        // `start_with`.
+        // `init_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
-                .attach("SidebarStateActor is spawned via start_with"),
+                .attach("SidebarStateActor is spawned via init_with"),
         )
     }
 }
@@ -96,7 +94,7 @@ impl SidebarStateActor {
     pub fn spawn(system: &ActorSystem, state: State) -> ActorPath {
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new(SIDEBAR_STATE_PATH))
-            .start_with({
+            .init_with({
                 move || {
                     let state = state.clone();
                     Box::pin(async move { Ok(Self { state }) })

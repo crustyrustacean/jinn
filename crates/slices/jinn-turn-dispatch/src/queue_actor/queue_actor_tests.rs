@@ -38,13 +38,12 @@ use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::services::Services;
 use jinn_kernel::common::services::bus_service::BusAudit;
 use jinn_kernel::common::state::State;
+use jinn_kernel::common::turn_ledger::MintKind;
 use jinn_kernel::protocol::ChatEntry;
 use jinn_kernel::{ProviderEntry, ProvidersConfig};
-use jinn_session_msg::PhaseKind;
 use jinn_session_msg::SessionPhaseChanged;
-use jinn_session_msg::phase_command::DispatchKind;
-use jinn_session_msg::phase_command::PhaseCommand;
 use jinn_session_store_msg::PersistSession;
+use jinn_slices::PhaseView;
 use jinn_turn_dispatch_msg::DispatchTurn;
 use jinn_turn_dispatch_msg::QueueItem;
 use marked_path::MarkedPathAccess as _;
@@ -57,13 +56,9 @@ async fn create_actor() -> (QueueActor, State, BusAudit) {
     let services = Services::new_fake_with_bus(bus.clone()).await;
     let _ = jinn_context_assembly::service::ensure_spawned(&services.trouper_system);
     let state = State::new(AppState::default_with_scope_focus());
-    // The real phase actor answers this actor's admission asks; production
-    // composition spawns it, so tests must too, on the same bus and state.
-    let _ = jinn_session_turn::phase_actor::ensure_spawned(
-        &services.trouper_system,
-        state.clone(),
-        bus,
-    );
+    // Admission is the ledger — no phase-actor round-trip exists to answer
+    // asks. The fused projection publishes the machine edge onto the same
+    // bus the audit records.
     (
         QueueActor {
             state: state.clone(),
@@ -83,20 +78,11 @@ fn session_id() -> SessionId {
 /// `FreshTurn`) before the queue actor's prepared/resume bodies ask to
 /// join it. Without this, a `ResumeTurn`/`ToolContinuation` admission is
 /// refused under the new policy and the dispatch publishes nothing.
-async fn mint_live_generation(services: &Services, sid: &SessionId) {
-    let decision = jinn_kernel::common::phase_command::apply_phase(
-        services,
-        PhaseCommand::BeginStream {
-            session_id: sid.clone(),
-            kind: DispatchKind::FreshTurn,
-            dispatched_at: jiff::Timestamp::now(),
-        },
-    )
-    .await
-    .expect("phase actor is spawned by the test helpers");
+fn mint_live_generation(services: &Services, sid: &SessionId) {
+    let minted = services.turn_ledger.mint(sid, MintKind::FreshTurn);
     assert!(
-        decision.admitted,
-        "a fresh mint is always admitted, got: {decision:?}"
+        minted.is_some(),
+        "a fresh mint is always admitted on an idle session"
     );
 }
 
@@ -117,8 +103,8 @@ async fn idle_transition_dispatches_user_message() {
     // When receiving SessionPhaseChanged → Idle.
     let msg = SessionPhaseChanged {
         session_id: sid.clone(),
-        old_phase: PhaseKind::Sending,
-        new_phase: PhaseKind::Idle,
+        old_phase: PhaseView::Working,
+        new_phase: PhaseView::Idle,
         at: jiff::Timestamp::now(),
     };
     actor.handle_session_phase_changed(&msg).await;
@@ -145,13 +131,13 @@ async fn idle_transition_dispatches_tool_continuation() {
         let session = state.session_mut_or_create(&sid);
         session.enqueue(QueueItem::ToolContinuation);
     }
-    mint_live_generation(&actor.services, &sid).await;
+    mint_live_generation(&actor.services, &sid);
 
     // When receiving SessionPhaseChanged → Idle.
     let msg = SessionPhaseChanged {
         session_id: sid.clone(),
-        old_phase: PhaseKind::Sending,
-        new_phase: PhaseKind::Idle,
+        old_phase: PhaseView::Working,
+        new_phase: PhaseView::Idle,
         at: jiff::Timestamp::now(),
     };
     actor.handle_session_phase_changed(&msg).await;
@@ -179,8 +165,8 @@ async fn non_idle_transition_does_nothing() {
     // When receiving SessionPhaseChanged → Sending (not Idle).
     let msg = SessionPhaseChanged {
         session_id: sid.clone(),
-        old_phase: PhaseKind::Idle,
-        new_phase: PhaseKind::Sending,
+        old_phase: PhaseView::Idle,
+        new_phase: PhaseView::Working,
         at: jiff::Timestamp::now(),
     };
     actor.handle_session_phase_changed(&msg).await;
@@ -199,8 +185,8 @@ async fn idle_transition_with_empty_queue_does_nothing() {
     // When receiving SessionPhaseChanged → Idle.
     let msg = SessionPhaseChanged {
         session_id: sid,
-        old_phase: PhaseKind::Sending,
-        new_phase: PhaseKind::Idle,
+        old_phase: PhaseView::Working,
+        new_phase: PhaseView::Idle,
         at: jiff::Timestamp::now(),
     };
     actor.handle_session_phase_changed(&msg).await;
@@ -224,8 +210,8 @@ async fn idle_with_empty_queue_and_steering_dispatches_steering() {
     // When receiving SessionPhaseChanged -> Idle.
     let msg = SessionPhaseChanged {
         session_id: sid.clone(),
-        old_phase: PhaseKind::Streaming,
-        new_phase: PhaseKind::Idle,
+        old_phase: PhaseView::Streaming,
+        new_phase: PhaseView::Idle,
         at: jiff::Timestamp::now(),
     };
     actor.handle_session_phase_changed(&msg).await;
@@ -259,8 +245,8 @@ async fn idle_with_empty_queue_and_empty_steering_does_nothing() {
     // When receiving SessionPhaseChanged -> Idle.
     let msg = SessionPhaseChanged {
         session_id: sid,
-        old_phase: PhaseKind::Streaming,
-        new_phase: PhaseKind::Idle,
+        old_phase: PhaseView::Streaming,
+        new_phase: PhaseView::Idle,
         at: jiff::Timestamp::now(),
     };
     actor.handle_session_phase_changed(&msg).await;
@@ -295,8 +281,8 @@ async fn idle_with_both_buffers_dispatches_steering_first_and_keeps_queue() {
     actor
         .handle_session_phase_changed(&SessionPhaseChanged {
             session_id: sid.clone(),
-            old_phase: PhaseKind::Streaming,
-            new_phase: PhaseKind::Idle,
+            old_phase: PhaseView::Streaming,
+            new_phase: PhaseView::Idle,
             at: jiff::Timestamp::now(),
         })
         .await;
@@ -361,8 +347,8 @@ async fn queued_item_dispatches_after_steering_turn_completes() {
         actor
             .handle_session_phase_changed(&SessionPhaseChanged {
                 session_id: sid.clone(),
-                old_phase: PhaseKind::Streaming,
-                new_phase: PhaseKind::Idle,
+                old_phase: PhaseView::Streaming,
+                new_phase: PhaseView::Idle,
                 at: jiff::Timestamp::now(),
             })
             .await;
@@ -409,19 +395,19 @@ async fn idle_transition_publishes_idle_to_streaming_phase_change() {
     // When receiving SessionPhaseChanged -> Idle.
     let msg = SessionPhaseChanged {
         session_id: sid,
-        old_phase: PhaseKind::Streaming,
-        new_phase: PhaseKind::Idle,
+        old_phase: PhaseView::Streaming,
+        new_phase: PhaseView::Idle,
         at: jiff::Timestamp::now(),
     };
     actor.handle_session_phase_changed(&msg).await;
 
-    // Then the Idle -> Streaming transition was published — by the phase
-    // actor, whose fused admission edge mints the turn; the queue actor
-    // publishes no phase event of its own.
+    // Then the Idle -> Streaming transition was published — fused into the
+    // dispatch's admission mint; the queue actor publishes no phase event
+    // of its own.
     let phases: Vec<SessionPhaseChanged> = audit.of_type::<SessionPhaseChanged>();
     let streaming = phases
         .iter()
-        .find(|p| p.old_phase == PhaseKind::Idle && p.new_phase == PhaseKind::Streaming);
+        .find(|p| p.old_phase == PhaseView::Idle && p.new_phase == PhaseView::Streaming);
     assert!(
         streaming.is_some(),
         "Idle -> Streaming transition must be published, got: {phases:?}"
@@ -544,7 +530,7 @@ async fn dispatch_user_message_transitions_to_streaming() {
     // phase write now, and its fused edge lands on Streaming.
     let state = state.read();
     let session = state.session(&sid);
-    assert_eq!(session.phase(), PhaseKind::Streaming);
+    assert_eq!(session.phase(), PhaseView::Streaming);
 }
 
 #[rstest::rstest]
@@ -740,7 +726,7 @@ async fn dispatch_resume_does_not_absorb_steering_fragments() {
     }
     // And a live generation, as the enqueue path mints before a queued
     // resume drains at the idle slot.
-    mint_live_generation(&actor.services, &sid).await;
+    mint_live_generation(&actor.services, &sid);
 
     // When dispatching a tool continuation (queued resume).
     actor.dispatch_resume(&sid, StreamOrigin::User).await;
@@ -798,7 +784,7 @@ async fn dispatch_resume_emits_send_to_llm_provider() {
     // before a queued continuation drains at the idle slot).
     let (actor, _state, audit) = create_actor().await;
     let sid = session_id();
-    mint_live_generation(&actor.services, &sid).await;
+    mint_live_generation(&actor.services, &sid);
 
     // When dispatching a resume.
     actor.dispatch_resume(&sid, StreamOrigin::User).await;
@@ -821,7 +807,7 @@ async fn dispatch_resume_leaves_history_unchanged() {
     }
     // And a live generation, as the enqueue path mints before a queued
     // resume drains at the idle slot.
-    mint_live_generation(&actor.services, &sid).await;
+    mint_live_generation(&actor.services, &sid);
 
     // When dispatching a resume.
     actor.dispatch_resume(&sid, StreamOrigin::User).await;
@@ -840,7 +826,7 @@ async fn dispatch_resume_does_not_emit_chat_entry_submitted_or_persist() {
     // before a queued continuation drains at the idle slot).
     let (actor, _state, audit) = create_actor().await;
     let sid = session_id();
-    mint_live_generation(&actor.services, &sid).await;
+    mint_live_generation(&actor.services, &sid);
 
     // When dispatching a resume.
     actor.dispatch_resume(&sid, StreamOrigin::User).await;
@@ -865,7 +851,7 @@ async fn dispatch_turn_publishes_send_to_llm_provider() {
         let session = state.session_mut_or_create(&sid);
         session.push_entry(ChatEntry::user("already pushed"));
     }
-    mint_live_generation(&actor.services, &sid).await;
+    mint_live_generation(&actor.services, &sid);
 
     // When handling DispatchTurn.
     actor
@@ -894,7 +880,7 @@ async fn dispatch_turn_publishes_none_effort_when_session_has_no_own_effort() {
         let mut state = state.write();
         state.session_mut_or_create(&sid);
     }
-    mint_live_generation(&actor.services, &sid).await;
+    mint_live_generation(&actor.services, &sid);
     {
         let mut app_state = actor.services.app_state_storage.read();
         app_state.reasoning_effort = Some(jinn_kernel::ReasoningEffort::High);
@@ -935,7 +921,7 @@ async fn dispatch_turn_publishes_sessions_own_reasoning_effort() {
         let session = state.session_mut_or_create(&sid);
         session.profile_mut().reasoning_effort = Some(jinn_kernel::ReasoningEffort::Low);
     }
-    mint_live_generation(&actor.services, &sid).await;
+    mint_live_generation(&actor.services, &sid);
     {
         let mut app_state = actor.services.app_state_storage.read();
         app_state.reasoning_effort = Some(jinn_kernel::ReasoningEffort::High);
@@ -978,7 +964,7 @@ async fn dispatch_turn_drains_steering_submitted_after_preparation() {
         session.push_entry(ChatEntry::user("prepared"));
         session.steering_buffer_mut().push_fragment("late note");
     }
-    mint_live_generation(&actor.services, &sid).await;
+    mint_live_generation(&actor.services, &sid);
 
     // When handling DispatchTurn.
     actor
@@ -1014,7 +1000,7 @@ async fn dispatch_turn_transitions_to_streaming_and_records_token_record() {
         let session = state.session_mut_or_create(&sid);
         session.push_entry(ChatEntry::user("history"));
     }
-    mint_live_generation(&actor.services, &sid).await;
+    mint_live_generation(&actor.services, &sid);
 
     // When handling DispatchTurn.
     actor
@@ -1027,7 +1013,7 @@ async fn dispatch_turn_transitions_to_streaming_and_records_token_record() {
     // phase write now.
     let state = state.read();
     let session = state.session(&sid);
-    assert_eq!(session.phase(), PhaseKind::Streaming);
+    assert_eq!(session.phase(), PhaseView::Streaming);
     // And the outgoing token record was pushed with the resolved model.
     let ledger = session.token_ledger();
     assert_eq!(ledger.len(), 1, "exactly one outgoing record");
@@ -1041,8 +1027,8 @@ async fn dispatch_turn_transitions_to_streaming_and_records_token_record() {
 #[rstest::rstest]
 #[tokio::test]
 async fn dispatch_turn_publishes_idle_to_streaming_phase_change() {
-    // Given an Idle session whose prepared turn is ready and whose
-    // generation the enqueue path minted before publishing DispatchTurn.
+    // Given an Idle session whose prepared turn is ready and whose turn
+    // the enqueue path minted before publishing DispatchTurn.
     let (actor, state, audit) = create_actor().await;
     let sid = session_id();
     {
@@ -1050,7 +1036,17 @@ async fn dispatch_turn_publishes_idle_to_streaming_phase_change() {
         let session = state.session_mut_or_create(&sid);
         session.push_entry(ChatEntry::user("history"));
     }
-    mint_live_generation(&actor.services, &sid).await;
+    {
+        // The enqueue path's mint, fused with the machine edge exactly as
+        // production's admission helper applies it.
+        let _grant = jinn_kernel::common::turn_ledger::mint_dispatch(
+            &actor.services,
+            &state,
+            &sid,
+            MintKind::FreshTurn,
+        )
+        .await;
+    }
 
     // When handling DispatchTurn.
     actor
@@ -1059,15 +1055,15 @@ async fn dispatch_turn_publishes_idle_to_streaming_phase_change() {
         })
         .await;
 
-    // Then the Idle -> Streaming transition was published by the phase
-    // actor — at the enqueue path's admission mint in the Given. The
-    // DispatchTurn admission itself joins the live generation without a
-    // further event, and the queue actor publishes no phase event of its
-    // own.
+    // Then the Idle -> Streaming transition was published at the enqueue
+    // path's admission mint in the Given — fused into the ledger mint, no
+    // phase-actor round-trip. The DispatchTurn admission itself joins the
+    // live turn without a further event, and the queue actor publishes no
+    // phase event of its own.
     let phases: Vec<SessionPhaseChanged> = audit.of_type::<SessionPhaseChanged>();
     let streaming = phases
         .iter()
-        .find(|p| p.old_phase == PhaseKind::Idle && p.new_phase == PhaseKind::Streaming);
+        .find(|p| p.old_phase == PhaseView::Idle && p.new_phase == PhaseView::Streaming);
     assert!(
         streaming.is_some(),
         "Idle -> Streaming transition must be published, got: {phases:?}"
@@ -1097,7 +1093,7 @@ async fn dispatch_turn_preserves_round_robin_index_mutation() {
             strategy: jinn_core_types::model_selection::AlloyStrategy::RoundRobin { index: 0 },
         };
     }
-    mint_live_generation(&actor.services, &sid).await;
+    mint_live_generation(&actor.services, &sid);
 
     // When handling DispatchTurn.
     actor
@@ -1171,15 +1167,8 @@ async fn dispatch_turn_with_assembly_failure_publishes_nothing() {
     let (bus, audit) = jinn_kernel::BusService::new_recording();
     let services = Services::new_fake_with_bus(bus.clone()).await;
     let state = State::new(AppState::default_with_scope_focus());
-    // The real phase actor, so the admission ask succeeds and the failure
-    // under test is assembly, not admission. NOTE:
-    // jinn_context_assembly::service::ensure_spawned deliberately NOT
-    // called — that ask fails.
-    let _ = jinn_session_turn::phase_actor::ensure_spawned(
-        &services.trouper_system,
-        state.clone(),
-        bus,
-    );
+    // NOTE: jinn_context_assembly::service::ensure_spawned deliberately
+    // NOT called — that ask fails.
     let actor = QueueActor {
         state: state.clone(),
         services,
@@ -1189,7 +1178,7 @@ async fn dispatch_turn_with_assembly_failure_publishes_nothing() {
         let mut state = state.write();
         state.session_mut_or_create(&sid).begin_sending();
     }
-    mint_live_generation(&actor.services, &sid).await;
+    mint_live_generation(&actor.services, &sid);
 
     // When handling DispatchTurn.
     actor
@@ -1221,7 +1210,7 @@ async fn dispatch_turn_refused_when_cancel_lands_mid_assemble() {
         let mut state = state.write();
         state.session_mut_or_create(&sid).begin_sending();
     }
-    mint_live_generation(&actor.services, &sid).await;
+    mint_live_generation(&actor.services, &sid);
 
     // When the dispatch's first admission is followed by a turn-cancel
     // before the re-admission at publish: the cancel task is spawned
@@ -1234,9 +1223,10 @@ async fn dispatch_turn_refused_when_cancel_lands_mid_assemble() {
         let services = actor.services.clone();
         let sid = sid.clone();
         tokio::spawn(async move {
-            jinn_session_turn::phase_actor::cancel_turn(&services, &sid)
-                .await
-                .expect("phase actor is live");
+            assert!(
+                services.turn_ledger.begin_cancel(&sid).is_some(),
+                "the cancel begins the drain"
+            );
         })
     };
 
@@ -1258,29 +1248,11 @@ async fn dispatch_turn_refused_when_cancel_lands_mid_assemble() {
     assert!(audit.of_type::<PersistSession>().is_empty());
 }
 
-/// Mints a live generation for `sid` and returns the stamp it was minted
-/// with — the stamp the queue actor re-asks with at publish.
-async fn minted_generation_stamp(
-    actor: &QueueActor,
-    state: &State,
-    sid: &SessionId,
-) -> jiff::Timestamp {
+/// Mints a live turn for `sid` — the turn the queue actor joins at publish.
+fn minted_generation_stamp(actor: &QueueActor, _state: &State, sid: &SessionId) -> jiff::Timestamp {
     let stamp = jiff::Timestamp::now();
-    {
-        let mut state = state.write();
-        state.session_mut_or_create(sid).begin_sending();
-    }
-    let minted = jinn_kernel::common::phase_command::apply_phase(
-        &actor.services,
-        PhaseCommand::BeginStream {
-            session_id: sid.clone(),
-            kind: DispatchKind::FreshTurn,
-            dispatched_at: stamp,
-        },
-    )
-    .await
-    .expect("phase actor is spawned by the test helpers");
-    assert!(minted.admitted, "fresh turn mints");
+    let minted = actor.services.turn_ledger.mint(sid, MintKind::FreshTurn);
+    assert!(minted.is_some(), "fresh turn mints");
     stamp
 }
 
@@ -1290,19 +1262,21 @@ async fn readmission_admits_when_generation_still_live() {
     // Given a live generation minted with a stamp.
     let (actor, state, _audit) = create_actor().await;
     let sid = session_id();
-    let stamp = minted_generation_stamp(&actor, &state, &sid).await;
+    let _stamp = minted_generation_stamp(&actor, &state, &sid);
 
-    // When re-asking admission with the same stamp while the generation
-    // is still live (no cancel between the asks — the healthy dispatch).
-    let live =
-        crate::dispatch::admit_begin_stream(&actor.services, &sid, DispatchKind::ResumeTurn, stamp)
-            .await;
+    // When re-asking admission with the live turn still live (no cancel
+    // between the mints — the healthy dispatch).
+    let live = crate::dispatch::mint_for_dispatch(
+        &actor.services,
+        &sid,
+        jinn_kernel::common::turn_ledger::MintKind::Resume,
+    );
 
-    // Then the re-admission admits: it is a no-op refresh, not a second
-    // mint or a refusal.
+    // Then the re-admission admits: it is a fresh stream under the same
+    // turn, not a second turn or a refusal.
     assert!(
-        live.admitted,
-        "re-admission with no cancel must admit the live generation"
+        live.is_some(),
+        "re-admission with no cancel must join the live turn"
     );
 }
 
@@ -1312,22 +1286,22 @@ async fn readmission_refuses_after_cancel_kills_the_generation() {
     // Given a live generation minted with a stamp.
     let (actor, state, _audit) = create_actor().await;
     let sid = session_id();
-    let stamp = minted_generation_stamp(&actor, &state, &sid).await;
+    let _stamp = minted_generation_stamp(&actor, &state, &sid);
 
     // When a cancel lands (the watchdog's trip) and the re-ask follows.
-    let cancelled = jinn_session_turn::phase_actor::cancel_turn(&actor.services, &sid)
-        .await
-        .expect("phase actor is live");
-    assert!(cancelled.admitted, "the cancel ends the live turn");
-    let dead =
-        crate::dispatch::admit_begin_stream(&actor.services, &sid, DispatchKind::ResumeTurn, stamp)
-            .await;
+    let cancelled = actor.services.turn_ledger.begin_cancel(&sid);
+    assert!(cancelled.is_some(), "the cancel starts the drain");
+    let dead = crate::dispatch::mint_for_dispatch(
+        &actor.services,
+        &sid,
+        jinn_kernel::common::turn_ledger::MintKind::Resume,
+    );
 
-    // Then the re-admission refuses: the generation is dead, and this is
+    // Then the re-admission refuses: the turn is draining, and this is
     // exactly what the queue actor's publish-site ask observes when the
     // cancel landed mid-assemble.
     assert!(
-        !dead.admitted,
+        dead.is_none(),
         "re-admission after a cancel must refuse the dead generation"
     );
 }
@@ -1344,7 +1318,7 @@ async fn dispatch_turn_admitted_twice_publishes_once_when_no_cancel() {
         let mut state = state.write();
         state.session_mut_or_create(&sid).begin_sending();
     }
-    mint_live_generation(&actor.services, &sid).await;
+    mint_live_generation(&actor.services, &sid);
 
     // When handling DispatchTurn.
     actor
@@ -1409,14 +1383,6 @@ fn actor_on(services: Services, model: &str) -> (QueueActor, State, SessionId, B
     services.bus = bus.clone();
     let _ = jinn_context_assembly::service::ensure_spawned(&services.trouper_system);
     let state = State::new(AppState::default_with_scope_focus());
-    // The real phase actor answers the dispatch's admission ask; a
-    // `FreshTurn` mint is always admitted, so this only needs the actor
-    // live, on the same system the queue actor asks through.
-    let _ = jinn_session_turn::phase_actor::ensure_spawned(
-        &services.trouper_system,
-        state.clone(),
-        bus,
-    );
     let sid = session_id();
     {
         let mut state = state.write();
@@ -1507,11 +1473,6 @@ async fn dispatch_does_not_force_an_endpoint_for_an_alloy() {
     services.bus = bus.clone();
     let _ = jinn_context_assembly::service::ensure_spawned(&services.trouper_system);
     let state = State::new(AppState::default_with_scope_focus());
-    let _ = jinn_session_turn::phase_actor::ensure_spawned(
-        &services.trouper_system,
-        state.clone(),
-        bus,
-    );
     let sid = session_id();
     {
         let mut state = state.write();

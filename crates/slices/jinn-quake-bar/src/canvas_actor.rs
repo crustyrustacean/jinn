@@ -4,7 +4,7 @@
 //! It subscribes to `SubmitQuakeBarCommand` broadcasts and appends
 //! each to the slice cell's log. The cell handle cannot ride the
 //! runtime's JSON start args, so it is injected through the builder's
-//! [`start_with`](trouper::builder::ServiceBuilder::start_with)
+//! [`init_with`](trouper::builder::ServiceBuilder::init_with)
 //! override.
 
 use trouper::actor::ActorPath;
@@ -28,15 +28,13 @@ pub struct QuakeBarCanvasActor {
 }
 
 impl ServiceActor for QuakeBarCanvasActor {
-    // Never invoked: the spawn helper injects the cell via `start_with`,
+    // Never invoked: the spawn helper injects the cell via `init_with`,
     // and the trait-required signature has nothing to await.
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
         async {}.await;
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec).attach(
-                "QuakeBarCanvasActor is spawned via start_with; start requires the typed cell",
+                "QuakeBarCanvasActor is spawned via init_with; start requires the typed cell",
             ),
         )
     }
@@ -62,7 +60,7 @@ impl QuakeBarCanvasActor {
     pub fn spawn(system: &ActorSystem, cell: &TypedCell<QuakeBarState>) -> ActorPath {
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new("quake-bar"))
-            .start_with({
+            .init_with({
                 let cell = cell.clone();
                 move || Box::pin(async move { Ok(Self { cell }) })
             })

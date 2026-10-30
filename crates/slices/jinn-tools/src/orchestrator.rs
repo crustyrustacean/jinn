@@ -1,8 +1,9 @@
 //! Tool orchestrator actor - dispatches tool calls and aggregates batch results.
 //!
 //! This actor maintains a registry of available tools (built-in and actor-provided),
-//! dispatches [`ExecuteToolBatch`] requests, and emits [`ToolBatchCompleted`] when
-//! all calls in a batch finish.
+//! dispatches [`ExecuteToolBatch`] requests, and emits a [`ToolExecutionCompleted`]
+//! per finished call — the turn ledger's open-call set is the batch's outstanding
+//! count, so no aggregate event exists.
 //!
 //! Built-in tools (`get_time`, `read`, `write`) are registered at
 //! startup and executed via spawned tokio tasks. Actor-provided tools
@@ -33,8 +34,7 @@ use jinn_mcp_msg::McpConnectionStatus;
 use jinn_session_msg::SessionClosed;
 use jinn_tools_msg::{CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools};
 use jinn_tools_msg::{
-    ProviderVisibilityChanged, ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
-    ToolsUnregistered,
+    ProviderVisibilityChanged, ToolExecutionCompleted, ToolsRegistered, ToolsUnregistered,
 };
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
@@ -118,11 +118,10 @@ fn lookup_registration<'a>(
 
 /// Tracks pending tool calls within a batch.
 pub(crate) struct PendingBatch {
-    /// Number of tool calls still awaiting results.
-    remaining: usize,
-    /// Collected results so far.
-    results: Vec<ToolResult>,
     /// Join handles for spawned builtin tool tasks (for cancellation).
+    ///
+    /// The outstanding count is the turn ledger's open-call set, not a
+    /// counter here; results flow to the session actor as they land.
     handles: Vec<tokio::task::JoinHandle<()>>,
 }
 
@@ -142,6 +141,10 @@ pub struct ToolOrchestratorActor {
     session_tools: HashMap<SessionId, HashMap<String, ToolRegistration>>,
     /// Session ID → pending batch tracker.
     pending: HashMap<SessionId, PendingBatch>,
+    /// Session ID → open call id → tool name, for the cancel synthesis: the
+    /// ledger knows which calls are open but not what they are called, and
+    /// the synthesized completion's entry keeps the tool's name.
+    pending_names: HashMap<SessionId, HashMap<ToolCallId, String>>,
     /// Shared application state for reading session CWD.
     state: State,
     /// Runtime services.
@@ -207,13 +210,11 @@ fn build_openrouter_web_search_definition(config: &WebSearchConfig) -> ToolDefin
 pub const ORCHESTRATOR_PATH: &str = "jinn.tools.orchestrator";
 
 impl ServiceActor for ToolOrchestratorActor {
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: spawned via `start_with` (typed deps cannot ride
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
+        // Never called: spawned via `init_with` (typed deps cannot ride
         // JSON args).
         Err(error_stack::Report::new(RegistryError::InvalidSpec)
-            .attach("ToolOrchestratorActor spawns via start_with"))
+            .attach("ToolOrchestratorActor spawns via init_with"))
     }
 }
 
@@ -227,7 +228,7 @@ impl ToolOrchestratorActor {
         let path = ActorPath::new(ORCHESTRATOR_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())
-            .start_with({
+            .init_with({
                 let deps = deps.clone();
                 move || {
                     let deps = deps.clone();
@@ -259,6 +260,7 @@ impl ToolOrchestratorActor {
             tools: HashMap::new(),
             session_tools: HashMap::new(),
             pending: HashMap::new(),
+            pending_names: HashMap::new(),
             state: deps.state,
             services: deps.services,
         };
@@ -370,6 +372,7 @@ impl MsgHandler<ExecuteToolBatch> for ToolOrchestratorActor {
             msg.session_id.clone(),
             msg.tool_calls.clone(),
             msg.dispatched_at,
+            msg.turn,
         )
         .await;
     }
@@ -383,7 +386,7 @@ impl MsgHandler<CancelToolBatch> for ToolOrchestratorActor {
 
 impl MsgHandler<ToolExecutionCompleted> for ToolOrchestratorActor {
     async fn handle(&mut self, msg: &ToolExecutionCompleted, _ctx: &mut MsgCtx<'_>) {
-        self.handle_tool_execution_completed(msg.session_id.clone(), msg.result.clone())
+        self.handle_tool_execution_completed(msg.session_id.clone(), msg.result.clone(), msg.turn)
             .await;
     }
 }
@@ -393,6 +396,10 @@ impl MsgHandler<SessionClosed> for ToolOrchestratorActor {
         // Drop per-session routing and context definitions so neither map leaks.
         self.session_tools.remove(&msg.session_id);
         self.remove_cached_session_tools(&msg.session_id);
+        // And the cancel bookkeeping: a closed session's turn is gone from
+        // the ledger (`remove`), so nothing can synthesize against it.
+        self.pending.remove(&msg.session_id);
+        self.pending_names.remove(&msg.session_id);
     }
 }
 
@@ -599,11 +606,18 @@ impl ToolOrchestratorActor {
     }
 
     /// Dispatches each tool call and tracks the pending batch.
+    ///
+    /// The batch's calls are registered in the turn ledger in the same
+    /// ledger call that dispatches them, so a completion can never be
+    /// processed before its registration lands. A batch whose registration
+    /// is refused (no live turn, stale turn, cancel drain) dispatches
+    /// nothing and closes nothing — the ledger is the drop site.
     async fn handle_execute_tool_batch(
         &mut self,
         session_id: SessionId,
         tool_calls: Vec<ToolCall>,
         dispatched_at: Timestamp,
+        turn: jinn_core_types::turn_identity::TurnToken,
     ) {
         tracing::info!(
             session_id = %session_id,
@@ -612,40 +626,70 @@ impl ToolOrchestratorActor {
         );
 
         if tool_calls.is_empty() {
-            self.publish(ToolBatchCompleted {
-                session_id,
-                results: vec![],
-            })
-            .await;
+            // Nothing to run: there is no open work, and the turn ledger's
+            // set never saw this batch. The turn's outcome rides the events
+            // that carry identity — nothing to publish here.
+            tracing::debug!(
+                session_id = ?session_id,
+                "empty tool batch; nothing to dispatch"
+            );
             return;
         }
 
-        let remaining = tool_calls.len();
+        // Fused registration + dispatch: one ledger call inserts every
+        // call id as open work and runs the dispatch body. A refusal
+        // abandons the batch before anything runs.
+        let call_ids: Vec<_> = tool_calls.iter().map(|tc| tc.id.clone()).collect();
+        if self
+            .services
+            .turn_ledger
+            .register_and_dispatch(&session_id, &turn, call_ids, || ())
+            .is_err()
+        {
+            tracing::info!(
+                session_id = %session_id,
+                turn = ?turn,
+                count = tool_calls.len(),
+                "tool batch refused by the turn ledger; dispatching nothing"
+            );
+            return;
+        }
+
         let mut handles = Vec::new();
+        {
+            let names = self.pending_names.entry(session_id.clone()).or_default();
+            for tc in &tool_calls {
+                names.insert(tc.id.clone(), tc.name.clone());
+            }
+        }
         for tc in tool_calls {
             if let Some(handle) = self
-                .dispatch_tool_call(session_id.clone(), tc, dispatched_at)
+                .dispatch_tool_call(session_id.clone(), tc, dispatched_at, turn)
                 .await
             {
                 handles.push(handle);
             }
         }
-        self.pending.insert(
-            session_id.clone(),
-            PendingBatch {
-                remaining,
-                results: vec![],
-                handles,
-            },
-        );
+        self.pending
+            .insert(session_id.clone(), PendingBatch { handles });
     }
 
     /// Cancels all pending tool executions for a session.
     ///
-    /// Aborts spawned builtin tasks and removes the pending batch.
-    /// Any `ToolExecutionCompleted` events that already arrived for this
-    /// session will be ignored (the pending batch is gone).
+    /// Aborts every spawned builtin task and synthesizes a cancelled
+    /// [`ToolExecutionCompleted`] per call still open in the turn ledger, so
+    /// the cancel drain never waits on a tool: actor-backed calls (MCP) are
+    /// not abortable from here, and a wedged one would hold the turn open
+    /// forever. Each synthesis closes its call through the ordinary
+    /// completion path, so the settle is the work set's, not this actor's —
+    /// and a real result that also lands is the idempotent-close no-op that
+    /// cannot double-finalize. The synthesized flag tells the session actor
+    /// to finalize only an entry still `Pending` and never push one: real
+    /// output wins when it arrives.
     fn handle_cancel_tool_batch(&mut self, session_id: &SessionId) {
+        // Snapshot before removal: the open set is the cancel drain's work
+        // list, and aborting must not race the synthesis reads.
+        let open = self.services.turn_ledger.open_calls(session_id);
         if let Some(batch) = self.pending.remove(session_id) {
             let handle_count = batch.handles.len();
             for handle in batch.handles {
@@ -657,6 +701,61 @@ impl ToolOrchestratorActor {
                 handle_count
             );
         }
+        let Some((open, turn)) = open.map(|calls| {
+            let turn = self.services.turn_ledger.live(session_id).map(|l| l.turn);
+            (calls, turn)
+        }) else {
+            return;
+        };
+        if open.is_empty() {
+            return;
+        }
+        let Some(turn) = turn else {
+            return;
+        };
+        for call_id in open {
+            // The entry keeps the tool's name: the session actor finalizes in
+            // place against the entry it already has, and a mismatched name
+            // would surface in the rendered row.
+            let name = self
+                .pending_names
+                .get(session_id)
+                .and_then(|names| names.get(&call_id))
+                .cloned()
+                .unwrap_or_default();
+            let result = ToolResult {
+                tool_call_id: call_id,
+                name,
+                content: "canceled".to_owned(),
+                success: false,
+                full_content: None,
+                truncation: None,
+                pin_position: None,
+                attachments: Vec::new(),
+            };
+            self.publish_spurious(session_id, result, turn);
+        }
+        self.pending_names.remove(session_id);
+    }
+
+    /// Publishes one synthesized cancellation without blocking the actor.
+    fn publish_spurious(
+        &mut self,
+        session_id: &SessionId,
+        result: ToolResult,
+        turn: jinn_core_types::turn_identity::TurnToken,
+    ) {
+        let bus = self.bus().clone();
+        let session_id = session_id.clone();
+        tokio::spawn(async move {
+            bus.publish(ToolExecutionCompleted {
+                session_id,
+                result,
+                turn,
+                synthesized: true,
+            })
+            .await;
+        });
     }
 
     /// Builds a [`ToolContext`] for the given session by reading its CWD from shared state.
@@ -668,7 +767,12 @@ impl ToolOrchestratorActor {
     /// The outer `timeout` (from `tools.default_timeout_secs`) is a safety
     /// ceiling for all builtin tools. `bash` additionally applies its own
     /// inner `bash.default_timeout_secs`; the shorter of the two fires first.
-    fn build_tool_context(&self, session_id: &SessionId, dispatched_at: Timestamp) -> ToolContext {
+    fn build_tool_context(
+        &self,
+        session_id: &SessionId,
+        dispatched_at: Timestamp,
+        turn: jinn_core_types::turn_identity::TurnToken,
+    ) -> ToolContext {
         let cwd = {
             let guard = self.state.read();
             guard.session.get(session_id).map_or_else(
@@ -687,6 +791,7 @@ impl ToolOrchestratorActor {
         ToolContext {
             cwd,
             timeout: Some(timeout),
+            turn,
             state: Some(self.state.clone()),
             config: self.services.config.clone(),
             shells: self.services.shells.clone(),
@@ -719,6 +824,7 @@ impl ToolOrchestratorActor {
         session_id: SessionId,
         tool_call: ToolCall,
         dispatched_at: Timestamp,
+        turn: jinn_core_types::turn_identity::TurnToken,
     ) -> Option<tokio::task::JoinHandle<()>> {
         let reg_type = match self.find_registration(&session_id, &tool_call.name) {
             Some(ToolRegistration::Builtin { .. }) => "builtin",
@@ -741,7 +847,7 @@ impl ToolOrchestratorActor {
         // exists to close — the tool the user withheld must not be reachable
         // by naming it directly.
         if self.tool_withheld(&session_id, &tool_call.name) {
-            return self.reject_withheld_tool(session_id, tool_call).await;
+            return self.reject_withheld_tool(session_id, tool_call, turn).await;
         }
 
         match self.find_registration(&session_id, &tool_call.name) {
@@ -753,15 +859,16 @@ impl ToolOrchestratorActor {
                 session_id,
                 tool_call,
                 dispatched_at,
+                turn,
                 *execute,
                 *self_managed_timeout,
             )),
             Some(ToolRegistration::Actor { provider, .. }) => {
                 let reg_provider = provider.clone();
-                self.dispatch_actor(session_id, tool_call, &reg_provider, dispatched_at)
+                self.dispatch_actor(session_id, tool_call, &reg_provider, dispatched_at, turn)
                     .await
             }
-            None => self.reject_unknown_tool(session_id, tool_call).await,
+            None => self.reject_unknown_tool(session_id, tool_call, turn).await,
         }
     }
 
@@ -794,6 +901,7 @@ impl ToolOrchestratorActor {
         &self,
         session_id: SessionId,
         tool_call: ToolCall,
+        turn: jinn_core_types::turn_identity::TurnToken,
     ) -> Option<tokio::task::JoinHandle<()>> {
         let result = ToolResult {
             tool_call_id: tool_call.id.clone(),
@@ -810,8 +918,13 @@ impl ToolOrchestratorActor {
             attachments: Vec::new(),
         };
 
-        self.publish(ToolExecutionCompleted { session_id, result })
-            .await;
+        self.publish(ToolExecutionCompleted {
+            session_id,
+            result,
+            turn,
+            synthesized: false,
+        })
+        .await;
         None
     }
 
@@ -839,11 +952,12 @@ impl ToolOrchestratorActor {
         session_id: SessionId,
         tool_call: ToolCall,
         dispatched_at: Timestamp,
+        turn: jinn_core_types::turn_identity::TurnToken,
         execute_fn: fn(ToolCall, ToolContext) -> BoxedToolFuture,
         self_managed_timeout: bool,
     ) -> tokio::task::JoinHandle<()> {
         let bus = self.bus().clone();
-        let tool_ctx = self.build_tool_context(&session_id, dispatched_at);
+        let tool_ctx = self.build_tool_context(&session_id, dispatched_at, turn);
 
         let call_id = tool_call.id.clone();
         let call_name = tool_call.name.clone();
@@ -860,8 +974,13 @@ impl ToolOrchestratorActor {
                 Ok(r) => r,
                 Err(_) => panicked_tool_result(&call_id, &call_name),
             };
-            bus.publish(ToolExecutionCompleted { session_id, result })
-                .await;
+            bus.publish(ToolExecutionCompleted {
+                session_id,
+                result,
+                turn,
+                synthesized: false,
+            })
+            .await;
         })
     }
 
@@ -876,6 +995,7 @@ impl ToolOrchestratorActor {
         tool_call: ToolCall,
         provider: &str,
         dispatched_at: Timestamp,
+        turn: jinn_core_types::turn_identity::TurnToken,
     ) -> Option<tokio::task::JoinHandle<()>> {
         match provider {
             p if p.starts_with(MCP_PROVIDER_PREFIX) => {
@@ -886,6 +1006,8 @@ impl ToolOrchestratorActor {
                     self.publish(ToolExecutionCompleted {
                         session_id,
                         result: rejected_mcp_result(&tool_call, &reason),
+                        turn,
+                        synthesized: false,
                     })
                     .await;
                     return None;
@@ -900,7 +1022,8 @@ impl ToolOrchestratorActor {
                     .get::<ToolsConfig>()
                     .unwrap_or_default();
                 self.publish(ExecuteTool {
-                    session_id,
+                    session_id: session_id.clone(),
+                    turn,
                     tool_call,
                     dispatched_at,
                     max_output_lines: tools.max_output_lines,
@@ -923,6 +1046,7 @@ impl ToolOrchestratorActor {
         &self,
         session_id: SessionId,
         tool_call: ToolCall,
+        turn: jinn_core_types::turn_identity::TurnToken,
     ) -> Option<tokio::task::JoinHandle<()>> {
         let result = ToolResult {
             tool_call_id: tool_call.id.clone(),
@@ -935,8 +1059,13 @@ impl ToolOrchestratorActor {
             attachments: Vec::new(),
         };
 
-        self.publish(ToolExecutionCompleted { session_id, result })
-            .await;
+        self.publish(ToolExecutionCompleted {
+            session_id,
+            result,
+            turn,
+            synthesized: false,
+        })
+        .await;
         None
     }
 
@@ -1000,49 +1129,24 @@ impl ToolOrchestratorActor {
         }
     }
 
-    /// Aggregates a tool result into the pending batch.
-    ///
-    /// When all calls in a batch have completed, emits [`ToolBatchCompleted`]
-    async fn handle_tool_execution_completed(&mut self, session_id: SessionId, result: ToolResult) {
-        let Some(batch) = self.pending.get_mut(&session_id) else {
-            tracing::warn!(
-                session_id = ?session_id,
-                tool = %result.name,
-                tool_call_id = %result.tool_call_id,
-                "handle_tool_execution_completed — no pending batch, dropping result"
-            );
-            return;
-        };
-
-        batch.remaining -= 1;
-        batch.results.push(result);
-
-        tracing::info!(
+    /// Observes the completion; the batch bookkeeping it once did is the
+    /// turn ledger's open-call set, and the close belongs to the session
+    /// actor — the consumer that acts on the close's settlement. This
+    /// actor's remaining job is the `pending` map's abort handles, which
+    /// `handle_cancel_tool_batch` drains.
+    async fn handle_tool_execution_completed(
+        &mut self,
+        session_id: SessionId,
+        result: ToolResult,
+        turn: jinn_core_types::turn_identity::TurnToken,
+    ) {
+        tracing::debug!(
             session_id = ?session_id,
-            tool = %batch.results.last().map_or("?", |r| r.name.as_str()),
-            remaining = batch.remaining,
-            "handle_tool_execution_completed"
+            turn = ?turn,
+            tool = %result.name,
+            tool_call_id = %result.tool_call_id,
+            "ToolExecutionCompleted observed by the orchestrator"
         );
-
-        if batch.remaining == 0 {
-            let results = self
-                .pending
-                .remove(&session_id)
-                .map(|b| b.results)
-                .unwrap_or_default();
-
-            tracing::info!(
-                session_id = ?session_id,
-                result_count = results.len(),
-                "emitting ToolBatchCompleted"
-            );
-
-            self.publish(ToolBatchCompleted {
-                session_id,
-                results,
-            })
-            .await;
-        }
     }
 }
 
@@ -1176,6 +1280,7 @@ mod timeout_tests {
     /// carries stay valid for the whole test.
     fn empty_ctx(dir: &MarkedPathBuf<Absolute>) -> ToolContext {
         ToolContext {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             cwd: dir.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
@@ -1444,6 +1549,7 @@ mod panic_safety_tests {
         let result: ToolResult = match AssertUnwindSafe(panicking_execute(
             tool_call.clone(),
             super::ToolContext {
+                turn: jinn_core_types::turn_identity::TurnToken::legacy(),
                 cwd: dir.path.clone(),
                 config: jinn_config::testutil::config_layer(""),
                 shells: Default::default(),
@@ -1625,7 +1731,7 @@ mod mcp_dispatch_gate_tests {
     use jinn_mcp_msg::McpConnectionStatus;
     use jinn_session_msg::SessionClosed;
     use jinn_testutil::bus_harness::{TestHarness, await_recorded};
-    use jinn_tools_msg::{ExecuteTool, ExecuteToolBatch, RegisterTools};
+    use jinn_tools_msg::{CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools};
     use jinn_tools_msg::{ToolExecutionCompleted, ToolsUnregistered};
 
     use super::{ToolOrchestratorActor, ToolOrchestratorActorDeps};
@@ -1727,12 +1833,24 @@ mod mcp_dispatch_gate_tests {
             .expect("MCP runtime cell")
     }
 
-    async fn publish_batch(harness: &TestHarness, session_id: &SessionId) {
+    async fn publish_batch(
+        harness: &TestHarness,
+        services: &jinn_kernel::common::services::Services,
+        session_id: &SessionId,
+    ) {
+        services
+            .turn_ledger
+            .mint(
+                session_id,
+                jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+            )
+            .expect("fixture mint");
         harness
             .publish(ExecuteToolBatch {
                 session_id: session_id.clone(),
                 tool_calls: vec![echo_call()],
                 dispatched_at: jiff::Timestamp::now(),
+                turn: services.turn_ledger.live(session_id).expect("live").turn,
             })
             .await;
     }
@@ -1821,7 +1939,7 @@ mod mcp_dispatch_gate_tests {
             })
             .await;
         let results = harness.spawn_recorder::<ToolExecutionCompleted>().await;
-        publish_batch(&harness, &session_id).await;
+        publish_batch(&harness, &services, &session_id).await;
 
         // Then the tool is no longer routable (rejected as unknown, not
         // dispatched to an MCP provider).
@@ -1849,7 +1967,7 @@ mod mcp_dispatch_gate_tests {
         let results = harness.spawn_recorder::<ToolExecutionCompleted>().await;
 
         // When dispatching a call to the disabled server's tool.
-        publish_batch(&harness, &session_id).await;
+        publish_batch(&harness, &services, &session_id).await;
 
         // Then a failed result naming the server arrives promptly.
         let messages = await_recorded(&results, 1, Duration::from_secs(3)).await;
@@ -1881,7 +1999,7 @@ mod mcp_dispatch_gate_tests {
         let results = harness.spawn_recorder::<ToolExecutionCompleted>().await;
 
         // When dispatching a call to the dead server's tool.
-        publish_batch(&harness, &session_id).await;
+        publish_batch(&harness, &services, &session_id).await;
 
         // Then a failed result explaining the dead connection arrives.
         let messages = await_recorded(&results, 1, Duration::from_secs(3)).await;
@@ -1913,7 +2031,7 @@ mod mcp_dispatch_gate_tests {
         let dispatched = harness.spawn_recorder::<ExecuteTool>().await;
 
         // When dispatching a call to the running server's tool.
-        publish_batch(&harness, &session_id).await;
+        publish_batch(&harness, &services, &session_id).await;
 
         // Then an ExecuteTool is published on the bus as before (no gate
         // rejection short-circuits the dispatch).
@@ -1928,7 +2046,7 @@ mod mcp_dispatch_gate_tests {
         // registered globally (the singleton registration shape), the server
         // configured singleton, and its status written to the singleton
         // bucket — not under this session's id.
-        let (harness, session_id, dispatched) = {
+        let (harness, services, session_id, dispatched) = {
             let state = State::new(AppState::default());
             let session_id = SessionId::new();
             state
@@ -1972,12 +2090,12 @@ mod mcp_dispatch_gate_tests {
             })
             .await;
             let dispatched = harness.spawn_recorder::<ExecuteTool>().await;
-            (harness, session_id, dispatched)
+            (harness, services, session_id, dispatched)
         };
 
         // When dispatching a call from a session that has no per-session
         // runtime entry for the server.
-        publish_batch(&harness, &session_id).await;
+        publish_batch(&harness, &services, &session_id).await;
 
         // Then the gate resolves Running from the singleton bucket and
         // dispatches — it must not report "still starting" for a shared
@@ -1989,5 +2107,144 @@ mod mcp_dispatch_gate_tests {
             "expected an ExecuteTool dispatch (no gate rejection); got {messages:?}"
         );
         assert_eq!(messages[0].tool_call.name, "mcp__stub__echo");
+    }
+
+    /// The cancel drain: the ledger holds an open call for the session and
+    /// the batch bookkeeping is in place, the way a mid-execution cancel
+    /// finds the orchestrator.
+    async fn seed_open_call(
+        harness: &TestHarness,
+        services: &jinn_kernel::common::services::Services,
+        state: &State,
+        session_id: &SessionId,
+    ) -> jinn_core_types::turn_identity::TurnToken {
+        state
+            .write()
+            .session
+            .get_or_create(session_id)
+            .enable_mcp_server("stub");
+        mcp_runtime(services).update(|runtime| {
+            runtime.set_status(session_id, "stub", McpConnectionStatus::Running);
+        });
+        register_stub_tools(harness, services, session_id).await;
+        services
+            .turn_ledger
+            .mint(
+                session_id,
+                jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+            )
+            .expect("fixture mint");
+        harness
+            .publish(ExecuteToolBatch {
+                session_id: session_id.clone(),
+                tool_calls: vec![echo_call()],
+                dispatched_at: jiff::Timestamp::now(),
+                turn: services.turn_ledger.live(session_id).expect("live").turn,
+            })
+            .await;
+        // The batch is dispatched: one call open, one ExecuteTool in flight.
+        services
+            .turn_ledger
+            .live(session_id)
+            .expect("live after dispatch")
+            .turn
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn cancel_synthesizes_a_completion_per_open_call() {
+        // Given an orchestrator with one call in flight (registered open,
+        // ExecuteTool dispatched to a running stub server).
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+        let (harness, services) = spawn_orchestrator(&state).await;
+        let turn = seed_open_call(&harness, &services, &state, &session_id).await;
+        let completions = harness.spawn_recorder::<ToolExecutionCompleted>().await;
+
+        // When the cancel drain asks the orchestrator to abandon the batch.
+        harness
+            .publish(CancelToolBatch {
+                session_id: session_id.clone(),
+            })
+            .await;
+        let messages = await_recorded(&completions, 1, Duration::from_secs(3)).await;
+
+        // Then exactly one synthesized cancellation was published for the
+        // open call, carrying the live turn's identity.
+        assert_eq!(
+            messages.len(),
+            1,
+            "one open call must synthesize exactly one completion; got {messages:?}"
+        );
+        assert!(
+            messages[0].synthesized,
+            "the completion must be synthesized"
+        );
+        assert_eq!(messages[0].turn, turn);
+        assert_eq!(messages[0].result.tool_call_id, echo_call().id);
+        assert!(!messages[0].result.success, "a synthesized cancel fails");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn cancel_synthesis_leaves_no_pending_bookkeeping_behind() {
+        // Given an orchestrator with one call in flight.
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+        let (harness, services) = spawn_orchestrator(&state).await;
+        let _turn = seed_open_call(&harness, &services, &state, &session_id).await;
+
+        // When the cancel drain runs — with no completion consumer attached,
+        // so the drain cannot depend on anyone observing the synthesis.
+        harness
+            .publish(CancelToolBatch {
+                session_id: session_id.clone(),
+            })
+            .await;
+        // The synthesis spawns off-actor; give it the same await horizon the
+        // recorder-based test uses before reading the drained bookkeeping.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Then the batch and its name map are gone: a later batch for the
+        // session starts clean, and the drain never leaves entries behind.
+        assert!(
+            services.turn_ledger.open_calls(&session_id).is_some(),
+            "the ledger still holds the turn (the completion closes it, not the drain)"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn batch_during_a_cancel_drain_never_runs() {
+        // Given an orchestrator whose session is mid-drain: the ledger turn
+        // already flipped to cancel.
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+        let (harness, services) = spawn_orchestrator(&state).await;
+        let turn = seed_open_call(&harness, &services, &state, &session_id).await;
+        services
+            .turn_ledger
+            .begin_cancel(&session_id)
+            .expect("the drain starts");
+        let dispatched = harness.spawn_recorder::<ExecuteTool>().await;
+
+        // When a batch for the same turn arrives during the drain.
+        harness
+            .publish(ExecuteToolBatch {
+                session_id: session_id.clone(),
+                tool_calls: vec![echo_call()],
+                dispatched_at: jiff::Timestamp::now(),
+                turn,
+            })
+            .await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        // Then nothing was dispatched to any tool: the drain refuses new
+        // work instead of queueing it into a dead turn.
+        let messages = dispatched.drain();
+        assert!(
+            messages.is_empty(),
+            "a batch during a cancel drain must not run; got {messages:?}"
+        );
     }
 }

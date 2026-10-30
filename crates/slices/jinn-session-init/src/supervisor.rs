@@ -49,14 +49,12 @@ pub struct SessionInitSupervisor {
 impl ServiceActor for SessionInitSupervisor {
     #[expect(
         clippy::unused_async_trait_impl,
-        reason = "trait contract: start is never called (spawn uses start_with)"
+        reason = "trait contract: init is never called (spawn uses init_with)"
     )]
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
-                .attach("SessionInitSupervisor is spawned via start_with"),
+                .attach("SessionInitSupervisor is spawned via init_with"),
         )
     }
 }
@@ -78,7 +76,7 @@ impl SessionInitSupervisor {
     pub fn spawn(system: &ActorSystem, state: State) -> ActorPath {
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new(crate::SUPERVISOR_PATH))
-            .start_with({
+            .init_with({
                 let state = state.clone();
                 move || {
                     let state = state.clone();

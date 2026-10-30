@@ -152,15 +152,15 @@ impl TestHarness {
                 clippy::unused_async_trait_impl,
                 reason = "async signature symmetry; body has no await"
             )]
-            async fn start(
+            async fn init(
                 _args: &trouper::json::Json,
             ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
-                // Never called: spawned via `spawn_service_builder` + `start_with`
+                // Never called: spawned via `spawn_service_builder` + `init_with`
                 // (the typed buffer can't ride JSON args).
                 Err(error_stack::IntoReport::into_report(
                     trouper::registry::RegistryError::InvalidSpec,
                 )
-                .attach("TroupeTap is spawned via start_with"))
+                .attach("TroupeTap is spawned via init_with"))
             }
         }
 
@@ -187,7 +187,7 @@ impl TestHarness {
         let buffer = recorder.buffer.clone();
         trouper::builder::spawn_service_builder::<TroupeTap<M>>(&self.system)
             .at(path.clone())
-            .start_with(move || {
+            .init_with(move || {
                 let buffer = buffer.clone();
                 Box::pin(async move {
                     Ok(TroupeTap {

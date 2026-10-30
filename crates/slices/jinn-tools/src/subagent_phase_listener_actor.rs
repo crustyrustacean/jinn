@@ -28,8 +28,8 @@ use trouper::registry::RegistryError;
 
 use jinn_core_types::SessionId;
 use jinn_kernel::common::services::bus_service::BusService;
-use jinn_session_msg::PhaseKind;
 use jinn_session_msg::SessionPhaseChanged;
+use jinn_slices::PhaseView;
 
 /// Dependencies for spawning a [`SubagentPhaseListenerActor`].
 #[derive(Debug)]
@@ -46,7 +46,7 @@ pub struct SubagentPhaseListenerDeps {
 }
 
 /// A one-shot actor that awaits a single child session's transition to
-/// [`PhaseKind::Idle`]. See the [module docs](self) for the lifecycle.
+/// [`PhaseView::Idle`]. See the [module docs](self) for the lifecycle.
 #[derive(Debug)]
 pub struct SubagentPhaseListenerActor {
     child_id: SessionId,
@@ -54,13 +54,11 @@ pub struct SubagentPhaseListenerActor {
 }
 
 impl ServiceActor for SubagentPhaseListenerActor {
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: spawned via `start_with` (typed deps cannot ride
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
+        // Never called: spawned via `init_with` (typed deps cannot ride
         // JSON args).
         Err(error_stack::Report::new(RegistryError::InvalidSpec)
-            .attach("SubagentPhaseListenerActor spawns via start_with"))
+            .attach("SubagentPhaseListenerActor spawns via init_with"))
     }
 }
 
@@ -81,7 +79,7 @@ impl SubagentPhaseListenerActor {
         let completion = deps.completion;
         trouper::builder::spawn_service_builder::<Self>(&deps.system)
             .at(path.clone())
-            .start_with(move || {
+            .init_with(move || {
                 let child_id = child_id.clone();
                 let completion = completion;
                 Box::pin(async move {
@@ -117,7 +115,7 @@ impl MsgHandler<SessionPhaseChanged> for SubagentPhaseListenerActor {
         // Match any transition into Idle regardless of the old phase: the
         // cancel path force-publishes Idle→Idle, and the listener must not
         // miss it.
-        if msg.session_id == self.child_id && msg.new_phase == PhaseKind::Idle {
+        if msg.session_id == self.child_id && msg.new_phase == PhaseView::Idle {
             if let Some(completion) = self.completion.take() {
                 let _ = completion.send(());
             }

@@ -174,6 +174,7 @@ impl ActorSystemBuilder {
             viewport: jinn_slices::view::Viewport::new(),
             overlay_views: jinn_slices::OverlayViews::new(),
             project_picker: None,
+            turn_ledger: jinn_kernel::common::turn_ledger::TurnLedger::default(),
         };
 
         // The shell was resolved at launch, in `bootstrap::config`, and

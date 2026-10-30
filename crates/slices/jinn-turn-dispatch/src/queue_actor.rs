@@ -69,9 +69,9 @@ use jinn_kernel::common::state::State;
 use jinn_provider_selection::attachment_gate::evaluate_attachment_gate;
 use jinn_provider_selection_msg::resolve_effort;
 use jinn_session_history_msg::HistoryAppended;
-use jinn_session_msg::PhaseKind;
 use jinn_session_msg::SessionPhaseChanged;
-use jinn_session_msg::phase_command::DispatchKind;
+use jinn_slices::PhaseView;
+
 use jinn_session_store_msg::PersistSession;
 use jinn_slices::AssembledPrompt;
 use jinn_token_count_msg::TokenRecord;
@@ -102,16 +102,14 @@ impl BusPublish for QueueActor {
 impl ServiceActor for QueueActor {
     #[expect(
         clippy::unused_async_trait_impl,
-        reason = "trait contract: start is never called (spawn uses start_with)"
+        reason = "trait contract: init is never called (spawn uses init_with)"
     )]
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects state and services via
-        // `start_with`.
+        // `init_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
-                .attach("QueueActor is spawned via start_with"),
+                .attach("QueueActor is spawned via init_with"),
         )
     }
 }
@@ -124,7 +122,7 @@ impl QueueActor {
     pub fn spawn(system: &ActorSystem, state: State, services: Services) -> ActorPath {
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new(QUEUE_PATH))
-            .start_with({
+            .init_with({
                 move || {
                     let state = state.clone();
                     let services = services.clone();
@@ -138,7 +136,7 @@ impl QueueActor {
 
     /// Handle `SessionPhaseChanged` — dispatch on phase transitions.
     pub async fn handle_session_phase_changed(&self, payload: &SessionPhaseChanged) {
-        if payload.new_phase == PhaseKind::Idle {
+        if payload.new_phase == PhaseView::Idle {
             self.handle_idle_transition(&payload.session_id).await;
         }
     }
@@ -227,23 +225,25 @@ impl QueueActor {
     ) {
         // Admission first, before the entry is pushed: a refused mint
         // must leave history untouched (the caller re-queues the entry).
-        // A user message always mints a fresh generation — `FreshTurn` —
-        // so the only refusal is a dead actor, not a state refusal.
+        // A user message always mints a fresh turn through the ledger —
+        // the only refusal is a cancel drain in progress. The machine's
+        // fused edge rides the mint as its projection.
         let stamp = jiff::Timestamp::now();
-        let decision = crate::dispatch::admit_begin_stream(
+        let Some(grant) = jinn_kernel::common::turn_ledger::mint_dispatch_with_stamp(
             &self.services,
+            &self.state,
             session_id,
-            DispatchKind::FreshTurn,
+            jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
             stamp,
         )
-        .await;
-        if !decision.admitted {
+        .await
+        else {
             tracing::warn!(
                 session_id = %session_id,
-                "queue could not reach the phase actor; dispatch aborted before the entry landed"
+                "queue could not mint a turn; dispatch aborted before the entry landed"
             );
             return;
-        }
+        };
 
         // Vision gate: if the entry carries attachments but the active model
         // is not confirmed image-capable, push entry + error and abort dispatch
@@ -307,6 +307,8 @@ impl QueueActor {
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
             dispatched_at: stamp,
+            turn: grant.turn,
+            stream: grant.stream,
         })
         .await;
 
@@ -377,24 +379,7 @@ impl QueueActor {
     /// writes, and no token record — the session actor's tool-loop path owns
     /// those for real continuations.
     async fn dispatch_resume(&self, session_id: &SessionId, origin: StreamOrigin) {
-        // Admission first: a continuation for a cancelled generation is
-        // refused here — the phase actor is the one writer, and a dead
-        // generation minted no stream. Nothing reaches the provider.
         let stamp = jiff::Timestamp::now();
-        let decision = crate::dispatch::admit_begin_stream(
-            &self.services,
-            session_id,
-            DispatchKind::ToolContinuation,
-            stamp,
-        )
-        .await;
-        if !decision.admitted {
-            tracing::info!(
-                session_id = %session_id,
-                "queue refused a tool continuation: its generation was cancelled"
-            );
-            return;
-        }
 
         // Normalize loop layout so committed loops never contain
         // interstitials before assembly. Steering fragments are NOT drained
@@ -410,27 +395,28 @@ impl QueueActor {
             return;
         };
 
-        // Re-admit before publishing, against the stamp this path minted:
-        // a cancel landing in the assemble window kills the generation, and
-        // the phase actor refuses the second ask. A tool continuation
-        // racing a cancel would otherwise start a stream the watchdogs
-        // no longer watch (the cancel cleared the guard) — the same
-        // zombie shape the prepared dispatch's re-ask closes.
-        if !crate::dispatch::admit_begin_stream(
+        // Admit before publishing: the continuation joins the live turn
+        // through the ledger, minting its stream id. A turn the cancel
+        // drained (or that already settled) refuses the join — nothing is
+        // sent for a dead turn, and a cancel landing in the assemble window
+        // is exactly what this late mint refuses. A tool continuation
+        // racing a cancel would otherwise start a stream nothing watches.
+        // The machine's fused edge rides the mint as its projection.
+        let Some(grant) = jinn_kernel::common::turn_ledger::mint_dispatch_with_stamp(
             &self.services,
+            &self.state,
             session_id,
-            DispatchKind::ToolContinuation,
+            jinn_kernel::common::turn_ledger::MintKind::ToolContinuation,
             stamp,
         )
         .await
-        .admitted
-        {
+        else {
             tracing::warn!(
                 session_id = %session_id,
-                "queue refused a tool continuation at publish: its generation was cancelled mid-assemble"
+                "queue refused a tool continuation at publish: its turn was cancelled mid-assemble"
             );
             return;
-        }
+        };
 
         let (provider_id, model_used, reasoning_effort, endpoint_tag) =
             self.resolve_dispatch_model(session_id);
@@ -449,6 +435,8 @@ impl QueueActor {
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
             dispatched_at: stamp,
+            turn: grant.turn,
+            stream: grant.stream,
         })
         .await;
     }
@@ -466,28 +454,7 @@ impl QueueActor {
     /// `SendToLlmProvider` subscription — the single write point — not
     /// here.
     async fn dispatch_prepared(&self, session_id: &SessionId) {
-        // Admission first: this path dispatches a turn prepared before the
-        // queue received it (a queued resume, or a steering handoff), so it
-        // arrives as `ResumeTurn`. A cancel that landed while the turn sat
-        // queued has already killed its generation — the ask refuses, and
-        // nothing downstream of this point happens. This is the fix site
-        // for the phase flap: the phase can no longer re-enter `Streaming`
-        // behind a dead turn because the dispatch never starts.
         let stamp = jiff::Timestamp::now();
-        let decision = crate::dispatch::admit_begin_stream(
-            &self.services,
-            session_id,
-            DispatchKind::ResumeTurn,
-            stamp,
-        )
-        .await;
-        if !decision.admitted {
-            tracing::warn!(
-                session_id = %session_id,
-                "queue refused a prepared dispatch: its generation was cancelled"
-            );
-            return;
-        }
 
         // Steer-first drain: a fragment submitted in the window between the
         // dispatching path's history push and this command's execution must
@@ -514,35 +481,32 @@ impl QueueActor {
         };
         let estimated_tokens = assembled.estimated_tokens();
 
-        // Re-admit before publishing. The first ask admitted the turn and
-        // the assemble window followed it; a cancel published in that
-        // window — the stream-rule watchdog's trip, which races the
-        // intercept's own resume by construction — is processed by the
-        // session actor *while* this actor was assembling, so only a
-        // second ask sees it. Without this, the resume of an interrupted
-        // generation lands one provider request past the trip, and the
-        // next rule match on that zombie stream is the extra interrupt
-        // the user finds in the log after the cancel.
-        //
-        // Resolves against the stamp the first admission minted, not the
-        // wall clock: the phase actor refuses when the record's stamp is
-        // gone (the cancel cleared it) or the generation's live stamp has
-        // moved past this one. Same ask, same shape, no new message.
-        if !crate::dispatch::admit_begin_stream(
+        // Admit before publishing: the prepared turn (a queued resume, or a
+        // steering handoff) joins the live turn through the ledger, minting
+        // its stream id. A cancel that landed while the turn sat queued —
+        // or in the assemble window between preparation and this command's
+        // execution, the stream-rule watchdog's trip racing the intercept's
+        // own resume by construction — has already begun the drain, and the
+        // ledger refuses the join. Without this, the resume of an
+        // interrupted turn lands one provider request past the trip, and
+        // the next rule match on that zombie stream is the extra interrupt
+        // the user finds in the log after the cancel. The machine's fused
+        // edge rides the mint as its projection.
+        let Some(grant) = jinn_kernel::common::turn_ledger::mint_dispatch_with_stamp(
             &self.services,
+            &self.state,
             session_id,
-            DispatchKind::ResumeTurn,
+            jinn_kernel::common::turn_ledger::MintKind::Resume,
             stamp,
         )
         .await
-        .admitted
-        {
+        else {
             tracing::warn!(
                 session_id = %session_id,
-                "queue refused a prepared dispatch at publish: its generation was cancelled mid-assemble"
+                "queue refused a prepared dispatch at publish: no live turn behind it"
             );
             return;
-        }
+        };
 
         // Resolve model under write lock (round-robin mutates index), then
         // record the outgoing token count against the stamp the phase
@@ -594,6 +558,8 @@ impl QueueActor {
             estimated_tokens,
             tool_definitions: assembled.tool_definitions,
             dispatched_at: stamp,
+            turn: grant.turn,
+            stream: grant.stream,
         })
         .await;
 

@@ -1224,7 +1224,7 @@ async fn a_trigger_does_not_cancel_an_bot_that_is_already_running() {
     let session = guard.session.get(&bot_id).expect("exists");
     assert_eq!(
         session.phase(),
-        jinn_session_msg::PhaseKind::Streaming,
+        jinn_slices::PhaseView::Streaming,
         "a trigger must not cancel a bot that is already running"
     );
     // And the running turn is not recorded as cancelled.

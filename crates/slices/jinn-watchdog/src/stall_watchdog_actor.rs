@@ -118,10 +118,6 @@ pub struct StallWatchdogActorDeps {
 /// Event-driven: one timer per session, self-tick driven.
 pub struct StallWatchdogActor {
     services: Services,
-    /// The system this actor runs on — captured at spawn so the tick can
-    /// self-address. (The services container may carry a different system
-    /// in tests, where the harness spawns on its own.)
-    system: ActorSystem,
     /// Monotonic base for [`Self::now_ms`], captured at spawn. Measuring
     /// elapsed time against a wall clock would mis-fire on an NTP step or a
     /// machine suspend; `Instant` counts real elapsed time through both.
@@ -136,16 +132,14 @@ pub struct StallWatchdogActor {
 impl ServiceActor for StallWatchdogActor {
     #[expect(
         clippy::unused_async_trait_impl,
-        reason = "trait contract: start is never called (spawn uses start_with)"
+        reason = "trait contract: init is never called (spawn uses init_with)"
     )]
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: the spawn helper injects the deps via `start_with`
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
+        // Never called: the spawn helper injects the deps via `init_with`
         // (Services carries typed handles that cannot ride JSON args).
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
-                .attach("StallWatchdogActor is spawned via start_with"),
+                .attach("StallWatchdogActor is spawned via init_with"),
         )
     }
 }
@@ -165,31 +159,26 @@ impl StallWatchdogActor {
     /// Spawns the actor at its static trouper path and returns the path.
     ///
     /// Subscriptions: the three stream contracts plus the self-addressed
-    /// [`StallTick`]. The tick self-addresses through the same path, so
-    /// the first tick is kicked by a detached task **after** this call
-    /// resolves: the wiring moves on while the tick processes
-    /// concurrently.
+    /// [`StallTick`]. The first tick is armed by `.kickoff` at spawn; the
+    /// wiring moves on while the tick processes concurrently.
     ///
     /// The mailbox runs `DropNew` (see the module docs for why a
     /// watchdog must never backpressure its feed).
     #[expect(
         clippy::needless_pass_by_value,
-        reason = "port convention: spawn takes owned deps and clones into start_with"
+        reason = "port convention: spawn takes owned deps and clones into init_with"
     )]
     pub fn spawn(system: &ActorSystem, deps: StallWatchdogActorDeps) -> ActorPath {
         let path = ActorPath::new(STALL_WATCHDOG_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())
-            .start_with({
+            .init_with({
                 let deps = deps.clone();
-                let system = system.clone();
                 move || {
                     let deps = deps.clone();
-                    let system = system.clone();
                     Box::pin(async move {
                         Ok(Self {
                             services: deps.services,
-                            system,
                             started_at: Instant::now(),
                             timeout_ms: deps.timeout_ms,
                             max_restarts: deps.max_restarts,
@@ -211,15 +200,10 @@ impl StallWatchdogActor {
             .handles::<TurnCompleted>()
             .handles::<StallTick>()
             .mailbox(64, trouper::inbox::OverloadPolicy::DropNew)
+            // Arms the first tick ~1ms after spawn; the chain
+            // self-perpetuates from there (see [`Self::reschedule`]).
+            .kickoff(StallTick, Duration::from_millis(1))
             .start();
-        // Kick the first tick. A failed send only means the actor is
-        // already stopping.
-        let kicker = system.clone();
-        let kick_path = path.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(1)).await;
-            let _ = kicker.tell(kick_path, StallTick).await;
-        });
         path
     }
 
@@ -229,14 +213,8 @@ impl StallWatchdogActor {
     /// semantics: the next tick is queued while the current one may
     /// still be running, and `DropNew` guarantees the mailbox never
     /// accumulates stale ticks.
-    fn reschedule(&self) {
-        let system = self.system.clone();
-        let path = ActorPath::new(STALL_WATCHDOG_PATH);
-        let interval = self.tick_interval;
-        tokio::spawn(async move {
-            tokio::time::sleep(interval).await;
-            let _ = system.tell(path, StallTick).await;
-        });
+    fn reschedule(&self, ctx: &mut MsgCtx<'_>) {
+        ctx.schedule_self(StallTick, self.tick_interval);
     }
 
     /// Publishes the watchdog's actions on the fabric, in order.
@@ -285,10 +263,10 @@ pub enum StallAction {
 pub struct StallTick;
 
 impl MsgHandler<StallTick> for StallWatchdogActor {
-    async fn handle(&mut self, _msg: &StallTick, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, _msg: &StallTick, ctx: &mut MsgCtx<'_>) {
         let actions = self.on_tick(self.now_ms());
         self.publish_actions(actions).await;
-        self.reschedule();
+        self.reschedule(ctx);
     }
 }
 
@@ -560,10 +538,8 @@ mod tests {
     /// real fabric — they assert on `on_tick`'s returned actions).
     async fn watchdog(timeout_secs: u64, max_restarts: u32) -> StallWatchdogActor {
         let services = Services::new_fake().await;
-        let system = services.trouper_system.clone();
         StallWatchdogActor {
             services,
-            system,
             started_at: Instant::now(),
             timeout_ms: timeout_secs * 1_000,
             max_restarts,

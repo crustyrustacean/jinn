@@ -124,7 +124,7 @@ There is no central actor host. The bus is a **schema broadcast**: a published m
 
 An actor is a struct ending in `Actor` that implements three things:
 
-- `ServiceActor` (from `trouper`) — with `start` returning an error, because actors always spawn via `start_with`. That `Err` is a hard invariant, not a stub.
+- `ServiceActor` (from `trouper`) — with `init` returning an error, because actors always spawn via `init_with`. That `Err` is a hard invariant, not a stub.
 - `MsgHandler<M>` for each message it consumes, one impl per message, each delegating to a handler function.
 - `BusPublish` (jinn's own trait, in `crates/jinn-kernel/src/common/actor_deps.rs`) — gives the actor the bus.
 

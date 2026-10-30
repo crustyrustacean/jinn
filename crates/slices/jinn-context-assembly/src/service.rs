@@ -24,7 +24,7 @@ impl ServiceActor for ContextAssemblyService {
         clippy::unused_async_trait_impl,
         reason = "stateless service: start has nothing to await"
     )]
-    async fn start(_args: &trouper::json::Json) -> Result<Self, Report<RegistryError>> {
+    async fn init(_args: &trouper::json::Json) -> Result<Self, Report<RegistryError>> {
         Ok(Self)
     }
 }
@@ -57,10 +57,59 @@ pub fn spawn(system: &trouper::system::ActorSystem) -> ActorPath {
 /// compose the same system through several constructors; re-spawning an
 /// identical manifest trips trouper's once-only path invariant, which
 /// this tolerates by keeping the first registration.
+///
+/// The check happens before spawning, not by containing a panic: trouper
+/// registers the slot inside the actor task it spawns for `start`, so a
+/// double spawn panics on another thread after `spawn` returns —
+/// `catch_unwind` here would never see it.
 #[must_use]
 pub fn ensure_spawned(system: &trouper::system::ActorSystem) -> Option<ActorPath> {
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| spawn(system)));
-    result.ok()
+    let path = ActorPath::new(CONTEXT_ASSEMBLY_PATH);
+    let live = {
+        let probe = system.export();
+        // A multi-thread runtime can take `block_in_place`; anything else
+        // (current-thread test runtimes, sync harnesses) gets a private
+        // probe runtime on its own thread, so the caller's scheduler is
+        // never blocked and never double-driven.
+        let multi = tokio::runtime::Handle::try_current()
+            .ok()
+            .map(|h| h.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread);
+        match multi {
+            Some(true) => {
+                let handle = tokio::runtime::Handle::current();
+                tokio::task::block_in_place(|| {
+                    handle
+                        .block_on(probe)
+                        .actors
+                        .iter()
+                        .any(|actor| actor.path == path)
+                })
+            }
+            _ => {
+                let probed = std::thread::scope(|scope| {
+                    scope
+                        .spawn(|| {
+                            tokio::runtime::Builder::new_current_thread()
+                                .enable_all()
+                                .build()
+                                .ok()
+                                .map(|rt| {
+                                    rt.block_on(probe)
+                                        .actors
+                                        .iter()
+                                        .any(|actor| actor.path == path)
+                                })
+                        })
+                        .join()
+                });
+                probed.unwrap_or_default().unwrap_or(false)
+            }
+        }
+    };
+    if live {
+        return None;
+    }
+    Some(spawn(system))
 }
 
 #[cfg(test)]

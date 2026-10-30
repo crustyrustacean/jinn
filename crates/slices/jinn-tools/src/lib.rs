@@ -9,8 +9,8 @@
 //! (`ToolDefinition`/`ToolCall`/`ToolResult`) live in `jinn-core-types`.
 //!
 //! The orchestrator maintains a registry of available tools (built-in and
-//! actor-provided), dispatches batches, and emits `ToolBatchCompleted`
-//! when all calls finish. Actor-provided tools are routed via `ExecuteTool`
+//! actor-provided), dispatches batches, and emits one `ToolExecutionCompleted`
+//! per finished call. Actor-provided tools are routed via `ExecuteTool`
 //! commands on the bus.
 
 pub use jinn_tools_msg::BoxedToolFuture;

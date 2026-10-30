@@ -103,6 +103,7 @@ fn ctx_with_coordinator(
     let state = State::new(AppState::default());
 
     ToolContext {
+        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
         cwd: dir.clone(),
         config: jinn_config::testutil::config_layer(""),
         shells: Default::default(),
@@ -181,6 +182,7 @@ async fn execute_fails_when_coordinator_ref_is_none() {
     let dir = jinn_testutil::tempdir();
     let session_id = SessionId::new();
     let ctx = ToolContext {
+        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
         cwd: dir.path.clone(),
         config: jinn_config::testutil::config_layer(""),
         shells: Default::default(),

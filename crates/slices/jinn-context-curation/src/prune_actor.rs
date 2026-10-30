@@ -48,16 +48,14 @@ pub struct PruneActor {
 impl ServiceActor for PruneActor {
     #[expect(
         clippy::unused_async_trait_impl,
-        reason = "trait contract: start is never called (spawn uses start_with)"
+        reason = "trait contract: init is never called (spawn uses init_with)"
     )]
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects state and workers via
-        // `start_with`.
+        // `init_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
-                .attach("PruneActor is spawned via start_with"),
+                .attach("PruneActor is spawned via init_with"),
         )
     }
 }
@@ -81,7 +79,7 @@ impl PruneActor {
     ) -> ActorPath {
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new(PRUNE_PATH))
-            .start_with({
+            .init_with({
                 move || {
                     let state = state.clone();
                     let services = services.clone();

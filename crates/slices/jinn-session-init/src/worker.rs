@@ -179,14 +179,12 @@ impl WorkerDeps {
 }
 
 impl ServiceActor for SessionDiscoveryWorker {
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
         // State cannot ride JSON args; entities spawn via the partition
-        // factory's `start_with` closure (see `spawn`).
+        // factory's `init_with` closure (see `spawn`).
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec).attach(
-                "SessionDiscoveryWorker spawns via the partition factory; start requires state",
+                "SessionDiscoveryWorker spawns via the partition factory; init requires state",
             ),
         )
     }
@@ -204,7 +202,7 @@ impl SessionDiscoveryWorker {
             .at(path)
             .mailbox(1024, trouper::inbox::OverloadPolicy::Block)
             .passivate_after(IDLE_LIFETIME)
-            .start_with(move || {
+            .init_with(move || {
                 Box::pin(async move {
                     let SessionDiscoveryWorkerDepsBuilder {
                         session_id,
@@ -566,7 +564,7 @@ impl SessionDiscoveryWorker {
     }
 }
 
-/// The `start_with` closure cannot move fields out of a captured
+/// The `init_with` closure cannot move fields out of a captured
 /// `WorkerDeps` more than once (the factory may spawn many entities);
 /// this builder receives cloned fields instead.
 struct SessionDiscoveryWorkerDepsBuilder {

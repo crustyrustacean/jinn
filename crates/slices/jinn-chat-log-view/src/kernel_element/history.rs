@@ -37,9 +37,9 @@ use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_kernel::common::ui_element::UiElement;
 use jinn_kernel::protocol::ToolResultStatus;
 use jinn_kernel::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
-use jinn_session_msg::PhaseKind;
 use jinn_session_state::ChatSessionState;
 use jinn_slices::DrawContext;
+use jinn_slices::PhaseView;
 use jinn_theme::Theme;
 use jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME;
 use ratatui::Frame;
@@ -109,12 +109,17 @@ pub(crate) struct LayoutInputs {
 impl LayoutInputs {
     /// Snapshots the layout inputs for one session.
     pub(crate) fn snapshot(state: &AppState, session_id: &SessionId) -> Self {
-        use jinn_session_msg::PhaseKind;
+        use jinn_slices::PhaseView;
 
         let running_children = state
             .session
             .iter()
-            .filter(|(_, child)| matches!(child.phase(), PhaseKind::Sending | PhaseKind::Streaming))
+            .filter(|(_, child)| {
+                matches!(
+                    child.phase(),
+                    PhaseView::Streaming | PhaseView::Working | PhaseView::Cancelling
+                )
+            })
             .map(|(id, _)| id.clone())
             .collect();
 
@@ -495,7 +500,12 @@ fn running_session_ids(state: &AppState) -> HashSet<SessionId> {
     state
         .session
         .iter()
-        .filter(|(_, child)| matches!(child.phase(), PhaseKind::Sending | PhaseKind::Streaming))
+        .filter(|(_, child)| {
+            matches!(
+                child.phase(),
+                PhaseView::Streaming | PhaseView::Working | PhaseView::Cancelling
+            )
+        })
         .map(|(id, _)| id.clone())
         .collect()
 }
@@ -724,7 +734,7 @@ impl<'a> HistoryRender<'a> {
     /// frame.
     fn streaming_entry_id(&self) -> Option<ChatEntryId> {
         let session = self.state.active_session();
-        if !matches!(session.phase(), PhaseKind::Streaming) {
+        if !matches!(session.phase(), PhaseView::Streaming) {
             return None;
         }
         let hist_idx = session.streaming_entry_index()?;

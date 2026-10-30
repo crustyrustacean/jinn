@@ -7,7 +7,8 @@ use jinn_kernel::common::app_state::AppState;
 pub use jinn_session_list::{SessionEntry, SessionEntryKind};
 pub use jinn_sidebar_msg::SessionsSectionState;
 
-use jinn_session_msg::{PhaseKind, SessionOrigin};
+use jinn_session_msg::SessionOrigin;
+use jinn_slices::PhaseView;
 
 /// A cheap, clone-free summary of everything the sessions tree depends on.
 ///
@@ -65,7 +66,7 @@ impl SessionListKey {
             title_tail,
             is_active: id == active_id,
             created_at: *session.created_at(),
-            is_idle: matches!(session.phase(), PhaseKind::Idle),
+            is_idle: matches!(session.phase(), PhaseView::Idle),
             last_entry_is_error: session.history().last().is_some_and(|entry| {
                 matches!(&entry.kind, jinn_core_types::ChatEntryKind::Error(..))
             }),
@@ -146,7 +147,7 @@ pub fn sorted_open_sessions_split(
             title: session.title().unwrap_or("Untitled Session").to_owned(),
             is_active: id == active_id,
             created_at: *session.created_at(),
-            is_idle: matches!(session.phase(), PhaseKind::Idle),
+            is_idle: matches!(session.phase(), PhaseView::Idle),
             last_entry_is_error: session.history().last().is_some_and(|entry| {
                 matches!(&entry.kind, jinn_core_types::ChatEntryKind::Error(..))
             }),

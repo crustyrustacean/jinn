@@ -100,13 +100,11 @@ pub struct McpCoordinatorActorDeps {
 }
 
 impl ServiceActor for McpCoordinatorActor {
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: spawned via `start_with` (typed deps cannot ride
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
+        // Never called: spawned via `init_with` (typed deps cannot ride
         // JSON args).
         Err(error_stack::Report::new(RegistryError::InvalidSpec)
-            .attach("McpCoordinatorActor spawns via start_with"))
+            .attach("McpCoordinatorActor spawns via init_with"))
     }
 }
 
@@ -124,7 +122,7 @@ impl McpCoordinatorActor {
         let system_for_start = system.clone();
         let builder = trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())
-            .start_with({
+            .init_with({
                 move || {
                     let deps = deps.clone();
                     let system = system_for_start.clone();

@@ -33,8 +33,8 @@ use jinn_kernel::protocol::{ChatEntry, ChatEntryKind};
 use jinn_kernel::{ProviderRegistry, ProvidersConfig};
 use jinn_session_init_msg::{ContextFilesLoaded, PromptTemplatesLoaded};
 use jinn_session_lifecycle_msg::SessionCreated;
-use jinn_session_msg::PhaseKind;
 use jinn_session_msg::SessionPhaseChanged;
+use jinn_slices::PhaseView;
 use jinn_testutil::bus_harness::{TestHarness, await_recorded};
 use jinn_tools_msg::{PhaseInput, TaskStatus};
 use std::collections::BTreeSet;
@@ -71,6 +71,7 @@ async fn spawn_subagent_ctx_with(
     let model_name_resolver =
         seed_registry.then(|| registry_model_name_resolver(&services.provider_registry));
     ToolContext {
+        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
         cwd: paths_root.clone(),
         config: jinn_config::testutil::config_layer(""),
         shells: Default::default(),
@@ -169,13 +170,13 @@ async fn finish_child_like_session_actor(
         // The old finish is now the two actor halves: the session actor's
         // entry fold, then the phase actor's machine edge.
         child.finalize_entries_for_finish(false, jiff::Timestamp::now());
-        child.finish_streaming_via_machine();
+        child.settle_to_idle();
         old
     };
     bus.publish(SessionPhaseChanged {
         session_id: child_id.clone(),
         old_phase: old,
-        new_phase: PhaseKind::Idle,
+        new_phase: PhaseView::Idle,
         at: jiff::Timestamp::now(),
     })
     .await;
@@ -200,12 +201,12 @@ async fn cancel_child_like_user(
         // must precede the error entry so it lands last in history.
         child.finalize_entries_for_cancel(jiff::Timestamp::now());
         child.push_entry(ChatEntry::error("Cancelled"));
-        child.cancel_streaming_via_machine();
+        child.settle_to_idle();
     }
     bus.publish(SessionPhaseChanged {
         session_id: child_id.clone(),
-        old_phase: PhaseKind::Idle,
-        new_phase: PhaseKind::Idle,
+        old_phase: PhaseView::Idle,
+        new_phase: PhaseView::Idle,
         at: jiff::Timestamp::now(),
     })
     .await;
@@ -1112,7 +1113,7 @@ async fn parent_cancel_leaves_child_running_and_unregisters_pair() {
     );
     let snapshot = state.read();
     let child = snapshot.session.get(&child_id).expect("child survives");
-    assert_eq!(child.phase(), PhaseKind::Streaming);
+    assert_eq!(child.phase(), PhaseView::Streaming);
 }
 
 // ---------------------------------------------------------------------------
@@ -1162,8 +1163,8 @@ async fn listener_signals_on_idle_to_idle_transition() {
     harness
         .publish(SessionPhaseChanged {
             session_id: child_id.clone(),
-            old_phase: PhaseKind::Idle,
-            new_phase: PhaseKind::Idle,
+            old_phase: PhaseView::Idle,
+            new_phase: PhaseView::Idle,
             at: jiff::Timestamp::now(),
         })
         .await;

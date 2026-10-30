@@ -26,7 +26,7 @@ impl trouper::actor::ServiceActor for CensusProbe {
     fn manifest() -> trouper::schema::ActorManifest {
         trouper::schema::ActorManifest::new()
     }
-    async fn start(
+    async fn init(
         _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
         Ok(Self)

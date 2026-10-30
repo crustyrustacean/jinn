@@ -116,6 +116,7 @@ async fn singleton_actor_serves_a_session_that_never_spawned_it() {
     // When session B — a different session — dispatches an ExecuteTool.
     harness
         .publish(ExecuteTool {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             session_id: SessionId::new(),
             tool_call: echo_call(),
             dispatched_at: jiff::Timestamp::now(),

@@ -104,6 +104,30 @@ impl SessionStoreService {
         self.svc.delete(session_id).await
     }
 
+    /// Delete many sessions in one atomic operation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the bulk delete fails.
+    pub async fn delete_many(
+        &self,
+        session_ids: &[SessionId],
+    ) -> Result<(), Report<SessionStoreError>> {
+        self.svc.delete_many(session_ids).await
+    }
+
+    /// Return freed pages to the filesystem (incremental auto-vacuum).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the vacuum command fails.
+    pub async fn incremental_vacuum(
+        &self,
+        max_pages: u32,
+    ) -> Result<(), Report<SessionStoreError>> {
+        self.svc.incremental_vacuum(max_pages).await
+    }
+
     /// Fork a session from a specific entry ordinal.
     ///
     /// # Errors

@@ -53,13 +53,11 @@ impl ServiceActor for SkillPickerRepublisherActor {
         clippy::unused_async_trait_impl,
         reason = "ServiceActor::start is async by signature; this impl never awaits"
     )]
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: spawned via `start_with` (typed deps cannot ride
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
+        // Never called: spawned via `init_with` (typed deps cannot ride
         // JSON args).
         Err(error_stack::Report::new(RegistryError::InvalidSpec)
-            .attach("SkillPickerRepublisherActor spawns via start_with"))
+            .attach("SkillPickerRepublisherActor spawns via init_with"))
     }
 }
 

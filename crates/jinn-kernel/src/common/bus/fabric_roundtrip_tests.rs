@@ -114,6 +114,8 @@ fn sample_tool_result() -> ToolResult {
     provider_name: "probe-provider".to_owned(),
 }))]
 #[case::tool_completed(ToolExecutionCompletedSample(ToolExecutionCompleted {
+    turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+    synthesized: false,
     session_id: SessionId::new(),
     result: sample_tool_result(),
 }))]

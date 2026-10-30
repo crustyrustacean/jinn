@@ -85,7 +85,7 @@ pub fn activate(host: &mut jinn_slices::SliceHost<'_, jinn_slices::RenderFacts>)
     .at(trouper::actor::ActorPath::new(
         workflow_picker_republisher_actor::WorkflowPickerRepublisherActor::PATH.to_owned(),
     ))
-    .start_with(move || {
+    .init_with(move || {
         Box::pin(async move {
             Ok(
                 workflow_picker_republisher_actor::WorkflowPickerRepublisherActor::new(

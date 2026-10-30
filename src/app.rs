@@ -22,6 +22,30 @@ use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 #[error(debug)]
 pub struct AppError;
 
+/// Resolves the `--dump-requests` value into a typed absolute dump dir.
+///
+/// A relative value joins the process cwd and a leading `~` expands against
+/// the home directory, per [`crate::cli_paths`].
+///
+/// # Errors
+///
+/// Returns an error naming the flag and the raw value when the value cannot
+/// be resolved to an absolute path.
+fn resolve_dump_requests(
+    dir: Option<&std::path::Path>,
+) -> Result<Option<MarkedPathBuf<Absolute>>, Report<AppError>> {
+    let Some(dir) = dir else {
+        return Ok(None);
+    };
+    crate::cli_paths::resolve_cli_path(
+        "--dump-requests",
+        dir,
+        jinn_kernel::AppPaths::default().home_dir(),
+    )
+    .change_context(AppError)
+    .map(Some)
+}
+
 /// Top-level application state.
 ///
 /// Created once in `crate::main` and dispatched to whichever
@@ -173,6 +197,7 @@ impl App {
                     // variant remains for argv-shape compatibility; the real
                     // bundled servers were intercepted in `prepare`.
                     Commands::Tui | Commands::Mcp { .. } => {
+                        let dump_requests = resolve_dump_requests(cli.dump_requests.as_deref())?;
                         let app_paths = jinn_kernel::AppPaths::default();
                         let compaction_prompt = jinn_tui::load_compaction_prompt(
                             &app_paths.prompts_dir().as_marked_path(),
@@ -193,12 +218,7 @@ impl App {
                                         app_state_storage: app_state_storage.clone(),
                                         shells: shells.clone(),
                                         paths: jinn_kernel::AppPaths::default(),
-                                        dump_requests: cli
-                                            .dump_requests
-                                            .clone()
-                                            .map(MarkedPathBuf::<Absolute>::new)
-                                            .transpose()
-                                            .expect("cli dump dir is a valid path"),
+                                        dump_requests: dump_requests.clone(),
                                         compaction_prompt,
                                     },
                                 )
@@ -227,6 +247,7 @@ impl App {
                     #[cfg(debug_assertions)]
                     Commands::Headless { command, .. } => {
                         let store_for_shutdown = session_store.clone();
+                        let dump_requests = resolve_dump_requests(cli.dump_requests.as_deref())?;
                         let app_paths = jinn_kernel::AppPaths::default();
                         let compaction_prompt = jinn_tui::load_compaction_prompt(
                             &app_paths.prompts_dir().as_marked_path(),
@@ -247,12 +268,7 @@ impl App {
                                         app_state_storage,
                                         shells,
                                         paths: jinn_kernel::AppPaths::default(),
-                                        dump_requests: cli
-                                            .dump_requests
-                                            .clone()
-                                            .map(MarkedPathBuf::<Absolute>::new)
-                                            .transpose()
-                                            .expect("cli dump dir is a valid path"),
+                                        dump_requests,
                                         compaction_prompt,
                                     },
                                 )

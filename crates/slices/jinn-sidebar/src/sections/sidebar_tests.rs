@@ -1894,7 +1894,7 @@ fn preview_bottom_edge_sits_two_rows_above_the_sessions_cursor() {
     let buf = terminal.backend().buffer();
     let keybinds_row = find_row_containing(buf, width, height, " close · a archive · i insert")
         .expect("the popup's keybinds bar renders");
-    let cursor_row = cursor_row_of_band(&buf, width, height);
+    let cursor_row = cursor_row_of_band(buf, width, height);
     assert_eq!(
         keybinds_row + POPUP_ROWS_BELOW_KEYBINDS + PAST_BORDER + POPUP_GAP_ROWS,
         cursor_row,
@@ -1977,7 +1977,7 @@ fn preview_bottom_edge_sits_two_rows_above_the_library_cursor() {
         find_row_containing(buf, width, height, "a library member").is_some(),
         "the member row renders"
     );
-    let cursor_row = cursor_row_of_band(&buf, width, height);
+    let cursor_row = cursor_row_of_band(buf, width, height);
     assert_eq!(
         keybinds_row + POPUP_ROWS_BELOW_KEYBINDS + PAST_BORDER + POPUP_GAP_ROWS,
         cursor_row,

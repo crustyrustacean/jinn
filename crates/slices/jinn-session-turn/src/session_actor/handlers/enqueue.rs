@@ -22,7 +22,7 @@ use super::super::SessionPersistenceActor;
 use jinn_context::PromptTemplateStore;
 use jinn_context::attachment_path::{PathResolveContext, PendingPath};
 use jinn_llm_support::image_convert::ResolveOutcome;
-use jinn_session_msg::PhaseKind;
+use jinn_slices::PhaseView;
 use jinn_turn_dispatch_msg::DispatchTurn;
 
 /// Decision returned after inspecting session state in `EnqueueUserMessage`.
@@ -75,8 +75,8 @@ impl SessionPersistenceActor {
             self.state.with_session(|view| {
                 let session = view.session.map().get_or_create(&payload.session_id);
                 match session.phase() {
-                    PhaseKind::Idle => EnqueueAction::DispatchDirectly,
-                    PhaseKind::Sending | PhaseKind::Streaming => {
+                    PhaseView::Idle => EnqueueAction::DispatchDirectly,
+                    PhaseView::Streaming | PhaseView::Working | PhaseView::Cancelling => {
                         session.enqueue(jinn_turn_dispatch_msg::QueueItem::UserMessage(Box::new(
                             entry.clone(),
                         )));
@@ -89,23 +89,24 @@ impl SessionPersistenceActor {
         match action {
             EnqueueAction::DispatchDirectly => {
                 // Admission before the entry lands: a user message mints a
-                // fresh generation (`FreshTurn`), so the only refusal is a
-                // dead phase actor — in which case history stays untouched
+                // fresh turn (`FreshTurn`), so the only refusal is a cancel
+                // drain in progress — in which case history stays untouched
                 // and the message is silently dropped with an error log.
-                let decision = crate::phase_actor::admit_stream(
+                let Some(_) = jinn_kernel::common::turn_ledger::mint_dispatch_with_stamp(
                     &self.services,
+                    &self.state,
                     &payload.session_id,
-                    jinn_session_msg::phase_command::DispatchKind::FreshTurn,
+                    jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
                     jiff::Timestamp::now(),
                 )
-                .await;
-                if !decision.admitted {
+                .await
+                else {
                     tracing::error!(
                         session_id = %payload.session_id,
-                        "user message dropped: the phase actor refused a fresh mint"
+                        "user message dropped: the ledger refused a fresh mint"
                     );
                     return;
-                }
+                };
 
                 {
                     self.state.with_session(|view| {
@@ -136,11 +137,11 @@ impl SessionPersistenceActor {
                 self.save_active_session(&payload.session_id).await;
 
                 // Hand the prepared turn to the turn-dispatch slice: it
-                // admits the stream with the phase actor, drains steering,
-                // normalizes loop layout, assembles, and publishes
-                // `SendToLlmProvider`. The `Idle → Sending → Streaming`
-                // edges are the admission's; this path publishes no phase
-                // event of its own.
+                // drains steering, normalizes loop layout, assembles, and
+                // publishes `SendToLlmProvider`. The turn was already
+                // admitted and minted above; the dispatch's own admission
+                // joins it, and this path publishes no phase event of its
+                // own.
                 self.publish(DispatchTurn {
                     session_id: payload.session_id.clone(),
                 })
@@ -166,7 +167,7 @@ impl SessionPersistenceActor {
         let is_idle = {
             let guard = self.state.read();
             match guard.session.get(session_id) {
-                Some(s) => matches!(s.phase(), PhaseKind::Idle),
+                Some(s) => s.phase() == PhaseView::Idle,
                 // Absent session is created fresh (Idle) by get_or_create below.
                 None => true,
             }
@@ -333,26 +334,28 @@ impl SessionPersistenceActor {
         let should_dispatch = {
             let state = self.state.read();
             let session = state.session(&payload.session_id);
-            matches!(session.phase(), PhaseKind::Idle)
+            session.phase() == jinn_slices::PhaseView::Idle
         };
         if !should_dispatch {
             return;
         }
 
-        // Admission first: a resume is a fresh turn (a generation the
-        // cancel killed stays dead), so `FreshTurn`. Refused → the marker
-        // never lands and nothing dispatches.
-        let decision = crate::phase_actor::admit_stream(
+        // Admission first: a resume is a fresh turn (a turn the cancel
+        // killed stays dead), so `FreshTurn`. Refused → the marker never
+        // lands and nothing dispatches.
+        let admitted = jinn_kernel::common::turn_ledger::mint_dispatch_with_stamp(
             &self.services,
+            &self.state,
             &payload.session_id,
-            jinn_session_msg::phase_command::DispatchKind::FreshTurn,
+            jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
             jiff::Timestamp::now(),
         )
-        .await;
-        if !decision.admitted {
+        .await
+        .is_some();
+        if !admitted {
             tracing::error!(
                 session_id = %payload.session_id,
-                "resume dropped: the phase actor refused a fresh mint"
+                "resume dropped: the ledger refused a fresh mint"
             );
             return;
         }
@@ -461,7 +464,7 @@ mod tests {
     use jinn_kernel::common::services::BusAudit;
     use jinn_kernel::protocol::{ChatEntry, ChatEntryKind};
     use jinn_session_history_msg::PushChatEntry;
-    use jinn_session_msg::PhaseKind;
+    use jinn_slices::PhaseView;
     use marked_path::MarkedPathAccess;
 
     async fn create_actor() -> (
@@ -499,7 +502,7 @@ mod tests {
         // slice publishes the provider request).
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
-        assert_eq!(session.phase(), PhaseKind::Streaming);
+        assert_eq!(session.phase(), PhaseView::Streaming);
         assert_eq!(session.history().len(), 1);
         assert!(
             matches!(&session.history()[0].kind, ChatEntryKind::User { display, .. } if display == "hello world"),
@@ -544,7 +547,7 @@ mod tests {
         assert!(
             phases
                 .iter()
-                .any(|p| p.old_phase == PhaseKind::Idle && p.new_phase == PhaseKind::Streaming),
+                .any(|p| p.old_phase == PhaseView::Idle && p.new_phase == PhaseView::Streaming),
             "expected SessionPhaseChanged(Idle -> Streaming); got: {phases:?}"
         );
     }
@@ -647,20 +650,20 @@ mod tests {
             .await;
 
         // The first dispatch left the session Streaming; settle the turn
-        // through the phase actor so the user's message dispatches fresh.
-        let settled = jinn_kernel::common::phase_command::apply_phase(
-            &actor.services,
-            jinn_session_msg::phase_command::PhaseCommand::StreamEndedFinished {
-                session_id: session_id.clone(),
-                dispatched_at: jiff::Timestamp::now(),
-            },
-        )
-        .await
-        .expect("phase actor reachable");
+        // through the ledger so the user's message dispatches fresh.
+        let settled = actor.services.turn_ledger.finish_streaming(&session_id);
         assert!(
-            settled.admitted,
-            "a live generation's finished edge must settle: {settled:?}"
+            settled.is_some(),
+            "a live turn's finished edge must settle: {settled:?}"
         );
+        {
+            let mut guard = state.write();
+            guard
+                .session
+                .get_mut(&session_id)
+                .expect("session")
+                .settle_to_idle();
+        }
 
         // When the user sends a real message.
         actor
@@ -700,7 +703,7 @@ mod tests {
         // Then the message is queued (not dispatched - phase stays Streaming).
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
-        assert_eq!(session.phase(), PhaseKind::Streaming);
+        assert_eq!(session.phase(), PhaseView::Streaming);
         // No history entry because the message was queued, not pushed.
         assert_eq!(session.history().len(), 0);
         // The queue should have the message.
@@ -802,7 +805,7 @@ mod tests {
         // fused the phase to Streaming).
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
-        assert_eq!(session.phase(), PhaseKind::Streaming);
+        assert_eq!(session.phase(), PhaseView::Streaming);
     }
 
     // A minimal PNG (8x8) used by the multimodal enqueue tests below.
@@ -881,7 +884,7 @@ mod tests {
             "expected an Error entry when an image is sent to a text-only model"
         );
         // And the session stayed Idle (never dispatched).
-        assert_eq!(session.phase(), PhaseKind::Idle);
+        assert_eq!(session.phase(), PhaseView::Idle);
         drop(guard);
         assert!(
             !audit.contains_name("SendToLlmProvider"),
@@ -920,7 +923,7 @@ mod tests {
         // for dispatch (the slice completes it).
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
-        assert_eq!(session.phase(), PhaseKind::Streaming);
+        assert_eq!(session.phase(), PhaseView::Streaming);
         drop(guard);
         assert!(
             audit.contains_name("DispatchTurn"),
@@ -971,7 +974,7 @@ mod tests {
                 .any(|e| matches!(&e.kind, ChatEntryKind::Error(_))),
             "expected an Error entry when an image is sent to an unknown model"
         );
-        assert_eq!(session.phase(), PhaseKind::Idle);
+        assert_eq!(session.phase(), PhaseView::Idle);
         drop(guard);
         assert!(
             !audit.contains_name("SendToLlmProvider"),
@@ -1008,7 +1011,7 @@ mod tests {
         // text-only message dispatches even to an unknown model.
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
-        assert_eq!(session.phase(), PhaseKind::Streaming);
+        assert_eq!(session.phase(), PhaseView::Streaming);
         drop(guard);
         assert!(
             audit.contains_name("DispatchTurn"),
@@ -1081,7 +1084,7 @@ mod tests {
         let session = guard.session.get(&session_id).expect("session");
         assert_eq!(
             session.phase(),
-            PhaseKind::Streaming,
+            PhaseView::Streaming,
             "phase should be Streaming after the prepared resume handoff"
         );
 
@@ -1142,7 +1145,7 @@ mod tests {
         // Then the turn was prepared and handed off for dispatch.
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
-        assert_eq!(session.phase(), PhaseKind::Streaming);
+        assert_eq!(session.phase(), PhaseView::Streaming);
         drop(guard);
         assert!(
             audit.contains_name("DispatchTurn"),
@@ -1202,7 +1205,7 @@ mod tests {
         // Then the turn was prepared and handed off for dispatch.
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
-        assert_eq!(session.phase(), PhaseKind::Streaming);
+        assert_eq!(session.phase(), PhaseView::Streaming);
         drop(guard);
         assert!(
             audit.contains_name("DispatchTurn"),
@@ -1272,7 +1275,7 @@ mod tests {
         let session = guard.session.get(&session_id).expect("session");
         assert_eq!(
             session.phase(),
-            PhaseKind::Idle,
+            PhaseView::Idle,
             "conversion failure must block"
         );
         assert!(
@@ -1313,7 +1316,7 @@ mod tests {
         // Then it prepares with exactly one attachment and the nonexistent token stays literal.
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
-        assert_eq!(session.phase(), PhaseKind::Streaming);
+        assert_eq!(session.phase(), PhaseView::Streaming);
         let expanded = last_user_expanded(session).expect("user entry");
         assert!(
             expanded.contains("@/nonexistent/x"),
@@ -1364,7 +1367,7 @@ mod tests {
         // Then it prepares with exactly one attachment and the non-image token stays literal.
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
-        assert_eq!(session.phase(), PhaseKind::Streaming);
+        assert_eq!(session.phase(), PhaseView::Streaming);
         let expanded = last_user_expanded(session).expect("user entry");
         assert!(
             expanded.contains(&format!("@{notes}")),
@@ -1486,7 +1489,7 @@ mod tests {
         let session = guard.session.get(&session_id).expect("session");
         assert_eq!(
             session.phase(),
-            PhaseKind::Idle,
+            PhaseView::Idle,
             "conversion failure must block the turn"
         );
         drop(guard);

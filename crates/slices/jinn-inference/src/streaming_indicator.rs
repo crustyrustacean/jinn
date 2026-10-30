@@ -16,8 +16,9 @@ use std::time::Instant;
 use jinn_kernel::common::app_state::AppState;
 use jinn_kernel::common::render_ctx::RenderCtx;
 use jinn_kernel::common::ui_element::UiElement;
-use jinn_session_msg::{PhaseKind, SessionOrigin};
+use jinn_session_msg::SessionOrigin;
 use jinn_slices::DrawContext;
+use jinn_slices::PhaseView;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
@@ -78,7 +79,10 @@ impl StreamingIndicatorElement {
         let phase = session.phase();
         let origin = session.origin();
 
-        let is_phase_busy = matches!(phase, PhaseKind::Sending | PhaseKind::Streaming);
+        let is_phase_busy = matches!(
+            phase,
+            PhaseView::Streaming | PhaseView::Working | PhaseView::Cancelling
+        );
         let is_spinning = is_phase_busy;
 
         let kind = KindLabel::of(
@@ -99,7 +103,7 @@ impl StreamingIndicatorElement {
         // edge. `to_line` reads the same state the widget's render would, so
         // the glyph still steps every frame.
         let busy = is_spinning.then(|| {
-            let text = if matches!(phase, PhaseKind::Sending) {
+            let text = if matches!(phase, PhaseView::Working) {
                 " Working..."
             } else {
                 " Streaming..."
