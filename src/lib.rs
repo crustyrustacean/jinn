@@ -3,6 +3,7 @@
 pub mod actor_wiring;
 pub mod app;
 pub mod bootstrap;
+pub mod cli_paths;
 pub mod config_path;
 #[cfg(debug_assertions)]
 pub mod headless;

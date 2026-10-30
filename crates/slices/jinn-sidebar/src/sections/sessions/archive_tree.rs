@@ -56,7 +56,7 @@ pub fn archive_tree_members(state: &AppState) -> Result<Vec<SessionId>, ArchiveT
         state
             .session
             .get(id)
-            .is_some_and(|session| matches!(session.phase(), jinn_session_msg::PhaseKind::Idle))
+            .is_some_and(|session| matches!(session.phase(), jinn_slices::PhaseView::Idle))
     }) {
         return Err(ArchiveTreeError::SubtreeBusy);
     }

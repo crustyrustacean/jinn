@@ -44,8 +44,8 @@ use jinn_session_history_msg::{ChatEntryPinChanged, PinChatEntry, PushChatEntry,
 use jinn_session_msg::{MarkSessionInteracted, RetryStalledSession, TurnCompleted};
 use jinn_skills_msg::SkillsLoaded;
 use jinn_tools_msg::{
-    ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
-    ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted,
+    ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolExecutionOutput,
+    ToolExecutionStarted, ToolUseStarted,
 };
 
 /// The session actor's static trouper path.
@@ -183,7 +183,6 @@ impl SessionPersistenceActor {
             .handles::<ToolCallReceived>()
             .handles::<ToolCallStreaming>()
             .handles::<ToolExecutionCompleted>()
-            .handles::<ToolBatchCompleted>()
             .handles::<ToolExecutionStarted>()
             .handles::<ToolExecutionOutput>()
             .handles::<CitationsReceived>()
@@ -320,12 +319,18 @@ impl MsgHandler<ToolCallStreaming> for SessionPersistenceActor {
 impl MsgHandler<ToolExecutionCompleted> for SessionPersistenceActor {
     async fn handle(&mut self, msg: &ToolExecutionCompleted, _ctx: &mut MsgCtx<'_>) {
         self.on_tool_execution_completed(msg).await;
-    }
-}
-
-impl MsgHandler<ToolBatchCompleted> for SessionPersistenceActor {
-    async fn handle(&mut self, msg: &ToolBatchCompleted, _ctx: &mut MsgCtx<'_>) {
-        self.on_tool_batch_completed(msg).await;
+        // The consumer closes: the close's settlement drives what happens
+        // when the work set empties. Legacy-turn events carry no call to
+        // close.
+        if msg.turn != jinn_core_types::turn_identity::TurnToken::legacy()
+            && let Some(settlement) = self
+                .services
+                .turn_ledger
+                .close_call(&msg.session_id, &msg.result.tool_call_id)
+        {
+            self.on_turn_work_settled(&msg.session_id, settlement.next)
+                .await;
+        }
     }
 }
 

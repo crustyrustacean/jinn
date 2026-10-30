@@ -4,8 +4,8 @@ use super::super::SessionPersistenceActor;
 use jinn_context_assembly_msg::ContextOverrideChanged;
 use jinn_kernel::common::actor_deps::BusPublish;
 use jinn_session_history_msg::SubmitHistoryMutations;
-use jinn_session_msg::PhaseKind;
 use jinn_skills_msg::{Skill, SkillsLoaded};
+use jinn_slices::PhaseView;
 
 use jinn_kernel::protocol::ChatEntry;
 use jinn_preferences_config::schemas::AutoPruneConfig;
@@ -154,7 +154,7 @@ impl SessionPersistenceActor {
 
                 // If the session is idle (no active stream), drain immediately.
                 // Otherwise mutations wait for the next stream completion.
-                if matches!(session.phase(), PhaseKind::Idle) {
+                if matches!(session.phase(), PhaseView::Idle) {
                     let (_count, changed) = session.drain_and_apply_pending_mutations();
                     (payload.session_id.clone(), changed)
                 } else {

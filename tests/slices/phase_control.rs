@@ -43,7 +43,8 @@ use jinn_kernel::AppCore;
 use jinn_kernel::common::actor_deps::ActorDeps;
 use jinn_llm_support::token_estimator::TiktokenCounter;
 use jinn_provider::FakeLlmServiceFactory;
-use jinn_session_msg::PhaseKind;
+use jinn_session_msg::TurnOutcome;
+use jinn_slices::PhaseView;
 use jinn_testutil::bus_harness::Recorder;
 use jinn_tui::TuiApp;
 
@@ -76,12 +77,29 @@ async fn composed_app_with_recorder(
     factory: impl jinn_provider::LlmServiceFactory + 'static,
     stall_timeout_secs: u64,
 ) -> (TuiApp, SessionId, Recorder<SendToLlmProvider>) {
+    let (app, session_id, recorder, ()) =
+        composed_app_with_recorders(factory, stall_timeout_secs, ()).await;
+    (app, session_id, recorder)
+}
+
+/// [`composed_app_with_recorder`], plus extra typed recorders named by the
+/// caller's tuple type. Each recorder is tapped into the fabric before the
+/// slices activate, so no publish can outrun its tap.
+async fn composed_app_with_recorders<M>(
+    factory: impl jinn_provider::LlmServiceFactory + 'static,
+    stall_timeout_secs: u64,
+    extra: M,
+) -> (TuiApp, SessionId, Recorder<SendToLlmProvider>, M::Recorders)
+where
+    M: ExtraRecorders,
+{
     use jinn_kernel::common::bus::HarnessServices;
     use jinn_preferences_config::StallWatchdogConfig;
     use jinn_testutil::bus_harness::TestHarness;
 
     let harness = TestHarness::new().await;
     let recorder = harness.spawn_recorder::<SendToLlmProvider>().await;
+    let extras = extra.spawn(&harness).await;
 
     let services = harness.services().await;
     services.llm_service.swap(std::sync::Arc::new(factory));
@@ -119,7 +137,37 @@ async fn composed_app_with_recorder(
 
     let app = launch_for_test(core, services).await;
     let session_id = app.core.state.read().session.active_session_id().clone();
-    (app, session_id, recorder)
+    (app, session_id, recorder, extras)
+}
+
+/// The extra typed recorders a test asks [`composed_app_with_recorders`]
+/// to tap: the unit type taps none; a tuple taps one per element.
+trait ExtraRecorders {
+    /// The recorders this marker spawns, in declaration order.
+    type Recorders: Send + 'static;
+
+    /// Spawns one recorder per element onto the harness.
+    async fn spawn(&self, harness: &jinn_testutil::bus_harness::TestHarness) -> Self::Recorders;
+}
+
+impl ExtraRecorders for () {
+    type Recorders = ();
+
+    async fn spawn(&self, _harness: &jinn_testutil::bus_harness::TestHarness) {}
+}
+
+/// The marker naming one `TurnCompleted` recorder: a distinct type so a
+/// caller's tuple reads as a list of facts to tap, not bare generics.
+struct TurnCompletedTap;
+
+impl ExtraRecorders for TurnCompletedTap {
+    type Recorders = jinn_testutil::bus_harness::Recorder<jinn_session_msg::TurnCompleted>;
+
+    async fn spawn(&self, harness: &jinn_testutil::bus_harness::TestHarness) -> Self::Recorders {
+        harness
+            .spawn_recorder::<jinn_session_msg::TurnCompleted>()
+            .await
+    }
 }
 
 /// A factory whose streams produce one token and end normally.
@@ -143,22 +191,36 @@ fn hung_factory() -> jinn_provider::HungStreamFactory {
 /// dispatch: `Streaming` with a live stream stamp.
 fn seed_streaming(app: &TuiApp, session_id: &SessionId) {
     let dispatched_at = jiff::Timestamp::now();
+    // The ledger turn is what a cancel settles: mint it the way the
+    // dispatch path does, so the cancel below has a live turn to drain.
+    let _minted = app
+        .services
+        .turn_ledger
+        .mint(
+            session_id,
+            jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+        )
+        .expect("seed mint must be admitted");
     app.core.state.with_session(|view| {
         let session = view.session.map().get_or_create(session_id);
         session.begin_streaming();
+        session.arm_stream(dispatched_at);
         session
             .append_stream_token("warm", dispatched_at)
             .expect("warm token registers the streaming generation");
     });
+    // The stream stays in flight in the ledger: the cancel's synthesized
+    // completion carries the live (turn, stream) pair and retires it,
+    // exactly as a mid-stream cancel does in production.
 }
 
 /// True when the named session's phase is `Streaming`.
 fn is_streaming(app: &TuiApp, session_id: &SessionId) -> bool {
-    phase_of(app, session_id) == Some(PhaseKind::Streaming)
+    phase_of(app, session_id) == Some(PhaseView::Streaming)
 }
 
 /// The named session's phase, if it exists.
-fn phase_of(app: &TuiApp, session_id: &SessionId) -> Option<PhaseKind> {
+fn phase_of(app: &TuiApp, session_id: &SessionId) -> Option<PhaseView> {
     app.core
         .state
         .read()
@@ -171,7 +233,7 @@ fn phase_of(app: &TuiApp, session_id: &SessionId) -> Option<PhaseKind> {
 ///
 /// Async with `tokio::time::sleep`: the composed actors run on this
 /// test's own runtime, and a blocking sleep would starve them.
-async fn wait_until_phase(app: &TuiApp, session_id: &SessionId, wanted: PhaseKind) -> bool {
+async fn wait_until_phase(app: &TuiApp, session_id: &SessionId, wanted: PhaseView) -> bool {
     let deadline = tokio::time::Instant::now() + WAIT;
     loop {
         if phase_of(app, session_id) == Some(wanted) {
@@ -248,7 +310,7 @@ async fn cancel_then_racing_dispatch_leaves_phase_idle() {
 
     // When the cancel lands first and settles...
     publish_cancel(&app, &session_id).await;
-    let settled = wait_until_phase(&app, &session_id, PhaseKind::Idle).await;
+    let settled = wait_until_phase(&app, &session_id, PhaseView::Idle).await;
     assert!(settled, "cancel must settle the session to Idle");
 
     // ...and the racing dispatch arrives after the settle — the
@@ -293,7 +355,7 @@ async fn cancel_then_racing_dispatch_publishes_no_provider_request() {
 
     // When the cancel lands and settles, then the racing dispatch.
     publish_cancel(&app, &session_id).await;
-    let settled = wait_until_phase(&app, &session_id, PhaseKind::Idle).await;
+    let settled = wait_until_phase(&app, &session_id, PhaseView::Idle).await;
     assert!(settled, "cancel must settle the session to Idle");
     publish_racing_dispatch(&app, &session_id).await;
 
@@ -335,7 +397,7 @@ async fn cancel_then_racing_dispatch_arms_no_stall_timer() {
     // When the cancel lands and settles, then the racing dispatch, and
     // the stall window is given several chances to elapse.
     publish_cancel(&app, &session_id).await;
-    let settled = wait_until_phase(&app, &session_id, PhaseKind::Idle).await;
+    let settled = wait_until_phase(&app, &session_id, PhaseView::Idle).await;
     assert!(settled, "cancel must settle the session to Idle");
     publish_racing_dispatch(&app, &session_id).await;
 
@@ -395,7 +457,7 @@ async fn user_message_after_cancel_dispatches_exactly_one_turn() {
     let (app, session_id, recorder) = composed_app_with_recorder(hung_factory(), 30).await;
     seed_streaming(&app, &session_id);
     publish_cancel(&app, &session_id).await;
-    let settled = wait_until_phase(&app, &session_id, PhaseKind::Idle).await;
+    let settled = wait_until_phase(&app, &session_id, PhaseView::Idle).await;
     assert!(settled, "cancel must settle the session to Idle");
     publish_racing_dispatch(&app, &session_id).await;
     // The recorder must have stopped changing before it is drained, so
@@ -468,7 +530,7 @@ async fn stream_token_after_cancel_does_not_reach_streaming() {
         let session = view.session.map().get_or_create(&session_id);
         session.begin_sending();
     });
-    assert_eq!(phase_of(&app, &session_id), Some(PhaseKind::Sending));
+    assert_eq!(phase_of(&app, &session_id), Some(PhaseView::Working));
     // (The stale token arrives during this assert's window.)
 
     // When a stale token arrives while the session is still `Sending` —
@@ -535,7 +597,7 @@ async fn esc_esc_mid_turn_settles_the_phase_idle() {
             entry: ChatEntry::user("start a turn"),
         })
         .await;
-    let streaming = wait_until_phase(&app, &session_id, PhaseKind::Streaming).await;
+    let streaming = wait_until_phase(&app, &session_id, PhaseView::Streaming).await;
     assert!(streaming, "setup: the dispatched turn reached Streaming");
 
     // When the user presses ESC twice: raise the cancel prompt, then
@@ -553,7 +615,7 @@ async fn esc_esc_mid_turn_settles_the_phase_idle() {
     // Then the phase settles to `Idle` — the spinner stops, the session
     // takes new input, and nothing downstream of the cancel keeps it
     // busy.
-    let settled = wait_until_phase(&app, &session_id, PhaseKind::Idle).await;
+    let settled = wait_until_phase(&app, &session_id, PhaseView::Idle).await;
     assert!(
         settled,
         "ESC ESC must settle the phase to Idle; it is {:?}",
@@ -569,10 +631,110 @@ async fn esc_esc_mid_turn_settles_the_phase_idle() {
             entry: ChatEntry::user("again"),
         })
         .await;
-    let restreaming = wait_until_phase(&app, &session_id, PhaseKind::Streaming).await;
+    let restreaming = wait_until_phase(&app, &session_id, PhaseView::Streaming).await;
     assert!(
         restreaming,
         "a turn after the cancel must dispatch cleanly; phase is {:?}",
         phase_of(&app, &session_id)
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Cancel-drain convergence (TM-9 / TM-11 / TM-12)
+// ---------------------------------------------------------------------------
+
+/// A busy session (a hung stream) cancelled via `CancelTurn` settles to
+/// `Idle` exactly once: one `TurnCompleted(Canceled)` is published — the
+/// settle runs on the work-set-empty edge, and a drain that armed twice
+/// (double `CancelTurn`) must not settle or report a second time.
+#[rstest::rstest]
+#[tokio::test]
+#[timeout(Duration::from_secs(60))]
+async fn cancel_reports_canceled_exactly_once_and_settles() {
+    // Given a composed app mid-turn with a hung stream (the turn is
+    // genuinely in flight) and a `TurnCompleted` recorder.
+    let (app, session_id, _recorder, turns) =
+        composed_app_with_recorders(hung_factory(), 30, TurnCompletedTap).await;
+    seed_streaming(&app, &session_id);
+
+    // When the user cancels — twice, the double-press shape the UI can
+    // produce while the first cancel is still draining.
+    publish_cancel(&app, &session_id).await;
+    publish_cancel(&app, &session_id).await;
+    let settled = wait_until_phase(&app, &session_id, PhaseView::Idle).await;
+    assert!(settled, "cancel must settle the session to Idle");
+
+    // Then exactly one cancelled-turn report was published, and the
+    // session takes a new turn afterwards (the ledger entry is gone, not
+    // wedged open by the drain).
+    jinn_testutil::wait::await_settled(&turns, Duration::from_millis(300), Duration::from_secs(10))
+        .await;
+    let reports = turns.drain();
+    assert_eq!(
+        reports.len(),
+        1,
+        "a cancelled turn must report Canceled exactly once; got {reports:?}"
+    );
+    assert_eq!(reports[0].outcome, TurnOutcome::Canceled);
+
+    app.services
+        .bus
+        .publish(EnqueueUserMessage {
+            session_id: session_id.clone(),
+            entry: ChatEntry::user("after the cancel"),
+        })
+        .await;
+    let restreaming = wait_until_phase(&app, &session_id, PhaseView::Streaming).await;
+    assert!(
+        restreaming,
+        "the session must accept a new turn after the drain; phase is {:?}",
+        phase_of(&app, &session_id)
+    );
+}
+
+/// A message enqueued while the cancel drain is still in flight does not
+/// dispatch into the dying turn and is not dropped by it: it dispatches
+/// exactly once, whatever the interleaving — queued through the drain (the
+/// idle transition picks it up after the settle) or dispatched directly
+/// when it lands after the settle. The one forbidden outcome is zero or
+/// two dispatches.
+#[rstest::rstest]
+#[tokio::test]
+#[timeout(Duration::from_secs(60))]
+async fn message_enqueued_during_the_drain_dispatches_exactly_once() {
+    // Given a composed app mid-turn with a hung stream. The factory hangs,
+    // so the drain has a real stream abort to ride and a real settle to
+    // race against.
+    let (app, session_id, recorder, _turns) =
+        composed_app_with_recorders(hung_factory(), 30, TurnCompletedTap).await;
+    seed_streaming(&app, &session_id);
+
+    // When the cancel lands and the user's next message is enqueued right
+    // behind it — the publishes race, so the enqueue may land mid-drain or
+    // after the settle; the contract must not care which.
+    publish_cancel(&app, &session_id).await;
+    app.services
+        .bus
+        .publish(EnqueueUserMessage {
+            session_id: session_id.clone(),
+            entry: ChatEntry::user("queued mid-drain"),
+        })
+        .await;
+
+    // Then exactly one provider request goes out for the user's message.
+    // One request is also the drain's convergence proof: the idle
+    // transition that fires it only happens after the settle, so a drain
+    // that never settled produces zero.
+    let arrived = wait_for_recorder(&recorder, 1).await;
+    jinn_testutil::wait::await_settled(
+        &recorder,
+        Duration::from_millis(300),
+        Duration::from_secs(10),
+    )
+    .await;
+    let total = arrived.len() + recorder.drain().len();
+    assert_eq!(
+        total, 1,
+        "the drain-time enqueue must produce exactly one dispatch, whatever the ordering"
     );
 }

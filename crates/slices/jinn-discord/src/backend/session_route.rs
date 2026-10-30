@@ -8,7 +8,7 @@
 //! decision logic is unit-testable without constructing Discord types.
 
 use crate::route::{RouteDecision, route_decision};
-use jinn_session_msg::PhaseKind;
+use jinn_slices::PhaseView;
 use poise::serenity_prelude::MessageType;
 
 /// Whether a Discord message of this type is a genuine user-authored text
@@ -67,7 +67,7 @@ pub enum InboundOutcome {
 /// | true  | Some(Idle)         | `Enqueue`    |
 /// | true  | Some(Sending/...)  | `Steer`      |
 #[must_use]
-pub fn classify_inbound(bound: bool, phase: Option<PhaseKind>) -> InboundOutcome {
+pub fn classify_inbound(bound: bool, phase: Option<PhaseView>) -> InboundOutcome {
     if !bound {
         return InboundOutcome::UnboundNoOp;
     }
@@ -83,7 +83,7 @@ pub fn classify_inbound(bound: bool, phase: Option<PhaseKind>) -> InboundOutcome
 #[cfg(test)]
 mod tests {
     use super::{InboundOutcome, classify_inbound, is_forwardable_message_type};
-    use jinn_session_msg::PhaseKind;
+    use jinn_slices::PhaseView;
     use poise::serenity_prelude::MessageType;
 
     #[rstest::rstest]
@@ -101,7 +101,7 @@ mod tests {
     fn unbound_channel_ignores_phase() {
         // Given an unbound channel even if a phase were somehow provided.
         // When classifying.
-        let outcome = classify_inbound(false, Some(PhaseKind::Idle));
+        let outcome = classify_inbound(false, Some(PhaseView::Idle));
         // Then it is still a silent no-op.
         assert_eq!(outcome, InboundOutcome::UnboundNoOp);
     }
@@ -111,7 +111,7 @@ mod tests {
     fn bound_idle_session_enqueues() {
         // Given a bound channel with an idle session present.
         // When classifying.
-        let outcome = classify_inbound(true, Some(PhaseKind::Idle));
+        let outcome = classify_inbound(true, Some(PhaseView::Idle));
         // Then the message should enqueue (start a new turn).
         assert_eq!(outcome, InboundOutcome::Enqueue);
     }
@@ -121,7 +121,7 @@ mod tests {
     fn bound_streaming_session_steers() {
         // Given a bound channel with a streaming session.
         // When classifying.
-        let outcome = classify_inbound(true, Some(PhaseKind::Streaming));
+        let outcome = classify_inbound(true, Some(PhaseView::Streaming));
         // Then the message should steer (deliver mid-turn).
         assert_eq!(outcome, InboundOutcome::Steer);
     }
@@ -131,7 +131,7 @@ mod tests {
     fn bound_sending_session_steers() {
         // Given a bound channel with a sending session.
         // When classifying.
-        let outcome = classify_inbound(true, Some(PhaseKind::Sending));
+        let outcome = classify_inbound(true, Some(PhaseView::Working));
         // Then the message should steer.
         assert_eq!(outcome, InboundOutcome::Steer);
     }

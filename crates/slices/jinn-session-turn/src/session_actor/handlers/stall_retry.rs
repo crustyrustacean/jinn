@@ -6,12 +6,11 @@
 //! [`RetryStalledSession`](jinn_session_msg::RetryStalledSession)
 //! (alongside the visible retry marker entry). A hung stream is treated like
 //! a hard provider error: the stalled attempt's partial entries are taken out
-//! of context but left visible in the chat log, the session phase is rewound
-//! to `Sending`, and the turn is re-dispatched.
+//! of context but left visible in the chat log, the session is rewound for
+//! the retried dispatch, and the turn is re-dispatched.
 
 use jinn_inference_msg::SendToLlmProvider;
 use jinn_kernel::common::actor_deps::BusPublish;
-use jinn_session_msg::PhaseKind;
 use jinn_session_msg::RetryStalledSession;
 use jinn_turn_dispatch_msg::DispatchTurn;
 
@@ -84,9 +83,7 @@ impl SessionPersistenceActor {
         // reaches the surgery.
         let stamp = self.state.with_session(|view| {
             let session = view.session.map().get_or_create(&payload.session_id);
-            if matches!(session.phase(), PhaseKind::Sending | PhaseKind::Streaming)
-                && session.has_in_flight_stream()
-            {
+            if session.phase().is_working() && session.has_in_flight_stream() {
                 // The stalled attempt's entries stay in history for the user
                 // to read; they are only excluded from the retried request.
                 let excluded = session.reset_streaming_entries_for_retry();
@@ -119,27 +116,33 @@ impl SessionPersistenceActor {
         // The gate passed but the stamp can still be `None` (a finished
         // turn or a tool-batch wait), so the `None` case falls through as
         // a no-op.
-        let Some(stamp) = stamp else {
-            return;
-        };
-
-        // The rewind edge is the phase actor's: `Streaming → Sending`,
-        // resolving against the stamp read above. A generation a cancel
-        // already killed is refused here, after surgery but before the
-        // dispatch — the cancelled entries stay excluded, and nothing is
-        // sent for a dead turn.
-        let decision =
-            crate::phase_actor::admit_rewind(&self.services, &payload.session_id, stamp).await;
-        if !decision.admitted {
-            tracing::warn!(
-                session_id = %payload.session_id,
-                "stalled-stream restart refused: its generation was cancelled"
-            );
+        if stamp.is_none() {
             return;
         }
 
-        // The rewind edge settled the phase to `Sending`; re-send the
-        // assembled history.
+        // Admission is the ledger's: the same turn must still be live,
+        // not draining, with the stalled stream still the live one. A
+        // turn a cancel already ended is refused here, after surgery but
+        // before the dispatch — the excluded entries stay excluded, and
+        // nothing is sent for a dead turn.
+        let live = self.services.turn_ledger.live(&payload.session_id);
+        if !live.is_some_and(|t| t.stream.is_some() && !t.draining) {
+            tracing::warn!(
+                session_id = %payload.session_id,
+                "stalled-stream restart refused: no live, non-draining stream behind it"
+            );
+            return;
+        }
+        // The rewind projection: the stalled entries are out of context,
+        // the retried dispatch re-enters `Streaming` through the mint.
+        self.state.with_session(|view| {
+            view.session
+                .map()
+                .get_or_create(&payload.session_id)
+                .rewind_for_retry();
+        });
+
+        // Re-send the assembled history.
         super::super::helpers::emit_history_appended(self.bus(), &payload.session_id).await;
 
         // Hand the prepared turn to the turn-dispatch slice: it assembles
@@ -171,8 +174,8 @@ mod tests {
     use crate::session_actor::SessionPersistenceActor;
     use jinn_core_types::ChatEntryKind;
     use jinn_core_types::SessionId;
-    use jinn_session_msg::PhaseKind;
     use jinn_session_msg::RetryStalledSession;
+    use jinn_slices::PhaseView;
 
     /// A session in `Streaming` with a partial assistant entry, a dangling
     /// partial tool call slot free, and an in-flight stream generation
@@ -183,17 +186,18 @@ mod tests {
         // on this actor's system (production wiring does this at boot).
         let _ = jinn_context_assembly::service::ensure_spawned(&actor.services.trouper_system);
         let session_id = actor.state.read().session.active_session_id().clone();
-        // Mint first: the live generation is the stall guard's source of
-        // truth, and the fused mint edge puts the machine in Streaming so
-        // the partial entries below can register their streaming indices.
-        let decision = crate::phase_actor::admit_stream(
+        // Mint first: the live turn is the stall guard's source of truth,
+        // and the projection helper writes `Streaming` so the partial
+        // entries below can register their streaming indices.
+        jinn_kernel::common::turn_ledger::mint_dispatch_with_stamp(
             &actor.services,
+            &actor.state,
             &session_id,
-            jinn_session_msg::phase_command::DispatchKind::FreshTurn,
+            jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
             jiff::Timestamp::now(),
         )
-        .await;
-        assert!(decision.admitted, "test seed: the stall setup mints a turn");
+        .await
+        .expect("test seed: the stall setup mints a turn");
         {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -222,14 +226,15 @@ mod tests {
         let (actor, audit) = test_actor_recording().await;
         let _ = jinn_context_assembly::service::ensure_spawned(&actor.services.trouper_system);
         let session_id = actor.state.read().session.active_session_id().clone();
-        let decision = crate::phase_actor::admit_stream(
+        jinn_kernel::common::turn_ledger::mint_dispatch_with_stamp(
             &actor.services,
+            &actor.state,
             &session_id,
-            jinn_session_msg::phase_command::DispatchKind::FreshTurn,
+            jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
             jiff::Timestamp::now(),
         )
-        .await;
-        assert!(decision.admitted, "test seed: the stall setup mints a turn");
+        .await
+        .expect("test seed: the stall setup mints a turn");
         {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -419,14 +424,15 @@ mod tests {
         // When the retry handler runs.
         actor.on_retry_stalled_session(&payload).await;
 
-        // Then the session is back in Sending — staying in Streaming made the
-        // retried dispatch's first token an illegal transition.
+        // Then the session is rewound for the re-dispatch — staying in
+        // Streaming would make the retried dispatch's first token read as a
+        // second generation of the same stream.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(
             session.phase(),
-            PhaseKind::Sending,
-            "the rewind ask must settle the phase to Sending;              stream_dispatched_at = {:?}",
+            PhaseView::Working,
+            "the rewind must settle the phase to Working;              stream_dispatched_at = {:?}",
             session.stream_dispatched_at()
         );
     }
@@ -472,7 +478,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.finalize_entries_for_finish(true, jiff::Timestamp::now());
-            session.finish_streaming_via_machine();
+            session.settle_to_idle();
         }
 
         // When the retry handler runs.

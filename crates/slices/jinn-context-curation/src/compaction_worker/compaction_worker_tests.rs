@@ -619,7 +619,7 @@ fn session_continues_after_background_compaction() {
     let session = guard.session(&session_id);
     assert_eq!(
         session.phase(),
-        jinn_session_msg::PhaseKind::Sending,
+        jinn_slices::PhaseView::Working,
         "session should remain in Sending phase after background compaction"
     );
     // And the long history did produce mutations.

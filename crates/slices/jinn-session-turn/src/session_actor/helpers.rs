@@ -51,13 +51,18 @@ pub(crate) async fn test_actor_recording() -> (
     let services = jinn_kernel::common::services::Services::new_fake_with_bus(bus.clone()).await;
     ensure_context_assembly(&services.trouper_system);
 
-    // The phase actor: the sole phase writer, and the one every turn-path
-    // publisher asks (the session actor's cancel, intercept, and retry
-    // handlers; the queue actor). Production composition spawns it beside
-    // the session actor over the same `State` — the harness must too, or
-    // every admission ask errors and the handler refuses.
     let state = State::new(AppState::default_with_scope_focus());
-    let _phase = crate::phase_actor::ensure_spawned(&services.trouper_system, state.clone(), bus);
+
+    // A live turn for the active session: the legacy-token fixtures admit on
+    // live-turn existence (the transitional bridge), so the harness must
+    // provide one the way production's mint does.
+    {
+        let session_id = state.read().session.active_session_id().clone();
+        let _ = services.turn_ledger.mint(
+            &session_id,
+            jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+        );
+    }
 
     (
         super::SessionPersistenceActor {

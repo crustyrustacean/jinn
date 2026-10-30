@@ -43,8 +43,8 @@ use jinn_session_lifecycle_msg::builtin::BuiltinId;
 use jinn_session_lifecycle_msg::{
     FinishSessionTeardown, RunSessionTeardown, SessionTeardownFinished, TeardownFollowUp,
 };
-use jinn_session_msg::PhaseKind;
 use jinn_session_store_msg::{ArchiveSessionTree, PersistSession};
+use jinn_slices::PhaseView;
 
 use crate::command_runner::spawn_teardown_command;
 use crate::session_lifecycle_actor::SessionLifecycleActor;
@@ -373,7 +373,7 @@ impl SessionLifecycleActor {
                 state
                     .session
                     .get(id)
-                    .is_some_and(|session| !matches!(session.phase(), PhaseKind::Idle))
+                    .is_some_and(|session| !matches!(session.phase(), PhaseView::Idle))
             })
         };
         if busy {

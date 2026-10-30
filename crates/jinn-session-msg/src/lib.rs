@@ -13,12 +13,10 @@
 use jinn_core_types::SessionId;
 use serde::{Deserialize, Serialize};
 
-pub mod phase_command;
-pub mod phase_machine;
 pub mod session_origin;
 mod session_seed;
 
-pub use phase_command::{DispatchKind, PhaseCommand, PhaseDecision};
+pub use jinn_slices::PhaseView;
 
 /// The wall-clock moment carried by [`SessionPhaseChanged`] and
 /// [`WorkStateChanged`], re-exported so a consumer publishing either event
@@ -30,52 +28,9 @@ pub use session_seed::SessionSeed;
 
 // ── phase discriminant ──────────────────────────────────────────────
 
-/// The discriminant of a session's phase — used for event emission and
-/// logging where the per-phase data is not needed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PhaseKind {
-    /// Session is idle — no LLM request in flight.
-    Idle,
-    /// A message has been dispatched to the LLM but no tokens have
-    /// arrived yet.
-    Sending,
-    /// LLM tokens are actively streaming into the session.
-    Streaming,
-}
-
-impl std::str::FromStr for PhaseKind {
-    type Err = PhaseKindParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "idle" => Ok(Self::Idle),
-            "sending" => Ok(Self::Sending),
-            "streaming" => Ok(Self::Streaming),
-            _ => Err(PhaseKindParseError(s.to_owned())),
-        }
-    }
-}
-
-impl PhaseKind {
-    /// Whether a session in this phase is working.
-    ///
-    /// The single definition of "working" in the codebase: a session is busy
-    /// whenever its phase is not [`PhaseKind::Idle`]. The separate `is_busy`
-    /// counter that used to disagree with this one (four writers, phase-adjacent
-    /// readers) is gone — every liveness predicate reads the phase, through this
-    /// method or a `matches!` on it. There are deliberately no carve-outs for a
-    /// parent orchestrating subagents, a bot composing a report, or a
-    /// turn running its tool loop — those *are* the time the user is waiting.
-    #[must_use]
-    pub const fn is_working(self) -> bool {
-        !matches!(self, Self::Idle)
-    }
-}
-
-/// Error returned when a string does not match any [`PhaseKind`] variant.
-#[derive(Debug, wherror::Error)]
-#[error("unknown phase kind: {0}")]
-pub struct PhaseKindParseError(String);
+// The phase discriminant is [`PhaseView`], re-exported above from
+// `jinn-slices` — the one phase representation in the workspace, derived
+// from the turn ledger. This crate carries it on the crossing events.
 
 // ── session events (jinn bus → crossing topics) ─────────────────────
 
@@ -92,9 +47,9 @@ pub struct SessionPhaseChanged {
     /// The session whose phase changed.
     pub session_id: SessionId,
     /// The phase before the transition.
-    pub old_phase: PhaseKind,
+    pub old_phase: PhaseView,
     /// The new phase after the transition.
-    pub new_phase: PhaseKind,
+    pub new_phase: PhaseView,
     /// When the transition was observed.
     ///
     /// Carried on the event rather than left to a consumer's clock so every
@@ -262,7 +217,6 @@ pub struct SessionArchiveFailed {
 
 // ── wire contracts ──────────────────────────────────────────────────
 
-impl jinn_slices::BusMessage for PhaseKind {}
 impl jinn_slices::BusMessage for MarkSessionInteracted {}
 impl jinn_slices::BusMessage for RetryStalledSession {}
 impl jinn_slices::BusMessage for SessionClosed {}
@@ -279,7 +233,7 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, reason = "test code")]
 
     use super::MarkSessionInteracted;
-    use super::PhaseKind;
+    use super::PhaseView;
     use super::RetryStalledSession;
     use super::SessionArchiveFailed;
     use super::SessionArchived;
@@ -290,35 +244,13 @@ mod tests {
     use super::WorkStateChanged;
     use jiff::Timestamp;
     use jinn_core_types::SessionId;
-    use std::str::FromStr;
 
     #[rstest::rstest]
-    #[case("idle", PhaseKind::Idle)]
-    #[case("SENDING", PhaseKind::Sending)]
-    #[case("streaming", PhaseKind::Streaming)]
-    fn phase_kind_parses_case_insensitively(#[case] raw: &str, #[case] expected: PhaseKind) {
-        // Given a phase-kind string in any case.
-        // When parsing.
-        let parsed = PhaseKind::from_str(raw);
-        // Then the variant matches.
-        assert_eq!(parsed.expect("parses"), expected);
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn phase_kind_rejects_unknown_strings() {
-        // Given a string that is no phase.
-        // When parsing.
-        let parsed = PhaseKind::from_str("paused");
-        // Then parsing fails.
-        assert!(parsed.is_err());
-    }
-
-    #[rstest::rstest]
-    #[case(PhaseKind::Idle, false)]
-    #[case(PhaseKind::Sending, true)]
-    #[case(PhaseKind::Streaming, true)]
-    fn only_idle_is_not_working(#[case] phase: PhaseKind, #[case] expected: bool) {
+    #[case(PhaseView::Idle, false)]
+    #[case(PhaseView::Streaming, true)]
+    #[case(PhaseView::Working, true)]
+    #[case(PhaseView::Cancelling, true)]
+    fn only_idle_is_not_working(#[case] phase: PhaseView, #[case] expected: bool) {
         // Given any phase.
         // When asking whether a session in it is working.
         let working = phase.is_working();
@@ -333,8 +265,8 @@ mod tests {
         let at = Timestamp::now();
         let event = SessionPhaseChanged {
             session_id: SessionId::new(),
-            old_phase: PhaseKind::Idle,
-            new_phase: PhaseKind::Sending,
+            old_phase: PhaseView::Idle,
+            new_phase: PhaseView::Streaming,
             at,
         };
 
@@ -376,8 +308,8 @@ mod tests {
         let events = (
             SessionPhaseChanged {
                 session_id: id.clone(),
-                old_phase: PhaseKind::Streaming,
-                new_phase: PhaseKind::Idle,
+                old_phase: PhaseView::Streaming,
+                new_phase: PhaseView::Idle,
                 at: jiff::Timestamp::now(),
             },
             SessionArchived {
@@ -395,7 +327,7 @@ mod tests {
             serde_json::from_str(&json).unwrap();
 
         // Then every event survives with its fields intact.
-        assert_eq!(round.0.new_phase, PhaseKind::Idle);
+        assert_eq!(round.0.new_phase, PhaseView::Idle);
         assert_eq!(round.1.session_id, round.0.session_id);
         assert_eq!(round.2.session_id, round.0.session_id);
         assert_eq!(round.2.error, "write failed");

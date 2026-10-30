@@ -18,6 +18,7 @@ mod session_entries_tests;
 pub mod session_picker_actions;
 pub mod session_picker_render;
 pub mod session_picker_routes;
+pub mod session_prune_actor;
 pub mod session_store_actor;
 pub mod sqlite;
 pub mod working_time;
@@ -131,6 +132,8 @@ mod search_index_actor_tests;
 #[cfg(test)]
 mod session_picker_tests;
 pub mod session_picker_viewport;
+#[cfg(test)]
+mod session_prune_actor_tests;
 #[cfg(test)]
 mod session_store_actor_tests;
 #[cfg(test)]

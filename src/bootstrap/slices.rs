@@ -374,6 +374,27 @@ pub async fn activate_all(ctx: &mut Ctx<'_>) -> Result<Activated, ActivateError>
         },
     );
 
+    // The session prune actor: drains stale session trees in short
+    // transactions (sessions idle past the configured
+    // `[maintenance]` retention; no section configured = never delete) —
+    // one session per tick every two seconds while work is queued, an
+    // hourly sweep once drained — handing the freed pages back to the
+    // filesystem each tick, and publishing drain progress to its
+    // `session-prune` dashboard row. Consumes nothing — its writes land in
+    // the store and the bus; no cell, no routes.
+    let _session_prune = jinn_session_store::session_prune_actor::SessionPruneActor::spawn(
+        &ctx.services().trouper_system,
+        jinn_session_store::session_prune_actor::SessionPruneActorDeps {
+            deps: jinn_kernel::common::actor_deps::ActorDeps {
+                services: ctx.services().clone(),
+            },
+            initial_delay: jinn_session_store::session_prune_actor::INITIAL_DELAY,
+            sweep_interval: jinn_session_store::session_prune_actor::SWEEP_INTERVAL,
+            drain_interval: jinn_session_store::session_prune_actor::DRAIN_INTERVAL,
+            batch: jinn_session_store::session_prune_actor::PRUNE_BATCH,
+        },
+    );
+
     // Session lifecycle: the arg-input overlay plus the actor that runs
     // setup and teardown. The session picker's cell was minted by
     // `jinn_session_store::activate` in Block 1.

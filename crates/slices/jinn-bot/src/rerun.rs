@@ -18,7 +18,7 @@ use jinn_chat_input_msg::EnqueueUserMessage;
 use jinn_core_types::{ChatEntryId, SessionId};
 use jinn_inference_msg::CancelTurn;
 use jinn_kernel::common::state::State;
-use jinn_session_msg::PhaseKind;
+use jinn_slices::PhaseView;
 
 use crate::activation;
 
@@ -72,7 +72,7 @@ pub fn rerun_in_state(
     // `Esc` drains the cancelled partial into the input box through its own
     // path; `R` must not, because the run about to start would carry the old
     // turn's leftovers.
-    let cancel = (session.phase() != PhaseKind::Idle).then(|| {
+    let cancel = (session.phase() != PhaseView::Idle).then(|| {
         session.finalize_entries_for_cancel(jiff::Timestamp::now());
         CancelTurn {
             session_id: bot_id.clone(),

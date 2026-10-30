@@ -26,7 +26,7 @@ use std::ops::Range;
 
 use jinn_core_types::{
     ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, HistoryMutation,
-    PinPosition,
+    PinPosition, ToolResultStatus,
 };
 
 /// The write-primitive surface the kernel session state exposes to the
@@ -410,6 +410,53 @@ where
         ids.iter()
             .filter_map(|id| self.force_exclude_labelled(id, "stall_retry_exclude"))
             .collect()
+    }
+
+    /// Sweeps every still-`Pending` tool result to `Failure`, returning the
+    /// count swept.
+    ///
+    /// The cancel drain's history-side step: a placeholder the turn never
+    /// finalized must not survive as `Pending` — an unresolved batch makes
+    /// the context converter strip the whole assistant tool-call block
+    /// (bug #21), erasing tool history including sibling successes.
+    pub fn sweep_pending_tool_results_to_failure(&mut self) -> usize {
+        let pending: Vec<ChatEntryId> = {
+            let history = self.session.history();
+            history
+                .iter()
+                .filter(|entry| {
+                    matches!(
+                        &entry.kind,
+                        ChatEntryKind::ToolResult {
+                            status: ToolResultStatus::Pending,
+                            ..
+                        }
+                    )
+                })
+                .map(|entry| entry.id.clone())
+                .collect()
+        };
+        let mut swept = 0;
+        for id in &pending {
+            let changed = self.session.with_history_entry_mut(id, |entry| {
+                if let ChatEntryKind::ToolResult {
+                    status, content, ..
+                } = &mut entry.kind
+                    && *status == ToolResultStatus::Pending
+                {
+                    *status = ToolResultStatus::Failure;
+                    if content.is_empty() {
+                        "cancelled".clone_into(content);
+                    }
+                    return true;
+                }
+                false
+            });
+            if changed.unwrap_or(false) {
+                swept += 1;
+            }
+        }
+        swept
     }
 
     /// Applies ForcedExclude to a single member, bypassing precedence guards.

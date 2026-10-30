@@ -57,7 +57,7 @@ use jinn_core_types::SessionId;
 #[must_use]
 pub fn subtree_has_running_work(state: &AppState, session_id: &SessionId) -> bool {
     if let Some(session) = state.try_session(session_id)
-        && !matches!(session.phase(), jinn_session_msg::PhaseKind::Idle)
+        && !matches!(session.phase(), jinn_slices::PhaseView::Idle)
     {
         return true;
     }
@@ -103,7 +103,7 @@ fn child_is_running(
     match session.origin() {
         jinn_session_msg::SessionOrigin::Subagent => true,
         jinn_session_msg::SessionOrigin::Bot => {
-            !matches!(session.phase(), jinn_session_msg::PhaseKind::Idle)
+            !matches!(session.phase(), jinn_slices::PhaseView::Idle)
                 || descendant_has_running_work(state, child_id, visited)
         }
         jinn_session_msg::SessionOrigin::Fork | jinn_session_msg::SessionOrigin::User => false,
@@ -171,10 +171,7 @@ pub(crate) fn try_handle_cancel_stream_prompt(
     // The phase is the only liveness signal: a lifecycle command in flight
     // holds a busy phase like any turn does, so a non-`Idle` phase is the
     // session's own work to stop.
-    let has_own_turn = !matches!(
-        state.active_session().phase(),
-        jinn_session_msg::PhaseKind::Idle
-    );
+    let has_own_turn = !matches!(state.active_session().phase(), jinn_slices::PhaseView::Idle);
 
     // An idle session's own turn already produced nothing to salvage, so the
     // cascade reaches down into its running descendants and leaves the parent
@@ -482,10 +479,7 @@ mod tests {
         // Then the subtree is cancellable even though the session itself is idle.
         assert!(cancellable);
         assert!(
-            matches!(
-                state.active_session().phase(),
-                jinn_session_msg::PhaseKind::Idle
-            ),
+            matches!(state.active_session().phase(), jinn_slices::PhaseView::Idle),
             "the fixture must really be idle, else this test proves nothing"
         );
     }
@@ -611,7 +605,7 @@ mod tests {
         state
             .active_session_mut()
             .finalize_entries_for_finish(false, jiff::Timestamp::now());
-        state.active_session_mut().finish_streaming_via_machine();
+        state.active_session_mut().settle_to_idle();
         let result = IntentHandler::handle(
             &KernelIntent::NormalEscape,
             &mut state,
@@ -640,7 +634,7 @@ mod tests {
         state
             .active_session_mut()
             .finalize_entries_for_finish(false, jiff::Timestamp::now());
-        state.active_session_mut().finish_streaming_via_machine();
+        state.active_session_mut().settle_to_idle();
         disarm_stale_cancel_prompt(&mut state);
 
         // Then the flag is cleared, not merely hidden.
@@ -749,7 +743,7 @@ mod tests {
         // Then the parent's phase is unchanged — its own turn was never ours to stop.
         assert!(matches!(
             state.active_session().phase(),
-            jinn_session_msg::PhaseKind::Idle
+            jinn_slices::PhaseView::Idle
         ));
     }
 

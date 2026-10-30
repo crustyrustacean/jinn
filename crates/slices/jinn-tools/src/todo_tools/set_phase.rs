@@ -185,6 +185,7 @@ mod tests {
 
     fn make_context(state: Option<State>, session_id: Option<SessionId>) -> ToolContext {
         ToolContext {
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             cwd: volume_root(),
             timeout: None,
             state,

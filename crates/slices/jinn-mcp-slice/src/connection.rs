@@ -792,6 +792,8 @@ impl MsgHandler<ExecuteTool> for McpActor {
                 .publish(ToolExecutionCompleted {
                     session_id: msg.session_id.clone(),
                     result: failure_result(&msg.tool_call, "MCP server is not connected"),
+                    turn: msg.turn,
+                    synthesized: false,
                 })
                 .await;
             return;
@@ -809,6 +811,8 @@ impl MsgHandler<ExecuteTool> for McpActor {
                     .publish(ToolExecutionCompleted {
                         session_id,
                         result: failure_result(&tool_call, report.to_string()),
+                        turn: msg.turn,
+                        synthesized: false,
                     })
                     .await;
                 return;
@@ -860,7 +864,12 @@ impl MsgHandler<ExecuteTool> for McpActor {
         };
 
         self.deps
-            .publish(ToolExecutionCompleted { session_id, result })
+            .publish(ToolExecutionCompleted {
+                session_id,
+                result,
+                turn: msg.turn,
+                synthesized: false,
+            })
             .await;
     }
 }

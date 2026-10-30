@@ -28,6 +28,8 @@ use jinn_tools_msg::truncation::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncate_
 pub struct StreamCtx {
     /// The chat session running the tool call.
     pub session_id: jinn_core_types::SessionId,
+    /// The turn the tool call belongs to.
+    pub turn: jinn_core_types::turn_identity::TurnToken,
     /// The tool call the deltas are attributed to.
     pub tool_call_id: jinn_core_types::ToolCallId,
 }
@@ -193,8 +195,10 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
     // Stream context so the coordinator's settle wait emits deltas attributed
     // to this tool call (watchdog keepalive).
+    let turn = ctx.turn;
     let stream_ctx = ctx.session_id.clone().map(|session_id| StreamCtx {
         session_id,
+        turn,
         tool_call_id: tool_call_id.clone(),
     });
 
@@ -344,6 +348,7 @@ where
                 tick.tick().await;
                 bus.publish(jinn_tools_msg::ToolExecutionOutput {
                     session_id: ctx.session_id.clone(),
+                    turn: ctx.turn,
                     tool_call_id: ctx.tool_call_id.clone(),
                     output: "…".to_owned(),
                     kind: jinn_tools_msg::ToolOutputKind::Normal,
@@ -371,6 +376,7 @@ mod tests {
         let (bus, audit) = jinn_kernel::common::services::bus_service::BusService::new_recording();
         let ctx = Some(StreamCtx {
             session_id: jinn_core_types::SessionId::new(),
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             tool_call_id: "call-1".into(),
         });
 

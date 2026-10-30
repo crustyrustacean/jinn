@@ -28,6 +28,7 @@ pub mod compaction;
 pub mod cwd_selector;
 pub mod discord;
 pub mod legacy_command_policy;
+pub mod maintenance;
 pub mod mcp;
 pub mod minimap;
 pub mod project;
@@ -57,6 +58,7 @@ pub use discord::DiscordConfig;
 pub use legacy_command_policy::{
     LEGACY_COMMAND_POLICY_KEY, LegacyCommandPolicyRule, LegacyProjectConfig,
 };
+pub use maintenance::{MaintenanceConfig, retention_duration};
 pub use mcp::{
     HeaderExpandError, McpServerConfig, McpServersConfig, TransportKind, expand_header_value,
     expand_mcp_headers, referenced_header_variables,

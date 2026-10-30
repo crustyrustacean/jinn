@@ -244,6 +244,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             ctx.session_id.as_ref(),
             ToolExecutionStarted {
                 session_id: ctx.session_id.clone().unwrap_or_default(),
+                turn: ctx.turn,
                 tool_call_id: call.id.clone(),
                 name: call.name.clone(),
                 dispatched_at: jiff::Timestamp::now(),

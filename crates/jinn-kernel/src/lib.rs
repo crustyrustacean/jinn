@@ -88,7 +88,7 @@ pub use jinn_provider_config::{
 // The SQLite implementation lives in the jinn-session-store slice crate —
 // import it from there (`jinn_session_store::sqlite::SqliteSessionStore`).
 
-pub use jinn_session_msg::PhaseKind;
+pub use jinn_slices::PhaseView;
 
 // Re-export reasoning types
 // The reasoning-effort vocabulary is owned by the provider-selection slice's

@@ -30,8 +30,8 @@ use jinn_kernel::AppState;
 use jinn_kernel::protocol::{ChatEntry, IntentResult};
 use jinn_session_history_msg::PushChatEntry;
 use jinn_session_msg::MarkSessionInteracted;
-use jinn_session_msg::PhaseKind;
 use jinn_session_store_msg::PersistSession;
+use jinn_slices::PhaseView;
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use super::token::{
@@ -416,7 +416,7 @@ fn route_to_enqueue_or_steer(
     let mode = state.with_active_input(ChatInputBoxState::input_mode, Default::default);
     let phase = state.active_session().phase();
     match (mode, phase) {
-        (InputMode::Steer, PhaseKind::Idle) | (InputMode::Queue, _) => {
+        (InputMode::Steer, PhaseView::Idle) | (InputMode::Queue, _) => {
             tracing::debug!(
                 session_id = %session_id,
                 mode = ?mode,

@@ -314,7 +314,7 @@ pub fn handle_reset_bot(state: &mut AppState) -> IntentResult {
         };
         if !session.is_bot() {
             Some("not a bot")
-        } else if !matches!(session.phase(), jinn_session_msg::PhaseKind::Idle) {
+        } else if !matches!(session.phase(), jinn_slices::PhaseView::Idle) {
             Some("the bot is busy")
         } else {
             None

@@ -40,6 +40,8 @@ jinn-boot-msg = { workspace = true }
 jinn-session-lifecycle-msg = { workspace = true }
 jinn-mcp-msg = { workspace = true }
 jinn-preferences-config = { workspace = true }
+# The maintenance actor reads the [maintenance] section (session retention).
+jinn-config = { workspace = true }
 jinn-picker = { workspace = true }
 daow = { workspace = true }
 rusqlite = { workspace = true }

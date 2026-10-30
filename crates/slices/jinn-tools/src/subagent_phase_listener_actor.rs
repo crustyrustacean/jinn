@@ -28,8 +28,8 @@ use trouper::registry::RegistryError;
 
 use jinn_core_types::SessionId;
 use jinn_kernel::common::services::bus_service::BusService;
-use jinn_session_msg::PhaseKind;
 use jinn_session_msg::SessionPhaseChanged;
+use jinn_slices::PhaseView;
 
 /// Dependencies for spawning a [`SubagentPhaseListenerActor`].
 #[derive(Debug)]
@@ -46,7 +46,7 @@ pub struct SubagentPhaseListenerDeps {
 }
 
 /// A one-shot actor that awaits a single child session's transition to
-/// [`PhaseKind::Idle`]. See the [module docs](self) for the lifecycle.
+/// [`PhaseView::Idle`]. See the [module docs](self) for the lifecycle.
 #[derive(Debug)]
 pub struct SubagentPhaseListenerActor {
     child_id: SessionId,
@@ -117,7 +117,7 @@ impl MsgHandler<SessionPhaseChanged> for SubagentPhaseListenerActor {
         // Match any transition into Idle regardless of the old phase: the
         // cancel path force-publishes Idle→Idle, and the listener must not
         // miss it.
-        if msg.session_id == self.child_id && msg.new_phase == PhaseKind::Idle {
+        if msg.session_id == self.child_id && msg.new_phase == PhaseView::Idle {
             if let Some(completion) = self.completion.take() {
                 let _ = completion.send(());
             }

@@ -1,7 +1,7 @@
 //! Immutable value projections for read-only session consumers.
 
 use jinn_core_types::ChatEntry;
-use jinn_session_msg::PhaseKind;
+use jinn_slices::PhaseView;
 
 use crate::ChatSessionState;
 
@@ -13,7 +13,7 @@ use crate::ChatSessionState;
 #[derive(Debug, Clone)]
 pub struct SessionReadProjection {
     entries: Vec<ChatEntry>,
-    phase: PhaseKind,
+    phase: PhaseView,
 }
 
 impl SessionReadProjection {
@@ -25,7 +25,7 @@ impl SessionReadProjection {
 
     /// Returns the current session phase.
     #[must_use]
-    pub fn phase(&self) -> PhaseKind {
+    pub fn phase(&self) -> PhaseView {
         self.phase
     }
 }

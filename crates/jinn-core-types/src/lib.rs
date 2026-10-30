@@ -44,6 +44,7 @@ pub mod session_profile;
 pub mod tool_call_id;
 pub mod tool_result_status;
 pub mod tool_types;
+pub mod turn_identity;
 pub mod url_citation;
 pub mod working_interval;
 

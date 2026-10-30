@@ -820,3 +820,21 @@ min_age = 50
 #
 # > Users that may access the bot
 # authorized_users = ["<user id>"]
+
+# ###########################################################################
+# Database maintenance
+# ###########################################################################
+#
+# [maintenance]
+# > Deletes session trees idle longer than this.
+# >
+# > Format: <number><unit> — a whole number followed by a unit suffix:
+# >
+# >   m  minutes      30m  = 30 minutes
+# >   h  hours        24h  = 1 day
+# >   d  days         90d  = 3 months
+# >   w  weeks        2w   = 2 weeks
+# >
+# > A tree is deleted only when EVERY member is archived, not in the
+# > Library, and idle past the threshold. Commented out = never delete.
+# session_retention = "90d"

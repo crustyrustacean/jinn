@@ -130,6 +130,10 @@ pub struct ToolContext {
     /// `SendToLlmProvider` through the tool execution chain so tool
     /// events can carry accurate timing.
     pub dispatched_at: jiff::Timestamp,
+    /// The turn this execution belongs to, as minted by the turn ledger.
+    /// Carried from `SendToLlmProvider` through the tool execution chain
+    /// so streamed tool events are stamped with the turn they belong to.
+    pub turn: jinn_core_types::turn_identity::TurnToken,
     /// MCP coordinator actor ref — `Some` only for the `restart_mcp_server`
     /// tool, which `ask`s the coordinator directly (request/reply) to learn
     /// whether a restart connected. Resolved from
@@ -204,6 +208,7 @@ mod tests {
             max_output_lines: None,
             max_output_bytes: None,
             dispatched_at: jiff::Timestamp::now(),
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,

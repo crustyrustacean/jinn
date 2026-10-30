@@ -154,6 +154,13 @@ pub struct Services {
     /// The project picker's cell, published by the project slice so the
     /// preferences actor can refresh an open menu after a save.
     pub project_picker: Option<jinn_slices::cell::TypedCell<jinn_project_msg::ProjectPickerState>>,
+
+    /// The turn ledger: the sole authority for turn-scoped admission.
+    ///
+    /// One map of live turns keyed by session; no entry means `Idle`.
+    /// Turn work asks here, never a stored phase snapshot.
+    #[debug(skip)]
+    pub turn_ledger: crate::common::turn_ledger::TurnLedger,
 }
 
 impl Services {
@@ -236,6 +243,7 @@ impl Services {
             // one trouper system.
             trouper_system,
             project_picker: None,
+            turn_ledger: crate::common::turn_ledger::TurnLedger::default(),
         }
     }
 
@@ -304,6 +312,7 @@ impl Services {
             // one trouper system.
             trouper_system,
             project_picker: None,
+            turn_ledger: crate::common::turn_ledger::TurnLedger::default(),
         }
     }
 }

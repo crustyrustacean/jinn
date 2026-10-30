@@ -42,9 +42,9 @@
 
 use jinn_inference_msg::StreamCompletedReason;
 use jinn_kernel::common::actor_deps::BusPublish;
-use jinn_session_msg::PhaseKind;
 use jinn_session_msg::TurnCompleted;
 use jinn_session_msg::TurnOutcome;
+use jinn_slices::PhaseView;
 use jinn_turn_dispatch_msg::DispatchTurn;
 
 use super::super::SessionPersistenceActor;
@@ -65,9 +65,8 @@ impl SessionPersistenceActor {
         &self,
         session_id: &jinn_core_types::SessionId,
         reason: StreamCompletedReason,
-        // The event's stamp is not read directly: the rewind resolves
-        // against the stamp the live generation was admitted with, read
-        // under the surgery gate below.
+        // The event's stamp is not read directly: admission resolves the
+        // live turn through the ledger, not against the event's own claim.
         _dispatched_at: jiff::Timestamp,
     ) {
         debug_assert_eq!(
@@ -85,10 +84,12 @@ impl SessionPersistenceActor {
         // while the indices still exist — is what makes the resumed turn
         // both valid and legible: the model reads its own failed attempt
         // instead of resuming blind and re-emitting it.
-        let stamp = self.state.with_session(|view| {
+        let rewound = self.state.with_session(|view| {
             let session = view.session.map().get_or_create(session_id);
-            if matches!(session.phase(), PhaseKind::Sending | PhaseKind::Streaming)
-                && session.has_in_flight_stream()
+            if matches!(
+                session.phase(),
+                PhaseView::Streaming | PhaseView::Working | PhaseView::Cancelling
+            ) && session.has_in_flight_stream()
             {
                 let explained = session.explain_interrupted_tool_calls();
                 // The rest of the intercepted output stays in history for the
@@ -105,7 +106,12 @@ impl SessionPersistenceActor {
                     excluded_dangling = dangling.len(),
                     "stream rule interrupted the turn; resuming with the rule body"
                 );
-                session.stream_dispatched_at()
+                // The resumed request must be admissible: staying in
+                // `Streaming` would make the resume's first token an
+                // illegal transition. The rewind edge mirrors the stall
+                // retry's.
+                session.rewind_for_retry();
+                true
             } else {
                 tracing::warn!(
                     session_id = %session_id,
@@ -113,25 +119,26 @@ impl SessionPersistenceActor {
                     stream_in_flight = session.has_in_flight_stream(),
                     "rule-intercept resume refused: no in-flight stream"
                 );
-                None
+                false
             }
         });
-        let Some(stamp) = stamp else {
+        if !rewound {
             return;
-        };
+        }
 
-        // Admission after the surgery: the rewind edge is the phase
-        // actor's (`InterceptRewind`), resolving against the stamp read
-        // above. A cancelled turn refuses — the cancel and this intercept
-        // race by construction (the completion is published from inside
-        // the stream task the cancel tears down) — and a resumed dispatch
-        // for a dead generation is what re-armed a session nobody was
-        // streaming to. The interrupted entries stay excluded either way.
-        let decision = crate::phase_actor::admit_rewind(&self.services, session_id, stamp).await;
-        if !decision.admitted {
+        // Admission after the surgery: the rewind edge is the ledger's —
+        // the same turn must still be live, not draining, with the
+        // intercepted stream still the live one. A cancelled turn refuses
+        // here — the cancel and this intercept race by construction (the
+        // completion is published from inside the stream task the cancel
+        // tears down) — and a resumed dispatch for a dead turn is what
+        // re-armed a session nobody was streaming to. The interrupted
+        // entries stay excluded either way.
+        let live = self.services.turn_ledger.live(session_id);
+        if !live.is_some_and(|t| t.stream.is_some() && !t.draining) {
             tracing::warn!(
                 session_id = %session_id,
-                "rule-intercept resume refused: the turn was cancelled"
+                "rule-intercept resume refused: no live, non-draining stream behind it"
             );
             return;
         }
@@ -140,9 +147,8 @@ impl SessionPersistenceActor {
 
         // Hand the turn back to the dispatch queue, which emits the fresh
         // user-originated `SendToLlmProvider` that continues the turn. The
-        // queue's admission ask re-mints against the rewound generation:
-        // the phase actor's `BeginStream(ResumeTurn)` accepts it because
-        // the intercept kept the generation live.
+        // queue's admission mints `Resume`, which joins this live turn and
+        // swaps in a fresh stream.
         self.publish(DispatchTurn {
             session_id: session_id.clone(),
         })
@@ -178,10 +184,8 @@ pub(super) mod tests {
     use jinn_core_types::ToolCallId;
     use jinn_inference_msg::CancelTurn;
     use jinn_inference_msg::StreamCompletedReason;
-    use jinn_kernel::common::phase_command::apply_phase;
     use jinn_kernel::common::services::BusAudit;
-    use jinn_session_msg::{DispatchKind, PhaseCommand, PhaseDecision};
-    use jinn_session_msg::{PhaseKind, TurnCompleted, TurnOutcome};
+    use jinn_session_msg::{PhaseView, TurnCompleted, TurnOutcome};
 
     use crate::session_actor::SessionPersistenceActor;
 
@@ -193,29 +197,24 @@ pub(super) mod tests {
         let (actor, audit) = test_actor_recording().await;
         let _ = jinn_context_assembly::service::ensure_spawned(&actor.services.trouper_system);
         let session_id = actor.state.read().session.active_session_id().clone();
-        // The generation the live stream runs under. Production mints it at
-        // dispatch — the ask applies the fused `Idle → Sending → Streaming`
-        // edge — and the record's stamp is what the intercept's rewind
-        // resolves against. A harness without it refuses every intercept at
-        // admission and exercises nothing downstream.
-        let minted = apply_phase(
+        // The live turn and the generation the intercepted stream runs
+        // under. Production mints both at dispatch; the harness uses the
+        // same projection helper production's dispatch path uses. A harness
+        // without them refuses every intercept at admission and exercises
+        // nothing downstream.
+        let stamp = jiff::Timestamp::now();
+        jinn_kernel::common::turn_ledger::mint_dispatch_with_stamp(
             &actor.services,
-            PhaseCommand::BeginStream {
-                session_id: session_id.clone(),
-                kind: DispatchKind::FreshTurn,
-                dispatched_at: jiff::Timestamp::now(),
-            },
+            &actor.state,
+            &session_id,
+            jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+            stamp,
         )
         .await
-        .expect("phase actor reachable");
-        assert!(minted.admitted, "a fresh turn's mint must be admitted");
-        let stamp = minted
-            .stream_stamp
-            .expect("an admitted mint carries its generation's stamp");
+        .expect("a fresh turn's mint must be admitted");
         {
-            // The session-side facts of the live stream. The guard carries the
-            // generation's stamp — the same value the dispatch carried — which
-            // is what lets the cancel's own report resolve against it.
+            // The session-side facts of the live stream. The guard carries
+            // the stamp the dispatch armed.
             let mut state = actor.state.write();
             let session = state.session.get_mut(&session_id).expect("session exists");
             session
@@ -226,23 +225,30 @@ pub(super) mod tests {
         (actor, audit, session_id)
     }
 
-    /// Asks the phase actor to apply one command for these tests: a real
-    /// cancel, or the dispatch-queue's admission ask for a resume.
-    async fn ask(
+    /// Cancels the live turn through the ledger: the real admission the
+    /// session actor's cancel path takes. `Some` means the cancel started
+    /// the drain; `None` means nothing was live (or it was already
+    /// draining) — the once-ness of a turn's end.
+    fn cancel_live_turn(
         services: &jinn_kernel::common::services::Services,
-        command: PhaseCommand,
-    ) -> PhaseDecision {
-        apply_phase(services, command)
-            .await
-            .expect("phase actor reachable")
+        session_id: &SessionId,
+    ) -> Option<jinn_kernel::common::turn_ledger::CancelOutcome> {
+        services.turn_ledger.begin_cancel(session_id)
     }
 
     /// The `StreamCompleted(Canceled)` a real cancel publishes, carrying the
-    /// stamp the phase decision reported — what `terminate_turn` sends.
+    /// live turn identity the drain retired — what `terminate_turn` sends.
     fn cancelled_report(
+        services: &jinn_kernel::common::services::Services,
         session_id: &SessionId,
-        decision: &PhaseDecision,
     ) -> jinn_inference_msg::StreamCompleted {
+        let (turn, stream) = match services.turn_ledger.live(session_id) {
+            Some(live) => (live.turn, live.stream.unwrap_or_default()),
+            None => (
+                jinn_core_types::turn_identity::TurnToken::legacy(),
+                jinn_core_types::turn_identity::StreamId::legacy(),
+            ),
+        };
         jinn_inference_msg::StreamCompleted {
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Canceled,
@@ -254,7 +260,9 @@ pub(super) mod tests {
             provider_prompt_tokens: None,
             cached_tokens: None,
             thinking_content: None,
-            dispatched_at: decision.stream_stamp.unwrap_or_else(jiff::Timestamp::now),
+            dispatched_at: jiff::Timestamp::now(),
+            turn,
+            stream,
         }
     }
 
@@ -274,6 +282,8 @@ pub(super) mod tests {
             cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
+            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            stream: jinn_core_types::turn_identity::StreamId::legacy(),
         }
     }
 
@@ -386,7 +396,7 @@ pub(super) mod tests {
         // make the resumed turn's first token an illegal transition.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(session.phase(), PhaseKind::Sending);
+        assert_eq!(session.phase(), PhaseView::Working);
     }
 
     #[rstest::rstest]
@@ -576,17 +586,10 @@ pub(super) mod tests {
     #[tokio::test]
     async fn a_terminated_turn_refuses_to_resume() {
         // Given a streaming session whose turn a cancel really ended — the
-        // phase actor asked, which is what ends a turn now.
+        // ledger's `begin_cancel`, which is what ends a turn now.
         let (actor, audit, session_id) = intercept_setup().await;
-        let decision = apply_phase(
-            &actor.services,
-            PhaseCommand::TurnCanceled {
-                session_id: session_id.clone(),
-            },
-        )
-        .await
-        .expect("phase actor reachable");
-        assert!(decision.admitted, "the live turn's cancel must be admitted");
+        let outcome = cancel_live_turn(&actor.services, &session_id);
+        assert!(outcome.is_some(), "the live turn's cancel must be admitted");
 
         // When the intercept's completion lands — published from inside the
         // stream task the cancel tore down, so after it.
@@ -605,40 +608,29 @@ pub(super) mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn a_late_resume_after_a_cancel_re_arms_nothing_and_the_turn_stays_ended() {
-        // Given a session whose turn a cancel really ended — the phase actor
-        // asked, and its report consumed, which is how the cancel reaches the
-        // session.
+        // Given a session whose turn a cancel really ended — the ledger's
+        // `begin_cancel`, and its report consumed, which is how the cancel
+        // reaches the session.
         let (actor, _audit, session_id) = intercept_setup().await;
-        let decision = ask(
-            &actor.services,
-            PhaseCommand::TurnCanceled {
-                session_id: session_id.clone(),
-            },
-        )
-        .await;
-        assert!(decision.admitted, "the live turn's cancel must be admitted");
+        let outcome = cancel_live_turn(&actor.services, &session_id);
+        assert!(outcome.is_some(), "the live turn's cancel must be admitted");
         actor
-            .on_stream_completed(&cancelled_report(&session_id, &decision))
+            .on_stream_completed(&cancelled_report(&actor.services, &session_id))
             .await;
 
-        // When the resume queued before the cancel lands — asking the phase
-        // actor to mint a `ResumeTurn`, the admission ask the dispatch queue
-        // makes before any `SendToLlmProvider` is published.
-        let resume = ask(
-            &actor.services,
-            PhaseCommand::BeginStream {
-                session_id: session_id.clone(),
-                kind: DispatchKind::ResumeTurn,
-                dispatched_at: jiff::Timestamp::now(),
-            },
-        )
-        .await;
+        // When the resume queued before the cancel lands — the ledger
+        // `ResumeTurn` mint, the admission ask the dispatch queue makes
+        // before any `SendToLlmProvider` is published.
+        let resume = actor.services.turn_ledger.mint(
+            &session_id,
+            jinn_kernel::common::turn_ledger::MintKind::Resume,
+        );
 
         // Then it is refused — no send follows it, so nothing re-arms the
         // in-flight guard. An armed guard with no stream behind it is the
         // wedge the stall watchdog reports 60 seconds later as a stall.
         assert!(
-            !resume.admitted,
+            resume.is_none(),
             "a resume of a cancelled turn must be refused at mint"
         );
         let state = actor.state.read();
@@ -649,15 +641,9 @@ pub(super) mod tests {
         );
         // And the turn stays ended: a second cancel reports the turn as
         // already ended rather than ending it twice.
-        let second = ask(
-            &actor.services,
-            PhaseCommand::TurnCanceled {
-                session_id: session_id.clone(),
-            },
-        )
-        .await;
+        let second = cancel_live_turn(&actor.services, &session_id);
         assert!(
-            !second.admitted,
+            second.is_none(),
             "the turn must stay ended after a refused late resume"
         );
     }
@@ -665,39 +651,28 @@ pub(super) mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn a_late_resume_does_not_re_arm_the_in_flight_guard() {
-        // Given a session whose turn a cancel really ended — the phase actor
-        // asked, and its report consumed, which clears the guard the live
-        // stream had armed.
+        // Given a session whose turn a cancel really ended — the ledger's
+        // `begin_cancel`, and its report consumed, which clears the guard
+        // the live stream had armed.
         let (actor, _audit, session_id) = intercept_setup().await;
-        let decision = ask(
-            &actor.services,
-            PhaseCommand::TurnCanceled {
-                session_id: session_id.clone(),
-            },
-        )
-        .await;
-        assert!(decision.admitted, "the live turn's cancel must be admitted");
+        let outcome = cancel_live_turn(&actor.services, &session_id);
+        assert!(outcome.is_some(), "the live turn's cancel must be admitted");
         actor
-            .on_stream_completed(&cancelled_report(&session_id, &decision))
+            .on_stream_completed(&cancelled_report(&actor.services, &session_id))
             .await;
 
-        // When a dispatch for the ended turn arrives — asking the phase
-        // actor to mint a `ResumeTurn`, the admission ask every resume
-        // passes before its `SendToLlmProvider` is published.
-        let resume = ask(
-            &actor.services,
-            PhaseCommand::BeginStream {
-                session_id: session_id.clone(),
-                kind: DispatchKind::ResumeTurn,
-                dispatched_at: jiff::Timestamp::now(),
-            },
-        )
-        .await;
+        // When a dispatch for the ended turn arrives — the ledger
+        // `ResumeTurn` mint, the admission ask every resume passes before
+        // its `SendToLlmProvider` is published.
+        let resume = actor.services.turn_ledger.mint(
+            &session_id,
+            jinn_kernel::common::turn_ledger::MintKind::Resume,
+        );
 
         // Then no guard is armed. An armed guard with nothing behind it is
         // the wedge the stall watchdog reports 60 seconds later as a stall.
         assert!(
-            !resume.admitted,
+            resume.is_none(),
             "a dispatch for a cancelled turn must be refused at mint"
         );
         let state = actor.state.read();
@@ -712,16 +687,15 @@ pub(super) mod tests {
     #[tokio::test]
     async fn a_new_user_message_mints_a_turn_after_a_cancelled_one() {
         // Given a session whose previous turn a cancel really ended — the
-        // phase actor asked, its generation dead and its record ended.
+        // ledger's `begin_cancel` and the drain consumed (the synthesized
+        // completions and the stream ack), which settles the session to
+        // Idle the way production's cancel does.
         let (actor, audit, session_id) = intercept_setup().await;
-        let ended = ask(
-            &actor.services,
-            PhaseCommand::TurnCanceled {
-                session_id: session_id.clone(),
-            },
-        )
-        .await;
-        assert!(ended.admitted, "the live turn's cancel must be admitted");
+        let ended = cancel_live_turn(&actor.services, &session_id);
+        assert!(ended.is_some(), "the live turn's cancel must be admitted");
+        actor
+            .on_stream_completed(&cancelled_report(&actor.services, &session_id))
+            .await;
 
         // When the user submits a new message.
         actor

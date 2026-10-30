@@ -17,7 +17,7 @@
 use std::{
     env, fmt,
     fs::{File, OpenOptions},
-    io::Write,
+    io::{Read, Seek, SeekFrom, Write},
     sync::Arc,
 };
 
@@ -384,7 +384,10 @@ pub fn init(
         TracingMode::Tui { log_path } | TracingMode::Headless { log_path } => log_path.clone(),
     };
 
-    let logfile = open_log_file(&log_path)?;
+    // Bound the log to its last few thousand lines before the append handle
+    // opens. Non-fatal by contract: a failed trim is logged and startup
+    // proceeds with the oversized file.
+    let logfile = prepare_log_file(&log_path)?;
 
     // In TUI mode the terminal enters raw mode shortly after init, so traces
     // (including RUST_LOG output) go to the file only — never the screen. If the
@@ -441,6 +444,24 @@ pub fn init(
     Ok(())
 }
 
+/// Bounds the log to its tail, then opens the append handle.
+///
+/// The single startup path for the log file: the trim runs first so a
+/// crash-produced giant log is bounded before anything appends. A failed
+/// trim is non-fatal by contract — it is warned about and startup proceeds
+/// against the oversized file; only an `open` failure propagates.
+///
+/// # Errors
+///
+/// Returns a [`TracingInitError`] if the log file cannot be opened or its
+/// parent directory cannot be created (the trim never blocks startup).
+fn prepare_log_file(path: &MarkedPathBuf<Absolute>) -> Result<File, Report<TracingInitError>> {
+    if let Err(error) = truncate_log_to_tail_lines(path, LOG_TAIL_LINES) {
+        tracing::warn!(%error, "failed to trim log tail; leaving the file as-is");
+    }
+    open_log_file(path)
+}
+
 /// Creates the parent directory (if needed) and opens the log file for append.
 fn open_log_file(path: &MarkedPathBuf<Absolute>) -> Result<File, Report<TracingInitError>> {
     if let Some(parent) = path.parent() {
@@ -455,6 +476,153 @@ fn open_log_file(path: &MarkedPathBuf<Absolute>) -> Result<File, Report<TracingI
         .open(path)
         .change_context(TracingInitError)
         .attach_with(|| format!("failed to open file '{path}' for tracing"))
+}
+
+/// The number of trailing complete lines kept in the log file across startups.
+///
+/// A hard-coded constant by design: the log is a diagnostic aid, not user
+/// data, and it must stay bounded even when the user never touches config.
+const LOG_TAIL_LINES: usize = 10_000;
+
+/// Size of each chunk read during the backwards newline scan.
+const TAIL_SCAN_CHUNK: usize = 64 * 1024;
+
+/// Bounds the log file to its last [`LOG_TAIL_LINES`] complete lines.
+///
+/// Runs at startup, before the append handle opens: a crash that produced a
+/// giant log cannot skip the trim, so the file stays bounded across any
+/// sequence of runs. The scan reads backwards in chunks and counts newlines,
+/// so memory use is bounded by [`TAIL_SCAN_CHUNK`] regardless of file size;
+/// only the kept tail is buffered and written to a sibling temp file that is
+/// renamed over the original. A file at or under the limit is left byte-for-
+/// byte untouched. A file whose last line lacks a trailing newline loses that
+/// unterminated fragment (it is not a complete line).
+///
+/// # Errors
+///
+/// Returns an error if the file exists but cannot be read or replaced.
+/// The caller treats every error as non-fatal: a failed trim must never
+/// block startup.
+fn truncate_log_to_tail_lines(
+    path: &MarkedPathBuf<Absolute>,
+    keep_lines: usize,
+) -> std::io::Result<()> {
+    let mut file = match File::open(path) {
+        Ok(file) => file,
+        // First run: nothing to trim.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    let len = file.metadata()?.len();
+
+    let start = find_tail_start(
+        &mut file,
+        len,
+        u64::try_from(keep_lines).expect("line counts fit u64") + 1,
+    )?;
+    if start == len {
+        return Ok(()); // at or under the limit; leave the file byte-identical
+    }
+    // A trim is happening, so an unterminated trailing fragment is dropped:
+    // only complete lines survive.
+    let end = complete_tail_end(&mut file, len)?;
+    let tail = read_chunk(&mut file, start, end - start)?;
+
+    let tmp_path = {
+        let mut name = path.as_path().as_os_str().to_os_string();
+        name.push(".trim.tmp");
+        // The parent exists (the file was opened from it) and the suffix is a
+        // bare name, so the join cannot fail.
+        path.parent()
+            .expect("trim only runs on a log with a parent directory")
+            .join(name)
+            .expect("bare-name join onto an existing parent cannot fail")
+    };
+    // Write the tail to a sibling temp file, then swap it into place. The
+    // remove-then-rename order is for Windows, where rename fails when the
+    // destination exists; the crash window between the two loses the log
+    // file, and `open_log_file` recreates it on the next run.
+    {
+        let mut tmp = File::create(&tmp_path)?;
+        tmp.write_all(&tail)?;
+        tmp.sync_all().ok();
+    }
+    match std::fs::remove_file(path) {
+        Ok(()) => {}
+        // No file to replace: treat like a plain rename target.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
+    std::fs::rename(&tmp_path, path)
+}
+
+/// Returns the byte offset where the kept tail starts: just after the
+/// `split_on`-th newline counting from the end of the file, or `len` when
+/// the file holds fewer than `split_on` newlines (nothing to trim).
+///
+/// The trailing newline (when the file ends with one) counts as a separator,
+/// which makes the arithmetic uniform; the tail's end is repaired separately
+/// by [`complete_tail_end`]. Each chunk is scanned in full, so a newline
+/// sitting at a chunk boundary is never missed.
+fn find_tail_start(file: &mut File, len: u64, split_on: u64) -> std::io::Result<u64> {
+    let mut needed = split_on;
+    let mut remaining = len;
+    while needed > 0 && remaining > 0 {
+        let chunk_len = remaining.min(TAIL_SCAN_CHUNK as u64);
+        let chunk_start = remaining - chunk_len;
+        let chunk = read_chunk(file, chunk_start, chunk_len)?;
+        for (i, b) in chunk.iter().enumerate().rev() {
+            if *b == b'\n' {
+                needed -= 1;
+                if needed == 0 {
+                    return Ok(chunk_start + i as u64 + 1);
+                }
+            }
+        }
+        remaining = chunk_start;
+    }
+    Ok(len)
+}
+
+/// Returns the exclusive end offset of the kept tail: the file length when
+/// the file ends with a newline, otherwise the offset just after the last
+/// newline (dropping an unterminated trailing fragment).
+///
+/// Only meaningful when a trim is happening — a final newline is then
+/// guaranteed to exist, so the fallback of returning `len` never triggers.
+fn complete_tail_end(file: &mut File, len: u64) -> std::io::Result<u64> {
+    let mut probe = [0u8; 1];
+    file.seek(SeekFrom::Start(len - 1))?;
+    file.read_exact(&mut probe)?;
+    if probe[0] == b'\n' {
+        return Ok(len);
+    }
+    let mut remaining = len;
+    while remaining > 0 {
+        let chunk_len = remaining.min(TAIL_SCAN_CHUNK as u64);
+        let chunk_start = remaining - chunk_len;
+        let chunk = read_chunk(file, chunk_start, chunk_len)?;
+        if let Some(i) = chunk.iter().rposition(|b| *b == b'\n') {
+            return Ok(chunk_start + i as u64 + 1);
+        }
+        if chunk_start == 0 {
+            break;
+        }
+        remaining = chunk_start;
+    }
+    Ok(len)
+}
+
+/// Reads exactly `len` bytes starting at `offset` into a fresh buffer.
+///
+/// `File::seek` + a bounded `read_exact` — the caller sizes the buffer, so a
+/// hostile file that grew between the metadata read and this call cannot
+/// over-allocate.
+fn read_chunk(file: &mut File, offset: u64, len: u64) -> std::io::Result<Vec<u8>> {
+    let mut buf = vec![0u8; len as usize];
+    file.seek(SeekFrom::Start(offset))?;
+    file.read_exact(&mut buf)?;
+    Ok(buf)
 }
 
 #[cfg(test)]
@@ -906,5 +1074,201 @@ mod tests {
 
         // Restore the default hook to avoid leaking our hook into other tests.
         let _ = std::panic::take_hook();
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn truncate_keeps_last_lines() {
+        // Given a log file holding 25 complete lines and a keep limit of 10.
+        let dir = jinn_testutil::tempdir();
+        let log_path = dir
+            .path
+            .join("jinn.log")
+            .expect("temp root joins a bare name");
+        let lines: Vec<String> = (0..25).map(|i| format!("line-{i:02}")).collect();
+        std::fs::write(&log_path, lines.join("\n") + "\n").expect("seed log file");
+
+        // When trimming to the last 10 lines.
+        truncate_log_to_tail_lines(&log_path, 10).expect("trim succeeds");
+
+        // Then only the last 10 complete lines remain, in order, with no
+        // partial line at either end.
+        let content = std::fs::read_to_string(&log_path).expect("read trimmed log");
+        let kept: Vec<&str> = content.lines().collect();
+        assert_eq!(
+            kept,
+            (15..25).map(|i| format!("line-{i:02}")).collect::<Vec<_>>(),
+            "expected exactly the last 10 lines, got: {kept:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn truncate_under_limit_is_noop() {
+        // Given a log file holding fewer lines than the keep limit.
+        let dir = jinn_testutil::tempdir();
+        let log_path = dir
+            .path
+            .join("jinn.log")
+            .expect("temp root joins a bare name");
+        let original = "a\nbb\nccc\n".repeat(3);
+        std::fs::write(&log_path, &original).expect("seed log file");
+
+        // When trimming to a limit the file already satisfies.
+        truncate_log_to_tail_lines(&log_path, 100).expect("trim succeeds");
+
+        // Then the file is byte-for-byte identical — a true no-op, not a
+        // rewrite that happens to preserve the bytes.
+        let after = std::fs::read(&log_path).expect("read log");
+        assert_eq!(
+            std::str::from_utf8(&after).expect("utf-8"),
+            original,
+            "file under the limit must not be rewritten"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn truncate_missing_file_succeeds_without_creating_it() {
+        // Given no log file at the path (first run).
+        let dir = jinn_testutil::tempdir();
+        let log_path = dir
+            .path
+            .join("jinn.log")
+            .expect("temp root joins a bare name");
+
+        // When trimming.
+        truncate_log_to_tail_lines(&log_path, 10).expect("trim succeeds");
+
+        // Then the path is still absent — the trim never creates a log.
+        assert!(
+            !log_path.exists(),
+            "a missing log must not be created by the trim"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn truncate_drops_unterminated_last_fragment() {
+        // Given a log whose final line has no trailing newline, with more
+        // complete lines than the keep limit.
+        let dir = jinn_testutil::tempdir();
+        let log_path = dir
+            .path
+            .join("jinn.log")
+            .expect("temp root joins a bare name");
+        std::fs::write(&log_path, "l1\nl2\nl3\nl4\nl5\nfragment").expect("seed log file");
+
+        // When trimming to a limit of 4 complete lines.
+        truncate_log_to_tail_lines(&log_path, 4).expect("trim succeeds");
+
+        // Then the unterminated fragment is not a complete line and is
+        // dropped; exactly the last 4 complete lines survive.
+        let content = std::fs::read_to_string(&log_path).expect("read trimmed log");
+        assert_eq!(content, "l2\nl3\nl4\nl5\n", "expected 4 complete lines");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn truncate_at_limit_with_fragment_is_noop() {
+        // Given a log at exactly the keep limit in complete lines, plus an
+        // unterminated fragment.
+        let dir = jinn_testutil::tempdir();
+        let log_path = dir
+            .path
+            .join("jinn.log")
+            .expect("temp root joins a bare name");
+        let original = "l1\nl2\nfragment";
+        std::fs::write(&log_path, original).expect("seed log file");
+
+        // When trimming to a limit of 2 complete lines.
+        truncate_log_to_tail_lines(&log_path, 2).expect("trim succeeds");
+
+        // Then the file is untouched — the complete-line count satisfies the
+        // limit, so the byte-identical no-op wins over fragment removal.
+        let after = std::fs::read(&log_path).expect("read log");
+        assert_eq!(
+            std::str::from_utf8(&after).expect("utf-8"),
+            original,
+            "at-limit file must not be rewritten"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn truncate_scan_spans_multiple_chunks() {
+        // Given a log well over one scan-chunk (64 KiB) in size, with the
+        // kept tail smaller than a chunk.
+        let dir = jinn_testutil::tempdir();
+        let log_path = dir
+            .path
+            .join("jinn.log")
+            .expect("temp root joins a bare name");
+        // 6000 lines x 48 bytes = 288 KiB = ~4.4 scan chunks.
+        let total = 6_000usize;
+        let keep = 500usize;
+        let lines: Vec<String> = (0..total)
+            .map(|i| format!("{i:06}-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n"))
+            .collect();
+        std::fs::write(&log_path, lines.join("")).expect("seed log file");
+
+        // When trimming to the last 500 lines.
+        truncate_log_to_tail_lines(&log_path, keep).expect("trim succeeds");
+
+        // Then exactly the last 500 lines survive — the backwards scan
+        // crossed chunk boundaries without losing or duplicating a line.
+        let content = std::fs::read_to_string(&log_path).expect("read trimmed log");
+        let kept: Vec<&str> = content.lines().collect();
+        assert_eq!(kept.len(), keep, "kept the wrong number of lines");
+        assert_eq!(
+            kept.first().expect("non-empty")[..6]
+                .parse::<usize>()
+                .expect("index line"),
+            total - keep,
+            "expected the tail to start at the (total - keep)-th line"
+        );
+        assert_eq!(
+            kept.last().expect("non-empty")[..6]
+                .parse::<usize>()
+                .expect("index line"),
+            total - 1,
+            "expected the original final line at the end"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn trim_failure_does_not_fail_prepare() {
+        // Given a log path whose parent is a regular file, so the trim
+        // cannot even read the target (opening fails with a directory error
+        // or not-a-directory error, never NotFound).
+        let dir = jinn_testutil::tempdir();
+        let blocker = dir
+            .path
+            .join("blocker")
+            .expect("temp root joins a bare name");
+        std::fs::write(&blocker, "not a directory").expect("seed blocker");
+        let log_path = blocker
+            .join("jinn.log")
+            .expect("file path joins a bare name");
+
+        // When preparing the log file (trim + open).
+        let result = prepare_log_file(&log_path);
+
+        // Then the failure comes from `open_log_file`, not the trim — the
+        // trim error was swallowed as non-fatal (a `NotFound`-shaped error
+        // would mean the trim surfaced; a directory/other error means the
+        // open did).
+        match result {
+            Ok(_) => panic!("prepare must fail when the parent is a file"),
+            Err(report) => {
+                let rendered = format!("{report:?}");
+                assert!(
+                    rendered.contains("failed to open file")
+                        || rendered.contains("failed to create log directory"),
+                    "expected an open/directory error, got: {rendered}"
+                );
+            }
+        }
     }
 }

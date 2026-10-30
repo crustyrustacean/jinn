@@ -583,7 +583,7 @@ async fn a_finished_turn_dismisses_the_cancel_stream_prompt() {
         {
             let session = state.active_session_mut();
             session.finalize_entries_for_finish(false, jiff::Timestamp::now());
-            session.finish_streaming_via_machine();
+            session.settle_to_idle();
         }
     }
 
@@ -720,7 +720,7 @@ async fn an_idle_session_suppresses_the_cancel_prompt() {
         {
             let session = state.active_session_mut();
             session.finalize_entries_for_finish(false, jiff::Timestamp::now());
-            session.finish_streaming_via_machine();
+            session.settle_to_idle();
         }
     }
 
@@ -809,7 +809,7 @@ async fn a_session_with_nothing_running_shows_no_cancel_prompt() {
                 .get_mut(&bot)
                 .expect("the bot inserted by the fixture");
             session.finalize_entries_for_finish(false, jiff::Timestamp::now());
-            session.finish_streaming_via_machine();
+            session.settle_to_idle();
         }
     }
 
@@ -838,7 +838,7 @@ async fn the_cancel_prompt_disarms_when_the_turn_ends_without_a_keystroke() {
         {
             let session = state.active_session_mut();
             session.finalize_entries_for_finish(false, jiff::Timestamp::now());
-            session.finish_streaming_via_machine();
+            session.settle_to_idle();
         }
     }
 

@@ -105,7 +105,7 @@ pub(super) async fn run_epoch_load(actor: &EpochMarketActor, force: bool) {
                 // partial extraction.
                 fail_to_seed(
                     actor,
-                    format!("epoch refresh failed; showing shipped seed — {report}"),
+                    format!("epoch refresh failed; showing shipped seed: {report}"),
                 )
                 .await;
                 return;
@@ -117,7 +117,7 @@ pub(super) async fn run_epoch_load(actor: &EpochMarketActor, force: bool) {
                 None => {
                     fail_to_seed(
                         actor,
-                        "epoch refresh failed; showing shipped seed — extraction vanished"
+                        "epoch refresh failed; showing shipped seed: extraction vanished"
                             .to_owned(),
                     )
                     .await;
@@ -129,7 +129,7 @@ pub(super) async fn run_epoch_load(actor: &EpochMarketActor, force: bool) {
             // column still populates with epoch_source = Seed.
             fail_to_seed(
                 actor,
-                format!("epoch refresh failed; showing shipped seed — {report}"),
+                format!("epoch refresh failed; showing shipped seed: {report}"),
             )
             .await;
         }
@@ -160,7 +160,7 @@ async fn load_from_bytes(
             fail_to_seed(
                 actor,
                 format!(
-                    "epoch data unusable; showing shipped seed — {}",
+                    "epoch data unusable; showing shipped seed: {}",
                     parse_failure_detail(&report)
                 ),
             )

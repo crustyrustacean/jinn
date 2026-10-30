@@ -34,14 +34,28 @@ use wherror::Error;
 
 /// Runs all pending schema migrations on the given connection.
 ///
-/// Migrations apply atomically inside a single `BEGIN IMMEDIATE … COMMIT`
-/// transaction (see [`migrate::run_pending`]); a failure or an interrupt (e.g.
-/// Ctrl+C / SIGKILL) before `COMMIT` rolls the whole chain back to the
-/// last-applied version, leaving no half-applied schema.
+/// Migrations apply in chain order as three phases (see
+/// [`migrate::run_pending`]): everything below the v32 vacuum migration
+/// commits in one `BEGIN IMMEDIATE … COMMIT` transaction, the vacuum
+/// migration itself runs between the transactions (its `VACUUM` cannot run
+/// inside one) and records its version in its own tiny transaction, and
+/// everything above it commits in a second transaction. A failure or an
+/// interrupt (e.g. Ctrl+C / SIGKILL) inside either chain transaction rolls
+/// that transaction back to where the previous phase left off, leaving no
+/// half-applied schema. The database therefore rests in one of three states:
+/// at the old version, at exactly v32 (its rewrite is durable on its own),
+/// or at latest.
 ///
-/// The FK toggle below (`foreign_keys=OFF` … `ON`) wraps the transaction. The
-/// pragmas stay *outside* `run_pending`'s `BEGIN` because SQLite forbids
-/// changing `foreign_keys` inside an open transaction. The toggle is
+/// The split's one accepted crash window sits between the v32 rewrite and
+/// its record commit: a kill there re-runs the (atomic, idempotent) vacuum
+/// once on the next startup. In exchange, a failure at v33 or later no
+/// longer discards a completed conversion — the old single-transaction
+/// runner rolled everything back while the vacuum's file rewrite persisted,
+/// forcing a pointless re-vacuum on restart.
+///
+/// The FK toggle below (`foreign_keys=OFF` … `ON`) wraps both transactions.
+/// The pragmas stay *outside* `run_pending`'s transactions because SQLite
+/// forbids changing `foreign_keys` inside an open transaction. The toggle is
 /// essential: DDL such as `DROP TABLE sessions` (used by the v15/v16/v20
 /// table-rebuild migrations) performs an implicit `DELETE` of all rows, which
 /// would otherwise fire the application-level `ON DELETE CASCADE` and wipe
@@ -60,7 +74,7 @@ use wherror::Error;
 ///
 /// Safe to call on an empty database (bootstraps the tracking table) and
 /// idempotent on a fully-migrated one (the version check short-circuits
-/// before any `BEGIN`).
+/// before any transaction).
 ///
 /// # Errors
 ///

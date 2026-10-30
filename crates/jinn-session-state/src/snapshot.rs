@@ -436,12 +436,28 @@ impl SessionSnapshot {
     }
 
     /// Reconstructs a live session core whose captures resume above `floor`.
+    ///
+    /// Stored `Pending` tool results are swept to `Failure` here, the one
+    /// boundary every load path crosses: a `Pending` in storage is a turn
+    /// that never finalized (a crash mid-tool-loop, a bug-21-era straggler),
+    /// and an unresolved batch makes the context converter strip the whole
+    /// assistant tool-call block — erasing tool history including sibling
+    /// successes. A live session never carries `Pending` across a settle,
+    /// so the sweep can only ever touch storage residue.
     #[must_use]
     pub fn into_core_resuming_after(self, floor: SessionRevision) -> SessionCore {
         let mut core = SessionCore::from(self.metadata);
         core.resume_captures_after(floor);
         core.restore_history(self.entries);
         core.restore_token_ledger(self.token_ledger);
+        let swept = core.ephemeral_sweep_pending_tool_results();
+        if swept > 0 {
+            tracing::info!(
+                swept,
+                session_id = %core.identity.session_id,
+                "swept stored Pending tool results to Failure on load"
+            );
+        }
         core
     }
 }

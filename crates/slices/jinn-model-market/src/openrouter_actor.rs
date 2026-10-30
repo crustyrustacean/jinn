@@ -93,8 +93,11 @@ use crate::rows;
 pub const ENDPOINT_DEBOUNCE: Duration = Duration::from_millis(250);
 
 /// Environment variable the boot's env-init actor pre-populates the
-/// API-key store from. `/models` works without it; the endpoint
-/// percentiles are auth-gated upstream (research §2.4).
+/// API-key store from — during the startup tail's env ask, *after*
+/// every actor has spawned. Readers must therefore resolve the key
+/// from the store at request time, not at spawn. `/models` works
+/// without it; the endpoint percentiles are auth-gated upstream
+/// (research §2.4).
 pub const OPENROUTER_API_KEY_ENV: &str = "OPENROUTER_API_KEY";
 
 /// Cache-file names under `AppPaths::openrouter_cache_dir()`. The
@@ -113,9 +116,6 @@ pub struct OpenRouterMarketActor {
     ui: TypedCell<MarketUiState>,
     /// The OpenRouter base URL (tests point this at mockito).
     base_url: String,
-    /// The API key, if the store carries one at spawn. Absence never
-    /// gates the models fetch.
-    api_key: Option<String>,
     /// The market cache directory (tests point this at a tempdir).
     cache_dir: MarkedPathBuf<Absolute>,
     /// The shared HTTP client.
@@ -224,8 +224,9 @@ impl OpenRouterMarketActor {
     }
 
     /// Assembles the actor from its deps: resolves the base URL and
-    /// cache dir, and reads the API key once at spawn (boot's env-init
-    /// actor populates the store before actors spawn).
+    /// cache dir. The API key is *not* resolved here — the store fills
+    /// during the startup tail's env ask, after every actor has
+    /// spawned, so fetch handlers read it at request time.
     #[must_use]
     fn build(deps: OpenRouterMarketActorDeps) -> Self {
         let base_url = if deps.base_url.is_empty() {
@@ -239,13 +240,11 @@ impl OpenRouterMarketActor {
             .cache_dir
             .clone()
             .unwrap_or_else(|| deps.deps.services.paths.openrouter_cache_dir());
-        let api_key = deps.deps.services.api_keys.get(OPENROUTER_API_KEY_ENV);
         Self {
             deps: deps.deps,
             data: deps.data,
             ui: deps.ui,
             base_url,
-            api_key,
             cache_dir,
             client: reqwest::Client::new(),
             raw_models: None,
@@ -334,10 +333,12 @@ impl OpenRouterMarketActor {
         }
 
         // Network last. The loading flag flips inside the cell; the
-        // guard never spans the await.
+        // guard never spans the await. The key resolves here, at
+        // request time: the store fills during the startup tail, so a
+        // spawn-time snapshot would freeze `None` forever.
         self.data.update(|d| d.models_loading = true);
-        match crate::or_models::fetch_models(&self.client, &self.base_url, self.api_key.as_deref())
-            .await
+        let api_key = self.deps.services.api_keys.get(OPENROUTER_API_KEY_ENV);
+        match crate::or_models::fetch_models(&self.client, &self.base_url, api_key.as_deref()).await
         {
             Ok(raw) => {
                 let eci = self.eci_snapshot();
@@ -420,14 +421,16 @@ impl OpenRouterMarketActor {
         }
 
         // Network: mark in flight, then fetch. No cell guard spans
-        // the await.
+        // the await. The key resolves at request time for the same
+        // reason as the models fetch above.
         self.data.update(|d| d.endpoints_loading = true);
         let listing_id = openrouter_listing_id(model_id);
+        let api_key = self.deps.services.api_keys.get(OPENROUTER_API_KEY_ENV);
         match crate::or_endpoints::fetch_endpoints(
             &self.client,
             &self.base_url,
             listing_id,
-            self.api_key.as_deref(),
+            api_key.as_deref(),
         )
         .await
         {

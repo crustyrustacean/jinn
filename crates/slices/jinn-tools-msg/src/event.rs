@@ -7,24 +7,17 @@ use jinn_core_types::tool_types::{ToolCall, ToolDefinition, ToolResult};
 
 use jiff::Timestamp;
 
-/// All tool calls in a batch have completed execution.
-///
-/// Emitted by the tool orchestrator when every tool call in a batch
-/// has finished (success or failure). The LLM actor listens for this
-/// to continue the multi-turn tool loop.
-#[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
-#[schema(description = "A batch of tool calls finished executing.")]
-pub struct ToolBatchCompleted {
-    /// The session this batch belongs to.
-    pub session_id: SessionId,
-    /// The results for each tool call in the batch.
-    pub results: Vec<ToolResult>,
-}
-
 /// A single tool execution completed.
 ///
-/// Emitted by provider actors after executing a tool.
-/// The tool orchestrator aggregates these into a `ToolBatchCompleted`.
+/// Emitted by provider actors after executing a tool. The orchestrator
+/// closes the call in the turn ledger; the session actor finalizes the
+/// result entry — both keyed on the event's turn identity.
+///
+/// A `synthesized` completion is the cancel drain's bookkeeping: the
+/// orchestrator emits one per open call at cancel time so the work set
+/// empties without waiting on an unabortable tool. It finalizes only a
+/// still-`Pending` entry and never pushes one — a real result that also
+/// arrives always wins.
 #[derive(Debug, Clone, Serialize, Deserialize, trouper::schema::Event)]
 #[schema(description = "A single tool execution completed.")]
 pub struct ToolExecutionCompleted {
@@ -32,6 +25,15 @@ pub struct ToolExecutionCompleted {
     pub session_id: SessionId,
     /// The tool execution result.
     pub result: ToolResult,
+    /// The turn this execution belongs to, as minted by the turn ledger.
+    ///
+    /// Zero is the pre-ledger legacy value; see `SendToLlmProvider.turn`.
+    #[serde(default)]
+    pub turn: jinn_core_types::turn_identity::TurnToken,
+    /// Whether this completion was synthesized by the cancel drain rather
+    /// than produced by the tool. Old persisted events default to `false`.
+    #[serde(default)]
+    pub synthesized: bool,
 }
 
 /// Tools were registered by an actor.
@@ -151,6 +153,11 @@ pub struct ToolExecutionStarted {
     pub name: String,
     /// When the original LLM request was dispatched.
     pub dispatched_at: Timestamp,
+    /// The turn this execution belongs to, as minted by the turn ledger.
+    ///
+    /// Zero is the pre-ledger legacy value; see `SendToLlmProvider.turn`.
+    #[serde(default)]
+    pub turn: jinn_core_types::turn_identity::TurnToken,
 }
 
 /// How a streamed tool output should be surfaced.
@@ -176,6 +183,11 @@ pub enum ToolOutputKind {
 pub struct ToolExecutionOutput {
     /// The session this output belongs to.
     pub session_id: SessionId,
+    /// The turn this output belongs to, as minted by the turn ledger.
+    ///
+    /// Zero is the pre-ledger legacy value; see `SendToLlmProvider.turn`.
+    #[serde(default)]
+    pub turn: jinn_core_types::turn_identity::TurnToken,
     /// The tool call ID this output is for.
     pub tool_call_id: jinn_core_types::ToolCallId,
     /// New output text (delta, not accumulated).
@@ -185,8 +197,6 @@ pub struct ToolExecutionOutput {
     #[serde(default)]
     pub kind: ToolOutputKind,
 }
-
-impl jinn_slices::BusMessage for ToolBatchCompleted {}
 
 impl jinn_slices::BusMessage for ToolExecutionCompleted {}
 

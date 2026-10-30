@@ -307,6 +307,7 @@ Entries are added or amended **only with human approval**.
 - (session) Pinning or unpinning a chat entry marks the session interacted, so the pin change persists even on a session that was never sent to.
 - (preferences) The app-state actor handles UpdateAppState through its trouper .handles declaration; jinn.toml has no bus command because the configuration layer writes it directly.
 - (boot) The startup tail — the GetEnvironmentConfig ask and the EnvironmentLoaded publish — runs in composition after AllActorsSpawned, not in the slice.
+- (boot) The API-key store is populated by EnvInitActor during the startup tail's GetEnvironmentConfig ask, after every slice activation, so the store is empty throughout the spawn window.
 - (session) Live session state is owned by the `jinn-session-state` crate, which preserves the authoritative atomic session aggregate and runtime turn state.
 - (session) Durable session persistence uses a complete `SessionSnapshot` containing session metadata, history, task state, and token accounting.
 - (session) The session turn reducer is owned by `jinn-session-turn` and coordinates history, phase, streaming, tools, retries, and persistence.
@@ -577,6 +578,8 @@ Entries are added or amended **only with human approval**.
 - (graph) The overgraph server embeds text locally via candle, pure Rust; no ONNX runtime or other native ML library is linked.
 - (graph) The overgraph server's bge-small-en-v1.5 embeddings are CLS-token pooled and L2 normalized, verified against fastembed reference vectors by the feature-gated embedding-parity test.
 - (model-market) A model-market refresh publishes one command (`RefreshAll`, handled by the models actor) that ends by emitting `MarketModelsRefreshed`; the epoch actor subscribes to that event and forces its own refresh, so no message in the refresh path is declared by two actors.
+- (model-market) The model market popup displays no em-dash; empty cells render as a plain hyphen.
+- (arch) API keys are read from the store at request time; no component snapshots a key into a field at spawn.
 - (arch) A schema's declared kind decides its transport on the erased publish path (a route action's closure): an Event broadcasts to every declarant, a Command routes to one handler and rotates between them when a second actor declares the same schema; a direct typed publish always broadcasts, so the two paths disagree only for a Command with more than one declarant.
 - (tools) The `read_image` built-in tool attaches a local image file to its own tool result, so a model sees a picture mid-tool-loop without a user send.
 - (tools) A `read_image` call under a model not confirmed vision-capable succeeds with text-only guidance instead of attaching.
@@ -597,3 +600,19 @@ Entries are added or amended **only with human approval**.
 - (mcp) The MCP inspector's footer counts the registered tool definitions of enabled servers only, so a disabled server contributes zero.
 - (chat-log-view) The audit popup's context section header names the entry's context override, not its computed inclusion state.
 - (chat-log-view) The audit popup's metadata block reports an entry's context cost as tokens currently included over the entry's total token count.
+- (storage) The sessions database runs incremental auto-vacuum, converted from none by migration v32's full VACUUM.
+- (storage) The `[maintenance]` section in jinn.toml carries session retention; an absent retention means the maintenance actor never deletes.
+- (storage) The database maintenance actor deletes whole session trees whose members are all archived, outside the Library, and idle past the retention threshold.
+- (storage) The maintenance actor returns freed pages to the filesystem with a bounded incremental vacuum after each prune sweep.
+- (logging) Startup truncates jinn.log to its last 10,000 lines before opening the append handle.
+- (rules) Every shipped tool:bash condition that anchors on a compound separator requires whitespace after it, so a shell metacharacter inside quoted script content — a grep alternation, an awk program — is never read as a command separator.
+- (storage) The session prune actor (`session_prune_actor`) drains stale trees in short transactions — one session per 2-second tick, each chunk followed by a bounded incremental vacuum — and idles at an hourly sweep once drained, so an in-flight chunk never holds the write lock long enough to outlast graceful shutdown's deadline; a crash mid-drain re-finds the remainder because the selection is idempotent.
+- (dashboard) The session prune actor publishes its drain progress to its `session-prune` dashboard row via `ServiceStatusUpdate` — "N sessions pending" before each chunk, "prune up to date" once the queue reads empty — the same row name the runtime's lifecycle announcement carries. The actor was formerly `db_maintenance_actor`/`DbMaintenanceActor` at row `db-maintenance`; the `[maintenance]` config section name is unchanged and remains the home for future maintenance settings.
+- (turn-ledger) Turn admission is adjudicated solely by the turn ledger, a mutex'd map of live turns keyed by session; no entry means Idle.
+- (turn-ledger) The ledger registers each tool call at dispatch and retires it when its result arrives, so message arrival order never decides admission.
+- (turn-ledger) A turn entry carries the in-flight stream id, the open tool-call set, and what happens when the work set empties: continue, end, or cancel.
+- (turn-ledger) Phase is derived from the turn ledger for display and guards; the phase actor and phase machine no longer exist.
+- (tools) The tools orchestrator synthesizes a cancelled completion for every open call at cancel time, so the drain never waits on an unabortable call.
+- (cancel) A cancelled turn settles only when its work set empties, emits its cancellation once, and sweeps still-Pending tool results to Failure.
+- (sessions) A session load sweeps stored Pending tool results to Failure.
+- (cli) A relative `--log-file`, `--db-path`, or `--dump-requests` value resolves against the process cwd at the CLI boundary, with a leading `~` expanding against the user's home.

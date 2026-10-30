@@ -57,6 +57,7 @@ async fn ctx_with(
     cwd: &MarkedPathBuf<Absolute>,
 ) -> ToolContext {
     ToolContext {
+        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
         cwd: cwd.clone(),
         config: jinn_config::testutil::config_layer(SCRIPT_DOC),
         shells: Default::default(),

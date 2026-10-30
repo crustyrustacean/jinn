@@ -1351,7 +1351,7 @@ fn render_annotation_entry_expanded_shows_source_title_and_url() {
 /// optional child session in the given phase.
 fn spawn_subagent_waiting_fixture(
     child_id: Option<jinn_core_types::SessionId>,
-    child_phase: Option<jinn_session_msg::PhaseKind>,
+    child_phase: Option<jinn_slices::PhaseView>,
 ) -> AppState {
     use jinn_kernel::protocol::ChatEntryKind;
     use jinn_tools_msg::SPAWN_SUBAGENT_TOOL_NAME;
@@ -1372,10 +1372,10 @@ fn spawn_subagent_waiting_fixture(
     if let (Some(child), Some(phase)) = (child_id, child_phase) {
         let child_session = state.session.get_or_create(&child);
         match phase {
-            jinn_session_msg::PhaseKind::Sending => {
+            jinn_slices::PhaseView::Working => {
                 child_session.begin_sending();
             }
-            jinn_session_msg::PhaseKind::Streaming => {
+            jinn_slices::PhaseView::Streaming => {
                 child_session.begin_sending();
                 child_session.begin_streaming();
             }
@@ -1391,12 +1391,12 @@ fn buffer_contains(buffer: &ratatui::buffer::Buffer, needle: &str) -> bool {
 
 #[rstest::rstest]
 fn waiting_line_renders_for_pending_spawn_subagent_call_with_running_child() {
-    use jinn_session_msg::PhaseKind;
+    use jinn_slices::PhaseView;
 
     // Given a pending `spawn_subagent` call linked to an in-memory child in Sending phase.
     let mut element = ChatLogElement::new();
     let child_id = jinn_core_types::SessionId::new();
-    let state = spawn_subagent_waiting_fixture(Some(child_id), Some(PhaseKind::Sending));
+    let state = spawn_subagent_waiting_fixture(Some(child_id), Some(PhaseView::Working));
 
     // When rendering.
     let (terminal, _area) = render_element_with_area(&mut element, &state, 80, 12);
@@ -1507,7 +1507,7 @@ fn waiting_line_disappears_when_child_finishes_without_manual_invalidation() {
     let child_id = jinn_core_types::SessionId::new();
     let mut state = spawn_subagent_waiting_fixture(
         Some(child_id.clone()),
-        Some(jinn_session_msg::PhaseKind::Streaming),
+        Some(jinn_slices::PhaseView::Streaming),
     );
 
     let (mut terminal, area) = render_element_with_area(&mut element, &state, 80, 12);
@@ -1523,7 +1523,7 @@ fn waiting_line_disappears_when_child_finishes_without_manual_invalidation() {
     // The old finish is now the two actor halves: the session actor's entry
     // fold, then the phase actor's machine edge.
     child.finalize_entries_for_finish(false, jiff::Timestamp::now());
-    child.finish_streaming_via_machine();
+    child.settle_to_idle();
     redraw_element(&mut element, &state, &slices, &mut terminal, area);
 
     // Then the waiting line is gone — the render variant change alone
@@ -1877,7 +1877,7 @@ fn completed_tool_call_renders_collapsed_after_streaming_finishes() {
     state
         .active_session_mut()
         .finalize_entries_for_finish(true, jiff::Timestamp::now());
-    state.active_session_mut().finish_streaming_via_machine();
+    state.active_session_mut().settle_to_idle();
 
     // When rendering.
     let rows = rendered_content_rows(&state, 40, 10);

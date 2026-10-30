@@ -186,7 +186,7 @@ impl DiscordBridgeSubscriber {
     /// Forward phase changes to the gateway **only** when the new phase is
     /// `Idle`. Non-idle transitions (Streaming, Sending, …) are dropped.
     pub(super) fn handle_session_phase_changed(&self, payload: &SessionPhaseChanged) {
-        if payload.new_phase != jinn_session_msg::PhaseKind::Idle {
+        if payload.new_phase != jinn_slices::PhaseView::Idle {
             return;
         }
         self.forward(BridgeEvent::TurnFinished {
@@ -478,7 +478,7 @@ mod tests {
     // assert the subscriber's output channels, so they fail if any
     // subscription is dropped.
 
-    use jinn_session_msg::PhaseKind;
+    use jinn_slices::PhaseView;
     use std::time::Duration;
 
     #[rstest::rstest]
@@ -503,8 +503,8 @@ mod tests {
         fabric
             .send_to_topic(SessionPhaseChanged {
                 session_id: sid.clone(),
-                old_phase: PhaseKind::Streaming,
-                new_phase: PhaseKind::Idle,
+                old_phase: PhaseView::Streaming,
+                new_phase: PhaseView::Idle,
                 at: jinn_session_msg::PhaseEventAt::now(),
             })
             .await;
@@ -540,8 +540,8 @@ mod tests {
         fabric
             .send_to_topic(SessionPhaseChanged {
                 session_id: sid.clone(),
-                old_phase: PhaseKind::Idle,
-                new_phase: PhaseKind::Streaming,
+                old_phase: PhaseView::Idle,
+                new_phase: PhaseView::Streaming,
                 at: jinn_session_msg::PhaseEventAt::now(),
             })
             .await;

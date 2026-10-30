@@ -6,7 +6,7 @@
 //! to the model as soon as possible without waiting for the turn to end. The
 //! Discord bot is just another user, so it replicates the same branch.
 
-use jinn_session_msg::PhaseKind;
+use jinn_slices::PhaseView;
 
 /// Which bus command an inbound Discord message should be sent as, given the
 /// current session phase.
@@ -23,24 +23,24 @@ pub enum RouteDecision {
 /// `Idle` → [`RouteDecision::Enqueue`]; any mid-turn phase (`Sending`,
 /// `Streaming`) → [`RouteDecision::Steer`].
 #[must_use]
-pub fn route_decision(phase: PhaseKind) -> RouteDecision {
+pub fn route_decision(phase: PhaseView) -> RouteDecision {
     match phase {
-        PhaseKind::Idle => RouteDecision::Enqueue,
-        PhaseKind::Sending | PhaseKind::Streaming => RouteDecision::Steer,
+        PhaseView::Idle => RouteDecision::Enqueue,
+        PhaseView::Streaming | PhaseView::Working | PhaseView::Cancelling => RouteDecision::Steer,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{RouteDecision, route_decision};
-    use jinn_session_msg::PhaseKind;
+    use jinn_slices::PhaseView;
 
     #[rstest::rstest]
     #[test]
     fn idle_phase_routes_to_enqueue() {
         // Given an idle session phase.
         // When routing.
-        let decision = route_decision(PhaseKind::Idle);
+        let decision = route_decision(PhaseView::Idle);
         // Then the message is enqueued (starts a new turn).
         assert_eq!(decision, RouteDecision::Enqueue);
     }
@@ -50,7 +50,7 @@ mod tests {
     fn streaming_phase_routes_to_steer() {
         // Given a streaming session phase.
         // When routing.
-        let decision = route_decision(PhaseKind::Streaming);
+        let decision = route_decision(PhaseView::Streaming);
         // Then the message is steered (delivered mid-turn).
         assert_eq!(decision, RouteDecision::Steer);
     }
@@ -60,7 +60,7 @@ mod tests {
     fn sending_phase_routes_to_steer() {
         // Given a sending session phase.
         // When routing.
-        let decision = route_decision(PhaseKind::Sending);
+        let decision = route_decision(PhaseView::Working);
         // Then the message is steered.
         assert_eq!(decision, RouteDecision::Steer);
     }

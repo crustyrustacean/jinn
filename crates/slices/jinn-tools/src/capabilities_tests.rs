@@ -30,6 +30,7 @@ use marked_path::{Absolute, MarkedPathBuf};
 /// the calling test: both tools must fail gracefully.
 fn bare_ctx(cwd: &MarkedPathBuf<Absolute>) -> ToolContext {
     ToolContext {
+        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
         cwd: cwd.clone(),
         config: jinn_config::testutil::config_layer(""),
         shells: Default::default(),

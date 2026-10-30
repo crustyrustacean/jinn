@@ -138,6 +138,45 @@ pub trait SessionStore: Send + Sync + 'static {
     /// Returns [`SessionStoreError`] if the delete fails.
     async fn delete(&self, session_id: &SessionId) -> Result<(), Report<SessionStoreError>>;
 
+    /// Delete many sessions in one atomic operation.
+    ///
+    /// The session prune actor's bulk path: every id is removed in one
+    /// transaction (all-or-nothing), with shared-entry reaping scoped to the
+    /// deleted set — an entry claimed by any *surviving* session is kept, so
+    /// forks of pruned sessions lose nothing. Unknown IDs match no rows and
+    /// are not an error.
+    ///
+    /// The default loops [`Self::delete`], which is correct but per-session
+    /// atomic; backends with a pool should override for one-transaction
+    /// semantics.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if any delete fails.
+    async fn delete_many(
+        &self,
+        session_ids: &[SessionId],
+    ) -> Result<(), Report<SessionStoreError>> {
+        for session_id in session_ids {
+            self.delete(session_id).await?;
+        }
+        Ok(())
+    }
+
+    /// Return freed pages to the filesystem (incremental auto-vacuum).
+    ///
+    /// After a bulk delete the freed pages sit on the freelist; this bounds
+    /// how many are trimmed back to the OS in one call, keeping the operation
+    /// short and non-blocking. A no-op on backends that do not run SQLite.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the vacuum command fails.
+    async fn incremental_vacuum(&self, max_pages: u32) -> Result<(), Report<SessionStoreError>> {
+        let _ = max_pages;
+        Ok(())
+    }
+
     /// Fork a session from a specific entry ordinal into a new session.
     ///
     /// Creates a new session with `parent_session` = `source_session_id`.

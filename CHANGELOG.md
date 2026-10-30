@@ -1,8 +1,36 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
-## (development)
+## 2026-10-29 v1.13.0
 
 - The chat entry metadata popup now displays the context size of a chat entry and how much is actually in context.
+- "OpenRouter Model Search" popup renamed to "OpenRouter Model Market"
+- Fix bug 21.
+  - (Dev notes): now using a single serialization point for turn management.
+- `--log-file`, and `--dump-requests` now accept both relative and absolute paths.
+- Fix: OpenRouter Model Market now reports `LAT p50` and `TP p50` on the endpoint page.
+  - Some endpoints don't have this data, so will still report `-`
+  - Endpoint `LAT p50` and `TP p50` data after this update will NOT be shown for existing users until the model cache expires (7 days)
+    - To force an update, you'll need to manually refresh model data using `<c-r>` in the Model Market popup, OR delete `~/.cache/jinn/openrouter/models.json`
+- Enable incremental vacuum operation to database. Migration might take a long time at first run.
+- Loosen `no-shutdown` stream rule. It should not trigger as often now.
+- `jinn` logfile now caps at 10k lines, cleaned up at startup.
+- Add `jinn.toml` configuration to delete old sessions. Default behavior is to never delete anything.
+
+```toml
+[maintenance]
+# > Deletes session trees idle longer than this.
+# >
+# > Format: <number><unit> — a whole number followed by a unit suffix:
+# >
+# >   m  minutes      30m  = 30 minutes
+# >   h  hours        24h  = 1 day
+# >   d  days         90d  = 3 months
+# >   w  weeks        2w   = 2 weeks
+# >
+# > A tree is deleted only when EVERY member is archived, not in the
+# > Library, and idle past the threshold. Commented out = never delete.
+session_retention = "90d"
+```
 
 ## 2026-10-28 v1.12.0
 

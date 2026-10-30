@@ -51,6 +51,61 @@ fn captures_are_coherent_and_strictly_newer() {
 }
 
 #[rstest::rstest]
+fn restoring_a_snapshot_sweeps_stored_pending_tool_results_to_failure() {
+    // Given a session carrying a `Pending` tool result — the residue of a
+    // turn that never finalized (bug #21's stranded placeholder).
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("run the tool"));
+    session.push_entry(ChatEntry::tool_call(
+        "call-1".to_owned(),
+        "bash",
+        "{}".to_owned(),
+    ));
+    session.push_entry(ChatEntry::tool_result(
+        "call-1".to_owned(),
+        "bash",
+        "",
+        jinn_core_types::ToolResultStatus::Pending,
+    ));
+    let snapshot = session.capture_snapshot();
+
+    // When the snapshot is restored as a live core (the load boundary).
+    let core = snapshot.into_core();
+
+    // Then no `Pending` survives: the result reads as a failure with
+    // placeholder content, so the context converter sees a resolved batch.
+    let pending = core
+        .history_work
+        .history
+        .iter()
+        .filter(|entry| {
+            matches!(
+                &entry.kind,
+                jinn_core_types::ChatEntryKind::ToolResult {
+                    status: jinn_core_types::ToolResultStatus::Pending,
+                    ..
+                }
+            )
+        })
+        .count();
+    assert_eq!(pending, 0, "storage residue must not survive the load");
+    // And the swept entry carries the failure status and placeholder text.
+    let swept = core
+        .history_work
+        .history
+        .iter()
+        .find_map(|entry| match &entry.kind {
+            jinn_core_types::ChatEntryKind::ToolResult {
+                status, content, ..
+            } => Some((*status, content.clone())),
+            _ => None,
+        })
+        .expect("the tool result survives the sweep");
+    assert_eq!(swept.0, jinn_core_types::ToolResultStatus::Failure);
+    assert_eq!(swept.1, "cancelled");
+}
+
+#[rstest::rstest]
 fn push_entry_adds_to_history() {
     // Given a new ChatSessionState.
     let mut session = ChatSessionState::new();
@@ -219,7 +274,7 @@ fn begin_streaming_sets_is_streaming() {
     session.begin_streaming();
 
     // Then is_streaming is true.
-    assert_eq!(session.phase(), PhaseKind::Streaming);
+    assert_eq!(session.phase(), PhaseView::Streaming);
 }
 
 #[rstest::rstest]
@@ -254,10 +309,10 @@ fn finish_streaming_clears_streaming_state() {
 
     // When finishing streaming.
     session.finalize_entries_for_finish(true, jiff::Timestamp::now());
-    session.finish_streaming_via_machine();
+    session.settle_to_idle();
 
     // Then is_streaming is false and text is preserved.
-    assert_ne!(session.phase(), PhaseKind::Streaming);
+    assert_ne!(session.phase(), PhaseView::Streaming);
     assert_eq!(
         session.history()[0].kind,
         ChatEntryKind::Assistant("Hi".to_owned())
@@ -275,10 +330,10 @@ fn cancel_streaming_keeps_partial_text() {
 
     // When cancelling streaming.
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
-    session.cancel_streaming_via_machine();
+    session.settle_to_idle();
 
     // Then is_streaming is false but partial text is kept.
-    assert_ne!(session.phase(), PhaseKind::Streaming);
+    assert_ne!(session.phase(), PhaseView::Streaming);
     assert_eq!(
         session.history()[0].kind,
         ChatEntryKind::Assistant("Partial".to_owned())
@@ -295,7 +350,7 @@ fn begin_streaming_twice_is_noop() {
     session.begin_streaming();
 
     // Then phase stays Streaming (no panic, no double-transition).
-    assert_eq!(session.phase(), PhaseKind::Streaming);
+    assert_eq!(session.phase(), PhaseView::Streaming);
 }
 
 #[rstest::rstest]
@@ -684,13 +739,13 @@ fn drain_empties_queue() {
 fn begin_sending_sets_is_sending() {
     // Given a new session (idle).
     let mut session = ChatSessionState::new();
-    assert_ne!(session.phase(), PhaseKind::Sending);
+    assert_ne!(session.phase(), PhaseView::Working);
 
     // When beginning sending.
     session.begin_sending();
 
     // Then is_sending is true.
-    assert_eq!(session.phase(), PhaseKind::Sending);
+    assert_eq!(session.phase(), PhaseView::Working);
 }
 
 #[rstest::rstest]
@@ -703,11 +758,11 @@ fn begin_sending_is_noop_when_already_sending() {
     session.begin_sending();
 
     // Then phase stays Sending (no panic).
-    assert_eq!(session.phase(), PhaseKind::Sending);
+    assert_eq!(session.phase(), PhaseView::Working);
 }
 
 #[rstest::rstest]
-fn begin_sending_is_noop_when_streaming() {
+fn begin_sending_projects_working_over_streaming() {
     // Given a session that is streaming.
     let mut session = attached_session();
     session.begin_streaming();
@@ -715,8 +770,10 @@ fn begin_sending_is_noop_when_streaming() {
     // When calling begin_sending.
     session.begin_sending();
 
-    // Then phase stays Streaming (no panic).
-    assert_eq!(session.phase(), PhaseKind::Streaming);
+    // Then the projection reads Working: the projection write is the
+    // display truth the ledger's derived view is allowed to disagree with
+    // between ledger ops, and nothing asserts an edge here.
+    assert_eq!(session.phase(), PhaseView::Working);
 }
 
 #[rstest::rstest]
@@ -727,10 +784,10 @@ fn finish_turn_from_busy_settles_sending_to_idle() {
     session.set_tool_loop_disabled();
 
     // When the turn is finished from the busy phase.
-    session.finish_turn_from_busy_via_machine();
+    session.settle_to_idle();
 
     // Then the session is Idle (the tool-loop stop settled Sending → Idle).
-    assert_eq!(session.phase(), PhaseKind::Idle);
+    assert_eq!(session.phase(), PhaseView::Idle);
 }
 
 #[rstest::rstest]
@@ -739,10 +796,10 @@ fn finish_turn_from_busy_is_noop_when_idle() {
     let mut session = ChatSessionState::new();
 
     // When the turn is finished from the busy phase.
-    session.finish_turn_from_busy_via_machine();
+    session.settle_to_idle();
 
     // Then phase stays Idle (no panic, just a logged warning).
-    assert_eq!(session.phase(), PhaseKind::Idle);
+    assert_eq!(session.phase(), PhaseView::Idle);
 }
 
 #[rstest::rstest]
@@ -752,7 +809,7 @@ fn is_idle_true_when_not_sending_or_streaming() {
 
     // When its phase is inspected.
     // Then it is Idle.
-    assert_eq!(session.phase(), PhaseKind::Idle);
+    assert_eq!(session.phase(), PhaseView::Idle);
 }
 
 #[rstest::rstest]
@@ -763,7 +820,7 @@ fn is_idle_false_when_sending() {
 
     // When its phase is inspected.
     // Then it is not idle.
-    assert_ne!(session.phase(), PhaseKind::Idle);
+    assert_ne!(session.phase(), PhaseView::Idle);
 }
 
 #[rstest::rstest]
@@ -774,7 +831,7 @@ fn is_idle_false_when_streaming() {
 
     // When its phase is inspected.
     // Then it is not Idle.
-    assert_ne!(session.phase(), PhaseKind::Idle);
+    assert_ne!(session.phase(), PhaseView::Idle);
 }
 
 #[rstest::rstest]
@@ -783,16 +840,16 @@ fn cancel_streaming_returns_to_idle() {
     let mut session = ChatSessionState::new();
     session.begin_sending();
     session.begin_streaming();
-    assert_eq!(session.phase(), PhaseKind::Streaming);
+    assert_eq!(session.phase(), PhaseView::Streaming);
 
     // When cancelling streaming.
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
-    session.cancel_streaming_via_machine();
+    session.settle_to_idle();
 
     // Then the session is idle.
-    assert_eq!(session.phase(), PhaseKind::Idle);
-    assert_ne!(session.phase(), PhaseKind::Streaming);
-    assert_ne!(session.phase(), PhaseKind::Sending);
+    assert_eq!(session.phase(), PhaseView::Idle);
+    assert_ne!(session.phase(), PhaseView::Streaming);
+    assert_ne!(session.phase(), PhaseView::Working);
 }
 
 #[rstest::rstest]
@@ -802,16 +859,16 @@ fn cancel_streaming_from_sending_phase_returns_to_idle() {
     session.begin_sending();
     session.begin_streaming();
     session.finalize_entries_for_finish(true, jiff::Timestamp::now());
-    session.finish_streaming_via_machine();
+    session.settle_to_idle();
     session.begin_sending();
-    assert_eq!(session.phase(), PhaseKind::Sending);
+    assert_eq!(session.phase(), PhaseView::Working);
 
     // When cancelling streaming (user presses ESC during tool execution).
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
-    session.cancel_streaming_via_machine();
+    session.settle_to_idle();
 
     // Then the session returns to idle.
-    assert_eq!(session.phase(), PhaseKind::Idle);
+    assert_eq!(session.phase(), PhaseView::Idle);
 }
 
 #[rstest::rstest]
@@ -821,20 +878,16 @@ fn finish_streaming_returns_to_idle() {
     session.begin_sending();
     session.begin_streaming();
     let idx = session.push_entry(ChatEntry::assistant(""));
-    session
-        .core
-        .ephemeral
-        .machine
-        .set_streaming_entry_index(idx);
+    session.core.ephemeral.streaming_entry_index = Some(idx);
 
     // When finishing streaming.
     session.finalize_entries_for_finish(true, jiff::Timestamp::now());
-    session.finish_streaming_via_machine();
+    session.settle_to_idle();
 
     // Then the session is idle.
-    assert_eq!(session.phase(), PhaseKind::Idle);
-    assert_ne!(session.phase(), PhaseKind::Streaming);
-    assert_ne!(session.phase(), PhaseKind::Sending);
+    assert_eq!(session.phase(), PhaseView::Idle);
+    assert_ne!(session.phase(), PhaseView::Streaming);
+    assert_ne!(session.phase(), PhaseView::Working);
 }
 
 #[rstest::rstest]
@@ -926,6 +979,7 @@ fn finalize_tool_result_with_attachments_stamps_the_entry() {
         None,
         None,
         attachments,
+        None,
     );
 
     // Then the finalized entry carries the attachment.
@@ -964,6 +1018,7 @@ fn finalize_tool_result_with_attachments_pushes_a_new_entry_when_not_pending() {
         None,
         None,
         attachments,
+        None,
     );
 
     // Then a new ToolResult entry is pushed carrying the attachment.
@@ -1114,10 +1169,10 @@ fn finish_streaming_clears_tool_call_indices() {
 
     // When finishing streaming.
     session.finalize_entries_for_finish(true, jiff::Timestamp::now());
-    session.finish_streaming_via_machine();
+    session.settle_to_idle();
 
     // Then the tool call indices are cleared (entries remain in history).
-    assert_ne!(session.phase(), PhaseKind::Streaming);
+    assert_ne!(session.phase(), PhaseView::Streaming);
     assert_eq!(session.history().len(), 2); // assistant + tool call still there
 }
 
@@ -1135,10 +1190,10 @@ fn cancel_streaming_clears_tool_call_indices() {
 
     // When cancelling streaming.
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
-    session.cancel_streaming_via_machine();
+    session.settle_to_idle();
 
     // Then the tool call indices are cleared (entries remain in history).
-    assert_ne!(session.phase(), PhaseKind::Streaming);
+    assert_ne!(session.phase(), PhaseView::Streaming);
     assert_eq!(session.history().len(), 2); // assistant + tool call still there
 }
 
@@ -1863,7 +1918,7 @@ fn finish_streaming_clears_thinking_entry_index() {
 
     // When finishing streaming.
     session.finalize_entries_for_finish(true, jiff::Timestamp::now());
-    session.finish_streaming_via_machine();
+    session.settle_to_idle();
 
     // Then the thinking entry index is cleared.
     assert_eq!(session.streaming_thinking_entry_index(), None);
@@ -1890,7 +1945,7 @@ fn cancel_streaming_preserves_partial_thinking() {
 
     // When cancelling streaming.
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
-    session.cancel_streaming_via_machine();
+    session.settle_to_idle();
 
     // Then the partial thinking text is preserved.
     assert_eq!(session.streaming_thinking_entry_index(), None);
@@ -1907,10 +1962,10 @@ fn finish_streaming_without_preserve_skips_assistant_entry() {
 
     // When finishing streaming without preserving assistant.
     session.finalize_entries_for_finish(false, jiff::Timestamp::now());
-    session.finish_streaming_via_machine();
+    session.settle_to_idle();
 
     // Then no assistant entry was created.
-    assert_ne!(session.phase(), PhaseKind::Streaming);
+    assert_ne!(session.phase(), PhaseView::Streaming);
     assert!(session.history().is_empty());
 }
 
@@ -1922,10 +1977,10 @@ fn finish_streaming_with_preserve_creates_assistant_entry() {
 
     // When finishing streaming with preserving assistant.
     session.finalize_entries_for_finish(true, jiff::Timestamp::now());
-    session.finish_streaming_via_machine();
+    session.settle_to_idle();
 
     // Then an empty assistant entry was created.
-    assert_ne!(session.phase(), PhaseKind::Streaming);
+    assert_ne!(session.phase(), PhaseView::Streaming);
     assert_eq!(session.history().len(), 1);
     assert!(matches!(session.history()[0].kind, ChatEntryKind::Assistant(ref t) if t.is_empty()));
 }
@@ -1941,10 +1996,10 @@ fn finish_streaming_without_preserve_keeps_existing_assistant() {
 
     // When finishing streaming without preserving assistant.
     session.finalize_entries_for_finish(false, jiff::Timestamp::now());
-    session.finish_streaming_via_machine();
+    session.settle_to_idle();
 
     // Then the existing assistant entry is still there (ensure_assistant_entry was a no-op since entry already existed).
-    assert_ne!(session.phase(), PhaseKind::Streaming);
+    assert_ne!(session.phase(), PhaseView::Streaming);
     assert_eq!(session.history().len(), 1);
     assert!(matches!(session.history()[0].kind, ChatEntryKind::Assistant(ref t) if t == "Hello"));
 }
@@ -2537,16 +2592,12 @@ fn begin_tool_result_tracks_history_index() {
         session
             .core
             .ephemeral
-            .machine
-            .streaming_tool_result_indices()
+            .streaming_tool_result_indices
             .contains_key(&jinn_core_types::ToolCallId::from("call_1"))
     );
     assert_eq!(
-        session
-            .core
-            .ephemeral
-            .machine
-            .streaming_tool_result_indices()[&jinn_core_types::ToolCallId::from("call_1")],
+        session.core.ephemeral.streaming_tool_result_indices
+            [&jinn_core_types::ToolCallId::from("call_1")],
         1
     );
 }
@@ -2683,8 +2734,7 @@ fn finalize_tool_result_completes_pending_entry() {
         !session
             .core
             .ephemeral
-            .machine
-            .streaming_tool_result_indices()
+            .streaming_tool_result_indices
             .contains_key(&jinn_core_types::ToolCallId::from("call_1"))
     );
 }
@@ -2770,8 +2820,8 @@ fn finalize_tool_result_pushes_new_entry_for_unknown_id() {
 
 #[rstest::rstest]
 #[test]
-fn begin_tool_result_does_not_push_when_not_streaming() {
-    // Given a session NOT in streaming phase (defaults to Idle).
+fn begin_tool_result_pushes_regardless_of_phase() {
+    // Given a session in no particular phase (defaults to Idle).
     let mut session = ChatSessionState::new();
 
     // When beginning a tool result.
@@ -2781,12 +2831,11 @@ fn begin_tool_result_does_not_push_when_not_streaming() {
         jiff::Timestamp::now(),
     );
 
-    // Then no entry is pushed (the early return prevented it).
-    assert!(
-        session.history().is_empty(),
-        "expected no entry when not streaming, got {} entries",
-        session.history().len()
-    );
+    // Then the pending entry is pushed: phase is not begin_tool_result's
+    // business — admission is the turn ledger's decision, and this path
+    // only runs for an admitted completion (bug #21's creator-side guard
+    // is retired with it).
+    assert_eq!(session.history().len(), 1, "the pending entry lands");
 }
 
 #[rstest::rstest]
@@ -3405,7 +3454,7 @@ fn is_tool_call_streaming_returns_false_after_finish_streaming() {
 
     // When finishing streaming.
     session.finalize_entries_for_finish(true, jiff::Timestamp::now());
-    session.finish_streaming_via_machine();
+    session.settle_to_idle();
 
     // Then the tool call entry is no longer streaming.
     assert!(
@@ -4195,7 +4244,7 @@ fn cancel_stream_and_drain_puts_user_display_text_in_input() {
 
     // When cancelling and draining.
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
-    session.cancel_streaming_via_machine();
+    session.settle_to_idle();
     session.drain_cancelled_work_to_input();
 
     // Then the input buffer contains the drained display texts joined by the cancel separator.
@@ -4215,7 +4264,7 @@ fn cancel_stream_and_drain_discards_non_user_items() {
 
     // When cancelling and draining.
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
-    session.cancel_streaming_via_machine();
+    session.settle_to_idle();
     session.drain_cancelled_work_to_input();
 
     // Then only user display text appears in the input buffer.
@@ -4232,7 +4281,7 @@ fn cancel_stream_and_drain_with_empty_queue_leaves_input_empty() {
 
     // When cancelling and draining.
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
-    session.cancel_streaming_via_machine();
+    session.settle_to_idle();
     session.drain_cancelled_work_to_input();
 
     // Then the input buffer remains empty.
@@ -4248,7 +4297,7 @@ fn cancel_stream_and_drain_skips_tool_continuation() {
 
     // When cancelling and draining.
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
-    session.cancel_streaming_via_machine();
+    session.settle_to_idle();
     session.drain_cancelled_work_to_input();
 
     // Then input buffer is empty (ToolContinuation was silently discarded).
@@ -4273,7 +4322,7 @@ fn cancel_stream_and_drain_uses_display_not_expanded() {
 
     // When cancelling and draining.
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
-    session.cancel_streaming_via_machine();
+    session.settle_to_idle();
     session.drain_cancelled_work_to_input();
 
     // Then the input buffer contains the display text, not expanded.
@@ -4295,7 +4344,7 @@ fn cancel_stream_and_drain_puts_steering_in_input() {
 
     // When cancelling and draining.
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
-    session.cancel_streaming_via_machine();
+    session.settle_to_idle();
     session.drain_cancelled_work_to_input();
 
     // Then the input buffer contains both fragments joined by the cancel separator.
@@ -4314,7 +4363,7 @@ fn cancel_stream_and_drain_single_steering_fragment_no_separator() {
 
     // When cancelling and draining.
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
-    session.cancel_streaming_via_machine();
+    session.settle_to_idle();
     session.drain_cancelled_work_to_input();
 
     // Then the input buffer contains the fragment with no separator.
@@ -4333,7 +4382,7 @@ fn cancel_stream_and_drain_clears_steering_buffer() {
 
     // When cancelling and draining.
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
-    session.cancel_streaming_via_machine();
+    session.settle_to_idle();
     session.drain_cancelled_work_to_input();
 
     // Then the steering buffer is empty.
@@ -4359,7 +4408,7 @@ fn cancel_stream_and_drain_flattens_steering_and_queue() {
 
     // When cancelling and draining.
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
-    session.cancel_streaming_via_machine();
+    session.settle_to_idle();
     session.drain_cancelled_work_to_input();
 
     // Then the input buffer contains all units flattened, steering first, joined by the cancel separator.
@@ -4378,7 +4427,7 @@ fn cancel_stream_and_drain_both_empty_leaves_input_unchanged() {
 
     // When cancelling and draining.
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
-    session.cancel_streaming_via_machine();
+    session.settle_to_idle();
     session.drain_cancelled_work_to_input();
 
     // Then the input buffer is left unchanged.
@@ -4397,7 +4446,7 @@ fn cancel_stream_and_drain_single_queue_message_no_separator() {
 
     // When cancelling and draining.
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
-    session.cancel_streaming_via_machine();
+    session.settle_to_idle();
     session.drain_cancelled_work_to_input();
 
     // Then the input buffer contains the single message with no separator.
@@ -4417,7 +4466,7 @@ fn cancel_stream_and_drain_steering_with_only_tool_continuation() {
 
     // When cancelling and draining.
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
-    session.cancel_streaming_via_machine();
+    session.settle_to_idle();
     session.drain_cancelled_work_to_input();
 
     // Then the input buffer contains only the steering fragment (continuation discarded).
@@ -4435,7 +4484,7 @@ fn insert_entry_at_shifts_streaming_entry_index() {
     session.push_entry(ChatEntry::assistant("streaming")); // idx 3
     session.begin_sending();
     session.begin_streaming();
-    session.core.ephemeral.machine.set_streaming_entry_index(3);
+    session.core.ephemeral.streaming_entry_index = Some(3);
 
     // When inserting at index 1 (before the streaming entry).
     let result = session.insert_entry_at(1, ChatEntry::system("inserted"));
@@ -4444,10 +4493,7 @@ fn insert_entry_at_shifts_streaming_entry_index() {
     assert_eq!(result, 1);
     assert_eq!(session.history().len(), 5);
     // And streaming_entry_index was shifted from 3 to 4.
-    assert_eq!(
-        session.core.ephemeral.machine.streaming_entry_index(),
-        Some(4)
-    );
+    assert_eq!(session.core.ephemeral.streaming_entry_index, Some(4));
 }
 
 #[rstest::rstest]
@@ -4458,16 +4504,13 @@ fn insert_entry_at_does_not_shift_streaming_index_before_insertion() {
     session.push_entry(ChatEntry::assistant("streaming")); // idx 1
     session.begin_sending();
     session.begin_streaming();
-    session.core.ephemeral.machine.set_streaming_entry_index(1);
+    session.core.ephemeral.streaming_entry_index = Some(1);
 
     // When inserting at index 2 (after the streaming entry).
     session.insert_entry_at(2, ChatEntry::system("inserted"));
 
     // Then streaming_entry_index stays at 1.
-    assert_eq!(
-        session.core.ephemeral.machine.streaming_entry_index(),
-        Some(1)
-    );
+    assert_eq!(session.core.ephemeral.streaming_entry_index, Some(1));
 }
 
 #[rstest::rstest]
@@ -4479,22 +4522,14 @@ fn insert_entry_at_shifts_thinking_entry_index() {
     session.push_entry(ChatEntry::assistant("thinking")); // idx 2
     session.begin_sending();
     session.begin_streaming();
-    session
-        .core
-        .ephemeral
-        .machine
-        .set_streaming_thinking_entry_index(2);
+    session.core.ephemeral.streaming_thinking_entry_index = Some(2);
 
     // When inserting at index 0.
     session.insert_entry_at(0, ChatEntry::system("inserted"));
 
     // Then thinking index shifted from 2 to 3.
     assert_eq!(
-        session
-            .core
-            .ephemeral
-            .machine
-            .streaming_thinking_entry_index(),
+        session.core.ephemeral.streaming_thinking_entry_index,
         Some(3)
     );
 }
@@ -4506,22 +4541,14 @@ fn insert_entry_at_does_not_shift_thinking_index_before_insertion() {
     session.push_entry(ChatEntry::assistant("thinking")); // idx 0
     session.begin_sending();
     session.begin_streaming();
-    session
-        .core
-        .ephemeral
-        .machine
-        .set_streaming_thinking_entry_index(0);
+    session.core.ephemeral.streaming_thinking_entry_index = Some(0);
 
     // When inserting at index 1 (after thinking).
     session.insert_entry_at(1, ChatEntry::system("inserted"));
 
     // Then thinking index stays at 0.
     assert_eq!(
-        session
-            .core
-            .ephemeral
-            .machine
-            .streaming_thinking_entry_index(),
+        session.core.ephemeral.streaming_thinking_entry_index,
         Some(0)
     );
 }
@@ -4545,8 +4572,7 @@ fn insert_entry_at_shifts_tool_result_indices() {
     session
         .core
         .ephemeral
-        .machine
-        .streaming_tool_result_indices_mut()
+        .streaming_tool_result_indices
         .insert(jinn_core_types::ToolCallId::from("tr-1"), 4);
 
     // When inserting at index 2.
@@ -4557,8 +4583,7 @@ fn insert_entry_at_shifts_tool_result_indices() {
         session
             .core
             .ephemeral
-            .machine
-            .streaming_tool_result_indices()
+            .streaming_tool_result_indices
             .get(&jinn_core_types::ToolCallId::from("tr-1")),
         Some(&5)
     );
@@ -4580,8 +4605,7 @@ fn insert_entry_at_does_not_shift_tool_result_indices_before_insertion() {
     session
         .core
         .ephemeral
-        .machine
-        .streaming_tool_result_indices_mut()
+        .streaming_tool_result_indices
         .insert(jinn_core_types::ToolCallId::from("tr-1"), 1);
 
     // When inserting at index 2 (after the tool result).
@@ -4592,8 +4616,7 @@ fn insert_entry_at_does_not_shift_tool_result_indices_before_insertion() {
         session
             .core
             .ephemeral
-            .machine
-            .streaming_tool_result_indices()
+            .streaming_tool_result_indices
             .get(&jinn_core_types::ToolCallId::from("tr-1")),
         Some(&1)
     );
@@ -4612,8 +4635,7 @@ fn insert_entry_at_shifts_tool_call_indices() {
     session
         .core
         .ephemeral
-        .machine
-        .streaming_tool_call_indices_mut()
+        .streaming_tool_call_indices
         .insert(0, 3);
 
     // When inserting at index 1.
@@ -4621,12 +4643,7 @@ fn insert_entry_at_shifts_tool_call_indices() {
 
     // Then tool call history index shifted from 3 to 4.
     assert_eq!(
-        session
-            .core
-            .ephemeral
-            .machine
-            .streaming_tool_call_indices()
-            .get(&0),
+        session.core.ephemeral.streaming_tool_call_indices.get(&0),
         Some(&4)
     );
 }
@@ -4642,8 +4659,7 @@ fn insert_entry_at_does_not_shift_tool_call_indices_before_insertion() {
     session
         .core
         .ephemeral
-        .machine
-        .streaming_tool_call_indices_mut()
+        .streaming_tool_call_indices
         .insert(0, 1);
 
     // When inserting at index 3 (after the tool call).
@@ -4651,12 +4667,7 @@ fn insert_entry_at_does_not_shift_tool_call_indices_before_insertion() {
 
     // Then tool call history index stays at 1.
     assert_eq!(
-        session
-            .core
-            .ephemeral
-            .machine
-            .streaming_tool_call_indices()
-            .get(&0),
+        session.core.ephemeral.streaming_tool_call_indices.get(&0),
         Some(&1)
     );
 }
@@ -4671,16 +4682,13 @@ fn insert_entry_at_shifts_at_exact_boundary() {
     session.push_entry(ChatEntry::assistant("streaming")); // idx 2
     session.begin_sending();
     session.begin_streaming();
-    session.core.ephemeral.machine.set_streaming_entry_index(2);
+    session.core.ephemeral.streaming_entry_index = Some(2);
 
     // When inserting at index 2 (exact boundary).
     session.insert_entry_at(2, ChatEntry::system("inserted"));
 
     // Then streaming_entry_index was shifted (>= check, not just >).
-    assert_eq!(
-        session.core.ephemeral.machine.streaming_entry_index(),
-        Some(3)
-    );
+    assert_eq!(session.core.ephemeral.streaming_entry_index, Some(3));
 }
 
 #[rstest::rstest]
@@ -4711,92 +4719,39 @@ fn insert_entry_at_shifts_multiple_indices() {
     session.push_entry(ChatEntry::assistant("streaming")); // idx 1
     session.begin_sending();
     session.begin_streaming();
-    session.core.ephemeral.machine.set_streaming_entry_index(1);
+    session.core.ephemeral.streaming_entry_index = Some(1);
+    session.core.ephemeral.streaming_thinking_entry_index = Some(1);
     session
         .core
         .ephemeral
-        .machine
-        .set_streaming_thinking_entry_index(1);
-    session
-        .core
-        .ephemeral
-        .machine
-        .streaming_tool_call_indices_mut()
+        .streaming_tool_call_indices
         .insert(0, 1);
 
     // When inserting at index 0.
     session.insert_entry_at(0, ChatEntry::system("inserted"));
 
     // Then ALL indices at or after insertion point are shifted.
+    assert_eq!(session.core.ephemeral.streaming_entry_index, Some(2));
     assert_eq!(
-        session.core.ephemeral.machine.streaming_entry_index(),
+        session.core.ephemeral.streaming_thinking_entry_index,
         Some(2)
     );
     assert_eq!(
-        session
-            .core
-            .ephemeral
-            .machine
-            .streaming_thinking_entry_index(),
-        Some(2)
-    );
-    assert_eq!(
-        session
-            .core
-            .ephemeral
-            .machine
-            .streaming_tool_call_indices()
-            .get(&0),
+        session.core.ephemeral.streaming_tool_call_indices.get(&0),
         Some(&2)
     );
 }
 
 #[rstest::rstest]
-#[case::idle("idle", PhaseKind::Idle)]
-#[case::sending("sending", PhaseKind::Sending)]
-#[case::streaming("streaming", PhaseKind::Streaming)]
-
-fn phase_kind_from_str_roundtrips(#[case] input: &str, #[case] expected: PhaseKind) {
-    // Given a phase string.
-    // When parsing.
-    let result: Result<PhaseKind, _> = input.parse();
-    // Then it matches the expected phase.
-    assert_eq!(result.unwrap(), expected);
-}
-
-#[rstest::rstest]
-#[case::uppercase("IDLE")]
-#[case::mixed_case("Streaming")]
-fn phase_kind_from_str_is_case_insensitive(#[case] input: &str) {
-    // Given a phase string with non-lowercase.
-    // When parsing.
-    let result: Result<PhaseKind, _> = input.parse();
-    // Then it still parses correctly.
-    assert!(result.is_ok());
-}
-
-#[rstest::rstest]
-fn phase_kind_from_str_rejects_unknown() {
-    // Given an unknown phase string.
-    let phase = "unknown_phase";
-
-    // When it is parsed into a PhaseKind.
-    let result: Result<PhaseKind, _> = phase.parse();
-
-    // Then parsing returns an error.
-    assert!(result.is_err());
-}
-
-#[rstest::rstest]
-fn phase_kind_from_str_rejects_empty() {
-    // Given an empty phase string.
-    let phase = "";
-
-    // When it is parsed into a PhaseKind.
-    let result: Result<PhaseKind, _> = phase.parse();
-
-    // Then parsing returns an error.
-    assert!(result.is_err());
+#[case::idle(PhaseView::Idle, "idle")]
+#[case::working(PhaseView::Working, "working")]
+#[case::streaming(PhaseView::Streaming, "streaming")]
+#[case::cancelling(PhaseView::Cancelling, "cancelling")]
+fn phase_view_as_str_names_the_variant(#[case] phase: PhaseView, #[case] expected: &str) {
+    // Given a phase.
+    // When rendering its name.
+    // Then the lowercase name matches the variant.
+    assert_eq!(phase.as_str(), expected);
 }
 
 #[rstest::rstest]
@@ -6427,14 +6382,14 @@ fn rewind_for_retry_returns_the_session_to_sending() {
     session
         .append_stream_token("Partial", dispatched_at())
         .expect("append token");
-    assert_eq!(session.phase(), PhaseKind::Streaming);
+    assert_eq!(session.phase(), PhaseView::Streaming);
 
     // When rewinding for the retry.
     session.rewind_for_retry();
 
     // Then the session is back in Sending, ready for the retried dispatch's
     // first token instead of wedged in Streaming.
-    assert_eq!(session.phase(), PhaseKind::Sending);
+    assert_eq!(session.phase(), PhaseView::Working);
 }
 
 #[rstest::rstest]
@@ -6448,7 +6403,7 @@ fn begin_streaming_after_rewind_for_retry_streams_cleanly() {
 
     // Then it is streaming with a fresh assistant entry rather than logging
     // a rejected transition.
-    assert_eq!(session.phase(), PhaseKind::Streaming);
+    assert_eq!(session.phase(), PhaseView::Streaming);
     session
         .append_stream_token("Fresh", dispatched_at())
         .expect("append token after rewind");
@@ -6461,7 +6416,7 @@ fn begin_streaming_after_rewind_for_retry_streams_cleanly() {
 }
 
 #[rstest::rstest]
-fn rewind_for_retry_from_idle_leaves_the_session_untouched() {
+fn rewind_for_retry_from_idle_rewinds_anyway() {
     // Given a session that never dispatched.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
@@ -6469,8 +6424,10 @@ fn rewind_for_retry_from_idle_leaves_the_session_untouched() {
     // When rewinding for a retry.
     session.rewind_for_retry();
 
-    // Then nothing changed — the invalid transition is warned about, not applied.
-    assert_eq!(session.phase(), PhaseKind::Idle);
+    // Then the projection reads Working (ready for the retried dispatch)
+    // and history is untouched — the retry's admission lives in the
+    // ledger, not in a session-side transition guard.
+    assert_eq!(session.phase(), PhaseView::Working);
     assert_eq!(session.history().len(), 1);
 }
 
@@ -7171,11 +7128,11 @@ fn cancel_streaming_leaves_the_input_draft_where_the_user_typed_it() {
     // When the turn is cancelled the way a trigger supersedes one — the
     // plain phase transition, not the Esc drain.
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
-    session.cancel_streaming_via_machine();
+    session.settle_to_idle();
 
     // Then the session is Idle, so the enqueue that follows dispatches
     // rather than queueing behind a still-hot phase.
-    assert_eq!(session.phase(), jinn_session_msg::PhaseKind::Idle);
+    assert_eq!(session.phase(), jinn_slices::PhaseView::Idle);
     // And the draft is untouched: draining into the input box is an Esc
     // affordance for recovering text, and a caller that has no use for the
     // abandoned fragment must not put it where the user can see it.
@@ -7210,7 +7167,7 @@ fn a_queued_message_is_handed_back_to_the_user_as_an_editable_draft() {
 
     // When a cancel drains the session the way the Esc path does.
     session.finalize_entries_for_cancel(jiff::Timestamp::now());
-    session.cancel_streaming_via_machine();
+    session.settle_to_idle();
     session.drain_cancelled_work_to_input();
 
     // Then the seeded turn surfaces as editable draft text instead of

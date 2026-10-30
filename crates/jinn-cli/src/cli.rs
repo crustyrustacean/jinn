@@ -23,6 +23,9 @@ pub struct Cli {
 
     /// Path to the log file. Defaults to the platform's state directory
     /// (e.g. `~/.local/state/jinn/jinn.log` on Linux).
+    ///
+    /// A relative path resolves against the process cwd; a leading `~`
+    /// expands against the home directory.
     #[arg(long, value_hint = clap::ValueHint::FilePath)]
     pub log_file: Option<PathBuf>,
 
@@ -37,6 +40,8 @@ pub struct Cli {
     pub config: Option<PathBuf>,
 
     /// Session database file. Defaults to the platform data directory.
+    /// A relative path resolves against the process cwd; a leading `~`
+    /// expands against the home directory.
     ///
     /// In debug builds this flag is **required** to prevent accidental use
     /// of the production database during development — except when the
@@ -47,7 +52,9 @@ pub struct Cli {
     pub db_path: Option<PathBuf>,
 
     /// Dump every provider generation request to <dir> as a separate JSON file.
-    /// Each file contains the complete request payload verbatim.
+    /// Each file contains the complete request payload verbatim. A relative
+    /// path resolves against the process cwd; a leading `~` expands against
+    /// the home directory.
     #[arg(long, value_hint = clap::ValueHint::DirPath)]
     pub dump_requests: Option<PathBuf>,
 
