@@ -1,5 +1,9 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
+## (development)
+
+- (dev): upgrade to `trouper` v0.14.0
+
 ## 2026-10-29 v1.13.0
 
 - The chat entry metadata popup now displays the context size of a chat entry and how much is actually in context.
