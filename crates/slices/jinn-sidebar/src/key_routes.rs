@@ -563,6 +563,19 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         "continue session",
         sync(sessions::handle_session_continue),
     ));
+    // Yank is the same handler the sessions section binds, for the same
+    // reason the rows above are: the handler resolves whichever cursor
+    // belongs to the focused section, so one implementation serves all
+    // three sections and the sections' definitions of "copy this one's
+    // id" cannot drift.
+    routes.attach(row(
+        "bot-yank-id",
+        bot_scope.clone(),
+        "y",
+        "general",
+        "yank session id",
+        sync(sessions::handle_session_yank_id),
+    ));
 
     // ---- Library section ----
     routes.attach(row(
@@ -630,6 +643,28 @@ pub fn attach_sidebar_rows(routes: &KeyRoutes) {
         // The enter handler pushes the popup's dynamic scope itself, and
         // resolves the target through the focused section's cursor.
         sync(rename::handle_rename_session_enter),
+    ));
+    // Yank and activate-and-type are the same two handlers the sessions and
+    // bots sections bind at the same keys: the handler resolves whichever
+    // cursor belongs to the focused section, so one implementation serves
+    // all three sections. Yanking works from the cursor alone, which is
+    // what makes it answer for an archived member — copying an id needs
+    // neither the session in memory nor a load.
+    routes.attach(row(
+        "library-yank-id",
+        jinn_sidebar_msg::SidebarSectionId::Library.scope_id(),
+        "y",
+        "general",
+        "yank session id",
+        sync(sessions::handle_session_yank_id),
+    ));
+    routes.attach(row(
+        "library-activate-insert",
+        jinn_sidebar_msg::SidebarSectionId::Library.scope_id(),
+        "i",
+        "general",
+        "activate + insert",
+        sync(sessions::handle_session_activate_insert),
     ));
 
     // ---- Task list section ----
@@ -934,6 +969,107 @@ mod tests {
                     RouteOutcome::Action { action, .. } if *action == "session-yank-id"
                 )
         }));
+    }
+
+    /// `y` in the bots section yanks the highlighted bot's session ID —
+    /// the same handler the sessions scope binds, reading the bots cursor.
+    #[rstest::rstest]
+    #[test]
+    fn attach_sidebar_rows_binds_y_for_session_id_yank_in_the_bots_scope() {
+        // Given an empty shared route table.
+        let routes = KeyRoutes::new();
+
+        // When the sidebar's rows are attached.
+        attach_sidebar_rows(&routes);
+
+        // Then `y` in the bots scope resolves to the yank action.
+        assert!(routes.rows().iter().any(|row| {
+            row.scope == jinn_sidebar_msg::SidebarSectionId::Bot.scope_id()
+                && row.key == "y"
+                && matches!(
+                    &row.outcome,
+                    RouteOutcome::Action { action, .. } if *action == "bot-yank-id"
+                )
+        }));
+    }
+
+    /// `y` in the library section yanks the highlighted member's session ID
+    /// — from the cursor alone, so an archived member yanks too.
+    #[rstest::rstest]
+    #[test]
+    fn attach_sidebar_rows_binds_y_for_session_id_yank_in_the_library_scope() {
+        // Given an empty shared route table.
+        let routes = KeyRoutes::new();
+
+        // When the sidebar's rows are attached.
+        attach_sidebar_rows(&routes);
+
+        // Then `y` in the library scope resolves to the yank action.
+        assert!(routes.rows().iter().any(|row| {
+            row.scope == jinn_sidebar_msg::SidebarSectionId::Library.scope_id()
+                && row.key == "y"
+                && matches!(
+                    &row.outcome,
+                    RouteOutcome::Action { action, .. } if *action == "library-yank-id"
+                )
+        }));
+    }
+
+    /// `i` in the library section activates and enters insert mode — the
+    /// same handler the sessions and bots scopes bind.
+    #[rstest::rstest]
+    #[test]
+    fn attach_sidebar_rows_binds_i_for_activate_insert_in_the_library_scope() {
+        // Given an empty shared route table.
+        let routes = KeyRoutes::new();
+
+        // When the sidebar's rows are attached.
+        attach_sidebar_rows(&routes);
+
+        // Then `i` in the library scope resolves to the shared
+        // activate-and-insert handler.
+        assert!(routes.rows().iter().any(|row| {
+            row.scope == jinn_sidebar_msg::SidebarSectionId::Library.scope_id()
+                && row.key == "i"
+                && matches!(
+                    &row.outcome,
+                    RouteOutcome::Action { action, .. } if *action == "library-activate-insert"
+                )
+        }));
+    }
+
+    /// The yank key is scoped to the three sections that keep a session in
+    /// their cursor. A `y` row leaking into another section's scope would
+    /// make a section whose cursor names no session answer the key.
+    #[rstest::rstest]
+    #[test]
+    fn attach_sidebar_rows_binds_y_only_in_the_three_session_listing_scopes() {
+        // Given an empty shared route table.
+        let routes = KeyRoutes::new();
+
+        // When the sidebar's rows are attached.
+        attach_sidebar_rows(&routes);
+
+        // Then exactly the sessions, bots, and library scopes carry a `y` row.
+        let y_scopes: Vec<_> = routes
+            .rows()
+            .iter()
+            .filter(|row| row.key == "y")
+            .map(|row| row.scope.clone())
+            .collect();
+        let expected = [
+            jinn_sidebar_msg::SidebarSectionId::Sessions.scope_id(),
+            jinn_sidebar_msg::SidebarSectionId::Bot.scope_id(),
+            jinn_sidebar_msg::SidebarSectionId::Library.scope_id(),
+        ];
+        assert_eq!(y_scopes.len(), expected.len(), "bound: {y_scopes:?}");
+        for scope in expected {
+            assert!(
+                y_scopes.contains(&scope),
+                "`y` must bind in the {} scope, bound: {y_scopes:?}",
+                scope.name()
+            );
+        }
     }
 
     /// `<c-c>` in the resize scope left resize mode. It carried

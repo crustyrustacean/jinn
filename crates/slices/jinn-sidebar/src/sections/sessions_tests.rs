@@ -3276,6 +3276,226 @@ fn yank_after_a_dismissal_rearms_the_banner() {
     );
 }
 
+/// The dynamic intent the sidebar's bots-scope yank route row mints for the
+/// `y` key (each section carries its own action name).
+fn bot_yank_intent() -> KernelIntent {
+    KernelIntent::Dynamic(jinn_slices::route::DynamicIntent::new(
+        jinn_sidebar_msg::SidebarSectionId::Bot.scope_id(),
+        "bot-yank-id",
+        "bot-yank-id",
+    ))
+}
+
+/// The dynamic intent the sidebar's library-scope yank route row mints for
+/// the `y` key.
+fn library_yank_intent() -> KernelIntent {
+    KernelIntent::Dynamic(jinn_slices::route::DynamicIntent::new(
+        jinn_sidebar_msg::SidebarSectionId::Library.scope_id(),
+        "library-yank-id",
+        "library-yank-id",
+    ))
+}
+
+/// Helper: state with one bot (watching a parent), the bots section focused,
+/// and the bots cursor on the bot. Returns the bot's session id.
+fn state_with_bots_cursor_on_bot() -> (AppState, jinn_core_types::SessionId) {
+    let mut state = AppState::default_with_scope_focus();
+    let parent = ChatSessionState::new();
+    state.session.insert(parent.clone());
+    let mut bot = ChatSessionState::new_bot(&parent, true);
+    bot.set_title("watched bot".to_owned());
+    let bot_id = bot.session_id().clone();
+    state.session.insert(bot);
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Bot.focus_scope());
+    state
+        .frontend
+        .update_sections(|s| s.bot.selected_id = Some(bot_id.clone()));
+    (state, bot_id)
+}
+
+/// Helper: the library section focused with its cursor set to `id`.
+///
+/// The cursor need not name a member of a seeded cell — the yank handler
+/// reads the cursor alone, and the cursor naming a session that is not in
+/// memory is exactly the archived-member case.
+fn state_with_library_cursor_on(id: &jinn_core_types::SessionId) -> AppState {
+    let mut state = AppState::default_with_scope_focus();
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Library.focus_scope());
+    let for_cursor = id.clone();
+    state
+        .frontend
+        .update_sections(move |s| s.library.selected_id = Some(for_cursor));
+    state
+}
+
+#[rstest::rstest]
+fn bot_section_yank_stashes_the_bots_session_id() {
+    // Given the bots section focused with its cursor on a bot.
+    let (mut state, bot_id) = state_with_bots_cursor_on_bot();
+
+    // When handling the yank intent the `y` key produces there.
+    let result = IntentHandler::handle(
+        &bot_yank_intent(),
+        &mut state,
+        &empty_slices(),
+        &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
+    );
+
+    // Then the clipboard signal carries the bot's session UUID.
+    assert_eq!(
+        state.frontend.signals_snapshot().yank_text,
+        Some(bot_id.to_string()),
+        "`y` in the bots section must stash the bot's session ID"
+    );
+    // And nothing was published — yanking is a signal, not a command.
+    assert!(
+        result.message_names.is_empty(),
+        "a yank must not publish a bus message, published: {:?}",
+        result.message_names
+    );
+}
+
+#[rstest::rstest]
+fn bot_section_yank_arms_the_confirmation_banner() {
+    // Given the bots section focused with its cursor on a bot.
+    let (mut state, _bot_id) = state_with_bots_cursor_on_bot();
+
+    // When handling the yank intent the `y` key produces there.
+    let _result = IntentHandler::handle(
+        &bot_yank_intent(),
+        &mut state,
+        &empty_slices(),
+        &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
+    );
+
+    // Then the "Session ID yanked" banner is armed.
+    assert!(
+        state.frontend.session_id_yank_popup,
+        "`y` in the bots section must arm the yank banner"
+    );
+}
+
+#[rstest::rstest]
+fn library_section_yank_stashes_the_members_session_id() {
+    // Given the library section focused with its cursor on a member.
+    let member_id = jinn_core_types::SessionId::new();
+    let mut state = state_with_library_cursor_on(&member_id);
+
+    // When handling the yank intent the `y` key produces there.
+    let result = IntentHandler::handle(
+        &library_yank_intent(),
+        &mut state,
+        &empty_slices(),
+        &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
+    );
+
+    // Then the clipboard signal carries the member's session UUID.
+    assert_eq!(
+        state.frontend.signals_snapshot().yank_text,
+        Some(member_id.to_string()),
+        "`y` in the library must stash the member's session ID"
+    );
+    // And nothing was published — yanking is a signal, not a command.
+    assert!(
+        result.message_names.is_empty(),
+        "a yank must not publish a bus message, published: {:?}",
+        result.message_names
+    );
+}
+
+#[rstest::rstest]
+fn library_section_yank_arms_the_confirmation_banner() {
+    // Given the library section focused with its cursor on a member.
+    let member_id = jinn_core_types::SessionId::new();
+    let mut state = state_with_library_cursor_on(&member_id);
+
+    // When handling the yank intent the `y` key produces there.
+    let _result = IntentHandler::handle(
+        &library_yank_intent(),
+        &mut state,
+        &empty_slices(),
+        &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
+    );
+
+    // Then the "Session ID yanked" banner is armed.
+    assert!(
+        state.frontend.session_id_yank_popup,
+        "`y` in the library must arm the yank banner"
+    );
+}
+
+#[rstest::rstest]
+fn yanking_an_archived_library_member_yanks_from_the_cursor_alone() {
+    // Given the library section focused with its cursor on a member that is
+    // NOT in memory — the archived case.
+    let archived_id = jinn_core_types::SessionId::new();
+    let mut state = state_with_library_cursor_on(&archived_id);
+    assert!(
+        state.session.get(&archived_id).is_none(),
+        "the fixture must leave the member out of memory"
+    );
+
+    // When handling the yank intent the `y` key produces there.
+    let result = IntentHandler::handle(
+        &library_yank_intent(),
+        &mut state,
+        &empty_slices(),
+        &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
+    );
+
+    // Then the yank still succeeds — the cursor carries the id itself.
+    assert_eq!(
+        state.frontend.signals_snapshot().yank_text,
+        Some(archived_id.to_string()),
+        "an archived member must yank from its cursor alone"
+    );
+    // And no load/unarchive was requested — copying an id is not opening it.
+    assert!(
+        result.message_names.is_empty(),
+        "yanking an archived member must not publish a load, published: {:?}",
+        result.message_names
+    );
+}
+
+#[rstest::rstest]
+fn yank_in_a_section_whose_cursor_names_no_session_is_a_no_op() {
+    // Given the persona section focused while a sessions cursor still
+    // points at a session.
+    let (mut state, _) = state_with_archive_tree();
+    cursor_to_row(&mut state, 0);
+    state
+        .frontend
+        .scope_push(jinn_sidebar_msg::SidebarSectionId::Persona.focus_scope());
+
+    // When handling the yank intent the `y` key produces in the sessions
+    // scope (no persona row exists to mint its own).
+    let result = IntentHandler::handle(
+        &yank_intent(),
+        &mut state,
+        &empty_slices(),
+        &sidebar_routes(),
+        jinn_slices::empty_config_layer(),
+    );
+
+    // Then nothing happened: no clipboard signal, no banner, no message.
+    assert!(state.frontend.signals_snapshot().yank_text.is_none());
+    assert!(!state.frontend.session_id_yank_popup);
+    assert!(
+        result.message_names.is_empty(),
+        "a refused yank must not publish, published: {:?}",
+        result.message_names
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Session ID yank - render
 // ---------------------------------------------------------------------------

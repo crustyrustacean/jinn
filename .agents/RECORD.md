@@ -618,3 +618,8 @@ Entries are added or amended **only with human approval**.
 - (cli) A relative `--log-file`, `--db-path`, or `--dump-requests` value resolves against the process cwd at the CLI boundary, with a leading `~` expanding against the user's home.
 - (inference) A provider stream error carries the turn and stream identity its dispatch minted, so the session actor's ledger admission settles the turn to Idle.
 - (turn-ledger) Turn identity has no legacy sentinel: the ledger admits solely by token equality, and the zero turn/stream value is only the unset serde default on bus events.
+- (sidebar) The `y` key yanks the highlighted session's id in the sessions, bots, and library sections, through one shared handler that resolves whichever cursor belongs to the focused section.
+- (sidebar) A library member's session id is yanked from its cursor alone, so an archived member yanks without being loaded or unarchived.
+- (sidebar) The "Session ID yanked" banner renders in the sessions, bots, and library sections, anchored above the focused section's cursor row.
+- (sidebar) The close-session and archive-tree prompts render only for the sessions section and anchor to the sessions cursor row.
+- (sidebar) The library section binds `i` to the shared activate-and-insert handler, landing in Input over a Normal base like the sessions and bots sections.
