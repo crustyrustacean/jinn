@@ -4,6 +4,8 @@
 
 - (dev): upgrade to `trouper` v0.14.0
 - Fix: Stream errors now change the session state from streaming to idle
+- `y` (yank session ID) now works in the Library section
+- `i` (focus then enter Insert mode) now works in the Library section
 
 ## 2026-10-29 v1.13.0
 
