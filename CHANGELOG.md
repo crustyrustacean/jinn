@@ -6,6 +6,7 @@
 - "OpenRouter Model Search" popup renamed to "OpenRouter Model Market"
 - Fix bug 21.
   - (Dev notes): now using a single serialization point for turn management. A truth table of all possible states and transitions is included in the relevant modules.
+- `--log-file`, and `--dump-requests` now accept both relative and absolute paths.
 - Fix: OpenRouter Model Market now reports `LAT p50` and `TP p50` on the endpoint page.
   - Some endpoints don't have this data, so will still report `-`
   - Endpoint `LAT p50` and `TP p50` data after this update will NOT be shown for existing users until the model cache expires (7 days)
