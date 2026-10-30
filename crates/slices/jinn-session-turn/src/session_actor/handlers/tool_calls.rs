@@ -71,22 +71,23 @@ impl SessionPersistenceActor {
         &self,
         event: &ToolExecutionCompleted,
     ) {
-        // A legacy-turn event predates per-turn identity. It is admitted on
-        // live-turn existence alone — the transitional bridge for paths the
-        // mint has not reached yet.
-        let admitted = if event.turn == jinn_core_types::turn_identity::TurnToken::legacy() {
-            self.services.turn_ledger.live(&event.session_id).is_some()
-        } else {
-            self.services
-                .turn_ledger
-                .call(
-                    &event.session_id,
-                    &event.turn,
-                    jinn_kernel::common::turn_ledger::Req::TurnScoped,
-                    || (),
-                )
-                .is_ok()
-        };
+        // Admission is the ledger's token-equality check, via `call`: a
+        // completion is admitted when its turn names the live turn and the
+        // turn is not draining a cancel. No phase snapshot is consulted —
+        // `Sending`, `Streaming`, whichever phase the history happens to
+        // sit in, the check is identity, not timing. This is the bug-21
+        // fix: a result landing while the provider stream is still open
+        // finalizes in place instead of being dropped.
+        let admitted = self
+            .services
+            .turn_ledger
+            .call(
+                &event.session_id,
+                &event.turn,
+                jinn_kernel::common::turn_ledger::Req::TurnScoped,
+                || (),
+            )
+            .is_ok();
         if !admitted {
             tracing::debug!(
                 session_id = ?event.session_id,
@@ -518,7 +519,8 @@ mod tests {
             .await;
         actor
             .publish({
-                let mut event = stream_completed(&session_id, StreamCompletedReason::ToolUse);
+                let mut event =
+                    stream_completed(&services, &session_id, StreamCompletedReason::ToolUse);
                 event.turn = turn;
                 event.stream = stream;
                 event
@@ -551,11 +553,18 @@ mod tests {
         }
     }
 
-    /// Builds the `StreamCompleted` event a provider emits when a turn ends.
+    /// Builds the `StreamCompleted` event a provider emits when a turn ends,
+    /// stamped with the live turn's identity — the mint the completion
+    /// resolves against.
     fn stream_completed(
+        services: &jinn_kernel::common::services::Services,
         session_id: &jinn_core_types::SessionId,
         reason: StreamCompletedReason,
     ) -> StreamCompleted {
+        let live = services
+            .turn_ledger
+            .live(session_id)
+            .expect("fixture completion needs a live turn to resolve against");
         StreamCompleted {
             model_used: None,
             session_id: session_id.clone(),
@@ -568,8 +577,8 @@ mod tests {
             cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-            stream: jinn_core_types::turn_identity::StreamId::legacy(),
+            turn: live.turn,
+            stream: live.stream.unwrap_or_default(),
         }
     }
 
@@ -913,7 +922,11 @@ mod tests {
         let live = actor.services.turn_ledger.live(&session_id).expect("live");
         actor
             .publish({
-                let mut event = stream_completed(&session_id, StreamCompletedReason::Canceled);
+                let mut event = stream_completed(
+                    &actor.services,
+                    &session_id,
+                    StreamCompletedReason::Canceled,
+                );
                 event.turn = live.turn;
                 event.stream = live.stream.expect("in-flight stream");
                 event
@@ -944,7 +957,11 @@ mod tests {
         let live = actor.services.turn_ledger.live(&session_id).expect("live");
         actor
             .publish({
-                let mut event = stream_completed(&session_id, StreamCompletedReason::Canceled);
+                let mut event = stream_completed(
+                    &actor.services,
+                    &session_id,
+                    StreamCompletedReason::Canceled,
+                );
                 event.turn = live.turn;
                 event.stream = live.stream.expect("in-flight stream");
                 event
@@ -1224,7 +1241,13 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When the stream completes requesting a tool call with long arguments.
+        // When the stream completes requesting a tool call with long arguments,
+        // stamped with the harness's live mint.
+        let live = actor
+            .services
+            .turn_ledger
+            .live(&session_id)
+            .expect("harness minted a live turn");
         let event = StreamCompleted {
             model_used: None,
             session_id: session_id.clone(),
@@ -1241,8 +1264,8 @@ mod tests {
             cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-            stream: jinn_core_types::turn_identity::StreamId::legacy(),
+            turn: live.turn,
+            stream: live.stream.unwrap_or_default(),
         };
         actor.on_stream_completed(&event).await;
 
@@ -1276,9 +1299,16 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When the tool execution completes.
+        // When the tool execution completes, carrying the live turn's
+        // identity — the mint the ledger's admission checks.
+        let turn = actor
+            .services
+            .turn_ledger
+            .live(&session_id)
+            .expect("harness minted a live turn")
+            .turn;
         let event = jinn_tools_msg::ToolExecutionCompleted {
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            turn,
             synthesized: false,
             session_id,
             result: tool_result("tc-1", "bash", "file1.txt", true),
@@ -1361,7 +1391,9 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn completion_dropped_when_no_live_turn() {
-        // Given a session driven to Idle via the cancel path.
+        // Given a session whose turn was minted and then removed — the
+        // shape a session close or delete leaves behind a straggler tool
+        // result.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
             let mut state = actor.state.write();
@@ -1378,6 +1410,16 @@ mod tests {
             session.drain_cancelled_work_to_input();
             state.session.active_session_id().clone()
         };
+        // The completion carries the identity the removed turn was minted
+        // under — the real stamp a straggler tool result rides, not an
+        // unset one. The ledger has no live turn to admit it against.
+        let minted = actor
+            .services
+            .turn_ledger
+            .live(&session_id)
+            .expect("the harness minted a live turn")
+            .turn;
+        actor.services.turn_ledger.remove(&session_id);
 
         let event = ToolExecutionCompleted {
             session_id: session_id.clone(),
@@ -1392,7 +1434,7 @@ mod tests {
                 pin_position: None,
                 attachments: Vec::new(),
             },
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            turn: minted,
         };
 
         // When a stale completion arrives post-cancel — no live turn to
@@ -1746,9 +1788,15 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When a tool execution starts.
+        // When a tool execution starts, carrying the live turn's identity.
+        let turn = actor
+            .services
+            .turn_ledger
+            .live(&session_id)
+            .expect("harness minted a live turn")
+            .turn;
         actor.on_tool_execution_started(&ToolExecutionStarted {
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            turn,
             session_id: session_id.clone(),
             tool_call_id: "tc-1".into(),
             name: "bash".to_owned(),
@@ -1782,16 +1830,23 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When two output chunks arrive for that tool result.
+        // When two output chunks arrive for that tool result, carrying the
+        // live turn's identity.
+        let turn = actor
+            .services
+            .turn_ledger
+            .live(&session_id)
+            .expect("harness minted a live turn")
+            .turn;
         actor.on_tool_execution_output(&ToolExecutionOutput {
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            turn,
             session_id: session_id.clone(),
             tool_call_id: "tc-1".into(),
             output: "file1.txt\n".to_owned(),
             kind: ToolOutputKind::default(),
         });
         actor.on_tool_execution_output(&ToolExecutionOutput {
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            turn,
             session_id: session_id.clone(),
             tool_call_id: "tc-1".into(),
             output: "file2.txt\n".to_owned(),

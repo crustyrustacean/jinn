@@ -40,7 +40,7 @@ pub struct ExecuteToolBatch {
     pub dispatched_at: Timestamp,
     /// The turn this batch belongs to, as minted by the turn ledger.
     ///
-    /// Zero is the pre-ledger legacy value; see `SendToLlmProvider.turn`.
+    /// Zero is the unset serde default; see `SendToLlmProvider.turn`.
     #[serde(default)]
     pub turn: jinn_core_types::turn_identity::TurnToken,
 }
@@ -57,7 +57,7 @@ pub struct ExecuteTool {
     pub session_id: SessionId,
     /// The turn this execution belongs to, as minted by the turn ledger.
     ///
-    /// Zero is the pre-ledger legacy value; see `SendToLlmProvider.turn`.
+    /// Zero is the unset serde default; see `SendToLlmProvider.turn`.
     #[serde(default)]
     pub turn: jinn_core_types::turn_identity::TurnToken,
     /// The tool call to execute.

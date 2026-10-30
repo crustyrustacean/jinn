@@ -616,3 +616,5 @@ Entries are added or amended **only with human approval**.
 - (cancel) A cancelled turn settles only when its work set empties, emits its cancellation once, and sweeps still-Pending tool results to Failure.
 - (sessions) A session load sweeps stored Pending tool results to Failure.
 - (cli) A relative `--log-file`, `--db-path`, or `--dump-requests` value resolves against the process cwd at the CLI boundary, with a leading `~` expanding against the user's home.
+- (inference) A provider stream error carries the turn and stream identity its dispatch minted, so the session actor's ledger admission settles the turn to Idle.
+- (turn-ledger) Turn identity has no legacy sentinel: the ledger admits solely by token equality, and the zero turn/stream value is only the unset serde default on bus events.

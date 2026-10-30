@@ -17,17 +17,6 @@ use serde::Serialize;
 pub struct TurnToken(u64);
 
 impl TurnToken {
-    /// A turn token that names no turn.
-    ///
-    /// Serde legacy shim: persisted events predating turn identity
-    /// deserialize to this, and the ledger refuses it against every live
-    /// turn — exactly the admission a straggler from before the upgrade
-    /// deserves. Not constructible in production code paths.
-    #[must_use]
-    pub fn legacy() -> Self {
-        Self(0)
-    }
-
     /// Wraps a raw counter value.
     ///
     /// The turn ledger is the only intended caller: every other path must
@@ -54,14 +43,7 @@ impl TurnToken {
 pub struct StreamId(u64);
 
 impl StreamId {
-    /// A stream id that names no stream. See [`TurnToken::legacy`].
-    #[must_use]
-    pub fn legacy() -> Self {
-        Self(0)
-    }
-
-    /// Wraps a raw counter value. See [`TurnToken::from_counter`]: the
-    /// ledger is the only intended caller.
+    /// Wraps a raw counter value.
     #[must_use]
     pub fn from_counter(value: u64) -> Self {
         Self(value)
@@ -109,10 +91,10 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn legacy_values_roundtrip_as_zero() {
-        // Given the serde legacy values.
-        let token = TurnToken::legacy();
-        let stream = StreamId::legacy();
+    fn unset_values_roundtrip_as_zero() {
+        // Given the zero values (the serde default for a missing field).
+        let token = TurnToken::default();
+        let stream = StreamId::default();
 
         // When serializing and deserializing.
         let token_back: TurnToken =
@@ -120,7 +102,7 @@ mod tests {
         let stream_back: StreamId =
             serde_json::from_str(&serde_json::to_string(&stream).unwrap()).unwrap();
 
-        // Then they roundtrip unchanged.
+        // Then they roundtrip unchanged as the unset value.
         assert_eq!(token_back, TurnToken(0));
         assert_eq!(stream_back, StreamId(0));
     }

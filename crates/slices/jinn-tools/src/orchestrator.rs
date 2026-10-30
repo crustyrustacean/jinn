@@ -1280,7 +1280,7 @@ mod timeout_tests {
     /// carries stay valid for the whole test.
     fn empty_ctx(dir: &MarkedPathBuf<Absolute>) -> ToolContext {
         ToolContext {
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            turn: crate::tool_types::test_turn(),
             cwd: dir.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
@@ -1549,7 +1549,7 @@ mod panic_safety_tests {
         let result: ToolResult = match AssertUnwindSafe(panicking_execute(
             tool_call.clone(),
             super::ToolContext {
-                turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+                turn: crate::tool_types::test_turn(),
                 cwd: dir.path.clone(),
                 config: jinn_config::testutil::config_layer(""),
                 shells: Default::default(),

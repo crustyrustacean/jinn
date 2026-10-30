@@ -89,6 +89,19 @@ pub fn failed(
     }
 }
 
+/// Mints a turn identity for test fixtures, the way the ledger's mint does.
+///
+/// Test-only: every fixture that constructs a turn-carrying event or a
+/// [`ToolContext`] stamps this instead of a hand-written counter, so the
+/// fixture's shape matches what production's dispatch path produces.
+#[cfg(test)]
+#[must_use]
+pub fn test_turn() -> jinn_core_types::turn_identity::TurnToken {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    jinn_core_types::turn_identity::TurnToken::from_counter(SEQ.fetch_add(1, Ordering::Relaxed) + 1)
+}
+
 /// Context provided to every built-in tool at execution time.
 ///
 /// Constructed by the tool orchestrator at dispatch time from session state.
@@ -208,7 +221,7 @@ mod tests {
             max_output_lines: None,
             max_output_bytes: None,
             dispatched_at: jiff::Timestamp::now(),
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            turn: crate::tool_types::test_turn(),
             mcp_coordinator: None,
             interactive_term: None,
             task_spawns: None,

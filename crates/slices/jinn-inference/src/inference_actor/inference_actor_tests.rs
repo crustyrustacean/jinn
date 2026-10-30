@@ -189,8 +189,8 @@ async fn handle_stream_completed_error_reason_removes_session() {
         cached_tokens: None,
         thinking_content: None,
         dispatched_at: jiff::Timestamp::now(),
-        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-        stream: jinn_core_types::turn_identity::StreamId::legacy(),
+        turn: jinn_core_types::turn_identity::TurnToken::from_counter(101),
+        stream: jinn_core_types::turn_identity::StreamId::from_counter(101),
     };
     actor.handle_stream_completed(&payload);
 
@@ -221,8 +221,8 @@ async fn handle_stream_completed_finished_reason_removes_session() {
         cached_tokens: None,
         thinking_content: None,
         dispatched_at: jiff::Timestamp::now(),
-        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-        stream: jinn_core_types::turn_identity::StreamId::legacy(),
+        turn: jinn_core_types::turn_identity::TurnToken::from_counter(102),
+        stream: jinn_core_types::turn_identity::StreamId::from_counter(102),
     };
     actor.handle_stream_completed(&payload);
 
@@ -256,8 +256,8 @@ async fn handle_stream_completed_tool_use_keeps_session() {
         cached_tokens: None,
         thinking_content: None,
         dispatched_at: jiff::Timestamp::now(),
-        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-        stream: jinn_core_types::turn_identity::StreamId::legacy(),
+        turn: jinn_core_types::turn_identity::TurnToken::from_counter(103),
+        stream: jinn_core_types::turn_identity::StreamId::from_counter(103),
     };
     actor.handle_stream_completed(&payload);
 
@@ -288,8 +288,8 @@ async fn handle_stream_completed_unknown_session_is_noop() {
         cached_tokens: None,
         thinking_content: None,
         dispatched_at: jiff::Timestamp::now(),
-        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-        stream: jinn_core_types::turn_identity::StreamId::legacy(),
+        turn: jinn_core_types::turn_identity::TurnToken::from_counter(104),
+        stream: jinn_core_types::turn_identity::StreamId::from_counter(104),
     };
     actor.handle_stream_completed(&payload);
 
@@ -366,8 +366,8 @@ async fn start_stream_emits_stream_completed_with_tokens() {
         estimated_tokens: 0,
         origin: StreamOrigin::User,
         dispatched_at: jiff::Timestamp::now(),
-        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-        stream: jinn_core_types::turn_identity::StreamId::legacy(),
+        turn: jinn_core_types::turn_identity::TurnToken::from_counter(105),
+        stream: jinn_core_types::turn_identity::StreamId::from_counter(105),
     };
 
     // When starting a stream (direct handler call).
@@ -408,8 +408,8 @@ async fn start_stream_aborts_existing_stream_for_same_session() {
         estimated_tokens: 0,
         origin: StreamOrigin::User,
         dispatched_at: jiff::Timestamp::now(),
-        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-        stream: jinn_core_types::turn_identity::StreamId::legacy(),
+        turn: jinn_core_types::turn_identity::TurnToken::from_counter(106),
+        stream: jinn_core_types::turn_identity::StreamId::from_counter(106),
     };
 
     // Start first stream and save the handle.
@@ -449,8 +449,8 @@ async fn start_stream_sets_session_to_streaming() {
         estimated_tokens: 0,
         origin: StreamOrigin::User,
         dispatched_at: jiff::Timestamp::now(),
-        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-        stream: jinn_core_types::turn_identity::StreamId::legacy(),
+        turn: jinn_core_types::turn_identity::TurnToken::from_counter(107),
+        stream: jinn_core_types::turn_identity::StreamId::from_counter(107),
     };
 
     // When starting a stream.
@@ -491,8 +491,8 @@ async fn handle_send_to_llm_via_bus() {
         estimated_tokens: 0,
         origin: StreamOrigin::User,
         dispatched_at: jiff::Timestamp::now(),
-        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-        stream: jinn_core_types::turn_identity::StreamId::legacy(),
+        turn: jinn_core_types::turn_identity::TurnToken::from_counter(108),
+        stream: jinn_core_types::turn_identity::StreamId::from_counter(108),
     };
 
     // When handling the send directly (trouper actor; the publishes land
@@ -560,8 +560,8 @@ async fn a_cancel_turn_publishes_no_completion_of_its_own() {
             estimated_tokens: 0,
             origin: StreamOrigin::User,
             dispatched_at: jiff::Timestamp::now(),
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-            stream: jinn_core_types::turn_identity::StreamId::legacy(),
+            turn: jinn_core_types::turn_identity::TurnToken::from_counter(109),
+            stream: jinn_core_types::turn_identity::StreamId::from_counter(109),
         })
         .await;
     // The stream must be actively streaming before the cancel, or the
@@ -594,7 +594,11 @@ async fn stream_error_emits_chat_entry_and_completion_via_bus() {
     let completed_recorder = harness.spawn_recorder::<StreamCompleted>().await;
 
     // When sending SendToLlmProvider, which errors during stream creation.
+    // The dispatch carries the identity its grant minted — the exact shape
+    // production's dispatch path stamps.
     let session_id = SessionId::new();
+    let dispatched_turn = jinn_core_types::turn_identity::TurnToken::from_counter(110);
+    let dispatched_stream = jinn_core_types::turn_identity::StreamId::from_counter(110);
     actor
         .start_stream(&SendToLlmProvider {
             model_used: None,
@@ -608,8 +612,8 @@ async fn stream_error_emits_chat_entry_and_completion_via_bus() {
             estimated_tokens: 0,
             origin: StreamOrigin::User,
             dispatched_at: jiff::Timestamp::now(),
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-            stream: jinn_core_types::turn_identity::StreamId::legacy(),
+            turn: dispatched_turn,
+            stream: dispatched_stream,
         })
         .await;
 
@@ -626,6 +630,22 @@ async fn stream_error_emits_chat_entry_and_completion_via_bus() {
         .iter()
         .any(|sc| sc.reason == StreamCompletedReason::Error);
     assert!(found, "stream error should emit StreamCompleted(Error)");
+
+    // And the emitted completion carries the identity the dispatch minted —
+    // the session actor's ledger admission can only settle the turn if the
+    // error names the turn and stream it interrupted.
+    let emitted = completed
+        .iter()
+        .find(|sc| sc.reason == StreamCompletedReason::Error)
+        .expect("the error completion asserted above");
+    assert_eq!(
+        emitted.turn, dispatched_turn,
+        "the error completion must carry the dispatched turn"
+    );
+    assert_eq!(
+        emitted.stream, dispatched_stream,
+        "the error completion must carry the dispatched stream"
+    );
 }
 
 // ------------------------------------------------------------------
@@ -664,8 +684,8 @@ async fn process_stream_events_completes_on_done_event() {
         &sid,
         "test-model",
         jiff::Timestamp::now(),
-        jinn_core_types::turn_identity::TurnToken::legacy(),
-        jinn_core_types::turn_identity::StreamId::legacy(),
+        jinn_core_types::turn_identity::TurnToken::from_counter(1),
+        jinn_core_types::turn_identity::StreamId::from_counter(1),
         // No rule matcher: these cases are about the stream path itself, and
         // `None` is exactly what a configuration with no rules resolves to.
         None,
@@ -705,8 +725,8 @@ async fn done_overrides_model_used_with_response_model() {
         &sid,
         "openrouter/auto",
         jiff::Timestamp::now(),
-        jinn_core_types::turn_identity::TurnToken::legacy(),
-        jinn_core_types::turn_identity::StreamId::legacy(),
+        jinn_core_types::turn_identity::TurnToken::from_counter(2),
+        jinn_core_types::turn_identity::StreamId::from_counter(2),
         None,
     )
     .await;
@@ -745,8 +765,8 @@ async fn done_without_model_keeps_request_model() {
         &sid,
         "test-model",
         jiff::Timestamp::now(),
-        jinn_core_types::turn_identity::TurnToken::legacy(),
-        jinn_core_types::turn_identity::StreamId::legacy(),
+        jinn_core_types::turn_identity::TurnToken::from_counter(3),
+        jinn_core_types::turn_identity::StreamId::from_counter(3),
         None,
     )
     .await;
@@ -811,8 +831,8 @@ async fn process_stream_events_publishes_activity_for_a_tool_call_with_no_text()
         &sid,
         "test-model",
         jiff::Timestamp::now(),
-        jinn_core_types::turn_identity::TurnToken::legacy(),
-        jinn_core_types::turn_identity::StreamId::legacy(),
+        jinn_core_types::turn_identity::TurnToken::from_counter(4),
+        jinn_core_types::turn_identity::StreamId::from_counter(4),
         // No rule matcher: these cases are about the stream path itself, and
         // `None` is exactly what a configuration with no rules resolves to.
         None,
@@ -848,8 +868,8 @@ async fn tool_only_stream_publishes_no_stream_tokens() {
         &sid,
         "test-model",
         jiff::Timestamp::now(),
-        jinn_core_types::turn_identity::TurnToken::legacy(),
-        jinn_core_types::turn_identity::StreamId::legacy(),
+        jinn_core_types::turn_identity::TurnToken::from_counter(5),
+        jinn_core_types::turn_identity::StreamId::from_counter(5),
         // No rule matcher: these cases are about the stream path itself, and
         // `None` is exactly what a configuration with no rules resolves to.
         None,
@@ -889,8 +909,8 @@ async fn process_stream_events_publishes_no_activity_for_the_terminal_done_event
         &sid,
         "test-model",
         jiff::Timestamp::now(),
-        jinn_core_types::turn_identity::TurnToken::legacy(),
-        jinn_core_types::turn_identity::StreamId::legacy(),
+        jinn_core_types::turn_identity::TurnToken::from_counter(6),
+        jinn_core_types::turn_identity::StreamId::from_counter(6),
         // No rule matcher: these cases are about the stream path itself, and
         // `None` is exactly what a configuration with no rules resolves to.
         None,
@@ -939,8 +959,8 @@ async fn process_stream_events_publishes_citations_on_done_when_accumulated() {
         &sid,
         "test-model",
         jiff::Timestamp::now(),
-        jinn_core_types::turn_identity::TurnToken::legacy(),
-        jinn_core_types::turn_identity::StreamId::legacy(),
+        jinn_core_types::turn_identity::TurnToken::from_counter(7),
+        jinn_core_types::turn_identity::StreamId::from_counter(7),
         // No rule matcher: these cases are about the stream path itself, and
         // `None` is exactly what a configuration with no rules resolves to.
         None,
@@ -987,8 +1007,8 @@ async fn handle_done_event_publishes_stream_completed_before_execute_tool_batch(
         None,
         None,
         jiff::Timestamp::now(),
-        jinn_core_types::turn_identity::TurnToken::legacy(),
-        jinn_core_types::turn_identity::StreamId::legacy(),
+        jinn_core_types::turn_identity::TurnToken::from_counter(8),
+        jinn_core_types::turn_identity::StreamId::from_counter(8),
     )
     .await;
 
@@ -1061,8 +1081,8 @@ async fn run_with_rules(
         sid,
         "test-model",
         jiff::Timestamp::now(),
-        jinn_core_types::turn_identity::TurnToken::legacy(),
-        jinn_core_types::turn_identity::StreamId::legacy(),
+        jinn_core_types::turn_identity::TurnToken::from_counter(9),
+        jinn_core_types::turn_identity::StreamId::from_counter(9),
         session
             .as_mut()
             .map(|s| s.as_mut() as &mut (dyn jinn_slices::StreamRuleSession + '_)),
@@ -1475,8 +1495,8 @@ fn dispatch_for(session_id: &SessionId) -> SendToLlmProvider {
         tool_definitions: vec![],
         estimated_tokens: 0,
         dispatched_at: jiff::Timestamp::now(),
-        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-        stream: jinn_core_types::turn_identity::StreamId::legacy(),
+        turn: jinn_core_types::turn_identity::TurnToken::from_counter(111),
+        stream: jinn_core_types::turn_identity::StreamId::from_counter(111),
     }
 }
 

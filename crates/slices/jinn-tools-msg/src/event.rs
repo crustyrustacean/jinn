@@ -27,7 +27,7 @@ pub struct ToolExecutionCompleted {
     pub result: ToolResult,
     /// The turn this execution belongs to, as minted by the turn ledger.
     ///
-    /// Zero is the pre-ledger legacy value; see `SendToLlmProvider.turn`.
+    /// Zero is the unset serde default; see `SendToLlmProvider.turn`.
     #[serde(default)]
     pub turn: jinn_core_types::turn_identity::TurnToken,
     /// Whether this completion was synthesized by the cancel drain rather
@@ -155,7 +155,7 @@ pub struct ToolExecutionStarted {
     pub dispatched_at: Timestamp,
     /// The turn this execution belongs to, as minted by the turn ledger.
     ///
-    /// Zero is the pre-ledger legacy value; see `SendToLlmProvider.turn`.
+    /// Zero is the unset serde default; see `SendToLlmProvider.turn`.
     #[serde(default)]
     pub turn: jinn_core_types::turn_identity::TurnToken,
 }
@@ -185,7 +185,7 @@ pub struct ToolExecutionOutput {
     pub session_id: SessionId,
     /// The turn this output belongs to, as minted by the turn ledger.
     ///
-    /// Zero is the pre-ledger legacy value; see `SendToLlmProvider.turn`.
+    /// Zero is the unset serde default; see `SendToLlmProvider.turn`.
     #[serde(default)]
     pub turn: jinn_core_types::turn_identity::TurnToken,
     /// The tool call ID this output is for.

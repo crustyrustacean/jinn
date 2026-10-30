@@ -573,7 +573,7 @@ mod tests {
     /// bash ever runs.
     fn test_ctx(cwd: &MarkedPathBuf<Absolute>) -> ToolContext {
         ToolContext {
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            turn: crate::tool_types::test_turn(),
             cwd: cwd.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
@@ -731,7 +731,7 @@ mod tests {
             #[cfg(not(windows))]
             let (pwd_command, expected_cwd) = ("pwd", canonical);
             let ctx = ToolContext {
-                turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+                turn: crate::tool_types::test_turn(),
                 cwd: dir.path.clone(),
                 config: jinn_config::testutil::config_layer(""),
                 shells: Default::default(),
@@ -1118,7 +1118,7 @@ mod tests {
                 StreamTarget {
                     bus: Some(&bus),
                     session_id: Some(&session_id),
-                    turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+                    turn: crate::tool_types::test_turn(),
                 },
                 &ToolCallId::from("test_call"),
             )
@@ -1146,7 +1146,7 @@ mod tests {
                 StreamTarget {
                     bus: Some(&bus),
                     session_id: Some(&session_id),
-                    turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+                    turn: crate::tool_types::test_turn(),
                 },
                 &ToolCallId::from("test_call"),
             )

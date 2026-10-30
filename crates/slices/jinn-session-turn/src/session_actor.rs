@@ -318,13 +318,12 @@ impl MsgHandler<ToolExecutionCompleted> for SessionPersistenceActor {
     async fn handle(&mut self, msg: &ToolExecutionCompleted, _ctx: &mut MsgCtx<'_>) {
         self.on_tool_execution_completed(msg).await;
         // The consumer closes: the close's settlement drives what happens
-        // when the work set empties. Legacy-turn events carry no call to
-        // close.
-        if msg.turn != jinn_core_types::turn_identity::TurnToken::legacy()
-            && let Some(settlement) = self
-                .services
-                .turn_ledger
-                .close_call(&msg.session_id, &msg.result.tool_call_id)
+        // when the work set empties. A completion the ledger never admitted
+        // names a call that was never registered, so the close no-ops.
+        if let Some(settlement) = self
+            .services
+            .turn_ledger
+            .close_call(&msg.session_id, &msg.result.tool_call_id)
         {
             self.on_turn_work_settled(&msg.session_id, settlement.next)
                 .await;
