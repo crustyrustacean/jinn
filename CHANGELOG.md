@@ -1,11 +1,11 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
-## (development)
+## 2026-10-29 v1.13.0
 
 - The chat entry metadata popup now displays the context size of a chat entry and how much is actually in context.
 - "OpenRouter Model Search" popup renamed to "OpenRouter Model Market"
 - Fix bug 21.
-  - (Dev notes): now using a single serialization point for turn management. A truth table of all possible states and transitions is included in the relevant modules.
+  - (Dev notes): now using a single serialization point for turn management.
 - `--log-file`, and `--dump-requests` now accept both relative and absolute paths.
 - Fix: OpenRouter Model Market now reports `LAT p50` and `TP p50` on the endpoint page.
   - Some endpoints don't have this data, so will still report `-`
