@@ -140,7 +140,7 @@ pub trait SessionStore: Send + Sync + 'static {
 
     /// Delete many sessions in one atomic operation.
     ///
-    /// The maintenance actor's bulk path: every id is removed in one
+    /// The session prune actor's bulk path: every id is removed in one
     /// transaction (all-or-nothing), with shared-entry reaping scoped to the
     /// deleted set — an entry claimed by any *surviving* session is kept, so
     /// forks of pruned sessions lose nothing. Unknown IDs match no rows and

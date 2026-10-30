@@ -873,13 +873,13 @@ fn v28_backfills_rowid_map_from_existing_fts() {
         "one map row per FTS row, sessions preserved"
     );
 
-    // And the recorded migration version is the chain's latest (32) —
+    // And the recorded migration version is the chain's latest (33) —
     // `run_migrations` runs the full chain, so every later version has
     // landed on top of v28.
     let version: i64 = conn
         .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
         .expect("current version");
-    assert_eq!(version, 32, "v28 and later recorded");
+    assert_eq!(version, 33, "v28 and later recorded");
 }
 
 /// v32 converts the database to incremental auto-vacuum so freed pages can
@@ -921,7 +921,10 @@ fn migration_v32_converts_auto_vacuum_to_incremental() {
     let version: i64 = conn
         .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
         .expect("current version");
-    assert_eq!(version, 32, "v32 recorded after the out-of-band conversion");
+    assert!(
+        version >= 32,
+        "v32 recorded after the out-of-band conversion"
+    );
 }
 
 /// A fresh database (seeded through the full chain from empty) ends at v32
@@ -936,7 +939,7 @@ fn fresh_database_lands_on_incremental_auto_vacuum() {
     // When running all migrations.
     run_migrations(&mut conn).expect("run migrations");
 
-    // Then the database is at v32 with incremental auto-vacuum.
+    // Then the database is at latest with incremental auto-vacuum.
     let auto_vacuum: i64 = conn
         .query_row("PRAGMA auto_vacuum", [], |row| row.get(0))
         .expect("read auto_vacuum");
@@ -944,7 +947,7 @@ fn fresh_database_lands_on_incremental_auto_vacuum() {
     let version: i64 = conn
         .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
         .expect("current version");
-    assert_eq!(version, 32, "fresh db records v32");
+    assert!(version >= 32, "fresh db records the conversion");
 }
 
 /// Re-running migrations after v32 never re-runs the out-of-band conversion
@@ -959,12 +962,15 @@ fn migration_v32_conversion_does_not_rerun_after_latest() {
     // When running migrations again.
     run_migrations(&mut conn).expect("second run");
 
-    // Then the database is unchanged at v32 — the no-op early-return fires
+    // Then the database is unchanged at latest — the no-op early-return fires
     // before the out-of-band conversion gate.
     let version: i64 = conn
         .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
         .expect("current version");
-    assert_eq!(version, 32, "still at latest after a re-run");
+    assert!(
+        version >= 32,
+        "still at latest after a re-run, got {version}"
+    );
     let rows: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM _migrations WHERE version = 32",
@@ -973,4 +979,119 @@ fn migration_v32_conversion_does_not_rerun_after_latest() {
         )
         .expect("count v32 rows");
     assert_eq!(rows, 1, "exactly one v32 tracking row, no duplicates");
+}
+
+/// v33 indexes `session_history(entry_id)` on a database upgraded from v32 —
+/// the shape of every existing installation. Without that index the
+/// entry-delete FK cascade and the orphan-reaping lookup scan the whole
+/// junction table per chunk, which wedged large-install prunes.
+#[rstest::rstest]
+#[test]
+fn upgrade_from_v32_creates_the_entry_id_index() {
+    use jinn_session_schema::testing::{apply_migrations_inner, bootstrap_tracking_table};
+
+    // Given a database migrated to exactly v32, with junction rows whose
+    // entry ids the index must cover.
+    let mut conn = rusqlite::Connection::open_in_memory().expect("open db");
+    bootstrap_tracking_table(&mut conn).expect("bootstrap");
+    apply_migrations_inner(&mut conn, 32);
+    seed_junction_row(&conn, "session-a", "entry-1");
+    let has_index = has_index_named(&conn, "idx_session_history_entry");
+    assert!(!has_index, "precondition: v32 db has no entry_id index yet");
+
+    // When running the pending migrations.
+    run_migrations(&mut conn).expect("upgrade from v32");
+
+    // Then the index exists and the data survived.
+    assert!(
+        has_index_named(&conn, "idx_session_history_entry"),
+        "v33 must create idx_session_history_entry"
+    );
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM session_history", [], |r| r.get(0))
+        .expect("count junction rows");
+    assert_eq!(count, 1, "indexing must not lose rows");
+
+    // And v33 is recorded like any other migration.
+    let version: i64 = conn
+        .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
+        .expect("current version");
+    assert_eq!(version, 33, "v33 recorded after the index build");
+}
+
+/// A fresh database lands on v33 with the entry-id index already in place —
+/// the delete paths that need it exist from the first session ever stored.
+#[rstest::rstest]
+#[test]
+fn fresh_database_has_the_entry_id_index() {
+    // Given a fresh in-memory database.
+    let mut conn = rusqlite::Connection::open_in_memory().expect("open db");
+
+    // When running all migrations.
+    run_migrations(&mut conn).expect("run migrations");
+
+    // Then the index exists on the junction table.
+    assert!(
+        has_index_named(&conn, "idx_session_history_entry"),
+        "fresh db must carry idx_session_history_entry"
+    );
+    let version: i64 = conn
+        .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
+        .expect("current version");
+    assert_eq!(version, 33, "fresh db records v33");
+}
+
+/// The v33 index is `IF NOT EXISTS`, so a database that already carries it
+/// (hand-migrated while debugging a wedged prune, most plausibly) upgrades
+/// cleanly instead of failing on the name collision.
+#[rstest::rstest]
+#[test]
+fn upgrade_from_v32_tolerates_a_preexisting_entry_id_index() {
+    use jinn_session_schema::testing::{apply_migrations_inner, bootstrap_tracking_table};
+
+    // Given a v32 database that already has the index, created by hand.
+    let mut conn = rusqlite::Connection::open_in_memory().expect("open db");
+    bootstrap_tracking_table(&mut conn).expect("bootstrap");
+    apply_migrations_inner(&mut conn, 32);
+    conn.execute_batch("CREATE INDEX idx_session_history_entry ON session_history(entry_id)")
+        .expect("hand-create the index");
+
+    // When running the pending migrations.
+    run_migrations(&mut conn).expect("upgrade over a preexisting index");
+
+    // Then the upgrade succeeded and v33 is recorded.
+    let version: i64 = conn
+        .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
+        .expect("current version");
+    assert_eq!(version, 33, "v33 recorded despite the preexisting index");
+}
+
+/// Inserts one session_history junction row (with its required sessions and
+/// entries parents) so index tests exercise real rows.
+fn seed_junction_row(conn: &rusqlite::Connection, session_id: &str, entry_id: &str) {
+    conn.execute(
+        "INSERT INTO sessions (id, title, updated_at, created_at) VALUES (?, 't', 't', 't')",
+        [session_id],
+    )
+    .expect("insert session parent");
+    conn.execute(
+        "INSERT INTO entries (id, timing, kind) VALUES (?, 't', '{}')",
+        [entry_id],
+    )
+    .expect("insert entry parent");
+    conn.execute(
+        "INSERT INTO session_history (session_id, entry_id, ordinal) VALUES (?, ?, 0)",
+        [session_id, entry_id],
+    )
+    .expect("insert junction row");
+}
+
+/// Returns true when an index named `name` exists on any table.
+fn has_index_named(conn: &rusqlite::Connection, name: &str) -> bool {
+    conn.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?")
+        .expect("prepare index lookup")
+        .query_map([name], |row| row.get::<_, String>(0))
+        .expect("query index lookup")
+        .count()
+        > 0
 }

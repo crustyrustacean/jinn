@@ -1,9 +1,11 @@
 //! Database-maintenance configuration schema — the `jinn.toml`
 //! `[maintenance]` section.
 //!
-//! Pure serde data plus the retention-string grammar. The database
-//! maintenance actor (`crates/slices/jinn-session-store`) imports the shape
-//! from here and reads a snapshot at each sweep. An absent section
+//! Pure serde data plus the retention-string grammar. The session prune
+//! actor (`crates/slices/jinn-session-store`) imports the shape from here
+//! and reads a snapshot at each sweep. The section stays named
+//! `[maintenance]` because it is the home for general database-maintenance
+//! settings, of which retention is the first; an absent section
 //! deserializes to the default, and the default disables deletion: jinn
 //! never deletes sessions the user has not explicitly told it to.
 

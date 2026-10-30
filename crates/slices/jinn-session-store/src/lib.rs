@@ -8,7 +8,6 @@
 //! `jinn-session-state`; the shared `SessionStore` service seam remains in the
 //! kernel services layer.
 
-pub mod db_maintenance_actor;
 pub mod hydrate;
 pub mod hydrate_worker;
 pub mod migrator;
@@ -19,6 +18,7 @@ mod session_entries_tests;
 pub mod session_picker_actions;
 pub mod session_picker_render;
 pub mod session_picker_routes;
+pub mod session_prune_actor;
 pub mod session_store_actor;
 pub mod sqlite;
 pub mod working_time;
@@ -126,14 +126,14 @@ pub fn activate_session_picker(
 }
 
 #[cfg(test)]
-mod db_maintenance_actor_tests;
-#[cfg(test)]
 mod hydrate_worker_tests;
 #[cfg(test)]
 mod search_index_actor_tests;
 #[cfg(test)]
 mod session_picker_tests;
 pub mod session_picker_viewport;
+#[cfg(test)]
+mod session_prune_actor_tests;
 #[cfg(test)]
 mod session_store_actor_tests;
 #[cfg(test)]

@@ -293,12 +293,17 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "convert_database_to_incremental_auto_vacuum",
         apply: migrate_v32,
     },
+    Migration {
+        version: 33,
+        name: "index_session_history_entry_id",
+        apply: migrate_v33,
+    },
 ];
 
 /// The newest migration in [`MIGRATIONS`], kept in lockstep with
 /// [`LATEST_VERSION`] (which is asserted equal to this by
 /// `latest_version_matches_chain`).
-pub const CHAIN_LATEST_VERSION: i32 = 32;
+pub const CHAIN_LATEST_VERSION: i32 = 33;
 
 /// Applies every migration above `current` under the given announcer.
 ///
@@ -1365,10 +1370,30 @@ pub fn migrate_v31(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaM
 /// itself executes out-of-band in [`run_pending`], before the `BEGIN`,
 /// gated on `current < 32` so it runs exactly once.
 ///
-/// Incremental auto-vacuum is what lets the database maintenance actor hand
+/// Incremental auto-vacuum is what lets the session prune actor hand
 /// freed pages back to the filesystem (`PRAGMA incremental_vacuum`) after
 /// prune sweeps, instead of leaving them on a freelist forever.
 pub fn migrate_v32(_conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+    Ok(())
+}
+
+/// v33: Index `session_history(entry_id)`.
+///
+/// Entry deletion cascades by *entry*: the bulk delete's `DELETE FROM entries
+/// WHERE id IN (…)` fires the `entry_id` FK cascade on every row, and the
+/// orphan-reaping lookup (`WHERE entry_id IN (…)`) scans the junction table
+/// directly. Both are full scans of `session_history` without this index —
+/// millions of rows deep on large installs, which turned every prune chunk
+/// (and before the chunked drain, the whole prune) into a multi-minute
+/// write-lock hold and wedged shutdown past the graceful deadline.
+/// `session_id`, the other junction column, has always been indexed via
+/// `idx_session_entries_session`.
+pub fn migrate_v33(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_session_history_entry ON session_history(entry_id)",
+    )
+    .change_context(SchemaMigrationError)
+    .attach("v33: create idx_session_history_entry on session_history(entry_id)")?;
     Ok(())
 }
 
@@ -1576,7 +1601,7 @@ pub mod testing {
         CHAIN_LATEST_VERSION, LATEST_VERSION, MIGRATIONS, announcement_line,
         apply_migrations_inner, bootstrap_tracking_table, migrate_v10, migrate_v15, migrate_v16,
         migrate_v17, migrate_v18, migrate_v19, migrate_v21, migrate_v22, migrate_v23, migrate_v25,
-        migrate_v26, migrate_v31, migrate_v32, record_version,
+        migrate_v26, migrate_v31, migrate_v32, migrate_v33, record_version,
     };
 
     /// The debug-build integrity-walk announcement, re-exported for the
