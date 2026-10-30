@@ -3,6 +3,7 @@
 ## (development)
 
 - (dev): upgrade to `trouper` v0.14.0
+- Fix: Stream errors now change the session state from streaming to idle
 
 ## 2026-10-29 v1.13.0
 
