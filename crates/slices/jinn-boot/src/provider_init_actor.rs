@@ -50,11 +50,11 @@ impl ServiceActor for ProviderInitActor {
         clippy::unused_async_trait_impl,
         reason = "ServiceActor::start is async by trait contract"
     )]
-    async fn start(_args: &trouper::json::Json) -> Result<Self, Report<RegistryError>> {
-        // Never called: spawned via `spawn`'s start_with (typed deps can't
+    async fn init(_args: &trouper::json::Json) -> Result<Self, Report<RegistryError>> {
+        // Never called: spawned via `spawn`'s init_with (typed deps can't
         // ride the JSON args).
         Err(Report::new(RegistryError::InvalidSpec)
-            .attach("ProviderInitActor spawns via start_with"))
+            .attach("ProviderInitActor spawns via init_with"))
     }
 }
 
@@ -66,7 +66,7 @@ impl ProviderInitActor {
     /// `EnvironmentLoaded` subscription is live when this returns.
     #[expect(
         clippy::needless_pass_by_value,
-        reason = "port convention: spawn takes owned deps and clones into start_with"
+        reason = "port convention: spawn takes owned deps and clones into init_with"
     )]
     /// # Panics
     ///
@@ -76,7 +76,7 @@ impl ProviderInitActor {
         let path = ActorPath::new(PROVIDER_INIT_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())
-            .start_with({
+            .init_with({
                 let deps = deps.clone();
                 move || {
                     let deps = deps.clone();

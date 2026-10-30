@@ -88,7 +88,7 @@ impl DiscordBridgeSubscriber {
         } = deps;
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new("discord-bridge"))
-            .start_with({
+            .init_with({
                 move || {
                     Box::pin(async move {
                         Ok(Self {
@@ -111,14 +111,12 @@ impl DiscordBridgeSubscriber {
 }
 
 impl ServiceActor for DiscordBridgeSubscriber {
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the channels and state
-        // via `start_with`.
+        // via `init_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
-                .attach("DiscordBridgeSubscriber is spawned via start_with"),
+                .attach("DiscordBridgeSubscriber is spawned via init_with"),
         )
     }
 }

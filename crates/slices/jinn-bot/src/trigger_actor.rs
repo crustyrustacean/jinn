@@ -36,13 +36,11 @@ impl ServiceActor for BotTriggerActor {
         clippy::unused_async_trait_impl,
         reason = "ServiceActor::start is async by trait contract"
     )]
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: the spawn helper injects the deps via `start_with`
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
+        // Never called: the spawn helper injects the deps via `init_with`
         // (Services carries typed handles that cannot ride JSON args).
         Err(error_stack::Report::new(RegistryError::InvalidSpec)
-            .attach("BotTriggerActor is spawned via start_with"))
+            .attach("BotTriggerActor is spawned via init_with"))
     }
 }
 
@@ -64,13 +62,13 @@ impl BotTriggerActor {
     /// resolves cannot be missed.
     #[expect(
         clippy::needless_pass_by_value,
-        reason = "port convention: spawn takes owned deps and clones into start_with"
+        reason = "port convention: spawn takes owned deps and clones into init_with"
     )]
     pub fn spawn(system: &ActorSystem, deps: BotTriggerActorDeps) -> ActorPath {
         let path = ActorPath::new(ATTENDANT_TRIGGER_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())
-            .start_with({
+            .init_with({
                 let deps = deps.clone();
                 move || {
                     let deps = deps.clone();

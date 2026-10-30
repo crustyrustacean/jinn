@@ -83,10 +83,6 @@ pub struct SearchIndexActorDeps {
 /// genuinely clean — see [`Self::publish_up_to_date`].
 pub struct SearchIndexActor {
     deps: ActorDeps,
-    /// The system this actor runs on — captured at spawn so the
-    /// heartbeat can self-address. (The services container may carry a
-    /// different system in tests, where the harness spawns on its own.)
-    system: ActorSystem,
     interval: Duration,
     batch: usize,
     queue: HashSet<SessionId>,
@@ -95,16 +91,14 @@ pub struct SearchIndexActor {
 impl ServiceActor for SearchIndexActor {
     #[expect(
         clippy::unused_async_trait_impl,
-        reason = "trait contract: start is never called (spawn uses start_with)"
+        reason = "trait contract: init is never called (spawn uses init_with)"
     )]
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: the spawn helper injects the deps via `start_with`
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
+        // Never called: the spawn helper injects the deps via `init_with`
         // (ActorDeps carries typed handles that cannot ride JSON args).
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
-                .attach("SearchIndexActor is spawned via start_with"),
+                .attach("SearchIndexActor is spawned via init_with"),
         )
     }
 }
@@ -112,27 +106,23 @@ impl ServiceActor for SearchIndexActor {
 impl SearchIndexActor {
     /// Spawns the actor at its static trouper path and returns the path.
     ///
-    /// The heartbeat self-addresses through the same path, so the first
-    /// tick is kicked by a detached task **after** this call resolves:
-    /// the wiring moves on while the tick processes concurrently.
+    /// The first heartbeat is armed by `.kickoff` at spawn; the wiring
+    /// moves on while the tick processes concurrently.
     #[expect(
         clippy::needless_pass_by_value,
-        reason = "port convention: spawn takes owned deps and clones into start_with"
+        reason = "port convention: spawn takes owned deps and clones into init_with"
     )]
     pub fn spawn(system: &ActorSystem, deps: SearchIndexActorDeps) -> ActorPath {
         let path = ActorPath::new(SEARCH_INDEX_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())
-            .start_with({
+            .init_with({
                 let deps = deps.clone();
-                let system = system.clone();
                 move || {
                     let deps = deps.clone();
-                    let system = system.clone();
                     Box::pin(async move {
                         Ok(Self {
                             deps: deps.deps,
-                            system,
                             interval: deps.interval,
                             batch: deps.batch,
                             queue: HashSet::new(),
@@ -142,15 +132,10 @@ impl SearchIndexActor {
             })
             .handles::<ReindexTick>()
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
+            // Arms the first heartbeat ~1ms after spawn; the chain
+            // self-perpetuates from there (see [`Self::reschedule`]).
+            .kickoff(ReindexTick, Duration::from_millis(1))
             .start();
-        // Kick the first heartbeat. A failed send only means the actor is
-        // already stopping.
-        let kicker = system.clone();
-        let kick_path = path.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(1)).await;
-            let _ = kicker.tell(kick_path, ReindexTick).await;
-        });
         path
     }
 
@@ -160,14 +145,8 @@ impl SearchIndexActor {
     /// semantics: the next heartbeat is queued while the current one may
     /// still be running its I/O, and the inbox (Block policy)
     /// backpressures rather than dropping.
-    fn reschedule(&self) {
-        let system = self.system.clone();
-        let path = ActorPath::new(SEARCH_INDEX_PATH);
-        let interval = self.interval;
-        tokio::spawn(async move {
-            tokio::time::sleep(interval).await;
-            let _ = system.tell(path, ReindexTick).await;
-        });
+    fn reschedule(&self, ctx: &mut MsgCtx<'_>) {
+        ctx.schedule_self(ReindexTick, self.interval);
     }
 }
 
@@ -180,7 +159,7 @@ impl SearchIndexActor {
 pub struct ReindexTick;
 
 impl MsgHandler<ReindexTick> for SearchIndexActor {
-    async fn handle(&mut self, _msg: &ReindexTick, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, _msg: &ReindexTick, ctx: &mut MsgCtx<'_>) {
         if self.queue.is_empty() {
             self.refresh_queue().await;
         }
@@ -192,7 +171,7 @@ impl MsgHandler<ReindexTick> for SearchIndexActor {
             self.publish_remaining(0).await;
             self.process_batch().await;
         }
-        self.reschedule();
+        self.reschedule(ctx);
     }
 }
 

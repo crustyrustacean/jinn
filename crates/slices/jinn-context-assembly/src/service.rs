@@ -24,7 +24,7 @@ impl ServiceActor for ContextAssemblyService {
         clippy::unused_async_trait_impl,
         reason = "stateless service: start has nothing to await"
     )]
-    async fn start(_args: &trouper::json::Json) -> Result<Self, Report<RegistryError>> {
+    async fn init(_args: &trouper::json::Json) -> Result<Self, Report<RegistryError>> {
         Ok(Self)
     }
 }

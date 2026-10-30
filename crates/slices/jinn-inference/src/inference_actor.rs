@@ -143,15 +143,15 @@ impl jinn_kernel::common::actor_deps::BusPublish for InferenceActor {
 impl ServiceActor for InferenceActor {
     #[expect(
         clippy::unused_async_trait_impl,
-        reason = "trait contract: start is never called (spawn uses start_with)"
+        reason = "trait contract: init is never called (spawn uses init_with)"
     )]
-    async fn start(
+    async fn init(
         _args: &trouper::json::Json,
     ) -> Result<Self, Report<trouper::registry::RegistryError>> {
-        // Never called: the spawn helper injects services via `start_with`.
+        // Never called: the spawn helper injects services via `init_with`.
         Err(
             error_stack::IntoReport::into_report(trouper::registry::RegistryError::InvalidSpec)
-                .attach("InferenceActor is spawned via start_with"),
+                .attach("InferenceActor is spawned via init_with"),
         )
     }
 }
@@ -168,7 +168,7 @@ impl InferenceActor {
     ) -> ActorPath {
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new(INFERENCE_PATH))
-            .start_with({
+            .init_with({
                 move || {
                     let state = state.clone();
                     let services = services.clone();

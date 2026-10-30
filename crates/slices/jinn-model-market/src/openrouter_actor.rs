@@ -172,12 +172,12 @@ impl ServiceActor for OpenRouterMarketActor {
         clippy::unused_async_trait_impl,
         reason = "ServiceActor::start is async by trait contract"
     )]
-    async fn start(_args: &trouper::json::Json) -> Result<Self, Report<RegistryError>> {
-        // Never called: spawned via `spawn`'s start_with (typed deps
+    async fn init(_args: &trouper::json::Json) -> Result<Self, Report<RegistryError>> {
+        // Never called: spawned via `spawn`'s init_with (typed deps
         // can't ride the JSON args). Err is the hard invariant every
         // actor's `start` carries.
         Err(Report::new(RegistryError::InvalidSpec)
-            .attach("OpenRouterMarketActor spawns via start_with"))
+            .attach("OpenRouterMarketActor spawns via init_with"))
     }
 }
 
@@ -194,7 +194,7 @@ impl OpenRouterMarketActor {
     /// Panics if the actor's path is already taken — a composition bug.
     #[expect(
         clippy::needless_pass_by_value,
-        reason = "port convention: spawn takes owned deps and clones into start_with"
+        reason = "port convention: spawn takes owned deps and clones into init_with"
     )]
     pub fn spawn(
         system: &trouper::system::ActorSystem,
@@ -203,7 +203,7 @@ impl OpenRouterMarketActor {
         let path = ActorPath::new(OPENROUTER_MARKET_ACTOR_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())
-            .start_with({
+            .init_with({
                 let deps = deps.clone();
                 move || {
                     let deps = deps.clone();

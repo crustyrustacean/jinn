@@ -78,12 +78,12 @@ impl BusPublish for StubProvider {
 }
 
 impl trouper::actor::ServiceActor for StubProvider {
-    async fn start(
+    async fn init(
         _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
         Err(
             error_stack::Report::new(trouper::registry::RegistryError::InvalidSpec)
-                .attach("StubProvider is spawned via start_with"),
+                .attach("StubProvider is spawned via init_with"),
         )
     }
 }
@@ -119,7 +119,7 @@ impl trouper::actor::MsgHandler<jinn_tools_msg::ExecuteTool> for StubProvider {
 fn spawn_stub_provider(harness: &TestHarness, session_id: jinn_core_types::SessionId) {
     let _ = trouper::builder::spawn_service_builder::<StubProvider>(harness.system())
         .at(trouper::actor::ActorPath::new("test.stub-mcp-provider"))
-        .start_with({
+        .init_with({
             let bus = harness.bus();
             move || {
                 let bus = bus.clone();

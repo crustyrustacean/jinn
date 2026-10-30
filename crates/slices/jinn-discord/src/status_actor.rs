@@ -117,7 +117,7 @@ impl DiscordStatusActor {
 }
 
 impl ServiceActor for DiscordStatusActor {
-    async fn start(
+    async fn init(
         _args: &trouper::json::Json,
     ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
         // Never called: `spawn` constructs the actor directly (its
@@ -255,12 +255,12 @@ mod tests {
     }
 
     impl trouper::actor::ServiceActor for TopicProbe {
-        async fn start(
+        async fn init(
             _args: &trouper::json::Json,
         ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
             Err(
                 error_stack::IntoReport::into_report(trouper::registry::RegistryError::InvalidSpec)
-                    .attach("TopicProbe spawns via start_with"),
+                    .attach("TopicProbe spawns via init_with"),
             )
         }
     }
@@ -298,7 +298,7 @@ mod tests {
         let seen: Arc<parking_lot::Mutex<Vec<DiscordStatusUpdate>>> = Arc::default();
         let _probe_path = trouper::builder::spawn_service_builder::<TopicProbe>(fabric.system())
             .at(trouper::actor::ActorPath::new("discord-status-probe"))
-            .start_with({
+            .init_with({
                 let seen = seen.clone();
                 move || {
                     Box::pin(async move { Ok(TopicProbe { seen }) })

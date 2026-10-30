@@ -29,16 +29,14 @@ pub struct HistoryWorkerChatEntryTokenCacheEvictionActor {
 impl ServiceActor for HistoryWorkerChatEntryTokenCacheEvictionActor {
     #[expect(
         clippy::unused_async_trait_impl,
-        reason = "trait contract: start is never called (spawn uses start_with)"
+        reason = "trait contract: init is never called (spawn uses init_with)"
     )]
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the cache via
-        // `start_with`.
+        // `init_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
-                .attach("HistoryWorkerChatEntryTokenCacheEvictionActor is spawned via start_with"),
+                .attach("HistoryWorkerChatEntryTokenCacheEvictionActor is spawned via init_with"),
         )
     }
 }
@@ -51,7 +49,7 @@ impl HistoryWorkerChatEntryTokenCacheEvictionActor {
     pub fn spawn(system: &ActorSystem, cache: HistoryWorkerChatEntryTokenCache) -> ActorPath {
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new(TOKEN_CACHE_EVICTION_PATH))
-            .start_with({
+            .init_with({
                 move || {
                     Box::pin(async move {
                         Ok(Self {

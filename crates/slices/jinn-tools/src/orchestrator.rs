@@ -210,13 +210,11 @@ fn build_openrouter_web_search_definition(config: &WebSearchConfig) -> ToolDefin
 pub const ORCHESTRATOR_PATH: &str = "jinn.tools.orchestrator";
 
 impl ServiceActor for ToolOrchestratorActor {
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: spawned via `start_with` (typed deps cannot ride
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
+        // Never called: spawned via `init_with` (typed deps cannot ride
         // JSON args).
         Err(error_stack::Report::new(RegistryError::InvalidSpec)
-            .attach("ToolOrchestratorActor spawns via start_with"))
+            .attach("ToolOrchestratorActor spawns via init_with"))
     }
 }
 
@@ -230,7 +228,7 @@ impl ToolOrchestratorActor {
         let path = ActorPath::new(ORCHESTRATOR_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())
-            .start_with({
+            .init_with({
                 let deps = deps.clone();
                 move || {
                     let deps = deps.clone();

@@ -71,13 +71,11 @@ pub struct SubagentSettleListenerActor {
 }
 
 impl ServiceActor for SubagentSettleListenerActor {
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: spawned via `start_with` (typed deps cannot ride
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
+        // Never called: spawned via `init_with` (typed deps cannot ride
         // JSON args).
         Err(error_stack::Report::new(RegistryError::InvalidSpec)
-            .attach("SubagentSettleListenerActor spawns via start_with"))
+            .attach("SubagentSettleListenerActor spawns via init_with"))
     }
 }
 
@@ -96,7 +94,7 @@ impl SubagentSettleListenerActor {
         ));
         trouper::builder::spawn_service_builder::<Self>(&deps.system)
             .at(path.clone())
-            .start_with({
+            .init_with({
                 let child_id = deps.child_id.clone();
                 let expected_servers = deps.expected_servers.clone();
                 let settled = deps.settled;

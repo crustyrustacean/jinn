@@ -148,12 +148,12 @@ impl InteractiveTermActor {
 }
 
 impl ServiceActor for InteractiveTermActor {
-    async fn start(_args: &trouper::json::Json) -> Result<Self, Report<RegistryError>> {
-        // Never called: spawned via `spawn`'s start_with (typed deps can't
+    async fn init(_args: &trouper::json::Json) -> Result<Self, Report<RegistryError>> {
+        // Never called: spawned via `spawn`'s init_with (typed deps can't
         // ride the JSON args).
         let _ = _args;
         Err(Report::new(RegistryError::InvalidSpec)
-            .attach("InteractiveTermActor is spawned via start_with with typed deps"))
+            .attach("InteractiveTermActor is spawned via init_with with typed deps"))
     }
 }
 
@@ -172,7 +172,7 @@ impl InteractiveTermActor {
         let path = ActorPath::new(INTERACTIVE_TERM_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())
-            .start_with({
+            .init_with({
                 let deps = deps.clone();
                 move || {
                     let deps = deps.clone();

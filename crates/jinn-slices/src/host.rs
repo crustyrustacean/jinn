@@ -69,7 +69,7 @@ impl<'a, C: 'static> SliceHost<'a, C> {
     }
 
     /// The trouper actor system, for slice actors that spawn with
-    /// custom builders (cell-injecting `start_with` overrides).
+    /// custom builders (cell-injecting `init_with` overrides).
     #[must_use]
     pub fn system(&self) -> &'a ActorSystem {
         self.system
@@ -131,7 +131,7 @@ impl<'a, C: 'static> SliceHost<'a, C> {
     {
         trouper::builder::spawn_service_builder::<A>(self.system)
             .at(path)
-            .start_with(move || {
+            .init_with(move || {
                 Box::pin(async move {
                     build().map_err(|err| {
                         error_stack::Report::new(SpawnError)

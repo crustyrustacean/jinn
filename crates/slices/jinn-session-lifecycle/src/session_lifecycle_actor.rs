@@ -72,14 +72,12 @@ impl BusPublish for SessionLifecycleActor {
 impl ServiceActor for SessionLifecycleActor {
     #[expect(
         clippy::unused_async_trait_impl,
-        reason = "trait contract: start is never called (spawn uses start_with)"
+        reason = "trait contract: init is never called (spawn uses init_with)"
     )]
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
-                .attach("SessionLifecycleActor is spawned via start_with"),
+                .attach("SessionLifecycleActor is spawned via init_with"),
         )
     }
 }
@@ -88,13 +86,13 @@ impl SessionLifecycleActor {
     /// Spawns the lifecycle actor and installs its eight typed subscriptions.
     #[expect(
         clippy::needless_pass_by_value,
-        reason = "port convention: spawn takes owned deps and clones into start_with"
+        reason = "port convention: spawn takes owned deps and clones into init_with"
     )]
     pub fn spawn(system: &ActorSystem, deps: SessionLifecycleActorDeps) -> ActorPath {
         let path = ActorPath::new(SESSION_LIFECYCLE_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())
-            .start_with({
+            .init_with({
                 let deps = deps.clone();
                 move || {
                     let deps = deps.clone();

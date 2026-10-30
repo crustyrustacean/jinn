@@ -36,16 +36,14 @@ pub struct AppStateActor {
 impl ServiceActor for AppStateActor {
     #[expect(
         clippy::unused_async_trait_impl,
-        reason = "trait contract: start is never called (spawn uses start_with)"
+        reason = "trait contract: init is never called (spawn uses init_with)"
     )]
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the state handle
-        // via `start_with`.
+        // via `init_with`.
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
-                .attach("AppStateActor is spawned via start_with"),
+                .attach("AppStateActor is spawned via init_with"),
         )
     }
 }
@@ -57,7 +55,7 @@ impl AppStateActor {
     pub fn spawn(system: &ActorSystem, services: Services, state: State) -> ActorPath {
         spawn_service_builder::<Self>(system)
             .at(ActorPath::new(APP_STATE_ACTOR_PATH))
-            .start_with({
+            .init_with({
                 move || {
                     Box::pin(async move {
                         Ok(Self {

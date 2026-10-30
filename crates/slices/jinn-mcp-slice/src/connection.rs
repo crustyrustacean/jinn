@@ -381,13 +381,11 @@ fn format_result_content(result: &CallToolResult) -> String {
 }
 
 impl ServiceActor for McpActor {
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: spawned via `start_with` (typed deps cannot ride
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
+        // Never called: spawned via `init_with` (typed deps cannot ride
         // JSON args).
         Err(error_stack::Report::new(RegistryError::InvalidSpec)
-            .attach("McpActor spawns via start_with"))
+            .attach("McpActor spawns via init_with"))
     }
 
     async fn on_stop(&mut self, _ctx: &mut MsgCtx<'_>) {
@@ -751,7 +749,7 @@ impl McpActor {
         let deps_for_start = deps.clone();
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())
-            .start_with(move || {
+            .init_with(move || {
                 let deps = deps_for_start.clone();
                 Box::pin(async move { start_mcp(deps).await.map_err(|e| match e {}) })
             })
