@@ -884,9 +884,8 @@ fn v28_backfills_rowid_map_from_existing_fts() {
 
 /// v32 converts the database to incremental auto-vacuum so freed pages can
 /// later be handed back to the filesystem (`PRAGMA incremental_vacuum`).
-/// The conversion runs out-of-band (a full `VACUUM` cannot run inside the
-/// chain's transaction), but its effect is observable after any upgrade to
-/// latest.
+/// The conversion runs outside a transaction (a full `VACUUM` cannot run
+/// inside one), but its effect is observable after any upgrade to latest.
 #[rstest::rstest]
 #[test]
 fn migration_v32_converts_auto_vacuum_to_incremental() {
@@ -921,14 +920,11 @@ fn migration_v32_converts_auto_vacuum_to_incremental() {
     let version: i64 = conn
         .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
         .expect("current version");
-    assert!(
-        version >= 32,
-        "v32 recorded after the out-of-band conversion"
-    );
+    assert!(version >= 32, "v32 recorded after the conversion");
 }
 
 /// A fresh database (seeded through the full chain from empty) ends at v32
-/// with incremental auto-vacuum already in effect — the out-of-band step
+/// with incremental auto-vacuum already in effect — the conversion step
 /// gates on `current < 32`, which a first-ever run satisfies too.
 #[rstest::rstest]
 #[test]
@@ -950,7 +946,7 @@ fn fresh_database_lands_on_incremental_auto_vacuum() {
     assert!(version >= 32, "fresh db records the conversion");
 }
 
-/// Re-running migrations after v32 never re-runs the out-of-band conversion
+/// Re-running migrations after v32 never re-runs the conversion
 /// (a second full `VACUUM` on a big database would stall every startup).
 #[rstest::rstest]
 #[test]
@@ -963,7 +959,7 @@ fn migration_v32_conversion_does_not_rerun_after_latest() {
     run_migrations(&mut conn).expect("second run");
 
     // Then the database is unchanged at latest — the no-op early-return fires
-    // before the out-of-band conversion gate.
+    // before the conversion gate.
     let version: i64 = conn
         .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
         .expect("current version");
@@ -1064,6 +1060,65 @@ fn upgrade_from_v32_tolerates_a_preexisting_entry_id_index() {
         .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
         .expect("current version");
     assert_eq!(version, 33, "v33 recorded despite the preexisting index");
+}
+
+/// A fresh run records `_migrations` in chain order: the table's rowid order
+/// is 0..=latest ascending. Rowid order is application order, which the
+/// runner's three-phase split keeps identical to stderr print order — the
+/// property the split exists to guarantee.
+#[rstest::rstest]
+#[test]
+fn fresh_run_records_migrations_in_chain_order() {
+    use jinn_session_schema::LATEST_VERSION;
+
+    // Given a fresh in-memory database.
+    let mut conn = rusqlite::Connection::open_in_memory().expect("open db");
+
+    // When running all migrations.
+    run_migrations(&mut conn).expect("run migrations");
+
+    // Then the tracking table reads 0..=latest in insertion (rowid) order.
+    let versions: Vec<i64> = conn
+        .prepare("SELECT version FROM _migrations ORDER BY rowid")
+        .expect("prepare")
+        .query_map([], |row| row.get(0))
+        .expect("query")
+        .map(|r| r.expect("row"))
+        .collect();
+    let expected: Vec<i64> = (0..=i64::from(LATEST_VERSION)).collect();
+    assert_eq!(versions, expected, "recorded in chain order");
+}
+
+/// An upgrade records `_migrations` in chain order: rowid order is
+/// 0..=latest ascending with the vacuum migration (v32) sitting between v31
+/// and v33 — application order, not the runner's transaction phases.
+#[rstest::rstest]
+#[test]
+#[cfg(feature = "testing")]
+fn upgrade_from_v25_records_migrations_in_chain_order() {
+    use jinn_session_schema::LATEST_VERSION;
+    use jinn_session_schema::testing::{apply_migrations_inner, bootstrap_tracking_table};
+
+    // Given a database seeded at v25 (its seeded rows are already in
+    // ascending rowid order, matching chain order).
+    let mut conn = rusqlite::Connection::open_in_memory().expect("open db");
+    bootstrap_tracking_table(&mut conn).expect("bootstrap");
+    apply_migrations_inner(&mut conn, 25);
+
+    // When running the pending migrations.
+    run_migrations(&mut conn).expect("upgrade from v25");
+
+    // Then the whole table reads 0..=latest in insertion (rowid) order, so
+    // v32 lands between v31 and v33 exactly as it was applied.
+    let versions: Vec<i64> = conn
+        .prepare("SELECT version FROM _migrations ORDER BY rowid")
+        .expect("prepare")
+        .query_map([], |row| row.get(0))
+        .expect("query")
+        .map(|r| r.expect("row"))
+        .collect();
+    let expected: Vec<i64> = (0..=i64::from(LATEST_VERSION)).collect();
+    assert_eq!(versions, expected, "recorded in chain order");
 }
 
 /// Inserts one session_history junction row (with its required sessions and

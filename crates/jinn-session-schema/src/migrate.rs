@@ -1,4 +1,4 @@
-//! The migration runner and individual migrations (v0..=v32).
+//! The migration runner and individual migrations (v0..=v33).
 //!
 //! This crate is the single source of truth for the session schema. Note the
 //! deliberate version pins, which keep the migrations immutable:
@@ -23,7 +23,7 @@ use crate::legacy::LegacySessionColumns;
 /// `run_pending` skips `BEGIN` when the DB is already at this version, so an
 /// up-to-date database pays no transaction cost on startup.
 ///
-/// MUST be bumped in lockstep with [`apply_migration_chain_with`]'s chain
+/// MUST be bumped in lockstep with [`MIGRATIONS`]'s chain
 /// table: every new `migrate_vN` block requires this constant set to `N`.
 /// The drift-guard test
 /// (`upgrade_from_every_seedable_version_reaches_latest`) fails otherwise. A
@@ -34,30 +34,56 @@ use crate::legacy::LegacySessionColumns;
 /// at 26.
 pub const LATEST_VERSION: i32 = CHAIN_LATEST_VERSION;
 
-/// Runs all pending migrations in order, atomically.
+/// The vacuum migration whose real work must run outside a transaction.
 ///
-/// Bootstraps the tracking table, reads the current version, and runs every
-/// unapplied migration sequentially inside a single `BEGIN IMMEDIATE …
-/// COMMIT` transaction. A failure (or an interrupt, e.g. Ctrl+C / SIGKILL)
-/// before `COMMIT` rolls the whole chain back to the last-applied version,
-/// leaving no half-applied schema. The caller ([`crate::run_migrations`]) is
-/// responsible for the FK toggle around this call — FK pragmas cannot change
-/// inside an open transaction, so they stay outside `run_pending`'s BEGIN.
+/// `run_pending` splits the chain around this version: migrations below it
+/// commit in the first transaction, the migration itself runs at its natural
+/// position between the two transactions (its real work — see
+/// [`convert_to_incremental_auto_vacuum`] — is a full `VACUUM`, which SQLite
+/// forbids inside a transaction), and migrations above it commit in the
+/// second. Print order, application order, and `_migrations` rowid order are
+/// therefore the chain order on every run.
+const VACUUM_MIGRATION_VERSION: i32 = 32;
+
+/// Runs all pending migrations in chain order, split around the vacuum
+/// migration's database rewrite.
 ///
-/// A database already at [`LATEST_VERSION`] is a no-op: no `BEGIN` is issued,
-/// so existing-DB startup cost is unchanged.
+/// Bootstraps the tracking table, reads the current version, then applies
+/// every unapplied migration — announced before its work, recorded after —
+/// as three phases:
+///
+/// 1. everything below [`VACUUM_MIGRATION_VERSION`] commits inside one
+///    `BEGIN IMMEDIATE … COMMIT` transaction;
+/// 2. the vacuum migration runs at its natural position, outside any
+///    transaction (SQLite forbids `VACUUM` inside one), and its version is
+///    recorded in its own tiny transaction immediately after the conversion;
+/// 3. everything above it commits inside a second transaction.
+///
+/// A failure inside either chain transaction (or an interrupt, e.g. Ctrl+C /
+/// SIGKILL before its `COMMIT`) rolls that transaction back to where the
+/// previous phase left off — no half-applied schema. A failure after the v32
+/// conversion does **not** re-run it: the rewrite and its `_migrations` row
+/// are already durable, so the next startup resumes at the next version. The
+/// one residual window is a crash between the conversion and its record
+/// commit, which re-runs the vacuum once on restart — harmless, because
+/// `VACUUM` is atomic and the conversion is idempotent.
+///
+/// The caller ([`crate::run_migrations`]) is responsible for the FK toggle
+/// around this call — FK pragmas cannot change inside an open transaction,
+/// so the toggle window spans both transactions.
+///
+/// A database already at [`LATEST_VERSION`] is a no-op: no transaction is
+/// issued, so existing-DB startup cost is unchanged.
 ///
 /// Returns `true` when at least one migration was applied (i.e. the database
 /// was below [`LATEST_VERSION`]) and `false` on a no-op run. Callers use this
-/// to skip post-migration work that only makes sense when the schema changed
-/// (the caller is responsible for the FK toggle around this call — FK pragmas
-/// cannot change inside an open transaction, so they stay outside
-/// `run_pending`'s BEGIN).
+/// to skip post-migration work that only makes sense when the schema changed.
 ///
 /// # Errors
 ///
-/// Returns an error if the transaction cannot be opened/committed or if any
-/// migration or version recording fails (the transaction is rolled back first).
+/// Returns an error if a transaction cannot be opened or committed, if the
+/// v32 conversion fails, or if any migration or version recording fails (the
+/// enclosing transaction is rolled back first).
 pub(crate) fn run_pending(
     conn: &mut rusqlite::Connection,
 ) -> Result<bool, Report<SchemaMigrationError>> {
@@ -69,41 +95,99 @@ pub(crate) fn run_pending(
         return Ok(false);
     }
 
-    // Migration v32's real work cannot run inside the chain's transaction
-    // (SQLite forbids VACUUM inside one), so it runs out-of-band here, before
-    // the BEGIN, gated on the version check above. The chain entry is a
-    // documented no-op (see [`migrate_v32`]); the announcer closure suppresses
-    // its in-chain announcement so the user sees the migration exactly once.
-    if current < 32 {
-        announce_migration(32, "convert_database_to_incremental_auto_vacuum");
-        convert_to_incremental_auto_vacuum(conn)?;
+    // Phase 1: everything below the vacuum migration, one transaction.
+    if chain_has_pending_in(current, VACUUM_MIGRATION_VERSION) {
+        run_in_transaction(conn, |conn| {
+            apply_migration_range(conn, current, VACUUM_MIGRATION_VERSION, &announce_migration)
+        })?;
     }
-    let announce_v32 = |version: i32, name: &str| {
-        if version != 32 {
-            announce_migration(version, name);
-        }
-    };
 
-    let applied = current < LATEST_VERSION;
+    // Phase 2: the vacuum migration at its natural position — outside any
+    // transaction, because SQLite forbids VACUUM inside one. The chain entry
+    // is a documented no-op (see [`migrate_v32`]); its version is recorded
+    // in its own transaction immediately after the conversion so a later
+    // chain failure can never roll the record back while the rewrite
+    // persists (that mismatch would force a pointless re-vacuum on restart).
+    if current < VACUUM_MIGRATION_VERSION {
+        let vacuum = chain_migration(VACUUM_MIGRATION_VERSION);
+        announce_migration(vacuum.version, vacuum.name);
+        convert_to_incremental_auto_vacuum(conn)?;
+        run_in_transaction(conn, |conn| {
+            record_version(conn, vacuum.version, vacuum.name)
+        })?;
+    }
 
-    // Raw BEGIN/COMMIT/ROLLBACK (not rusqlite's Transaction) because the
-    // connection is a `&mut` borrowed under dao's `with_conn`; `Transaction`
-    // would need ownership and change this function's signature. IMMEDIATE
-    // acquires the write lock up front so the run can't fail mid-chain on a
-    // lock upgrade.
+    // Phase 3: everything above the vacuum migration, second transaction.
+    if chain_has_pending_in(VACUUM_MIGRATION_VERSION, i32::MAX) {
+        run_in_transaction(conn, |conn| {
+            apply_migration_range(
+                conn,
+                VACUUM_MIGRATION_VERSION,
+                i32::MAX,
+                &announce_migration,
+            )
+        })?;
+    }
+
+    // Only a below-latest database reaches here (the early return above),
+    // so at least one migration was applied.
+    Ok(true)
+}
+
+/// Whether the chain has a migration in `(lower_exclusive, upper_exclusive)`.
+///
+/// Guards each of [`run_pending`]'s transactions: a phase with nothing
+/// pending opens no transaction.
+fn chain_has_pending_in(lower_exclusive: i32, upper_exclusive: i32) -> bool {
+    MIGRATIONS
+        .iter()
+        .any(|m| m.version > lower_exclusive && m.version < upper_exclusive)
+}
+
+/// The chain's entry for `version`.
+///
+/// Panics if the chain has no such entry — a programmer error the
+/// drift-guard tests catch long before any startup.
+fn chain_migration(version: i32) -> &'static Migration {
+    MIGRATIONS
+        .iter()
+        .find(|m| m.version == version)
+        .unwrap_or_else(|| panic!("migration v{version} missing from MIGRATIONS"))
+}
+
+/// Opens a `BEGIN IMMEDIATE` transaction.
+///
+/// Raw `execute_batch`, not rusqlite's `Transaction`, because the connection
+/// is a `&mut` borrowed under dao's `with_conn`; `Transaction` would need
+/// ownership and change the caller's signature. `IMMEDIATE` acquires the
+/// write lock up front so a run can't fail mid-transaction on a lock
+/// upgrade.
+fn begin_immediate(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
     conn.execute_batch("BEGIN IMMEDIATE")
         .change_context(SchemaMigrationError)
-        .attach("begin migration transaction")?;
+        .attach("begin migration transaction")
+}
 
-    match apply_migration_chain_with(conn, current, &announce_v32) {
-        Ok(()) => {
-            conn.execute_batch("COMMIT")
-                .change_context(SchemaMigrationError)
-                .attach("commit migration transaction")?;
-            Ok(applied)
-        }
+/// Commits the open transaction.
+fn commit(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>> {
+    conn.execute_batch("COMMIT")
+        .change_context(SchemaMigrationError)
+        .attach("commit migration transaction")
+}
+
+/// Runs `body` inside one `BEGIN IMMEDIATE … COMMIT` transaction.
+///
+/// A `body` failure rolls back — best-effort, so the original migration
+/// error propagates — before returning, leaving no half-applied work on
+/// disk.
+fn run_in_transaction(
+    conn: &mut rusqlite::Connection,
+    body: impl FnOnce(&mut rusqlite::Connection) -> Result<(), Report<SchemaMigrationError>>,
+) -> Result<(), Report<SchemaMigrationError>> {
+    begin_immediate(conn)?;
+    match body(conn) {
+        Ok(()) => commit(conn),
         Err(report) => {
-            // Best-effort rollback; the original migration error propagates.
             let _ = conn.execute_batch("ROLLBACK");
             Err(report)
         }
@@ -121,7 +205,7 @@ pub struct Migration {
 ///
 /// One row per migration: version number, stable name (recorded in
 /// `_migrations`), and the DDL function. This table is the single source of
-/// truth for both [`apply_migration_chain_with`] (production) and
+/// truth for both [`apply_migration_range`] (production) and
 /// [`apply_migrations_inner`] (test seeding), so a new migration cannot
 /// appear in one list and be missing from the other.
 ///
@@ -305,20 +389,21 @@ pub const MIGRATIONS: &[Migration] = &[
 /// `latest_version_matches_chain`).
 pub const CHAIN_LATEST_VERSION: i32 = 33;
 
-/// Applies every migration above `current` under the given announcer.
+/// Applies every migration in `(lower_exclusive, upper_exclusive)` under the
+/// given announcer.
 ///
 /// Runs inside the caller's open transaction; the `?` on each step
-/// short-circuits on the first failure, at which point `run_pending` rolls
-/// back. `run_pending` passes an announcer, not this function's former
-/// default, because v32's announcement is emitted out-of-band (its real
-/// work precedes the transaction) and must not repeat in-chain.
-fn apply_migration_chain_with(
+/// short-circuits on the first failure, at which point the caller rolls
+/// back. `MIGRATIONS` is the single source of truth — the range bounds only
+/// select from it, so application order is always chain order.
+fn apply_migration_range(
     conn: &mut rusqlite::Connection,
-    current: i32,
+    lower_exclusive: i32,
+    upper_exclusive: i32,
     announce: &dyn Fn(i32, &str),
 ) -> Result<(), Report<SchemaMigrationError>> {
     for migration in MIGRATIONS {
-        if current < migration.version {
+        if migration.version > lower_exclusive && migration.version < upper_exclusive {
             announce(migration.version, migration.name);
             (migration.apply)(conn)?;
             record_version(conn, migration.version, migration.name)?;
@@ -1362,13 +1447,12 @@ pub fn migrate_v31(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaM
 ///
 /// **The real work does not run here.** `PRAGMA auto_vacuum` is a no-op
 /// outside an empty database unless followed by a full `VACUUM`, and SQLite
-/// forbids `VACUUM` inside a transaction — while every migration in the
-/// chain runs inside `run_pending`'s `BEGIN IMMEDIATE … COMMIT`. This chain
-/// entry is therefore a documented no-op that exists to (a) keep the version
-/// numbering monotonic and recorded like any other migration and (b) put the
-/// user-facing stderr announcement in the normal place. The conversion
-/// itself executes out-of-band in [`run_pending`], before the `BEGIN`,
-/// gated on `current < 32` so it runs exactly once.
+/// forbids `VACUUM` inside a transaction — while [`run_pending`] runs the
+/// chain in transactions around this version. This chain entry is therefore
+/// a documented no-op that exists to keep the version numbering monotonic
+/// and recorded like any other migration. The conversion itself executes in
+/// [`run_pending`]'s phase 2 — at this migration's natural position, outside
+/// any transaction, gated on `current < 32` so it runs exactly once.
 ///
 /// Incremental auto-vacuum is what lets the session prune actor hand
 /// freed pages back to the filesystem (`PRAGMA incremental_vacuum`) after
@@ -1397,14 +1481,14 @@ pub fn migrate_v33(conn: &mut rusqlite::Connection) -> Result<(), Report<SchemaM
     Ok(())
 }
 
-/// The out-of-band body of migration v32: flip the database to incremental
-/// auto-vacuum and pay for it with a full `VACUUM`.
+/// The body of migration v32: flip the database to incremental auto-vacuum
+/// and pay for it with a full `VACUUM`.
 ///
 /// Must run on a connection with **no open transaction** (SQLite forbids
-/// `VACUUM` inside one) and before the chain's `BEGIN IMMEDIATE`, gated on
-/// `current < 32`. The conversion is persistent in the database header, and
-/// the pool builder never touches `auto_vacuum`, so every later connection
-/// inherits it.
+/// `VACUUM` inside one) — [`run_pending`] calls it in phase 2, between the
+/// two chain transactions, gated on `current < 32`. The conversion is
+/// persistent in the database header, and the pool builder never touches
+/// `auto_vacuum`, so every later connection inherits it.
 ///
 /// `VACUUM` is atomic: an interrupt (Ctrl+C / SIGKILL) mid-vacuum rolls back
 /// to the original file, `_migrations` never records v32, and the next
