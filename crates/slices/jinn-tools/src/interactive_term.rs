@@ -376,7 +376,7 @@ mod tests {
         let (bus, audit) = jinn_kernel::common::services::bus_service::BusService::new_recording();
         let ctx = Some(StreamCtx {
             session_id: jinn_core_types::SessionId::new(),
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            turn: crate::tool_types::test_turn(),
             tool_call_id: "call-1".into(),
         });
 

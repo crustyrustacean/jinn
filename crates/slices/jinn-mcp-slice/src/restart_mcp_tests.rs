@@ -103,7 +103,7 @@ fn ctx_with_coordinator(
     let state = State::new(AppState::default());
 
     ToolContext {
-        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+        turn: fixture_turn(),
         cwd: dir.clone(),
         config: jinn_config::testutil::config_layer(""),
         shells: Default::default(),
@@ -182,7 +182,7 @@ async fn execute_fails_when_coordinator_ref_is_none() {
     let dir = jinn_testutil::tempdir();
     let session_id = SessionId::new();
     let ctx = ToolContext {
-        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+        turn: fixture_turn(),
         cwd: dir.path.clone(),
         config: jinn_config::testutil::config_layer(""),
         shells: Default::default(),
@@ -266,4 +266,12 @@ async fn execute_strips_namespace_and_routes_to_ask() {
         "error should name the stripped server; got: {}",
         result.content
     );
+}
+
+/// Mints a fixture turn identity the way the ledger's mint does — a monotonic
+/// per-process counter starting at 1, never zero.
+fn fixture_turn() -> jinn_core_types::turn_identity::TurnToken {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    jinn_core_types::turn_identity::TurnToken::from_counter(SEQ.fetch_add(1, Ordering::Relaxed) + 1)
 }

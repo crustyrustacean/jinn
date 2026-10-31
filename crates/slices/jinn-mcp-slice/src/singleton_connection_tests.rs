@@ -116,7 +116,7 @@ async fn singleton_actor_serves_a_session_that_never_spawned_it() {
     // When session B — a different session — dispatches an ExecuteTool.
     harness
         .publish(ExecuteTool {
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            turn: fixture_turn(),
             session_id: SessionId::new(),
             tool_call: echo_call(),
             dispatched_at: jiff::Timestamp::now(),
@@ -169,4 +169,12 @@ async fn singleton_actor_stop_does_not_publish_tools_unregistered() {
         events.is_empty(),
         "singleton teardown must not publish ToolsUnregistered; got {events:?}"
     );
+}
+
+/// Mints a fixture turn identity the way the ledger's mint does — a monotonic
+/// per-process counter starting at 1, never zero.
+fn fixture_turn() -> jinn_core_types::turn_identity::TurnToken {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    jinn_core_types::turn_identity::TurnToken::from_counter(SEQ.fetch_add(1, Ordering::Relaxed) + 1)
 }

@@ -96,24 +96,40 @@ impl SessionPersistenceActor {
             .and_then(jinn_kernel::ChatSessionState::stream_dispatched_at)
             .unwrap_or_else(jiff::Timestamp::now);
 
-        // The cancel's completion carries the live turn's identity: the
-        // ledger's live stream is exactly the one this completion retires.
-        // A session with no live turn has nothing to stamp — but `begin_cancel`
-        // admitted above means the turn exists, so only the stream can be
-        // missing (tools running, drain window): the zero stream retires
-        // nothing and still carries the turn's end-work.
-        let live = self.services.turn_ledger.live(&msg.session_id);
-        let (turn, stream) = match live {
-            Some(l) => (l.turn, l.stream.unwrap_or_default()),
-            None => (
-                jinn_core_types::turn_identity::TurnToken::legacy(),
-                jinn_core_types::turn_identity::StreamId::legacy(),
-            ),
-        };
-
         // `StartedAndSettled` means the cancel emptied the work set itself:
-        // the completion below is refused (the entry is settled), so settle
-        // here — the sweep and the single `Canceled` report still run once.
+        // the entry is already swept, so there is no live identity to stamp
+        // and no ledger that would admit a completion — the settle runs
+        // here instead, publishing the single `Canceled` report and the
+        // phase change directly.
+        if outcome == jinn_kernel::common::turn_ledger::CancelOutcome::StartedAndSettled {
+            self.settle_turn(
+                &msg.session_id,
+                jinn_kernel::common::turn_ledger::Next::Cancel,
+            )
+            .await;
+            return;
+        }
+
+        // The cancel's completion carries the live turn's identity: the
+        // ledger's live stream is exactly the one this completion retires,
+        // and its admission runs the settle. A session whose turn was
+        // settled out from under this drain (a racing completion already
+        // ran the settle) has nothing to stamp — and nothing that would
+        // admit the report — so nothing publishes. Turn live but stream
+        // already retired (tools running, the continuation window): the
+        // unset stream retires nothing, so the ack refuses and the settle
+        // waits for the last synthesized close; the completion's session
+        // side (entries, queue drain) still runs.
+        let Some(live) = self.services.turn_ledger.live(&msg.session_id) else {
+            tracing::debug!(
+                session_id = %msg.session_id,
+                "cancel drain found no live turn to stamp; the settle already \
+                 ran — no completion to publish"
+            );
+            return;
+        };
+        let (turn, stream) = (live.turn, live.stream.unwrap_or_default());
+
         self.publish(StreamCompleted {
             model_used: None,
             session_id: msg.session_id.clone(),
@@ -130,13 +146,6 @@ impl SessionPersistenceActor {
             stream,
         })
         .await;
-        if outcome == jinn_kernel::common::turn_ledger::CancelOutcome::StartedAndSettled {
-            self.settle_turn(
-                &msg.session_id,
-                jinn_kernel::common::turn_ledger::Next::Cancel,
-            )
-            .await;
-        }
     }
 
     /// Handles a cancel request by terminating the turn it names.
@@ -742,6 +751,12 @@ mod tests {
     use super::outcome_from_history;
 
     /// Builds the `StreamCompleted` event a provider emits when a turn ends.
+    ///
+    /// The identity is the live turn's, read the way production's dispatch
+    /// stamped it: the ledger mint is what the completion resolves against.
+    /// A fixture with no live turn cannot construct a refused event here —
+    /// refused shapes are produced by supersession (settle or swap the
+    /// turn), never by hand-stamping an unset identity.
     fn stream_completed(
         actor: &SessionPersistenceActor,
         session_id: &jinn_core_types::SessionId,
@@ -751,17 +766,11 @@ mod tests {
         provider_completion_tokens: Option<u64>,
         thinking_content: Option<&str>,
     ) -> StreamCompleted {
-        // The live identity, as production's terminate path and provider
-        // completions both carry: the ledger's mint is what this resolves
-        // against. A fixture without a live turn carries the legacy zero,
-        // which the ledger refuses.
-        let (turn, stream) = match actor.services.turn_ledger.live(session_id) {
-            Some(live) => (live.turn, live.stream.unwrap_or_default()),
-            None => (
-                jinn_core_types::turn_identity::TurnToken::legacy(),
-                jinn_core_types::turn_identity::StreamId::legacy(),
-            ),
-        };
+        let live = actor
+            .services
+            .turn_ledger
+            .live(session_id)
+            .expect("fixture completion needs a live turn to resolve against");
         StreamCompleted {
             model_used: None,
             session_id: session_id.clone(),
@@ -774,8 +783,8 @@ mod tests {
             cached_tokens: None,
             thinking_content: thinking_content.map(str::to_owned),
             dispatched_at: jiff::Timestamp::now(),
-            turn,
-            stream,
+            turn: live.turn,
+            stream: live.stream.unwrap_or_default(),
         }
     }
 
@@ -849,17 +858,10 @@ mod tests {
         actor: &SessionPersistenceActor,
     ) -> jinn_core_types::SessionId {
         let session_id = actor.state.read().session.active_session_id().clone();
-        // The ledger mints the turn the completion will resolve against.
-        actor
-            .services
-            .turn_ledger
-            .mint(
-                &session_id,
-                jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
-            )
-            .expect("a fresh turn's mint must be admitted");
-        // The mint is the admission; the session-side projection (phase +
-        // armed guard) rides the same helper production's dispatch paths use.
+        // One mint: the helper fuses the ledger's grant with the session-side
+        // projection (phase + armed guard), exactly what production's dispatch
+        // path runs. The grant it returns is the identity the completion
+        // below resolves against.
         jinn_kernel::common::turn_ledger::mint_dispatch_with_stamp(
             &actor.services,
             &actor.state,
@@ -878,7 +880,8 @@ mod tests {
     async fn begin_sending_session(actor: &SessionPersistenceActor) -> jinn_core_types::SessionId {
         let session_id = begin_streaming_session(actor).await;
         // The ledger side of the tool-use edge: the stream retires toward a
-        // continuation, leaving the turn working.
+        // continuation, leaving the turn working. The identity retired is the
+        // dispatch's own grant — the live stream the mint put in flight.
         let live = actor
             .services
             .turn_ledger
@@ -894,6 +897,17 @@ mod tests {
                 jinn_kernel::common::turn_ledger::Next::Continue,
             )
             .expect("the tool-use edge retires the live stream");
+        // The continuation joins: the orchestrator's dispatch minted a fresh
+        // stream for the next round, so the turn again has an in-flight
+        // stream — exactly the shape the completion below retires.
+        actor
+            .services
+            .turn_ledger
+            .mint(
+                &session_id,
+                jinn_kernel::common::turn_ledger::MintKind::ToolContinuation,
+            )
+            .expect("the continuation joins the live turn");
         // The projection side of the tool-use edge: the turn is working,
         // the stream has retired. The ledger ack above is the admission.
         actor.state.with_session(|view| {
@@ -1083,22 +1097,36 @@ mod tests {
     async fn cancel_turn_reports_the_turns_end_for_a_sending_session() {
         // Given a session in sending phase — the shape a stream-rule watchdog
         // trip lands on, where the intercept rewound the session while it
-        // prepared a resume that the trip now cancels.
+        // prepared a resume that the trip now cancels. The continuation's
+        // stream is in flight; the cancel arms the drain, and the terminate
+        // publishes the completion that retires it.
         let (actor, audit) = test_actor_recording().await;
         let session_id = begin_sending_session(&actor).await;
 
-        // When the turn is cancelled.
+        // When the turn is cancelled — the same chain the ESC-ESC cascade
+        // drives: the drain arms, and the terminate's completion (the stamped
+        // live identity, driven through the handler the recording bus cannot
+        // round-trip) retires the stream and runs the settle in-line.
         let msg = CancelTurn {
             session_id: session_id.clone(),
         };
         actor.on_cancel_turn(&msg).await;
+        actor
+            .on_stream_completed(&stream_completed(
+                &actor,
+                &session_id,
+                StreamCompletedReason::Canceled,
+                None,
+                None,
+                None,
+                None,
+            ))
+            .await;
 
-        // Then the turn's end is reported rather than suppressed for want of a
-        // live stream: `finish_streaming` would refuse a `Sending` session, so
-        // this is the path that would otherwise wedge it.
-        let completed = audit.of_type::<StreamCompleted>();
-        assert_eq!(completed.len(), 1, "a sending session has a turn to end");
-        assert_eq!(completed[0].reason, StreamCompletedReason::Canceled);
+        // Then the turn's end is reported exactly once, as Canceled.
+        let reports = audit.of_type::<jinn_session_msg::TurnCompleted>();
+        assert_eq!(reports.len(), 1, "a sending session has a turn to end");
+        assert_eq!(reports[0].outcome, jinn_session_msg::TurnOutcome::Canceled);
     }
 
     #[rstest::rstest]
@@ -1106,19 +1134,35 @@ mod tests {
     async fn a_cancel_during_the_tool_loop_settles_the_phase_idle() {
         // Given a session in `Sending` — a tool batch (a long-running bash
         // command) executing between stream turns, the exact shape ESC-ESC
-        // meets when the user cancels mid-tool-loop.
+        // meets when the user cancels mid-tool-loop. The continuation's
+        // stream is in flight; the cancel arms the drain.
         let (actor, audit) = test_actor_recording().await;
         let session_id = begin_sending_session(&actor).await;
 
         // When the cancel is applied — the full chain the ESC-ESC cascade
-        // drives, ending in the ledger's drain (the synthesized completions
-        // it requests are the orchestrator's job, covered there).
+        // drives. `begin_cancel` reports `Started` (the drain waits on the
+        // stream's completion); the completion retires it and the settle
+        // runs in-line.
         let msg = CancelTurn {
             session_id: session_id.clone(),
         };
         actor.on_cancel_turn(&msg).await;
-        let completed = audit.of_type::<StreamCompleted>();
-        assert_eq!(completed.len(), 1, "setup: the cancel reported the turn");
+        actor
+            .on_stream_completed(&stream_completed(
+                &actor,
+                &session_id,
+                StreamCompletedReason::Canceled,
+                None,
+                None,
+                None,
+                None,
+            ))
+            .await;
+        assert_eq!(
+            audit.of_type::<jinn_session_msg::TurnCompleted>().len(),
+            1,
+            "setup: the cancel reported the turn"
+        );
 
         // Then the phase is `Idle` and no in-flight guard survives: the
         // spinner stops, the queue drains, and the stall watchdog finds
@@ -1698,8 +1742,8 @@ mod tests {
         // the cancel drains the turn (publishing the report the drain waits
         // on), and a second `StreamCompleted(Canceled)` lands afterwards —
         // the order ESC produces when the frontend reports the turn while
-        // the stream is still unwinding. The straggler carries stale
-        // identity: the drain already retired the live stream.
+        // the stream is still unwinding. The straggler carries the identity
+        // the drain already retired: the live stream at cancel time.
         let (actor, audit) = test_actor_recording().await;
         let session_id = begin_streaming_session(&actor).await;
         let stamp = actor
@@ -1710,6 +1754,14 @@ mod tests {
             .expect("session exists")
             .stream_dispatched_at()
             .expect("the mint stamps the session");
+        // The identity in flight when the cancel lands — exactly what the
+        // drain's own report carries and retires.
+        let live = actor
+            .services
+            .turn_ledger
+            .live(&session_id)
+            .expect("live turn before the cancel");
+        let straggler_identity = (live.turn, live.stream.expect("in-flight stream"));
 
         // When the cancel is applied and the canceled stream completes after it.
         actor
@@ -1732,8 +1784,8 @@ mod tests {
             cached_tokens: None,
             thinking_content: None,
             dispatched_at: stamp,
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-            stream: jinn_core_types::turn_identity::StreamId::legacy(),
+            turn: straggler_identity.0,
+            stream: straggler_identity.1,
         };
         actor.on_stream_completed(&event).await;
 
@@ -2658,6 +2710,19 @@ mod tests {
             session.begin_streaming();
             state.session.active_session_id().clone()
         };
+        // The completion below resolves against the ledger like production's:
+        // mint the turn the seeding phase belongs to.
+        let (turn, stream) = {
+            let grant = actor
+                .services
+                .turn_ledger
+                .mint(
+                    &session_id,
+                    jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+                )
+                .expect("the seeded turn mints");
+            (grant.turn, grant.stream)
+        };
         actor.on_stream_token(&StreamToken {
             session_id: session_id.clone(),
             index: 0,
@@ -2679,8 +2744,8 @@ mod tests {
             thinking_content: None,
             dispatched_at: dispatched,
             model_used: None,
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-            stream: jinn_core_types::turn_identity::StreamId::legacy(),
+            turn,
+            stream,
         };
         actor.on_stream_completed(&event).await;
 
@@ -2807,6 +2872,19 @@ mod tests {
             session.begin_streaming();
             state.session.active_session_id().clone()
         };
+        // The completion below resolves against the ledger like production's:
+        // mint the turn the seeded phase belongs to.
+        let (turn, stream) = {
+            let grant = actor
+                .services
+                .turn_ledger
+                .mint(
+                    &session_id,
+                    jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+                )
+                .expect("the seeded turn mints");
+            (grant.turn, grant.stream)
+        };
         actor.on_stream_token(&StreamToken {
             session_id: session_id.clone(),
             index: 0,
@@ -2828,8 +2906,8 @@ mod tests {
             thinking_content: Some("only reasoning".to_owned()),
             dispatched_at: dispatched,
             model_used: None,
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-            stream: jinn_core_types::turn_identity::StreamId::legacy(),
+            turn,
+            stream,
         };
         actor.on_stream_completed(&event).await;
 
@@ -2864,6 +2942,19 @@ mod tests {
             session.begin_streaming();
             state.session.active_session_id().clone()
         };
+        // The completion below resolves against the ledger like production's:
+        // mint the turn the seeding phase belongs to.
+        let (turn, stream) = {
+            let grant = actor
+                .services
+                .turn_ledger
+                .mint(
+                    &session_id,
+                    jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+                )
+                .expect("the seeded turn mints");
+            (grant.turn, grant.stream)
+        };
         actor.on_stream_token(&StreamToken {
             session_id: session_id.clone(),
             index: 0,
@@ -2885,8 +2976,8 @@ mod tests {
             thinking_content: None,
             dispatched_at: dispatched,
             model_used: None,
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-            stream: jinn_core_types::turn_identity::StreamId::legacy(),
+            turn,
+            stream,
         };
         actor.on_stream_completed(&event).await;
 
@@ -2928,6 +3019,19 @@ mod tests {
             session.begin_streaming();
             state.session.active_session_id().clone()
         };
+        // The completion below resolves against the ledger like production's:
+        // mint the turn the seeding phase belongs to.
+        let (turn, stream) = {
+            let grant = actor
+                .services
+                .turn_ledger
+                .mint(
+                    &session_id,
+                    jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+                )
+                .expect("the seeded turn mints");
+            (grant.turn, grant.stream)
+        };
         actor.on_stream_token(&StreamToken {
             session_id: session_id.clone(),
             index: 0,
@@ -2949,8 +3053,8 @@ mod tests {
             thinking_content: None,
             dispatched_at: dispatched,
             model_used: None,
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-            stream: jinn_core_types::turn_identity::StreamId::legacy(),
+            turn,
+            stream,
         };
         actor.on_stream_completed(&event).await;
 
@@ -3215,6 +3319,13 @@ mod tests {
             session.arm_stream(now);
             state.session.active_session_id().clone()
         };
+        // The backdated completion carries the live turn's identity — its
+        // staleness is the dispatch stamp it rides, which the guard drops.
+        let live = actor
+            .services
+            .turn_ledger
+            .live(&session_id)
+            .expect("the harness mints a live turn");
 
         // When a StreamCompleted arrives carrying an OLDER dispatched_at
         // (simulating an aborted prior stream's late terminal event).
@@ -3233,8 +3344,8 @@ mod tests {
             cached_tokens: None,
             thinking_content: None,
             dispatched_at: backdated,
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-            stream: jinn_core_types::turn_identity::StreamId::legacy(),
+            turn: live.turn,
+            stream: live.stream.unwrap_or_default(),
         };
         actor.on_stream_completed(&event).await;
 
@@ -3254,7 +3365,7 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn tool_use_completion_without_call_identity_does_not_dispatch() {
+    async fn a_completion_from_a_superseded_stream_refuses_without_dispatch() {
         // Given a session mid-stream with a live, minted turn.
         let (actor, audit) = test_actor_recording().await;
         let session_id = {
@@ -3266,9 +3377,29 @@ mod tests {
         };
         begin_streaming_session(&actor).await;
 
-        // When a ToolUse stream completes carrying no call identity — the
-        // pre-ledger legacy stamp, a completion minted before turn identity
-        // existed.
+        // When a ToolUse stream completes under a stream a retry swapped
+        // out — the superseded generation's straggler, produced the way
+        // production produces one: a resume minted a fresh stream before
+        // the old one's completion arrived.
+        let superseded = actor
+            .services
+            .turn_ledger
+            .live(&session_id)
+            .expect("live turn")
+            .stream
+            .expect("in-flight stream");
+        let joined = actor
+            .services
+            .turn_ledger
+            .mint(
+                &session_id,
+                jinn_kernel::common::turn_ledger::MintKind::Resume,
+            )
+            .expect("the resume joins the live turn");
+        assert_ne!(
+            joined.stream, superseded,
+            "the resume swapped the stream, superseding the old one"
+        );
         let event = StreamCompleted {
             model_used: None,
             session_id: session_id.clone(),
@@ -3281,16 +3412,17 @@ mod tests {
             cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-            stream: jinn_core_types::turn_identity::StreamId::legacy(),
+            turn: joined.turn,
+            stream: superseded,
         };
         actor.on_stream_completed(&event).await;
 
-        // Then no SendToLlmProvider is emitted — the completion carries no
-        // identity the ledger can admit, so the tool loop cannot start.
+        // Then no SendToLlmProvider is emitted — the completion names a
+        // stream that is no longer live, so the ledger refuses it and the
+        // tool loop cannot start from a dead generation.
         assert!(
             !audit.contains_name("SendToLlmProvider"),
-            "ToolUse completion without call identity must not dispatch a continuation"
+            "a completion from a superseded stream must not dispatch a continuation"
         );
     }
 
@@ -3487,6 +3619,15 @@ mod tests {
             actor.services.turn_ledger.live(&session_id).is_some(),
             "a cancelled turn with an open stream is not yet settled"
         );
+        // The identity the provider's stream was minted under — what its
+        // completion carries whether or not the turn is still live when
+        // the completion lands.
+        let live = actor
+            .services
+            .turn_ledger
+            .live(&session_id)
+            .expect("live turn");
+        let minted_identity = (live.turn, live.stream.expect("in-flight stream"));
         // The cancel's TurnCompleted publishes from the settle path — the
         // session actor's, not the ledger's. Drive it the way production
         // does: the cancel's completion is a StreamCompleted(Canceled)
@@ -3509,16 +3650,23 @@ mod tests {
         );
 
         // When the provider's own `Finished` completion lands late — the
-        // sync-cancel race — it carries the settled turn's identity.
-        let event = stream_completed(
-            &actor,
-            &session_id,
-            StreamCompletedReason::Finished,
-            Some("late result"),
-            None,
-            None,
-            None,
-        );
+        // sync-cancel race — it carries the settled turn's identity: the
+        // mint the provider stream actually ran under.
+        let event = StreamCompleted {
+            model_used: None,
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: Some("late result".to_owned()),
+            tool_calls: None,
+            cost: None,
+            provider_completion_tokens: None,
+            provider_prompt_tokens: None,
+            cached_tokens: None,
+            thinking_content: None,
+            dispatched_at: jiff::Timestamp::now(),
+            turn: minted_identity.0,
+            stream: minted_identity.1,
+        };
         actor.on_stream_completed(&event).await;
 
         // Then nothing more publishes: the turn ended once, as Canceled —
@@ -3737,14 +3885,15 @@ mod tool_loop_round_order {
         });
 
         // The ToolUse completion runs production's fold: entries finalize,
-        // the stream retires toward Continue, the round ends.
-        let (turn, stream) = match actor.services.turn_ledger.live(&session_id) {
-            Some(live) => (live.turn, live.stream.unwrap_or_default()),
-            None => (
-                jinn_core_types::turn_identity::TurnToken::legacy(),
-                jinn_core_types::turn_identity::StreamId::legacy(),
-            ),
-        };
+        // the stream retires toward Continue, the round ends. The identity
+        // is the dispatch's own grant — the live stream the mint put in
+        // flight, exactly what a provider completion retires.
+        let live = actor
+            .services
+            .turn_ledger
+            .live(&session_id)
+            .expect("live turn behind the dispatch");
+        let (turn, stream) = (live.turn, live.stream.expect("in-flight stream"));
         actor
             .on_stream_completed(&jinn_inference_msg::StreamCompleted {
                 model_used: None,

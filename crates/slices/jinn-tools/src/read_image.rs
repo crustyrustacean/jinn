@@ -349,7 +349,7 @@ mod tests {
 
     fn test_ctx(cwd: &MarkedPathBuf<Absolute>) -> ToolContext {
         crate::tool_types::ToolContext {
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            turn: crate::tool_types::test_turn(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),
             cwd: cwd.clone(),

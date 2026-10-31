@@ -134,16 +134,16 @@ mod tests {
     }
 
     impl ServiceActor for BarrierActor {
-        /// Always an error: the actor spawns via `start_with`, so the
+        /// Always an error: the actor spawns via `init_with`, so the
         /// plain `start` path is never the one taken. This is a hard
         /// invariant, not a stub.
-        async fn start(
+        async fn init(
             _args: &trouper::json::Json,
         ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
             std::future::ready(Err(error_stack::IntoReport::into_report(
                 trouper::registry::RegistryError::InvalidSpec,
             )
-            .attach("BarrierActor is spawned via start_with")))
+            .attach("BarrierActor is spawned via init_with")))
             .await
         }
     }
@@ -177,7 +177,7 @@ mod tests {
         let acks_for_actor = acks.clone();
         trouper::builder::spawn_service_builder::<BarrierActor>(system)
             .at(path.clone())
-            .start_with(move || {
+            .init_with(move || {
                 let seen = seen_for_actor.clone();
                 let acks = acks_for_actor.clone();
                 Box::pin(async move { Ok(BarrierActor { seen, acks }) })

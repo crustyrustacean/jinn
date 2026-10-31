@@ -119,9 +119,9 @@ pub struct SendToLlmProvider {
     pub origin: StreamOrigin,
     /// The turn this dispatch belongs to, minted by the turn ledger.
     ///
-    /// Zero is the pre-ledger legacy value: a consumer resolving it against
-    /// a live turn refuses it, which is the admission a straggler from
-    /// before the upgrade deserves.
+    /// Zero is the unset value: a message that deserialized without the
+    /// field defaults to it, and the ledger refuses it against every live
+    /// turn — exactly the admission a straggler deserves.
     #[serde(default)]
     pub turn: jinn_core_types::turn_identity::TurnToken,
     /// The stream this dispatch starts, minted alongside `turn`.
@@ -226,7 +226,7 @@ pub struct StreamCompleted {
     pub dispatched_at: jiff::Timestamp,
     /// The turn this completion belongs to, as minted by the turn ledger.
     ///
-    /// Zero is the pre-ledger legacy value; see `SendToLlmProvider.turn`.
+    /// Zero is the unset serde default; see `SendToLlmProvider.turn`.
     #[serde(default)]
     pub turn: jinn_core_types::turn_identity::TurnToken,
     /// The stream this completion retires.
@@ -310,8 +310,8 @@ mod tests {
             endpoint_tag: None,
             dispatched_at: jiff::Timestamp::from_second(0).unwrap(),
             origin: StreamOrigin::User,
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-            stream: jinn_core_types::turn_identity::StreamId::legacy(),
+            turn: jinn_core_types::turn_identity::TurnToken::from_counter(1),
+            stream: jinn_core_types::turn_identity::StreamId::from_counter(1),
         };
 
         // When serializing and deserializing.

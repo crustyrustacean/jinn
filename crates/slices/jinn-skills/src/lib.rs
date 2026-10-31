@@ -86,7 +86,7 @@ pub fn activate(host: &mut jinn_slices::SliceHost<'_, jinn_slices::RenderFacts>)
     .at(trouper::actor::ActorPath::new(
         skill_picker_republisher_actor::SkillPickerRepublisherActor::PATH.to_owned(),
     ))
-    .start_with(move || {
+    .init_with(move || {
         Box::pin(async move {
             Ok(skill_picker_republisher_actor::SkillPickerRepublisherActor::new(cell.clone()))
         })

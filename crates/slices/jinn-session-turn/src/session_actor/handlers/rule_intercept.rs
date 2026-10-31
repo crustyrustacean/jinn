@@ -242,13 +242,10 @@ pub(super) mod tests {
         services: &jinn_kernel::common::services::Services,
         session_id: &SessionId,
     ) -> jinn_inference_msg::StreamCompleted {
-        let (turn, stream) = match services.turn_ledger.live(session_id) {
-            Some(live) => (live.turn, live.stream.unwrap_or_default()),
-            None => (
-                jinn_core_types::turn_identity::TurnToken::legacy(),
-                jinn_core_types::turn_identity::StreamId::legacy(),
-            ),
-        };
+        let live = services
+            .turn_ledger
+            .live(session_id)
+            .expect("a cancel report needs the turn its drain retired");
         jinn_inference_msg::StreamCompleted {
             session_id: session_id.clone(),
             reason: StreamCompletedReason::Canceled,
@@ -261,15 +258,22 @@ pub(super) mod tests {
             cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
-            turn,
-            stream,
+            turn: live.turn,
+            stream: live.stream.unwrap_or_default(),
         }
     }
 
-    /// A `StreamCompleted` carrying the intercept reason.
+    /// A `StreamCompleted` carrying the intercept reason, stamped with the
+    /// identity the intercepted dispatch minted — the live turn and its
+    /// in-flight stream, read the way the inference actor stamps them.
     pub(in crate::session_actor::handlers) fn intercept_completion(
+        services: &jinn_kernel::common::services::Services,
         session_id: &SessionId,
     ) -> jinn_inference_msg::StreamCompleted {
+        let live = services
+            .turn_ledger
+            .live(session_id)
+            .expect("an intercepted response rides a live, minted turn");
         jinn_inference_msg::StreamCompleted {
             session_id: session_id.clone(),
             reason: StreamCompletedReason::RuleIntercept,
@@ -282,8 +286,8 @@ pub(super) mod tests {
             cached_tokens: None,
             thinking_content: None,
             dispatched_at: jiff::Timestamp::now(),
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-            stream: jinn_core_types::turn_identity::StreamId::legacy(),
+            turn: live.turn,
+            stream: live.stream.expect("an intercepted stream is in flight"),
         }
     }
 
@@ -294,7 +298,7 @@ pub(super) mod tests {
         let (actor, _audit, session_id) = intercept_setup().await;
 
         // When the intercept completes the response.
-        let event = intercept_completion(&session_id);
+        let event = intercept_completion(&actor.services, &session_id);
         actor.on_stream_completed(&event).await;
 
         // Then the output is still in the chat log — the user watched it
@@ -323,7 +327,7 @@ pub(super) mod tests {
         let (actor, audit, session_id) = intercept_setup().await;
 
         // When the intercept completes the response.
-        let event = intercept_completion(&session_id);
+        let event = intercept_completion(&actor.services, &session_id);
         actor.on_stream_completed(&event).await;
 
         // Then the turn outcome is an intercept, so no consumer reads it as a
@@ -345,7 +349,7 @@ pub(super) mod tests {
         let (actor, _audit, session_id) = intercept_setup().await;
 
         // When the intercept completes the response.
-        let event = intercept_completion(&session_id);
+        let event = intercept_completion(&actor.services, &session_id);
         actor.on_stream_completed(&event).await;
 
         // Then the literal `Cancelled` error entry is absent: `outcome_from_history`
@@ -368,7 +372,7 @@ pub(super) mod tests {
         let (actor, audit, session_id) = intercept_setup().await;
 
         // When the intercept completes the response.
-        let event = intercept_completion(&session_id);
+        let event = intercept_completion(&actor.services, &session_id);
         actor.on_stream_completed(&event).await;
 
         // Then the turn is re-dispatched — the dispatch queue emits the fresh
@@ -389,7 +393,7 @@ pub(super) mod tests {
         let (actor, _audit, session_id) = intercept_setup().await;
 
         // When the intercept completes the response.
-        let event = intercept_completion(&session_id);
+        let event = intercept_completion(&actor.services, &session_id);
         actor.on_stream_completed(&event).await;
 
         // Then the session is back in `Sending`; staying in `Streaming` would
@@ -411,7 +415,7 @@ pub(super) mod tests {
         }
 
         // When the intercept completes the response.
-        let event = intercept_completion(&session_id);
+        let event = intercept_completion(&actor.services, &session_id);
         actor.on_stream_completed(&event).await;
 
         // Then nothing was re-dispatched and no outcome was reported.
@@ -438,7 +442,7 @@ pub(super) mod tests {
         }
 
         // When the intercept completes the response.
-        let event = intercept_completion(&session_id);
+        let event = intercept_completion(&actor.services, &session_id);
         actor.on_stream_completed(&event).await;
 
         // Then the call the rule caught is answered, so the resumed request is
@@ -469,7 +473,7 @@ pub(super) mod tests {
         }
 
         // When the intercept completes the response.
-        let event = intercept_completion(&session_id);
+        let event = intercept_completion(&actor.services, &session_id);
         actor.on_stream_completed(&event).await;
 
         // Then the resumed request carries the call and its result together,
@@ -494,7 +498,7 @@ pub(super) mod tests {
         let (actor, _audit, session_id) = intercept_setup().await;
 
         // When the intercept completes the response.
-        let event = intercept_completion(&session_id);
+        let event = intercept_completion(&actor.services, &session_id);
         actor.on_stream_completed(&event).await;
 
         // Then nothing is paired, because there was no call to pair.
@@ -526,7 +530,7 @@ pub(super) mod tests {
         }
 
         // When a second intercept completes the response.
-        let event = intercept_completion(&session_id);
+        let event = intercept_completion(&actor.services, &session_id);
         actor.on_stream_completed(&event).await;
 
         // Then the turn resumes again — the abort tombstone the first
@@ -568,7 +572,7 @@ pub(super) mod tests {
 
         // When the intercept's completion lands.
         actor
-            .on_stream_completed(&intercept_completion(&session_id))
+            .on_stream_completed(&intercept_completion(&actor.services, &session_id))
             .await;
 
         // Then no resume is dispatched. Dispatching here is what re-armed the
@@ -594,7 +598,7 @@ pub(super) mod tests {
         // When the intercept's completion lands — published from inside the
         // stream task the cancel tore down, so after it.
         actor
-            .on_stream_completed(&intercept_completion(&session_id))
+            .on_stream_completed(&intercept_completion(&actor.services, &session_id))
             .await;
 
         // Then no redispatch is requested — the observable consequence of

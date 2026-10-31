@@ -311,21 +311,7 @@ impl TurnLedger {
         F: FnOnce() -> T,
     {
         let mut turns = self.inner.lock();
-        // A legacy-token batch predates per-turn identity (tests, or a
-        // dispatch path the mint has not reached): it admits on live-turn
-        // existence and the cancel check, carrying no token claim — the
-        // same bridge `Req::StreamScoped`'s zero arm applies.
-        if *token == TurnToken::legacy() {
-            let entry = turns
-                .get(session_id)
-                .and_then(|r| r.entry.as_ref())
-                .ok_or(Refused::NoTurn)?;
-            if entry.next == Next::Cancel {
-                return Err(Refused::Cancelled);
-            }
-        } else {
-            admit(turns.get(session_id), *token, Req::TurnScoped)?;
-        }
+        admit(turns.get(session_id), *token, Req::TurnScoped)?;
         if let Some(entry) = turns.get_mut(session_id).and_then(|r| r.entry.as_mut()) {
             for id in call_ids {
                 if !entry.closed.contains(&id) {
@@ -495,13 +481,10 @@ impl TurnLedger {
             .get_mut(session_id)
             .and_then(|r| r.entry.as_mut())
             .ok_or(Refused::NoTurn)?;
-        // The live stream retires; a zero stream is the no-claim stamp the
-        // terminate path uses when the stream has already gone (tools
-        // running, or the continuation window) — nothing to retire, the
-        // completion is still turn end-work.
-        let stream_matches = entry.stream == Some(*stream)
-            || (*stream == StreamId::legacy() && entry.stream.is_none());
-        if !stream_matches {
+        // The live stream retires; a stream that is not the in-flight one is
+        // refused — a swapped-out generation's completion must not retire
+        // its replacement.
+        if entry.stream != Some(*stream) {
             return Err(Refused::StaleStream);
         }
         entry.stream = None;
@@ -693,15 +676,10 @@ fn admit(record: Option<&SessionTurns>, token: TurnToken, req: Req) -> Result<()
             if entry.next == Next::Cancel {
                 return Err(Refused::Cancelled);
             }
-            match event_stream.get() {
-                // A legacy zero stream rides an event minted before turn
-                // identity existed: it carries no claim to check, so it
-                // admits on live-turn existence alone. Transitional — the
-                // paths that still emit legacy events retire with the
-                // phase machine, and this arm goes with them.
-                0 => Ok(()),
-                _ if entry.stream == Some(event_stream) => Ok(()),
-                _ => Err(Refused::StaleStream),
+            if entry.stream == Some(event_stream) {
+                Ok(())
+            } else {
+                Err(Refused::StaleStream)
             }
         }
     }

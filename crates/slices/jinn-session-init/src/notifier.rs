@@ -27,14 +27,12 @@ pub struct DiscoveryNotifier {
 }
 
 impl ServiceActor for DiscoveryNotifier {
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
         // The state handle cannot ride JSON args; spawn injects it via
-        // `start_with` (see `spawn`).
+        // `init_with` (see `spawn`).
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
-                .attach("DiscoveryNotifier is spawned via start_with; start requires state"),
+                .attach("DiscoveryNotifier is spawned via init_with; init requires state"),
         )
     }
 }
@@ -51,7 +49,7 @@ impl DiscoveryNotifier {
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new(crate::NOTIFIER_PATH))
             .mailbox(64, trouper::inbox::OverloadPolicy::Block)
-            .start_with({
+            .init_with({
                 move || {
                     let state = state.clone();
                     Box::pin(async move { Ok(Self { state }) })

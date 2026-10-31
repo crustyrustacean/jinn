@@ -81,11 +81,19 @@ impl OnRetry for PushEntryOnRetry {
 ///
 /// Used at every point where an LLM operation fails and the session needs
 /// to be notified of the error terminal state.
+///
+/// `turn` and `stream` are the identity the failing dispatch carried — the
+/// grant the dispatch minted, threaded through every failure site. The
+/// session actor's ledger admission resolves the completion against the
+/// live turn by exactly this pair, which is what makes a mid-turn error
+/// settle the session instead of being refused as a straggler.
 async fn emit_stream_error(
     bus: &BusService,
     session_id: &SessionId,
     message: String,
     dispatched_at: Timestamp,
+    turn: jinn_core_types::turn_identity::TurnToken,
+    stream: jinn_core_types::turn_identity::StreamId,
 ) {
     bus.publish(PushChatEntry {
         session_id: session_id.clone(),
@@ -105,12 +113,8 @@ async fn emit_stream_error(
         cached_tokens: None,
         thinking_content: None,
         dispatched_at,
-        // The error paths that reach here before a stream was admitted (or
-        // after its identity was consumed) carry the legacy zero: the
-        // session actor refuses them against a live turn exactly when the
-        // error genuinely does not belong to it.
-        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
-        stream: jinn_core_types::turn_identity::StreamId::legacy(),
+        turn,
+        stream,
     })
     .await;
 }
@@ -143,15 +147,15 @@ impl jinn_kernel::common::actor_deps::BusPublish for InferenceActor {
 impl ServiceActor for InferenceActor {
     #[expect(
         clippy::unused_async_trait_impl,
-        reason = "trait contract: start is never called (spawn uses start_with)"
+        reason = "trait contract: init is never called (spawn uses init_with)"
     )]
-    async fn start(
+    async fn init(
         _args: &trouper::json::Json,
     ) -> Result<Self, Report<trouper::registry::RegistryError>> {
-        // Never called: the spawn helper injects services via `start_with`.
+        // Never called: the spawn helper injects services via `init_with`.
         Err(
             error_stack::IntoReport::into_report(trouper::registry::RegistryError::InvalidSpec)
-                .attach("InferenceActor is spawned via start_with"),
+                .attach("InferenceActor is spawned via init_with"),
         )
     }
 }
@@ -168,7 +172,7 @@ impl InferenceActor {
     ) -> ActorPath {
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new(INFERENCE_PATH))
-            .start_with({
+            .init_with({
                 move || {
                     let state = state.clone();
                     let services = services.clone();
@@ -476,6 +480,8 @@ async fn process_stream_events(
                         events_seen,
                         format!("LLM stream error: {message}"),
                         dispatched_at,
+                        turn,
+                        stream_id,
                         "LLM stream error event",
                     )
                     .await;
@@ -490,6 +496,8 @@ async fn process_stream_events(
                     events_seen,
                     format!("LLM stream error: {e:?}"),
                     dispatched_at,
+                    turn,
+                    stream_id,
                     "LLM stream chunk error",
                 )
                 .await;
@@ -506,6 +514,8 @@ async fn process_stream_events(
         events_seen,
         "LLM stream ended unexpectedly. The connection may have been interrupted.".to_owned(),
         dispatched_at,
+        turn,
+        stream_id,
         "LLM stream ended without a terminal event (Done/Error)",
     )
     .await;
@@ -621,6 +631,8 @@ async fn emit_terminal_error(
     events_seen: usize,
     message: String,
     dispatched_at: jiff::Timestamp,
+    turn: jinn_core_types::turn_identity::TurnToken,
+    stream: jinn_core_types::turn_identity::StreamId,
     log_label: &str,
 ) {
     tracing::info!(
@@ -631,7 +643,7 @@ async fn emit_terminal_error(
         "{log_label} - terminal"
     );
     tracing::error!(session_id = ?sid, error = %message, "{log_label}");
-    emit_stream_error(bus, sid, message, dispatched_at).await;
+    emit_stream_error(bus, sid, message, dispatched_at, turn, stream).await;
 }
 
 /// Accumulates streamed text, reasoning, and tool calls during an LLM stream.
@@ -1012,6 +1024,8 @@ impl InferenceActor {
                     &session_id,
                     report.to_string(),
                     payload.dispatched_at,
+                    payload.turn,
+                    payload.stream,
                 )
                 .await;
                 return;
@@ -1216,7 +1230,15 @@ async fn run_stream(
     let service = match build_streaming_service(&factory, &retry_config, &bus, &sid) {
         Ok(s) => s,
         Err(report) => {
-            emit_stream_error(&bus, &sid, report.to_string(), dispatched_at).await;
+            emit_stream_error(
+                &bus,
+                &sid,
+                report.to_string(),
+                dispatched_at,
+                turn,
+                stream_id,
+            )
+            .await;
             return;
         }
     };
@@ -1233,6 +1255,8 @@ async fn run_stream(
                 &sid,
                 format!("LLM stream error: {e:?}"),
                 dispatched_at,
+                turn,
+                stream_id,
             )
             .await;
             return;

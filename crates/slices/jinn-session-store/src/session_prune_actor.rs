@@ -125,10 +125,6 @@ pub struct SessionPruneActorDeps {
 /// reschedule.
 pub struct SessionPruneActor {
     deps: ActorDeps,
-    /// The system this actor runs on — captured at spawn so the
-    /// reschedule can self-address. (The services container may carry a
-    /// different system in tests, where the harness spawns on its own.)
-    system: ActorSystem,
     sweep_interval: Duration,
     drain_interval: Duration,
     batch: usize,
@@ -141,16 +137,14 @@ pub struct SessionPruneActor {
 impl ServiceActor for SessionPruneActor {
     #[expect(
         clippy::unused_async_trait_impl,
-        reason = "trait contract: start is never called (spawn uses start_with)"
+        reason = "trait contract: init is never called (spawn uses init_with)"
     )]
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: the spawn helper injects the deps via `start_with`
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
+        // Never called: the spawn helper injects the deps via `init_with`
         // (ActorDeps carries typed handles that cannot ride JSON args).
         Err(
             error_stack::IntoReport::into_report(RegistryError::InvalidSpec)
-                .attach("SessionPruneActor is spawned via start_with"),
+                .attach("SessionPruneActor is spawned via init_with"),
         )
     }
 }
@@ -158,27 +152,24 @@ impl ServiceActor for SessionPruneActor {
 impl SessionPruneActor {
     /// Spawns the actor at its static trouper path and returns the path.
     ///
-    /// The first tick is kicked by a detached task after `initial_delay`
-    /// (not immediately — the sweep must not compete with startup); every
-    /// later tick is scheduled by the previous one's final act.
+    /// The first tick is armed by `.kickoff` after `initial_delay` (not
+    /// immediately — the sweep must not compete with startup); every later
+    /// tick is scheduled by the previous one's final act.
     #[expect(
         clippy::needless_pass_by_value,
-        reason = "port convention: spawn takes owned deps and clones into start_with"
+        reason = "port convention: spawn takes owned deps and clones into init_with"
     )]
     pub fn spawn(system: &ActorSystem, deps: SessionPruneActorDeps) -> ActorPath {
         let path = ActorPath::new(SESSION_PRUNE_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(path.clone())
-            .start_with({
+            .init_with({
                 let deps = deps.clone();
-                let system = system.clone();
                 move || {
                     let deps = deps.clone();
-                    let system = system.clone();
                     Box::pin(async move {
                         Ok(Self {
                             deps: deps.deps,
-                            system,
                             sweep_interval: deps.sweep_interval,
                             drain_interval: deps.drain_interval,
                             batch: deps.batch,
@@ -189,16 +180,10 @@ impl SessionPruneActor {
             })
             .handles::<PruneTick>()
             .mailbox(8, trouper::inbox::OverloadPolicy::Block)
+            // Arms the first sweep after the initial delay; the chain
+            // self-perpetuates from there (see [`Self::reschedule`]).
+            .kickoff(PruneTick, deps.initial_delay)
             .start();
-        // Kick the first sweep after the initial delay. A failed send only
-        // means the actor is already stopping.
-        let kicker = system.clone();
-        let kick_path = path.clone();
-        let initial_delay = deps.initial_delay;
-        tokio::spawn(async move {
-            tokio::time::sleep(initial_delay).await;
-            let _ = kicker.tell(kick_path, PruneTick).await;
-        });
         path
     }
 
@@ -208,13 +193,8 @@ impl SessionPruneActor {
     /// no-op) completed — so intervals are measured from completion. A
     /// non-empty queue drains at the drain interval; a drained or disabled
     /// one sweeps at the sweep interval.
-    fn reschedule(&self, interval: Duration) {
-        let system = self.system.clone();
-        let path = ActorPath::new(SESSION_PRUNE_PATH);
-        tokio::spawn(async move {
-            tokio::time::sleep(interval).await;
-            let _ = system.tell(path, PruneTick).await;
-        });
+    fn reschedule(ctx: &mut MsgCtx<'_>, interval: Duration) {
+        ctx.schedule_self(PruneTick, interval);
     }
 }
 
@@ -227,7 +207,7 @@ impl SessionPruneActor {
 pub struct PruneTick;
 
 impl MsgHandler<PruneTick> for SessionPruneActor {
-    async fn handle(&mut self, _msg: &PruneTick, _ctx: &mut MsgCtx<'_>) {
+    async fn handle(&mut self, _msg: &PruneTick, ctx: &mut MsgCtx<'_>) {
         let retention = self.retention().await;
         match retention {
             // Disabled: drop any pending deletions immediately — the user
@@ -268,7 +248,7 @@ impl MsgHandler<PruneTick> for SessionPruneActor {
         } else {
             self.drain_interval
         };
-        self.reschedule(interval);
+        Self::reschedule(ctx, interval);
     }
 }
 

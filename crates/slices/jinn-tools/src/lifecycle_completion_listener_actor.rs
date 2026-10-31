@@ -61,13 +61,11 @@ pub struct LifecycleCompletionListenerActor {
 }
 
 impl ServiceActor for LifecycleCompletionListenerActor {
-    async fn start(
-        _args: &trouper::json::Json,
-    ) -> Result<Self, error_stack::Report<RegistryError>> {
-        // Never called: spawned via `start_with` (typed deps cannot ride
+    async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
+        // Never called: spawned via `init_with` (typed deps cannot ride
         // JSON args).
         Err(error_stack::Report::new(RegistryError::InvalidSpec)
-            .attach("LifecycleCompletionListenerActor spawns via start_with"))
+            .attach("LifecycleCompletionListenerActor spawns via init_with"))
     }
 }
 
@@ -86,7 +84,7 @@ impl LifecycleCompletionListenerActor {
         let completion = deps.completion;
         trouper::builder::spawn_service_builder::<Self>(&deps.system)
             .at(path.clone())
-            .start_with(move || {
+            .init_with(move || {
                 let session_id = session_id.clone();
                 let completion = completion;
                 Box::pin(async move {

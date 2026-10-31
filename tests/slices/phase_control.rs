@@ -160,6 +160,14 @@ impl ExtraRecorders for () {
 /// caller's tuple reads as a list of facts to tap, not bare generics.
 struct TurnCompletedTap;
 
+impl<A: ExtraRecorders, B: ExtraRecorders> ExtraRecorders for (A, B) {
+    type Recorders = (A::Recorders, B::Recorders);
+
+    async fn spawn(&self, harness: &jinn_testutil::bus_harness::TestHarness) -> Self::Recorders {
+        (self.0.spawn(harness).await, self.1.spawn(harness).await)
+    }
+}
+
 impl ExtraRecorders for TurnCompletedTap {
     type Recorders = jinn_testutil::bus_harness::Recorder<jinn_session_msg::TurnCompleted>;
 
@@ -737,4 +745,159 @@ async fn message_enqueued_during_the_drain_dispatches_exactly_once() {
         total, 1,
         "the drain-time enqueue must produce exactly one dispatch, whatever the ordering"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Provider-error settlement — the emission-fix's end-to-end proof
+// ---------------------------------------------------------------------------
+
+/// A factory whose stream errors immediately at creation — the provider
+/// down / auth-rejected shape a real backend produces. Exists here because
+/// the inference crate's equivalent is test-private.
+#[derive(Debug)]
+struct ErroringStreamFactory;
+
+impl jinn_provider::LlmServiceFactory for ErroringStreamFactory {
+    fn create(
+        &self,
+    ) -> Result<
+        Box<dyn jinn_provider::LlmService>,
+        error_stack::Report<jinn_provider::LlmServiceError>,
+    > {
+        Ok(Box::new(ErroringStreamService))
+    }
+    fn name(&self) -> &'static str {
+        "ErroringStream"
+    }
+}
+
+#[derive(Debug)]
+struct ErroringStreamService;
+
+#[async_trait::async_trait]
+impl jinn_provider::LlmService for ErroringStreamService {
+    fn name(&self) -> &'static str {
+        "ErroringStream"
+    }
+    async fn chat_stream(
+        &self,
+        _system_prompt: Option<&str>,
+        _messages: Vec<jinn_provider::LlmMessage>,
+    ) -> Result<jinn_provider::ChatStream, error_stack::Report<jinn_provider::LlmServiceError>>
+    {
+        Err(error_stack::Report::new(
+            jinn_provider::LlmServiceError::Provider,
+        ))
+    }
+    async fn chat_stream_with_tools(
+        &self,
+        _system_prompt: Option<&str>,
+        _messages: Vec<jinn_provider::LlmMessage>,
+        _tools: Vec<jinn_core_types::ToolDefinition>,
+    ) -> Result<jinn_provider::ToolStream, error_stack::Report<jinn_provider::LlmServiceError>>
+    {
+        Err(error_stack::Report::new(
+            jinn_provider::LlmServiceError::Provider,
+        ))
+    }
+}
+
+/// A provider error mid-turn settles the session: the inference actor's
+/// `StreamCompleted(Error)` carries the identity its dispatch minted, the
+/// session actor's ledger admission accepts it, and the turn ends — phase
+/// `Streaming → Idle`, exactly one `TurnCompleted(Error)`, the ledger entry
+/// swept. Before the emission fix, the error event rode an unset identity,
+/// admission refused it, no settle ran, and the session stayed `Streaming`
+/// with a live spinner forever.
+#[rstest::rstest]
+#[tokio::test]
+#[timeout(Duration::from_secs(60))]
+async fn provider_error_mid_turn_settles_the_session_idle() {
+    // Given a composed app whose provider errors on every stream, driven
+    // through the real dispatch path: the user's message dispatches a turn,
+    // the inference actor's stream creation fails, `emit_stream_error` runs.
+    let (app, session_id, _recorder, (phases, turns)) = composed_app_with_recorders(
+        ErroringStreamFactory,
+        30,
+        (PhaseChangedTap, TurnCompletedTap),
+    )
+    .await;
+    app.services
+        .bus
+        .publish(EnqueueUserMessage {
+            session_id: session_id.clone(),
+            entry: ChatEntry::user("provoke a provider error"),
+        })
+        .await;
+
+    // When the error path runs to completion — poll rather than assume,
+    // the actors are async.
+    let settled = wait_until_phase(&app, &session_id, PhaseView::Idle).await;
+
+    // Then the session is `Idle`: the spinner stops, the session takes
+    // new input.
+    assert!(
+        settled,
+        "a provider error must settle the session to Idle; phase is {:?}",
+        phase_of(&app, &session_id)
+    );
+
+    // And the phase projection recorded the turn's full arc — the error
+    // settled through the ledger, not a phase shortcut. The tap actor
+    // trails the publish, so poll for the event instead of draining once.
+    let deadline = tokio::time::Instant::now() + WAIT;
+    let phase_events = loop {
+        let drained = phases.drain();
+        if drained
+            .iter()
+            .any(|e| e.old_phase == PhaseView::Streaming && e.new_phase == PhaseView::Idle)
+        {
+            break drained;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            break drained;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
+    assert!(
+        phase_events
+            .iter()
+            .any(|e| e.old_phase == PhaseView::Streaming && e.new_phase == PhaseView::Idle),
+        "expected SessionPhaseChanged(Streaming → Idle); got {phase_events:?}"
+    );
+
+    // And exactly one `TurnCompleted(Error)` reported the turn — the
+    // once-ness the ledger's settle-once guarantees.
+    jinn_testutil::wait::await_settled(&turns, Duration::from_millis(300), Duration::from_secs(10))
+        .await;
+    let reports = turns.drain();
+    assert_eq!(
+        reports.len(),
+        1,
+        "an errored turn reports exactly once; got {reports:?}"
+    );
+    assert_eq!(reports[0].outcome, TurnOutcome::Error);
+
+    // And the ledger entry is swept: the session takes a new turn.
+    let grant = app.services.turn_ledger.mint(
+        &session_id,
+        jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+    );
+    assert!(
+        grant.is_some(),
+        "a settled turn's entry must be swept; a fresh mint must be admitted"
+    );
+}
+
+/// The marker naming one `SessionPhaseChanged` recorder.
+struct PhaseChangedTap;
+
+impl ExtraRecorders for PhaseChangedTap {
+    type Recorders = jinn_testutil::bus_harness::Recorder<jinn_session_msg::SessionPhaseChanged>;
+
+    async fn spawn(&self, harness: &jinn_testutil::bus_harness::TestHarness) -> Self::Recorders {
+        harness
+            .spawn_recorder::<jinn_session_msg::SessionPhaseChanged>()
+            .await
+    }
 }

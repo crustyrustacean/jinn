@@ -182,7 +182,7 @@ fn ctx_with(
 ) -> (ToolContext, std::sync::Arc<StubStore>) {
     let arc = std::sync::Arc::new(store);
     let ctx = ToolContext {
-        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+        turn: crate::tool_types::test_turn(),
         cwd: paths_root.clone(),
         config: jinn_config::testutil::config_layer(""),
         shells: Default::default(),
@@ -400,7 +400,7 @@ async fn no_session_and_no_current_is_an_error() {
     let dir = jinn_testutil::tempdir();
     let arc = std::sync::Arc::new(StubStore::default());
     let ctx = ToolContext {
-        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+        turn: crate::tool_types::test_turn(),
         cwd: dir.path.clone(),
         config: jinn_config::testutil::config_layer(""),
         shells: Default::default(),
@@ -457,7 +457,7 @@ async fn outer_truncated_result_carries_full_content() {
         let dir = jinn_testutil::tempdir();
         let arc = std::sync::Arc::new(StubStore::with_window(window(entries)));
         let ctx = ToolContext {
-            turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+            turn: crate::tool_types::test_turn(),
             cwd: dir.path.clone(),
             config: jinn_config::testutil::config_layer(""),
             shells: Default::default(),

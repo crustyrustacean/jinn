@@ -22,9 +22,21 @@ pub(crate) async fn test_actor() -> super::SessionPersistenceActor {
     use jinn_llm_support::token_estimator::TiktokenCounter;
     use jinn_token_count_msg::HistoryWorkerChatEntryTokenCache;
 
+    // A live turn for the active session: production mints before any token
+    // or completion can arrive, so the harness mints the same way.
+    let state = State::new(AppState::default_with_scope_focus());
+    let services = jinn_kernel::common::services::Services::new_fake().await;
+    {
+        let session_id = state.read().session.active_session_id().clone();
+        let _ = services.turn_ledger.mint(
+            &session_id,
+            jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+        );
+    }
+
     super::SessionPersistenceActor {
-        state: State::new(AppState::default_with_scope_focus()),
-        services: jinn_kernel::common::services::Services::new_fake().await,
+        state,
+        services,
         counter: TiktokenCounter::o200k_base(),
         token_cache: HistoryWorkerChatEntryTokenCache::default(),
         image_converter: test_image_converter(),
@@ -53,9 +65,8 @@ pub(crate) async fn test_actor_recording() -> (
 
     let state = State::new(AppState::default_with_scope_focus());
 
-    // A live turn for the active session: the legacy-token fixtures admit on
-    // live-turn existence (the transitional bridge), so the harness must
-    // provide one the way production's mint does.
+    // A live turn for the active session: production mints before any
+    // completion or token can arrive, so the harness mints the same way.
     {
         let session_id = state.read().session.active_session_id().clone();
         let _ = services.turn_ledger.mint(
@@ -397,11 +408,25 @@ pub(crate) async fn test_actor_with_store_recording(
         .session_store(jinn_session_state::SessionStoreService::new(store.clone()))
         .with_bus(bus)
         .build();
+
+    // A live turn for the active session: production mints before any
+    // completion can arrive, so the harness mints the same way. One `State`
+    // is built here and handed to the actor — the minted session id and the
+    // actor's active session must be the same one.
+    let state = jinn_kernel::common::state::State::new(
+        jinn_kernel::common::app_state::AppState::default_with_scope_focus(),
+    );
+    {
+        let session_id = state.read().session.active_session_id().clone();
+        let _ = services.turn_ledger.mint(
+            &session_id,
+            jinn_kernel::common::turn_ledger::MintKind::FreshTurn,
+        );
+    }
+
     (
         super::SessionPersistenceActor {
-            state: jinn_kernel::common::state::State::new(
-                jinn_kernel::common::app_state::AppState::default(),
-            ),
+            state,
             services,
             counter: jinn_llm_support::token_estimator::TiktokenCounter::o200k_base(),
             token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),

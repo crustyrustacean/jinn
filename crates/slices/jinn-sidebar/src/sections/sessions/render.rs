@@ -35,7 +35,7 @@ use unicode_width::UnicodeWidthStr;
 ///
 /// Two rows leaves a one-row gap, so the banner reads as a separate label
 /// rather than colliding with the highlighted session row.
-const BANNER_GAP: u16 = 2;
+pub(crate) const BANNER_GAP: u16 = 2;
 
 /// The open sessions sidebar section.
 ///
@@ -292,9 +292,14 @@ pub fn render_close_session_prompt_for_state(
         return;
     }
 
-    // Shared cursor-row math: see `render_sessions_cursor_y`.
-    let prompt_y =
-        render_sessions_cursor_y(sidebar_rect, state, ctx.config()).saturating_sub(BANNER_GAP);
+    // Shared cursor-row math: see `render_sidebar_cursor_y`.
+    let prompt_y = render_sidebar_cursor_y(
+        sidebar_rect,
+        state,
+        ctx.config(),
+        jinn_sidebar_msg::SidebarSectionId::Sessions,
+    )
+    .saturating_sub(BANNER_GAP);
     let text = " Press x again to teardown and archive 1 session ";
     render_right_aligned_banner(frame, frame_area, prompt_y, text, Color::Yellow);
 }
@@ -330,9 +335,14 @@ pub fn render_archive_tree_prompt_for_state(
         return;
     }
 
-    // Shared cursor-row math: see `render_sessions_cursor_y`.
-    let prompt_y =
-        render_sessions_cursor_y(sidebar_rect, state, ctx.config()).saturating_sub(BANNER_GAP);
+    // Shared cursor-row math: see `render_sidebar_cursor_y`.
+    let prompt_y = render_sidebar_cursor_y(
+        sidebar_rect,
+        state,
+        ctx.config(),
+        jinn_sidebar_msg::SidebarSectionId::Sessions,
+    )
+    .saturating_sub(BANNER_GAP);
 
     let (text, bg) = match prompt {
         ArchiveTreePrompt::Confirm { count, action } => {
@@ -361,11 +371,16 @@ pub fn render_archive_tree_prompt_for_state(
 ///
 /// Painted in the sidebar's floating-surface layer (`Region::FloatingSurfaces`),
 /// after every base column, so the banner may extend left over the input box.
-/// Anchored 1 row above the sidebar cursor row and right-aligned to the
-/// frame's right edge — the same geometry as the close-session prompt. The
+/// Anchored 1 row above the focused section's cursor row and right-aligned to
+/// the frame's right edge — the same geometry as the close-session prompt. The
 /// background is the theme's success color, so the banner reads as a healthy
 /// confirmation in whatever theme is in force; the fg stays the black every
 /// banner uses against a saturated bg.
+///
+/// The banner renders in the three sections that keep a session in their
+/// cursor — sessions, bots, and library — because those are the sections
+/// whose `y` press armed it. Each of them anchors to its own cursor, so the
+/// banner stays attached to the row it describes.
 pub fn render_session_id_yank_popup_for_state(
     frame: &mut Frame<'_>,
     sidebar_rect: Rect,
@@ -373,22 +388,19 @@ pub fn render_session_id_yank_popup_for_state(
     ctx: &dyn DrawContext<AppState>,
 ) {
     let state = ctx.state();
-    if !state.frontend.session_id_yank_popup
-        || !state.frontend.is_sidebar()
-        || state.frontend.sidebar_section() != Some(jinn_sidebar_msg::SidebarSectionId::Sessions)
-    {
+    if !state.frontend.session_id_yank_popup || !state.frontend.is_sidebar() {
         return;
     }
-    if state
-        .frontend
-        .with_sections(|s| s.sessions.selected_id.is_none(), || true)
-    {
+    let Some(focused) = yank_banner_section(state.frontend.sidebar_section()) else {
+        return;
+    };
+    if cursor_row_absent(state, focused) {
         return;
     }
 
-    // Shared cursor-row math: see `render_sessions_cursor_y`.
-    let prompt_y =
-        render_sessions_cursor_y(sidebar_rect, state, ctx.config()).saturating_sub(BANNER_GAP);
+    // Shared cursor-row math: see `render_sidebar_cursor_y`.
+    let prompt_y = render_sidebar_cursor_y(sidebar_rect, state, ctx.config(), focused)
+        .saturating_sub(BANNER_GAP);
     let text = " Session ID yanked ";
     render_right_aligned_banner(
         frame,
@@ -399,26 +411,57 @@ pub fn render_session_id_yank_popup_for_state(
     );
 }
 
-/// Computes the sidebar sessions cursor row inside the sidebar rect.
+/// The focused section, when it is one of the three the yank banner renders
+/// in — the same set whose `y` press arms it.
+fn yank_banner_section(
+    section: Option<jinn_sidebar_msg::SidebarSectionId>,
+) -> Option<jinn_sidebar_msg::SidebarSectionId> {
+    match section? {
+        section @ (jinn_sidebar_msg::SidebarSectionId::Sessions
+        | jinn_sidebar_msg::SidebarSectionId::Bot
+        | jinn_sidebar_msg::SidebarSectionId::Library) => Some(section),
+        _ => None,
+    }
+}
+
+/// Whether the section's cursor names nothing to anchor to.
+fn cursor_row_absent(state: &AppState, section: jinn_sidebar_msg::SidebarSectionId) -> bool {
+    state.frontend.with_sections(
+        |s| match section {
+            jinn_sidebar_msg::SidebarSectionId::Sessions => s.sessions.selected_id.is_none(),
+            jinn_sidebar_msg::SidebarSectionId::Bot => s.bot.selected_id.is_none(),
+            jinn_sidebar_msg::SidebarSectionId::Library => s.library.selected_id.is_none(),
+            _ => true,
+        },
+        || true,
+    )
+}
+
+/// Computes a section's cursor row inside the sidebar rect.
 ///
 /// Runs the same document layout the `Sidebar` container uses, so the banner
-/// stays attached to the cursor even when the sidebar is scrolled.
-fn render_sessions_cursor_y(
+/// stays attached to the cursor even when the sidebar is scrolled. `section`
+/// says which section's cursor anchors the row; the close-session and
+/// archive-tree prompts pass Sessions, the yank banner passes the focused
+/// section.
+fn render_sidebar_cursor_y(
     sidebar_rect: Rect,
     state: &AppState,
     config: &jinn_slices::ConfigLayer,
+    section: jinn_sidebar_msg::SidebarSectionId,
 ) -> u16 {
     let document = crate::sections::layout::document_with_cursor(state, config);
     let offset = document.offset(sidebar_rect.height);
     // `Sidebar::render` pushes a document shorter than the column down by the
-    // slack, so the anchor must apply the same shift or the banner detaches.
-    let slack = document.bottom_slack(sidebar_rect.height);
-    let span = document.span_or_empty(jinn_sidebar_msg::SidebarSectionId::Sessions);
-    let row = crate::sections::layout::cursor_row_in_section(
-        state,
-        jinn_sidebar_msg::SidebarSectionId::Sessions,
-    )
-    .unwrap_or(0);
+    // slack — but only the document's tail section; the rest sit at the top.
+    // The anchor must apply the same shift or the banner detaches.
+    let slack = if document.is_last(section) {
+        document.bottom_slack(sidebar_rect.height)
+    } else {
+        0
+    };
+    let span = document.span_or_empty(section);
+    let row = crate::sections::layout::cursor_row_in_section(state, section).unwrap_or(0);
     sidebar_rect
         .y
         .saturating_add(slack)

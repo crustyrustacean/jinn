@@ -71,7 +71,7 @@ async fn spawn_subagent_ctx_with(
     let model_name_resolver =
         seed_registry.then(|| registry_model_name_resolver(&services.provider_registry));
     ToolContext {
-        turn: jinn_core_types::turn_identity::TurnToken::legacy(),
+        turn: crate::tool_types::test_turn(),
         cwd: paths_root.clone(),
         config: jinn_config::testutil::config_layer(""),
         shells: Default::default(),
