@@ -28,7 +28,7 @@ members = ["crates/jinn-*", "crates/slices/*", "vendor/*"]
 
 
 [workspace.package]
-version = "1.13.0"
+version = "1.15.0"
 edition = "2024"
 publish = false
 
@@ -90,6 +90,7 @@ jinn-mcp-msg = { workspace = true }
 jinn-context-assembly = { workspace = true }
 jinn-theme-slice = { workspace = true }
 jinn-cli = { workspace = true }
+jinn-canvas = { workspace = true }
 jinn-mcp-overgraph = { workspace = true }
 jinn-chat-input = { workspace = true }
 jinn-chat-log-view = { workspace = true }
@@ -155,6 +156,7 @@ dotenvy = { workspace = true }
 rstest = { workspace = true }
 mockito = { workspace = true }
 toml = { workspace = true }
+sha2 = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tempfile = { workspace = true }
 jinn-mcp = { workspace = true }
@@ -269,6 +271,8 @@ ratatui-markdown = { path = "vendor/ratatui-markdown", features = [
 ] }
 jinn-provider = { path = "crates/jinn-provider" }
 jinn-tui = { path = "crates/jinn-tui" }
+jinn-canvas = { path = "crates/slices/jinn-canvas" }
+jinn-canvas-msg = { path = "crates/slices/jinn-canvas-msg" }
 jinn-cli = { path = "crates/jinn-cli" }
 jinn-selection-widget = { path = "crates/jinn-selection-widget" }
 jinn-picker = { path = "crates/jinn-picker" }
@@ -292,8 +296,8 @@ jinn-theme-msg = { path = "crates/slices/jinn-theme-msg" }
 jinn-token-count-msg = { path = "crates/slices/jinn-token-count-msg" }
 jinn-turn-dispatch-msg = { path = "crates/slices/jinn-turn-dispatch-msg" }
 jinn-turn-dispatch = { path = "crates/slices/jinn-turn-dispatch" }
-jinn-session-history = { path = "crates/slices/jinn-session-history" }
-jinn-session-history-msg = { path = "crates/slices/jinn-session-history-msg" }
+jinn-session-history = { path = "crates/jinn-session-history" }
+jinn-session-history-msg = { path = "crates/jinn-session-history-msg" }
 jinn-skills = { path = "crates/slices/jinn-skills" }
 jinn-skills-msg = { path = "crates/slices/jinn-skills-msg" }
 jinn-workflows = { path = "crates/slices/jinn-workflows" }
@@ -329,6 +333,9 @@ include_dir = { version = "0.7", default-features = false }
 # Error handling
 wherror = "2.3.1"
 error-stack = { version = "0.8", features = ["serde"] }
+
+# Content hashing for the bundled-resource reconciler (`jinn-install`).
+sha2 = "0.10"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -388,7 +395,7 @@ humantime = "2"
 # DX
 ctor = "0.4"
 derive_more = { version = "2", features = ["debug", "display"] }
-marked-path = "0.5.1"
+marked-path = "0.6.0"
 rstest = "0.26"
 tempfile = "3"
 
@@ -538,6 +545,8 @@ as_underscore = "deny"
 clone_on_ref_ptr = "allow"
 create_dir = "deny"
 dbg_macro = "warn"
+disallowed_methods = "deny"
+disallowed_types = "deny"
 else_if_without_else = "warn"
 empty_drop = "warn"
 empty_enum_variants_with_brackets = "deny"

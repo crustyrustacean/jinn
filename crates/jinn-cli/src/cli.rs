@@ -1,4 +1,12 @@
 //! Command-line interface argument definitions.
+//
+// Every path flag in this module is the argv boundary: clap hands over raw,
+// unvalidated values that `resolve_cli_path`/`ConfigPath` re-type into
+// `MarkedPathBuf<Absolute>` during startup. No jinn logic consumes them raw.
+#![allow(
+    clippy::disallowed_types,
+    reason = "this module is the argv/OsString boundary; every path flag is re-typed by resolve_cli_path at startup"
+)]
 
 use std::path::PathBuf;
 
@@ -120,12 +128,17 @@ pub enum Commands {
         shell: clap_complete::Shell,
     },
 
-    /// Install default themes, personas, prompts, and skills to user
-    /// directories.
+    /// Seed the default config files (jinn.toml, providers.toml,
+    /// stream_rules.toml), each only when missing.
+    ///
+    /// Bundled resources (themes, personas, prompts, workflows, skills) are
+    /// reconciled into place on every launch; use `--builtins` to
+    /// force-restore them over local edits.
     Install {
-        /// Overwrite existing resources if they already exist.
+        /// Overwrite every bundled resource with the shipped copy,
+        /// reclaiming files you have edited. Config files are untouched.
         #[arg(long)]
-        force: bool,
+        builtins: bool,
     },
 
     /// Fetch reference data from external sources.

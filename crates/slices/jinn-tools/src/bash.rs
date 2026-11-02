@@ -587,6 +587,7 @@ mod tests {
 
             dispatched_at: jiff::Timestamp::now(),
             mcp_coordinator: None,
+            canvas_server: None,
             interactive_term: None,
             task_spawns: None,
             session_store: None,
@@ -745,6 +746,7 @@ mod tests {
 
                 dispatched_at: jiff::Timestamp::now(),
                 mcp_coordinator: None,
+                canvas_server: None,
                 interactive_term: None,
                 task_spawns: None,
                 session_store: None,
@@ -1189,6 +1191,7 @@ mod tests {
         let (program, args) = jinn_testutil::platform::success_command();
         let status = std::process::Command::new(program)
             .args(&args)
+            .current_dir(jinn_testutil::platform::local_cwd())
             .status()
             .expect("success command should run");
         let exit_result: Result<std::process::ExitStatus, std::io::Error> = Ok(status);
@@ -1215,6 +1218,7 @@ mod tests {
         let (program, args) = jinn_testutil::platform::exit_command(42);
         let status = std::process::Command::new(program)
             .args(&args)
+            .current_dir(jinn_testutil::platform::local_cwd())
             .status()
             .expect("exit command should run");
         let exit_result: Result<std::process::ExitStatus, std::io::Error> = Ok(status);
@@ -1241,6 +1245,7 @@ mod tests {
         let (program, args) = jinn_testutil::platform::exit_command(1);
         let status = std::process::Command::new(program)
             .args(&args)
+            .current_dir(jinn_testutil::platform::local_cwd())
             .status()
             .expect("exit command should run");
         let exit_result: Result<std::process::ExitStatus, std::io::Error> = Ok(status);
@@ -1287,6 +1292,7 @@ mod tests {
         let (program, args) = jinn_testutil::platform::exit_command(3);
         let status = std::process::Command::new(program)
             .args(&args)
+            .current_dir(jinn_testutil::platform::local_cwd())
             .status()
             .expect("exit command should run");
         let exit_result: Result<std::process::ExitStatus, std::io::Error> = Ok(status);

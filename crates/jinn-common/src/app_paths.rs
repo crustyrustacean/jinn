@@ -10,7 +10,6 @@
 
 use crate::app_info::APP_NAME;
 use marked_path::{Absolute, MarkedPath, MarkedPathBuf};
-use std::path::PathBuf;
 
 /// Browser profile mode: one persistent profile per mode.
 ///
@@ -137,21 +136,33 @@ impl AppPaths {
     /// Panics if a platform directory is not absolute, which cannot happen
     /// on supported platforms.
     fn from_platform_dirs() -> Self {
-        let fallback = cwd_absolute();
-        let typed = |raw: Option<PathBuf>| {
-            raw.map_or_else(
-                || fallback.clone(),
-                |raw| {
+        /// Types one platform directory, falling back to the cwd.
+        ///
+        /// `dirs` hands its values over as raw owning paths; they are typed
+        /// immediately and never escape raw.
+        #[expect(
+            clippy::disallowed_types,
+            reason = "dirs-crate seam: platform directory values arrive as raw PathBuf and are typed on arrival"
+        )]
+        fn typed(
+            raw: Option<std::path::PathBuf>,
+            fallback: &MarkedPathBuf<Absolute>,
+        ) -> MarkedPathBuf<Absolute> {
+            match raw {
+                Some(raw) => {
                     MarkedPathBuf::<Absolute>::new(raw).expect("platform dirs and cwd are absolute")
-                },
-            )
-        };
+                }
+                None => fallback.clone(),
+            }
+        }
+
+        let fallback = cwd_absolute();
         Self {
-            config_dir: typed(dirs::config_dir()),
-            data_dir: typed(dirs::data_dir()),
-            cache_dir: typed(dirs::cache_dir()),
-            state_dir: typed(dirs::state_dir().or_else(dirs::data_dir)),
-            home_dir: typed(dirs::home_dir()),
+            config_dir: typed(dirs::config_dir(), &fallback),
+            data_dir: typed(dirs::data_dir(), &fallback),
+            cache_dir: typed(dirs::cache_dir(), &fallback),
+            state_dir: typed(dirs::state_dir().or_else(dirs::data_dir), &fallback),
+            home_dir: typed(dirs::home_dir(), &fallback),
         }
     }
 
@@ -301,6 +312,19 @@ impl AppPaths {
     pub fn state_file_path(&self) -> MarkedPathBuf<Absolute> {
         self.state_dir
             .join_all([APP_NAME, "state.toml"])
+            .expect("name joins keep the base absolute")
+    }
+
+    /// Bundled-files manifest (`~/.local/state/jinn/bundled-files.toml` on
+    /// Linux) — the record of what the reconciler last wrote where.
+    ///
+    /// Lives in the state dir beside `state.toml` and `jinn.log`: it is
+    /// machine-local bookkeeping the binary owns, not user data and not
+    /// configuration.
+    #[must_use]
+    pub fn bundled_files_manifest_path(&self) -> MarkedPathBuf<Absolute> {
+        self.state_dir
+            .join_all([APP_NAME, "bundled-files.toml"])
             .expect("name joins keep the base absolute")
     }
 
@@ -634,6 +658,27 @@ mod tests {
                 .join_all(["state", "jinn"])
                 .expect("root joins bare names")
                 .join("state.toml")
+                .expect("typed parent joins a bare name"),
+        );
+    }
+
+    #[rstest::rstest]
+    fn bundled_files_manifest_path_sits_beside_the_state_file() {
+        // Given an AppPaths rooted in a temp dir.
+        let root = jinn_testutil::tempdir();
+        let paths = AppPaths::new_in(&root.path.as_marked_path());
+
+        // When reading the bundled-files manifest path.
+        let manifest_path = paths.bundled_files_manifest_path();
+
+        // Then it is root/state/jinn/bundled-files.toml — the state dir,
+        // the same home as state.toml and jinn.log.
+        assert_eq!(
+            manifest_path,
+            root.path
+                .join_all(["state", "jinn"])
+                .expect("root joins bare names")
+                .join("bundled-files.toml")
                 .expect("typed parent joins a bare name"),
         );
     }

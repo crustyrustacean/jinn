@@ -4,18 +4,9 @@
 //! - [`run_setup_command`] - expects stdout output (last line becomes the session CWD)
 //! - [`run_teardown_command`] - only checks exit code, output is irrelevant
 
-use std::path::PathBuf;
-
 use error_stack::Report;
-use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
+use marked_path::{Absolute, CanonicalPath, MarkedPathAccess, MarkedPathBuf};
 use wherror::Error;
-
-/// Canonicalizes through the shared verbatim-prefix-stripping helper, so the
-/// session CWD is a plain path (`C:\…` on Windows) comparable to every other
-/// path jinn builds. Identity on Unix.
-fn strip_verbatim(result: std::io::Result<PathBuf>) -> std::io::Result<PathBuf> {
-    result.map(jinn_common::strip_verbatim_prefix)
-}
 
 // Note: kill_process_tree(&mut Child) is NOT imported here — the cancel path
 // uses the PID-based kill_process_group_by_pid (called from the actor's cancel
@@ -101,8 +92,6 @@ pub async fn run_setup_command(
     command: &str,
     shell: &str,
 ) -> Result<Option<MarkedPathBuf<Absolute>>, Report<LifecycleCommandError>> {
-    use error_stack::ResultExt as _;
-
     let (_output, stdout, _stderr) = run_command(command, shell).await?;
 
     let last_line = stdout.lines().map(str::trim).rfind(|line| !line.is_empty());
@@ -112,15 +101,16 @@ pub async fn run_setup_command(
     };
     let raw = last_line.to_owned();
 
-    let canonical = strip_verbatim(tokio::fs::canonicalize(&raw).await).map_err(|e| {
-        Report::new(e)
-            .change_context(LifecycleCommandError::InvalidPath { raw: raw.clone() })
-            .attach("setup command output is not a valid path")
-    })?;
-
-    let typed = MarkedPathBuf::<Absolute>::new(canonical)
-        .change_context(LifecycleCommandError::InvalidPath { raw: raw.clone() })
-        .attach("canonicalized setup path is not absolute")?;
+    // CanonicalPath canonicalizes and strips the Windows verbatim prefix, so
+    // the session CWD is a plain path (`C:\…` on Windows) comparable to every
+    // other path jinn builds. Identity on Unix.
+    let typed = CanonicalPath::from_path(&raw)
+        .map(CanonicalPath::into_marked)
+        .map_err(|e| {
+            Report::new(e)
+                .change_context(LifecycleCommandError::InvalidPath { raw: raw.clone() })
+                .attach("setup command output is not a valid path")
+        })?;
 
     if !typed.is_dir() {
         return Err(Report::new(LifecycleCommandError::NotADirectory { raw }));
@@ -190,6 +180,35 @@ pub type SpawnTeardownResult = Result<
     Report<LifecycleCommandError>,
 >;
 
+/// Drains both output pipes to EOF concurrently.
+///
+/// Reading the pipes one after the other deadlocks: a script that writes
+/// more to stderr than the OS pipe buffer holds blocks on its next stderr
+/// write, never reaches exit, and the first pipe never delivers EOF — the
+/// reader waits forever and the lifecycle never completes. Concurrent
+/// drains are what [`tokio::process::Command::output`] does internally;
+/// the spawn variants must do the same because they own the child.
+async fn drain_output(
+    stdout_pipe: Option<impl tokio::io::AsyncRead + Unpin>,
+    stderr_pipe: Option<impl tokio::io::AsyncRead + Unpin>,
+) -> (Vec<u8>, Vec<u8>) {
+    use tokio::io::AsyncReadExt as _;
+
+    async fn drain(pipe: Option<impl tokio::io::AsyncRead + Unpin>) -> Vec<u8> {
+        let mut buf = Vec::new();
+        if let Some(mut pipe) = pipe {
+            // A read error ends the drain with what was captured; a lost
+            // pipe is not a lifecycle failure, and the exit status below
+            // is the verdict.
+            let _ = pipe.read_to_end(&mut buf).await;
+        }
+        buf
+    }
+
+    let (stdout, stderr) = tokio::join!(drain(stdout_pipe), drain(stderr_pipe));
+    (stdout, stderr)
+}
+
 /// Spawns a setup command and returns a cancel handle and a joinable reader task.
 ///
 /// The shell process is spawned with `cwd` as its working directory so the
@@ -223,6 +242,12 @@ pub fn spawn_setup_command(
             .arg("-c")
             .arg(command)
             .current_dir(cwd.as_path())
+            // No inherited console input: without this the child inherits
+            // jinn's stdin handle, and on Windows the msys2 bash behind a
+            // TUI console contends on it — the script can stall forever
+            // before its first byte of output. Null is also the honest
+            // contract: a lifecycle script has nothing to read.
+            .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
 
@@ -255,25 +280,10 @@ pub fn spawn_setup_command(
     // jinn's process dir instead of the session dir.
     let cwd = cwd.clone();
     let handle = tokio::spawn(async move {
-        use tokio::io::AsyncReadExt;
-
-        // Read stdout.
-        let stdout_bytes = if let Some(mut pipe) = stdout_pipe {
-            let mut buf = Vec::new();
-            let _ = pipe.read_to_end(&mut buf).await;
-            buf
-        } else {
-            Vec::new()
-        };
-
-        // Read stderr.
-        let stderr_bytes = if let Some(mut pipe) = stderr_pipe {
-            let mut buf = Vec::new();
-            let _ = pipe.read_to_end(&mut buf).await;
-            buf
-        } else {
-            Vec::new()
-        };
+        // Both pipes drain concurrently (see `drain_output`): a
+        // sequential drain deadlocks once a script out-writes either
+        // pipe buffer.
+        let (stdout_bytes, stderr_bytes) = drain_output(stdout_pipe, stderr_pipe).await;
 
         // Wait for exit. The reader owns the Child by value (no lock). When the
         // cancel path SIGKILLs the process group, wait() resolves with a
@@ -316,19 +326,16 @@ pub fn spawn_setup_command(
                         .change_context(LifecycleCommandError::InvalidPath { raw: raw.clone() })?
                 };
 
-                let canonical =
-                    strip_verbatim(tokio::fs::canonicalize(resolved_path.as_path()).await)
-                        .map_err(|e| {
-                            Report::new(e)
-                                .change_context(LifecycleCommandError::InvalidPath {
-                                    raw: raw.clone(),
-                                })
-                                .attach("setup command output is not a valid path")
-                        })?;
-
-                let typed = MarkedPathBuf::<Absolute>::new(canonical)
-                    .change_context(LifecycleCommandError::InvalidPath { raw: raw.clone() })
-                    .attach("canonicalized setup path is not absolute")?;
+                // CanonicalPath canonicalizes and strips the Windows verbatim
+                // prefix, so the CWD is a plain path (`C:\…` on Windows)
+                // comparable to every other path jinn builds. Identity on Unix.
+                let typed = CanonicalPath::from_path(resolved_path.as_path())
+                    .map(CanonicalPath::into_marked)
+                    .map_err(|e| {
+                        Report::new(e)
+                            .change_context(LifecycleCommandError::InvalidPath { raw: raw.clone() })
+                            .attach("setup command output is not a valid path")
+                    })?;
 
                 if !typed.is_dir() {
                     return Err(Report::new(LifecycleCommandError::NotADirectory { raw }));
@@ -375,6 +382,9 @@ pub fn spawn_teardown_command(
             .arg("-c")
             .arg(command)
             .current_dir(cwd.as_path())
+            // Same no-inherited-console-input contract as
+            // `spawn_setup_command` — see the comment there.
+            .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
 
@@ -398,25 +408,10 @@ pub fn spawn_teardown_command(
     let stderr_pipe = child.stderr.take();
 
     let handle = tokio::spawn(async move {
-        use tokio::io::AsyncReadExt;
-
-        // Read stdout.
-        let stdout_bytes = if let Some(mut pipe) = stdout_pipe {
-            let mut buf = Vec::new();
-            let _ = pipe.read_to_end(&mut buf).await;
-            buf
-        } else {
-            Vec::new()
-        };
-
-        // Read stderr.
-        let stderr_bytes = if let Some(mut pipe) = stderr_pipe {
-            let mut buf = Vec::new();
-            let _ = pipe.read_to_end(&mut buf).await;
-            buf
-        } else {
-            Vec::new()
-        };
+        // Both pipes drain concurrently (see `drain_output`): a
+        // sequential drain deadlocks once a script out-writes either
+        // pipe buffer.
+        let (stdout_bytes, stderr_bytes) = drain_output(stdout_pipe, stderr_pipe).await;
 
         // Wait for exit (reader owns the Child by value; no lock). When the
         // cancel path SIGKILLs the process group, wait() resolves naturally.

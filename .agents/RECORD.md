@@ -209,7 +209,7 @@ Entries are added or amended **only with human approval**.
 - (session) A session optionally carries a project association (a directory path) stamped only when the user picks a project at creation (the TUI projects UI or Discord /new, both backed by the curated `[[projects]]` list); it persists in the session metadata blob, is inherited by forks and subagents, and never follows cwd changes.
 - (keybinds) `[` / `]` + `s` jumps the selection to the previous/next Sources (annotation) entry in chat history, clamping at the ends without wrapping.
 - (testing) default_providers.toml is independent of code defaults: tests guarantee it parses, documents every config key, contains no dead keys, and its marked examples uncomment into a valid config. default_jinn.toml is documentation rather than authority, checked in one direction only: every key it documents resolves to a section jinn reads.
-- (prompts) Shipped prompts live in `res/prompts`, are embedded at compile time via the `BUNDLED` install catalogue, and `jinn install` seeds them to the user prompts dir, skipping files that already exist unless `--force`.
+- (prompts) Shipped prompts live in `res/prompts` and are embedded at compile time via the `BUNDLED` install catalogue; launch-time reconciliation writes them to the user prompts dir when missing or jinn-owned and stale.
 - (ui) The quake bar's session section shows both the currently-applied auto-prune token total and the pending accumulation total; the applied total derives from entry context-history at render time, excluding compaction and user-sourced excludes.
 - (preferences) Curated projects live in `jinn.toml` under `[[project.entry]]`, keyed by `path`; the pre-umbrella `projects` and `[[project]]` spellings are not read and are not migrated.
 - (history) The anchored-assistant auto-prune worker sources its prune radius from its own `[auto_prune.anchored_assistant]` config.
@@ -247,7 +247,7 @@ Entries are added or amended **only with human approval**.
 - (todo) The todo auto-prune worker force-includes the most recent `todo_*` tool loop and excludes all older ones, so exactly one current task list stays in context; user pins and `x` toggles supersede it.
 - (pickers) The task-list picker browses phases and tasks as a tree, hides postponed tasks, and Enter is a no-op.
 - (skills) jinn ships a bundled `jinn-usage` agent skill whose body routes to per-topic reference files (keybindings, workflows, configuration) installed beside its SKILL.md.
-- (skills) Bundled skill content is compile-time embedded, so installed skill docs match the running jinn binary; refreshing them requires `jinn install --force`.
+- (skills) Bundled skill content is compile-time embedded, so reconciled skill docs match the running jinn binary; stale jinn-owned copies refresh at launch, and edited ones reclaim only via `jinn install --builtins`.
 - (slices) The sidebar's section focus is a dynamic scope per section (sidebar/<section>); FocusScope and the TUI Scope have no static sidebar variants.
 - (slices) A sidebar section is derived from the dynamic scope id's name; ScopeStack is_sidebar and sidebar_section match scope ids with the sidebar slice prefix.
 - (tools) interactive_term_send and interactive_term_kill carry the calling chat session id and act only on that session's own terminal; no model-facing terminal id argument exists.
@@ -425,7 +425,9 @@ Entries are added or amended **only with human approval**.
 - (kernel) Every bus message is published through its own spawned task, so a Vec of messages is not an ordered sequence; two messages that depend on each other (push then pin) must be one message, because the second silently no-ops when it arrives first.
 - (sidebar) The sidebar's section order is stated in three places — the nav chain, the layout's registration table, and the live registration — and a test pins all three to the same order, since nothing stops them drifting apart otherwise.
 - (bot) The parent-completed trigger never cancels a running bot: a busy bot's in-flight turn is real work, so the trigger's seeded turn queues behind it. Cancelling there aborted a turn the user was waiting on and left a "Cancelled" entry behind.
-- (session) A message enqueued while a session is Sending/Streaming waits in its queue, and a later cancel drains that queue into the input box as editable draft text — so a message that was meant to run can surface as a draft the user never sent.
+- (turn-ledger) A message enqueued while a session is busy waits in its turn queue, and an ESC-ESC cancel drains the queue and the steering buffer into the input box as editable draft text — a message that was meant to run can surface as a draft the user never sent.
+- (turn-ledger) The ESC-ESC cancel dumps the session's steering buffer and turn queue into the input box as one editable draft, steered fragments first.
+- (cancel) A cancel from any publisher other than ESC-ESC leaves buffered steering and queue work in place to re-dispatch after the settle.
 - (bot) A bot's seed is its template with <prior_report> and <parent_id> tokens substituted; the renderer appends nothing and an empty template still dispatches a run.
 - (bot) A bot's <parent_id> token substitutes the parent's id, or "unavailable" when the bot has no parent.
 - (bot) A bot's behavior governs context only: reset force-excludes every non-pinned entry so the run sees pins alone, preserve appends to the conversation as it stands. A behavior never decides whether a run happens.
@@ -535,7 +537,11 @@ Entries are added or amended **only with human approval**.
 - (tools) A session can message any session by stable id: an idle manual bot starts a run seeded from its template plus the message text, a busy target queues the message without cancelling its run, a plain session receives the message as a display-only intersession entry, and an unknown id fails the tool call naming the target.
 - (tools) An agent can load a bot from a workflow-local TOML through `load_attendant`, which attaches it via the saved-bot picker's build path and stamps it with its source file; a bot loaded this way refuses to save into jinn.toml with a refusal naming that file.
 - (chat-log) An intersession message renders in the transcript carrying both the source and target session identities, and is excluded from LLM context and from search indexing.
-- (workflows) The autocoder workflow ships under `res/workflows/autocoder` and installs into the config dir's workflows folder by `jinn install` and `just install-defaults`; the repo tracks no project-local `.config` tree.
+- (workflows) The autodev workflow ships under res/workflows/autodev and reaches the config dir's workflows folder through launch-time reconciliation and just install-defaults; the repo tracks no project-local .config tree.
+- (resources) jinn reconciles the bundled res/ families (themes, personas, prompts, skills, workflows) to user directories on every launch, before actor wiring; resource loaders read only the filesystem.
+- (resources) Bundled-resource reconciliation compares three hashes per file — disk, the state-dir manifest (bundled-files.toml), and the binary's embedded bytes — and writes only files that are missing or jinn-owned and stale.
+- (resources) A bundled file whose content matches no manifest entry is user-owned: the reconciler never writes or deletes it, and jinn install --builtins is the only command that reclaims it.
+- (cli) jinn install writes only jinn.toml, providers.toml, and stream_rules.toml, each only when missing; jinn install --builtins force-restores the bundled resources, and --force no longer exists.
 - (workflows) Autocoder stage-worktree deletion is protected: an agent-supplied path reaches the filesystem only through a double-gated move into `.jinn-autocoder-trash/` (open checkout of this repo, under `worktrees/`), and the sole recursive delete is the placeholder-free `autocoder-trash-purge` entry, invoked only at the start of a run.
 - (input) The terminal reports a newline byte as Ctrl+J: raw mode makes crossterm parse 0x0A as Char('j') with ctrl rather than Enter.
 - (input) The chat input's Input-scope catch-all declines every ctrl- or alt-modified character, so a pasted newline (reported as Ctrl+J) inserts nothing.
@@ -623,3 +629,26 @@ Entries are added or amended **only with human approval**.
 - (sidebar) The "Session ID yanked" banner renders in the sessions, bots, and library sections, anchored above the focused section's cursor row.
 - (sidebar) The close-session and archive-tree prompts render only for the sessions section and anchor to the sessions cursor row.
 - (sidebar) The library section binds `i` to the shared activate-and-insert handler, landing in Input over a Normal base like the sessions and bots sections.
+- (canvas) The canvas HTTP server runs inside the running jinn instance on the canvas actor, bound lazily on the first `canvas` tool call; no detached canvas process exists, and pages die with the session.
+- (canvas) The `canvas` tool serves an artifact file and its result text carries the bind URL for the agent to echo to the user; a second serve swaps the served file on the live listener at the same URL, so at most one canvas server exists per jinn instance.
+- (canvas) The canvas actor publishes its dashboard row status as `server offline` when idle and `http://<bind> (<path>)` when serving; a refused serve lands as an error-toned note on the same row.
+- (canvas) Editing the served file or any file in its directory hot-reloads connected browsers over WebSocket; the watcher filters to write-shaped filesystem events so the server's own file reads never trigger a reload loop.
+- (canvas) Charting, diagram, math, physics, and widget JavaScript libraries are embedded pre-gzipped in the jinn binary and served from `/vendor/`, so canvas artifacts render with no network access.
+- (canvas) The canvas reload script is injected into the served artifact's HTML response only; artifact files on disk are never modified by the server.
+- (canvas) The artifact skeleton ships inside the canvas skill's references, not in the binary.
+- (config) The `[canvas]` config section ships active in `default_jinn.toml` with bind defaulting to `127.0.0.1:0` (OS-assigned per instance); an explicit value wins.
+- (skills) The canvas skill teaches the write-serve-edit workflow (file tools, then the `canvas` tool, then free editing) and which vendored library fits a given visual.
+- (tools) The `canvas` tool is a built-in that reaches the canvas actor through a handle stored in `Services.canvas_server`; the actor answers the serve ask with the resolved URL, and a missing path resolves against the session's working directory.
+- (arch) A slice is an integration unit with an activate or actor-install invoked by composition, and every slice implementation crate lives under crates/slices/*.
+- (arch) jinn-cli, jinn-install, jinn-mcp-overgraph, and jinn-tui are entrypoint infrastructure at the crates/* level, not slices: composition never integrates them.
+- (arch) jinn-session-history is shared library code at the crates/* level: HistoryEditor has no actor, cell, or activate, and jinn-session-state imports it directly.
+- (arch) Every production lock is a parking_lot primitive; std::sync::{RwLock, Mutex} survive only in test code.
+- (canvas) Canvas artifact paths are canonicalized through `server::canonical_artifact` (marked-path's `CanonicalPath`), so the canvas tool result and dashboard row never carry a Windows verbatim prefix and always agree.
+- (testing) Timing-sensitive tests wait by polling jinn_testutil::wait with an explicit budget; a single read after an action is a latency race, not an assertion.
+- (build) Raw `std::path::PathBuf` and the `Path`/`std::fs`/`tokio::fs` canonicalize family are denied workspace-wide by clippy (configured in `clippy.toml` at the repo root), with reasoned `#[expect]` carve-outs confined to infra seams: argv/OsString boundaries, env-var and PATH scanning, TOML schema compat, cargo env plumbing, and raw-std test oracles.
+- (build) `just lint-path-guard` fails on resource-kind path literals (`themes`, `personas`, `prompts`, `workflows`, `skills`) in string lookup/comparison positions and on backslash-spelled kind paths; literals fed to marked-path constructors and `include_dir`'s `get_file`/`get_entry` lookups stay legal.
+- (canvas) The canvas server accepts POST /metrics carrying any JSON object and accumulates events in a bounded, oldest-dropping buffer owned by the canvas actor.
+- (canvas) The served artifact response injects an authored vendor telemetry script (canvas-telemetry.js) alongside the reload snippet; artifact files on disk are never modified.
+- (chat) The first user message after canvas activity carries the accumulated canvas metrics as a canvas-metrics XML block prepended by the session-turn enqueue path, which drains and clears the buffer.
+- (chat) User entries in the chat-log view render through an ordered display-formatter registry tried before the markdown path, matching on the display text itself.
+- (chat) The canvas-metrics block inside a user entry renders verbatim — tags, numbering, and props — in the theme's metrics foreground, with any text after the block rendered as markdown.

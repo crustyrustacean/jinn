@@ -290,6 +290,37 @@ pub fn idle_command(seconds: u64) -> (&'static str, Vec<String>) {
     }
 }
 
+/// A working directory that is safe to hand to any spawned process.
+///
+/// On Windows, `cmd.exe` refuses a UNC working directory (`\\server\share`)
+/// and prints "UNC paths are not supported", relocating itself to the Windows
+/// directory — noise in every test log, and a process that started somewhere
+/// other than where the test meant. Tests checked out on a network share hit
+/// this through every probe these helpers produce. The per-user temp dir is a
+/// guaranteed-local path, so spawns given it never trip the guard. On Unix a
+/// cwd is only ever a string to a child, so the temp dir is equally harmless;
+/// returning one value on every platform keeps call sites uniform.
+///
+/// Spawn helpers with this when the test does not care where the child runs:
+///
+/// ```no_run
+/// # use std::process::Command;
+/// let (program, args) = jinn_testutil::platform::success_command();
+/// let status = Command::new(program)
+///     .args(&args)
+///     .current_dir(jinn_testutil::platform::local_cwd())
+///     .status()
+///     .expect("probe command runs");
+/// ```
+#[expect(
+    clippy::disallowed_types,
+    reason = "Command-wiring seam: feeds std::process::Command::current_dir, which takes a plain path"
+)]
+#[must_use]
+pub fn local_cwd() -> std::path::PathBuf {
+    std::env::temp_dir()
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -341,6 +372,7 @@ mod tests {
         // When it is spawned.
         let status = std::process::Command::new(program)
             .args(&args)
+            .current_dir(super::local_cwd())
             .status()
             .expect("success command runs");
 
@@ -358,6 +390,7 @@ mod tests {
         // When it is spawned.
         let status = std::process::Command::new(program)
             .args(&args)
+            .current_dir(super::local_cwd())
             .status()
             .expect("exit command runs");
 
@@ -374,6 +407,7 @@ mod tests {
         // When it is spawned.
         let mut child = std::process::Command::new(program)
             .args(&args)
+            .current_dir(super::local_cwd())
             .spawn()
             .expect("idle command runs");
 

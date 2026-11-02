@@ -3742,6 +3742,19 @@ impl ChatSessionState {
         self.core.storage.session_state = state;
     }
 
+    /// Whether this session belongs to the sidebar's Sessions list.
+    ///
+    /// A listed session is one that is in memory (`Loaded`) and is not a
+    /// Library member: the Sessions tree lists live conversations, while a
+    /// member has been *moved* to the Library section and is hidden from it.
+    /// Every consumer that filters the session map into the Sessions list
+    /// must ask this instead of restating the conjunction, so the list, the
+    /// memoization key, and the cursor's index space cannot disagree.
+    #[must_use]
+    pub fn is_listed(&self) -> bool {
+        self.core.storage.session_state == SessionState::Loaded && !self.core.storage.in_library
+    }
+
     /// Whether this session belongs to the sidebar's Library section.
     pub fn in_library(&self) -> bool {
         self.core.storage.in_library
@@ -3814,6 +3827,18 @@ impl ChatSessionState {
     ///
     pub fn is_tool_loop_disabled(&self) -> bool {
         self.core.ephemeral.is_tool_loop_disabled()
+    }
+
+    /// Request a buffer drain at this turn's cancel settle.
+    ///
+    pub fn request_cancel_drain(&mut self) {
+        self.core.ephemeral.request_cancel_drain();
+    }
+
+    /// Take the pending-cancel-drain request, clearing it.
+    ///
+    pub fn take_pending_cancel_drain(&mut self) -> bool {
+        self.core.ephemeral.take_pending_cancel_drain()
     }
 
     /// Resolve a [`ChatEntryId`] to its current index in history.

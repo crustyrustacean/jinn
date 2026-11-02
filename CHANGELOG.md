@@ -1,11 +1,26 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
-## (development)
+## 2026-11-01 v1.15.0
 
+- Add a metrics script to `canvas` injection which reports interactions back to the agent.
+  - Metrics are created specifically for the created `canvas` so the agent understands how the user is interacting with the page. For example, the agent may generate a multiple choice quiz and the choices made by the user can be reported back.
+  - No metrics are sent to any third parties. Everything captured is reported back to the agent is visible and only shown when you send a message to the agent after interacting with the `canvas`.
+
+## 2026-10-31 v1.14.0
+
+- `jinn` now ships several JavaScript packages for making interactive and visual web pages.
+  - The `canvas` tool starts a server to serve the canvas page with live reload.
+  - The `canvas` skill provides general instructions on when and how to use the `canvas`.
 - (dev): upgrade to `trouper` v0.14.0
 - Fix: Stream errors now change the session state from streaming to idle
 - `y` (yank session ID) now works in the Library section
 - `i` (focus then enter Insert mode) now works in the Library section
+- It should no longer be possible to have an empty session list in the sidebar
+- Fix: `ESC ESC` behavior broke in v1.10.0 and has been restored.
+  - `ESC ESC` drains queue+steering buffer into the chat input box.
+- Bundled resources now self-update on launch: missing and outdated files are installed automatically. Edited files are detected and left untouched.
+  - `jinn install` now only seeds missing config files. `--force` is replaced by `--builtins`, which overwrites local edits with the shipped versions.
+  - Migration: existing users should run `jinn install --builtins` once to enable automatic update of all resource files.
 
 ## 2026-10-29 v1.13.0
 
