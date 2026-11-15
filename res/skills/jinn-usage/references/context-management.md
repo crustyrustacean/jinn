@@ -1,98 +1,132 @@
 # Context Management
 
-jinn gives you direct control over what enters the LLM's context window. Every
-chat entry (user message, assistant reply, tool call, tool result) can be
-pinned, excluded, or reset individually — and background workers prune
-automatically. All bindings below are normal mode unless stated.
+You control what enters the LLM's context window. Every chat entry (user
+message, assistant reply, tool call, tool result) can be pinned, excluded,
+or reset individually, and background workers prune the rest automatically.
+All bindings below are normal mode unless stated.
 
-## Selecting an entry
+## Select an entry
 
 - `j` / `k` move the selection down / up the chat history.
-- Jumps: `]u`/`[u` (user messages), `]p`/`[p` (pinned), `]c`/`[c`
-  (compaction summaries), `]s`/`[s` (Sources annotations), `gg`/`G` (top/bottom).
-  Each `]` jumps forward and its `[` partner jumps backward; the Sources jump
-  clamps at both ends rather than wrapping.
+- **Jumps land on kinds of entries**: `]u`/`[u` user messages, `]p`/`[p`
+  pinned, `]c`/`[c` compaction summaries, `]s`/`[s` Sources annotations,
+  `gg`/`G` top/bottom. Each `]` jumps forward and its `[` partner backward.
+  Jumps clamp at the ends of history.
 
-## Pinning an entry
+## Pin an entry
 
-Pinned entries are **always** included in the LLM context — auto-prune workers
-and compaction skip them. Pin durable facts: a plan, API contract, naming
-decision, or correction you want enforced for the rest of the session.
+**A pinned entry is always in context.** Auto-prune workers and compaction
+skip it. Pin durable facts: a plan, an API contract, a naming decision, a
+correction you want enforced for the rest of the session.
 
-1. Focus the chat history (normal mode) and select the entry with `j`/`k`
-   (or a `]`/`[` jump).
-2. Press `p` to pin it.
+1. Select the entry with `j`/`k` (or a `]`/`[` jump).
+2. Press `p`. Pressing `p` on a pinned entry unpins it.
 
-Pins apply to a whole **tool loop as a unit** — pinning a tool call also pins
-its matching tool result, so the pair never desyncs in context.
+**A pin takes the whole tool loop.** Pinning a tool call pins its matching
+result too, so the pair stays intact in context.
 
-### Choosing where a pin sits
+### Choose where the pin sits
 
-Position matters: entries nearer the end of the context have more influence
-on the next reply, and pinning mid-history can change how the model reads
-later messages. To reposition:
+Position matters. Entries nearer the end of context carry more weight in the
+next reply, and a pin dropped mid-history can change how the model reads the
+messages after it. To reposition:
 
-1. Focus the sidebar with `<c-l>`, then `J`/`K` until the **Pins** section is
-   highlighted (or jump straight there and browse).
-2. `j`/`k` to select the pin, then:
-   - `t` — move to the **top** of context (strongest "always in view" signal).
-   - `b` — move to the **bottom** of context (highest recency weight, closest
-     to the newest messages).
-   - `r` — move to a **relative** position (near where the entry sits in
-     history).
-   - `m` — **cycle** through positions.
+1. Press `<c-l>` for the sidebar, then `J`/`K` until **Pins** is highlighted
+   (or jump straight there and browse).
+2. Select a pin with `j`/`k`, then:
+   - `t`: **top** of context. Strongest "always in view" signal.
+   - `b`: **bottom** of context. High recency weight, and it splices in
+     before the trailing tool run / final turn, which keeps the loop whole.
+   - `r`: **relative** position, near where the entry sits in history.
+   - `m`: **cycle** through positions.
+   - `u`: unpin the selected entry.
 3. `<enter>` (or `<esc>`/`<c-h>`) leaves the sidebar and returns to the chat,
    restoring your history position.
 
-**Effect of each position:**
-- *Top*: reads like a standing rule; suits project-wide constraints, but is
-  far from the current turn.
-- *Bottom*: closest to the newest messages, so it has the most weight in the
-  next reply; suits "do X now" instructions. Moves up as the conversation
-  grows.
-- *Relative*: stays near where the entry sits in history; suits comments that
-  explain a specific block of history.
+**What each position buys:**
+- *Top*: reads like a standing rule. Best for project-wide constraints; far
+  from the current turn.
+- *Bottom*: among the newest messages, spliced in ahead of the trailing
+  tool run / final assistant turn, so the loop stays whole and the pin sits
+  in the highest-weight material of the next reply. Best for "do X now".
+- *Relative*: stays beside the history it explains. Best for comments on a
+  specific block.
 
-### Jumping among pins
+### Jump among pins
 
-`]p` / `[p` snap the selection to the next / previous pinned entry without
-opening the sidebar.
+`]p` / `[p` snap the selection to the next / previous pinned entry, straight
+from the chat view.
 
-## Excluding an entry
+## Exclude an entry
 
-- `x` toggles the selected entry **out of** the LLM context ("ignore"). Useful
-  when you sent a message you do not want the model to see: the text stays
-  visible in the TUI but does not enter context.
-- `r` resets the entry to default handling (auto-prune workers decide again).
-- Excluded entries stay visible in the TUI (collapsed, dimmed by default);
-  `h` toggles visibility of the collapsed blocks.
-- Like pinning, `x` applies to a tool call + result as one unit.
+- **`x` toggles an entry out of context and back in** (`ForcedExclude` ↔
+  `ForcedInclude`), advancing the cursor each press. Use it on a message you
+  want hidden from the model: the text stays visible in the TUI and stays
+  out of context. Hold `x` and the captured state sweeps across successive
+  entries (presses within 100ms), skipping pinned and collapsed entries.
+- `r` resets the entry to default handling: the auto-prune workers decide
+  again.
+- **Excluded entries stay visible**, collapsed and dimmed by default; `h`
+  toggles the collapsed blocks.
+- **`x` takes the loop too**: a tool call and its result toggle as one unit,
+  like pinning.
 
 ## Isolate a single exchange: `gci`
 
-To act on **only** one entry — a plan, or a correction — select it and press
-`gci` (a sequence: `g`, `c`, `i`). jinn force-includes that entry's tool loop
-and force-excludes every other non-pinned entry; pins are untouched. The
-context then contains only that exchange. Undo per-entry with `x`/`r`, or
-start a new session (`n`).
+Act on only one entry (a plan, a correction): select it and press `gci`
+(`g`, `c`, `i`). jinn force-includes that entry's tool loop and
+force-excludes every other entry, with pins exempt. The context is the
+isolated exchange plus your pins. Pressing `p` right after (`gcip`) also
+pins the isolated entry. Undo per-entry with `x`/`r`, or start a new session
+(`n`).
 
-## Background pruning and compaction
+## Tune pruning and compaction
 
-jinn prunes stale detail automatically so context stays small and prefix-cache
-friendly; compaction (summarizing) exists only as a backstop and should almost
-never fire during coding. Related tuning lives in `jinn.toml`:
+jinn prunes stale detail automatically, keeping context small and
+prefix-cache friendly. Handoff compaction (summarizing the history) is
+the backstop; during coding, pruning keeps usage below the trigger, so
+the handoff rarely fires. The tuning lives in `jinn.toml`:
 
-- `[context_curation.auto_prune.*]` — per-strategy rules (stale reads, repeated
-  edits, old tool output, trivial assistant chatter, regex rules...), each with
-  `enabled`, `min_age`, and per-strategy thresholds.
-- `[context_curation.auto_prune] accumulation_threshold_tokens` — prune
-  context-mutations are batched until this token budget accumulates, protecting
+- `[context_curation.auto_prune.*]`: per-strategy rules (stale reads,
+  repeated edits, old tool output, trivial assistant chatter, regex
+  rules...), each with `enabled`, `min_age`, and per-strategy thresholds.
+- `[context_curation.auto_prune] accumulation_threshold_tokens`: prune
+  mutations batch until this token budget accumulates, protecting
   prefix-cache hits.
-- `[context_curation.compaction]` — `threshold` (usage fraction that triggers
-  compaction), `reserve_tokens`, `fallback_context_window`, and an optional
-  compaction `model`.
+- `[context_curation.handoff_compaction]`: "handoff" compaction
+  (opt-in via `enabled = true`). When enabled, at the next
+  model-request boundary after accumulated work reaches
+  `workset_trigger_tokens`, jinn asks the same session model to write
+  a handoff recap of the work so far — no tools are callable during
+  that turn — then drops everything except pins and the recap from
+  context and continues: your own past messages fold away with the rest
+  of the conversation, and the recap is the sole task carrier. The fire
+  line is
+  work-relative: it counts the assembled prompt minus its system share
+  (system prompt, tools, skills), so a large system floor never sits
+  at the fire line and cannot eat the budget. An unset
+  `workset_trigger_tokens` never fires. Right after a fold the size
+  cache is invalidated, so the gate passes until the next honest size
+  recalculation — a fold never re-fires on the fresh, tiny context.
+  The recap turn is visible in the transcript and jumpable with `]c`/`[c`
+  like any compaction summary; a handoff cancelled mid-turn applies
+  nothing and the gate re-fires on the next request. A handoff fired
+  mid-loop (while the model is working through tool calls) keeps the
+  turn live: the transcript shows the recap as one round inside the
+  same turn, with no idle flash between it and the continuation; a
+  handoff fired at an idle boundary is its own turn, and the message
+  you sent (or your queued request) dispatches right after the fold.
+- **The trigger must stay above the accumulation threshold.** A
+  `workset_trigger_tokens` at or below
+  `accumulation_threshold_tokens` would fold the context before the
+  pruners' batch ever flushes, silently disabling every auto-pruner.
+  jinn refuses that configuration outright: launch aborts naming both
+  values, a live edit creating the conflict is refused (the previous
+  config stays active), and the pruner-accumulation popup cannot save
+  such a threshold.
 
-See `configuration.md` for how to edit these and the restart caveat.
+See `configuration.md` for how to edit these; they are re-read at next
+use, so an edit applies by the next compaction.
 
 ## Related bindings
 
@@ -100,22 +134,21 @@ See `configuration.md` for how to edit these and the restart caveat.
 | --- | --- |
 | `e` | Expand / collapse the selected tool entry |
 | `a` | Toggle the audit popup for the selected entry |
-| `y` | Yank the selected entry's raw content |
+| `y` | Yank the selected entry's content (a tool call yanks its arguments; a tool result yanks its full untruncated content) |
 | `gcp` | Set the pruner accumulation threshold interactively |
 
-## The audit popup (`a`)
+## Audit an entry (`a`)
 
-`a` on a selected entry opens a read-only audit popup describing how that
-entry was produced. Every provider-produced entry carries the concrete
-model that generated it, so the popup shows a `Model:` line; when the
-entry's model differs from the model the session requested at dispatch
-time (OpenRouter's `auto` routing strategy is the usual cause), an
-indented `via <requested>` line renders beneath it.
+`a` on a selected entry opens a read-only popup showing how that entry was
+produced. When its model stamps resolve, a `Model:` line names the concrete
+model that generated it. If that model differs from the model the session
+requested at dispatch time (OpenRouter's `auto` routing strategy is the
+usual cause), an indented `via <requested>` line renders beneath it. With
+unresolved stamps (unpaired or unstamped), the popup omits the model line.
 
 ## Pins in the sidebar
 
-The sidebar **Pins** section shows one row per tool **result** of a pinned
-tool loop (plus one row per tool call still missing its result, and the
-loop's opener for a standalone pinned entry), so pinning a saved plan or a
-skill load produces one row, not one row per entry. Pin state still applies
-to the whole loop.
+The **Pins** section shows one row per standalone pinned entry, one row per
+completed tool **result** of a pinned loop, and one row per tool call still
+missing its result. Pin a saved plan or a skill load and the loop
+contributes one row; pin state still applies to the whole loop.

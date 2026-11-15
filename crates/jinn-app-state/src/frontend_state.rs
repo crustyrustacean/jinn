@@ -73,10 +73,6 @@ pub struct FrontendState {
     /// OWNER: sidebar route action; IntentHandler dismisses it for unrelated actions.
     pub archive_tree_prompt: Option<jinn_sidebar_msg::ArchiveTreePrompt>,
 
-    /// Whether the "Session ID yanked" confirmation banner is showing.
-    /// OWNER: sidebar route action sets; IntentHandler dismisses.
-    pub session_id_yank_popup: bool,
-
     /// All picker state - grouped for independent evolution.
 
     /// Creation stash for the next session from the projects UI.
@@ -111,7 +107,6 @@ impl Default for FrontendState {
             cancel_stream_prompt: false,
             close_session_prompt: false,
             archive_tree_prompt: None,
-            session_id_yank_popup: false,
             pending_creation: None,
 
             sidebar_width: 30,
@@ -153,6 +148,19 @@ impl FrontendState {
         let slices = self.scope_focus.get()?;
         slices.reader::<jinn_chat_log_view_msg::EntryLineCache>(
             &jinn_chat_log_view_msg::entry_line_cache_slot(),
+        )
+    }
+
+    /// Resolves the chat log's graphics-state cell, if the handle is
+    /// attached and the cell catalog registered it.
+    ///
+    /// Same ownership story as the line cache: a `jinn-chat-log-view` cell
+    /// rather than a field here — written by that slice's render pass and
+    /// by jinn-tui's startup query and suspend/restore edges.
+    pub fn graphics_cell(&self) -> Option<TypedCell<jinn_chat_log_view_msg::GraphicsState>> {
+        let slices = self.scope_focus.get()?;
+        slices.reader::<jinn_chat_log_view_msg::GraphicsState>(
+            &jinn_chat_log_view_msg::chat_log_graphics_slot(),
         )
     }
 

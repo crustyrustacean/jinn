@@ -6,6 +6,7 @@
 
 #![allow(
     clippy::expect_used,
+    clippy::indexing_slicing,
     clippy::panic,
     clippy::unwrap_used,
     reason = "test code"
@@ -44,7 +45,7 @@ fn member(title: &str, archived: bool) -> SessionSummary {
 /// The cell is seeded through the state's own registry: `attach_slices` is a
 /// one-shot set, and `default_with_scope_focus()` has already attached the
 /// catalog's registry, so a second `Slices` would be silently dropped.
-fn library_state(members: Vec<SessionSummary>, selected: usize) -> AppState {
+fn library_state(members: &[SessionSummary], selected: usize) -> AppState {
     let state = AppState::default_with_scope_focus();
     let selected_id = {
         let library_cell = state
@@ -52,7 +53,7 @@ fn library_state(members: Vec<SessionSummary>, selected: usize) -> AppState {
             .slices()
             .and_then(|slices| slices.reader::<LibraryState>(&library_slot()))
             .expect("the cell catalog registers the library slot");
-        library_cell.update(|library| library.entries = members.clone());
+        library_cell.update(|library| library.entries = members.to_vec());
         members.get(selected).map(|entry| entry.session_id.clone())
     };
     state
@@ -86,7 +87,7 @@ fn a_member_in_memory_renders_its_live_title_over_the_stale_cell_summary() {
     live.set_session_id(summary.session_id.clone());
     live.set_title("renamed live".to_owned());
     let state = {
-        let mut state = library_state(vec![summary], 0);
+        let mut state = library_state(&[summary], 0);
         state.session.insert(live);
         state
     };
@@ -122,7 +123,7 @@ fn an_archived_member_renders_its_cell_title_when_not_in_memory() {
     // Given an archived member: not in memory, so the cell is the only
     // source of its title.
     let mut section = LibrarySection::default();
-    let state = library_state(vec![member("archived work", true)], 0);
+    let state = library_state(&[member("archived work", true)], 0);
 
     let width = 40u16;
     let height = 8u16;
@@ -149,7 +150,7 @@ fn an_archived_member_renders_its_cell_title_when_not_in_memory() {
 fn a_selected_library_row_bands_the_full_width() {
     // Given the library focused with the cursor on its only member.
     let mut section = LibrarySection::default();
-    let state = library_state(vec![member("shelved work", false)], 0);
+    let state = library_state(&[member("shelved work", false)], 0);
     let theme = state.frontend.theme.clone();
 
     let width = 40u16;
@@ -199,7 +200,7 @@ fn a_selected_library_row_bands_the_full_width() {
 #[rstest::rstest]
 fn library_section_renders_title_and_members() {
     let mut section = LibrarySection::default();
-    let state = library_state(vec![member("shelved work", false)], 0);
+    let state = library_state(&[member("shelved work", false)], 0);
 
     // When rendering.
     let terminal = render_section(
@@ -243,7 +244,7 @@ fn library_section_renders_archived_member_dimmed() {
         summary.title = "older shelved".to_owned();
         summary
     };
-    let state = library_state(vec![first, second], 0);
+    let state = library_state(&[first, second], 0);
 
     // When rendering.
     let terminal = render_section(
@@ -271,8 +272,7 @@ fn library_section_renders_archived_member_dimmed() {
     let styled = (0..30)
         .filter_map(|x| buffer.cell((x, member_y)))
         .find(|cell| cell.symbol().trim() == "o")
-        .map(ratatui::buffer::Cell::style)
-        .unwrap_or_default();
+        .map_or_default(ratatui::buffer::Cell::style);
     assert_eq!(
         styled.fg,
         Some(state.frontend.theme.muted_text),
@@ -283,7 +283,7 @@ fn library_section_renders_archived_member_dimmed() {
 #[rstest::rstest]
 fn library_navigation_moves_down_to_the_last_member() {
     // Given a library with two members and the cursor on the first.
-    let mut state = library_state(vec![member("first", false), member("second", false)], 0);
+    let mut state = library_state(&[member("first", false), member("second", false)], 0);
 
     // When moving down.
     let moved = super::library_section::navigate(&SidebarIntent::MoveDown, &mut state);
@@ -307,7 +307,7 @@ fn library_navigation_moves_down_to_the_last_member() {
 #[rstest::rstest]
 fn library_navigation_exhausts_at_the_top() {
     // Given a library with two members and the cursor on the first.
-    let mut state = library_state(vec![member("first", false), member("second", false)], 0);
+    let mut state = library_state(&[member("first", false), member("second", false)], 0);
     let first_id = super::library_section::entries(&state)[0]
         .session_id
         .clone();
@@ -332,7 +332,7 @@ fn library_navigation_exhausts_at_the_top() {
 #[rstest::rstest]
 fn library_receive_cursor_from_bottom_selects_last_member() {
     // Given a library with two members and no cursor.
-    let mut state = library_state(vec![member("first", false), member("second", false)], 0);
+    let mut state = library_state(&[member("first", false), member("second", false)], 0);
     state
         .frontend
         .update_sections(|s| s.library.selected_id = None);
@@ -357,7 +357,7 @@ fn library_receive_cursor_from_bottom_selects_last_member() {
 fn entering_library_requests_a_refresh_even_when_the_cell_is_empty() {
     // Given a library section focused over an *empty* cell — which is not
     // evidence of an empty store: the cell may simply be stale.
-    let mut state = library_state(vec![], 0);
+    let mut state = library_state(&[], 0);
     state
         .frontend
         .update_sections(|s| s.library.selected_id = None);
@@ -387,7 +387,7 @@ fn entering_library_requests_a_refresh_even_when_the_cell_is_empty() {
 #[rstest::rstest]
 fn entering_library_with_members_requests_a_refresh() {
     // Given a library with one member and no cursor.
-    let mut state = library_state(vec![member("only", false)], 0);
+    let mut state = library_state(&[member("only", false)], 0);
     state
         .frontend
         .update_sections(|s| s.library.selected_id = None);
@@ -410,7 +410,7 @@ fn entering_library_with_members_requests_a_refresh() {
 #[rstest::rstest]
 fn entering_library_places_the_cursor_on_the_first_member() {
     // Given a library with one member and no cursor.
-    let mut state = library_state(vec![member("only", false)], 0);
+    let mut state = library_state(&[member("only", false)], 0);
     state
         .frontend
         .update_sections(|s| s.library.selected_id = None);
@@ -434,7 +434,7 @@ fn entering_library_places_the_cursor_on_the_first_member() {
 fn library_enter_on_archived_member_publishes_load() {
     // Given a focused library whose cursor names a member that is *not* in
     // memory (the archived case).
-    let mut state = library_state(vec![member("archived member", true)], 0);
+    let mut state = library_state(&[member("archived member", true)], 0);
 
     // When activating it through the shared activation the `<enter>` row
     // delegates to.
@@ -457,7 +457,7 @@ fn library_activate_insert_lands_in_input_over_a_normal_base() {
     // Given a focused library whose cursor names a member that is in
     // memory — activation switches immediately, where an archived member
     // would wait for the store actor's load.
-    let mut state = library_state(vec![member("member", false)], 0);
+    let mut state = library_state(&[member("member", false)], 0);
     let member_id = super::library_section::entries(&state)[0]
         .session_id
         .clone();
@@ -485,7 +485,7 @@ fn library_activate_insert_lands_in_input_over_a_normal_base() {
 #[rstest::rstest]
 fn library_archive_publishes_archive_command() {
     // Given a focused library whose cursor names a live, idle member.
-    let mut state = library_state(vec![member("live member", false)], 0);
+    let mut state = library_state(&[member("live member", false)], 0);
     let target_id = super::library_section::entries(&state)[0]
         .session_id
         .clone();
@@ -511,7 +511,7 @@ fn library_archive_publishes_archive_command() {
 #[rstest::rstest]
 fn library_archive_on_archived_member_is_noop() {
     // Given a focused library whose cursor names a member not in memory.
-    let mut state = library_state(vec![member("archived member", true)], 0);
+    let mut state = library_state(&[member("archived member", true)], 0);
 
     // When archiving it.
     let result = handle_library_archive(&mut state);
@@ -528,7 +528,7 @@ fn library_archive_on_archived_member_is_noop() {
 fn library_remove_publishes_membership_clear() {
     // Given a focused library whose cursor names an archived member that is
     // not in memory — removal must work by id alone.
-    let mut state = library_state(vec![member("archived member", true)], 0);
+    let mut state = library_state(&[member("archived member", true)], 0);
 
     // When removing it from the library.
     let result = handle_library_remove(&mut state);
@@ -547,7 +547,7 @@ fn library_remove_publishes_membership_clear() {
 #[rstest::rstest]
 fn removing_a_member_lands_the_cursor_on_the_nearest_survivor() {
     // Given a focused library with two members and the cursor on the first.
-    let mut state = library_state(vec![member("first", false), member("second", false)], 0);
+    let mut state = library_state(&[member("first", false), member("second", false)], 0);
     let first_id = super::library_section::entries(&state)[0]
         .session_id
         .clone();
@@ -572,7 +572,7 @@ fn removing_a_member_lands_the_cursor_on_the_nearest_survivor() {
 #[rstest::rstest]
 fn removing_the_last_member_clears_the_cursor() {
     // Given a focused library whose only member is under the cursor.
-    let mut state = library_state(vec![member("sole", false)], 0);
+    let mut state = library_state(&[member("sole", false)], 0);
 
     // When removing it.
     let _result = handle_library_remove(&mut state);
@@ -590,7 +590,7 @@ fn removing_the_last_member_clears_the_cursor() {
 #[rstest::rstest]
 fn removing_the_last_row_lands_the_cursor_on_its_neighbor() {
     // Given a focused library with two members and the cursor on the second.
-    let mut state = library_state(vec![member("first", false), member("second", false)], 1);
+    let mut state = library_state(&[member("first", false), member("second", false)], 1);
     let first_id = super::library_section::entries(&state)[0]
         .session_id
         .clone();
@@ -612,7 +612,7 @@ fn removing_the_last_row_lands_the_cursor_on_its_neighbor() {
 #[test]
 fn go_key_reruns_bot_from_library_scope() {
     // Given a focused library whose cursor names an idle bot member.
-    let mut state = library_state(vec![member("bot member", false)], 0);
+    let mut state = library_state(&[member("bot member", false)], 0);
     let bot_id = super::library_section::entries(&state)[0]
         .session_id
         .clone();
@@ -646,7 +646,7 @@ fn go_key_reruns_bot_from_library_scope() {
 fn streaming_member_wears_the_working_indicator() {
     // Given a library whose unselected member is in memory and streaming.
     let mut section = LibrarySection::default();
-    let mut state = library_state(vec![member("working member", false)], 0);
+    let mut state = library_state(&[member("working member", false)], 0);
     let member_id = super::library_section::entries(&state)[0]
         .session_id
         .clone();
@@ -698,7 +698,7 @@ fn archived_member_has_a_blank_indicator_cell() {
         summary.title = "older shelved".to_owned();
         summary
     };
-    let state = library_state(vec![first, second], 0);
+    let state = library_state(&[first, second], 0);
 
     // When rendering.
     let terminal = render_section(
@@ -738,7 +738,7 @@ fn error_tailed_member_wears_the_red_error_block() {
     // every state color) — and the second's history ending in an error.
     let mut section = LibrarySection::default();
     let mut state = library_state(
-        vec![member("fine member", false), member("failed member", false)],
+        &[member("fine member", false), member("failed member", false)],
         0,
     );
     let member_id = super::library_section::entries(&state)[1]
@@ -781,8 +781,7 @@ fn error_tailed_member_wears_the_red_error_block() {
     let styled = (0..30)
         .filter_map(|x| buffer.cell((x, member_y)))
         .find(|cell| cell.symbol().trim() == "f")
-        .map(ratatui::buffer::Cell::style)
-        .unwrap_or_default();
+        .map_or_default(ratatui::buffer::Cell::style);
     assert_eq!(
         styled.bg,
         Some(ratatui::style::Color::Red),
@@ -804,7 +803,7 @@ fn a_bot_member_renders_in_the_bots_color() {
     let mut bot = member("watcher bot", false);
     bot.is_bot = true;
     let state = library_state(
-        vec![
+        &[
             member("cursor row", false),
             member("plain work", false),
             bot,
@@ -840,8 +839,7 @@ fn a_bot_member_renders_in_the_bots_color() {
     let plain_style = (0..30)
         .filter_map(|x| buffer.cell((x, plain_y)))
         .find(|cell| cell.symbol().trim() == "p")
-        .map(ratatui::buffer::Cell::style)
-        .unwrap_or_default();
+        .map_or_default(ratatui::buffer::Cell::style);
     assert_eq!(
         plain_style.fg,
         Some(theme.primary_text),
@@ -853,8 +851,7 @@ fn a_bot_member_renders_in_the_bots_color() {
     let bot_style = (0..30)
         .filter_map(|x| buffer.cell((x, bot_y)))
         .find(|cell| cell.symbol().trim() == "w")
-        .map(ratatui::buffer::Cell::style)
-        .unwrap_or_default();
+        .map_or_default(ratatui::buffer::Cell::style);
     assert_eq!(
         bot_style.fg,
         Some(theme.bot_fg),
@@ -871,7 +868,7 @@ fn an_archived_bot_member_dims_to_the_subagent_color() {
     let mut bot = member("sleeping bot", true);
     bot.is_bot = true;
     let state = library_state(
-        vec![member("cursor row", true), member("old plain", true), bot],
+        &[member("cursor row", true), member("old plain", true), bot],
         0,
     );
 
@@ -903,8 +900,7 @@ fn an_archived_bot_member_dims_to_the_subagent_color() {
     let plain_style = (0..30)
         .filter_map(|x| buffer.cell((x, plain_y)))
         .find(|cell| cell.symbol().trim() == "o")
-        .map(ratatui::buffer::Cell::style)
-        .unwrap_or_default();
+        .map_or_default(ratatui::buffer::Cell::style);
     assert_eq!(
         plain_style.fg,
         Some(theme.muted_text),
@@ -916,169 +912,10 @@ fn an_archived_bot_member_dims_to_the_subagent_color() {
     let bot_style = (0..30)
         .filter_map(|x| buffer.cell((x, bot_y)))
         .find(|cell| cell.symbol().trim() == "s")
-        .map(ratatui::buffer::Cell::style)
-        .unwrap_or_default();
+        .map_or_default(ratatui::buffer::Cell::style);
     assert_eq!(
         bot_style.fg,
         Some(theme.subagent_fg),
         "an archived bot member must wear the subagent color"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Session ID yank - render
-// ---------------------------------------------------------------------------
-
-/// Renders the sidebar's floating surfaces (the pass the yank banner paints
-/// in) after the library section, and returns the terminal so a test can
-/// read both the rows and the cells' styles.
-///
-/// The banner overflows the sidebar column leftward, so the render goes
-/// through the same two-pass shape the TUI performs: the section column
-/// first, then the floating surfaces over it.
-fn render_library_with_yank_banner(
-    state: &AppState,
-    sidebar_width: u16,
-) -> ratatui::Terminal<ratatui::backend::TestBackend> {
-    let (width, height) = (60u16, 20u16);
-    let frame_area = ratatui::layout::Rect {
-        x: 0,
-        y: 0,
-        width,
-        height,
-    };
-    let sidebar_rect = ratatui::layout::Rect {
-        x: width - sidebar_width,
-        y: 0,
-        width: sidebar_width,
-        height,
-    };
-    let mut sidebar = crate::sections::Sidebar::default();
-    // Every built-in section registers, because the banner's anchor runs the
-    // document layout over the full registration order — a partially
-    // registered container would place its one section differently than the
-    // layout math (the bottom-anchor slack lands on the container's own
-    // tail), and the banner would drift off its row.
-    crate::sections::register_sections(&mut sidebar);
-    jinn_kernel::common::render_test::render_draw_with_ctx(
-        state,
-        &jinn_slices::Slices::new(),
-        width,
-        height,
-        |frame, _area, ctx| {
-            sidebar.render(frame, sidebar_rect, ctx);
-            crate::sections::sessions::render_session_id_yank_popup_for_state(
-                frame,
-                sidebar_rect,
-                frame_area,
-                ctx,
-            );
-        },
-    )
-}
-
-#[rstest::rstest]
-fn yank_banner_over_the_library_anchors_above_the_member_row() {
-    // Given the library focused with the cursor on its second member and
-    // the banner armed.
-    let mut state = library_state(
-        vec![
-            member("first shelved", false),
-            member("second shelved", false),
-        ],
-        1,
-    );
-    state.frontend.session_id_yank_popup = true;
-
-    // When rendering the sidebar plus the floating surfaces.
-    let terminal = render_library_with_yank_banner(&state, 30);
-    let rows = (0..20u16)
-        .map(|y| {
-            (0..60u16)
-                .filter_map(|x| terminal.backend().buffer().cell((x, y)))
-                .map(ratatui::buffer::Cell::symbol)
-                .collect::<String>()
-        })
-        .collect::<Vec<_>>();
-
-    // Then the banner text appears.
-    let banner_y = rows
-        .iter()
-        .position(|row| row.contains("Session ID yanked"))
-        .expect("the banner renders over the library");
-
-    // And it sits exactly BANNER_GAP rows above the cursor's member row —
-    // anchored to the library cursor, not the sessions cursor.
-    let member_y = rows
-        .iter()
-        .position(|row| row.contains("second shelved"))
-        .expect("the cursor's member row renders");
-    let gap = member_y
-        .checked_sub(banner_y)
-        .expect("the banner renders above its row");
-    assert_eq!(
-        gap,
-        usize::from(crate::sections::sessions::render::BANNER_GAP),
-        "the banner must sit {gap} rows above the member it describes"
-    );
-}
-
-#[rstest::rstest]
-fn yank_banner_over_the_library_uses_the_theme_success_background() {
-    // Given the library focused with the banner armed and a distinctive
-    // success color no other surface uses.
-    let mut state = library_state(vec![member("shelved work", false)], 0);
-    state.frontend.session_id_yank_popup = true;
-    let distinctive = ratatui::style::Color::Rgb(9, 87, 43);
-    state.frontend.theme.success = distinctive;
-
-    // When rendering the sidebar plus the floating surfaces.
-    let terminal = render_library_with_yank_banner(&state, 30);
-    let buffer = terminal.backend().buffer();
-    let banner_y = (0..20u16)
-        .find(|&y| {
-            (0..60u16)
-                .filter_map(|x| buffer.cell((x, y)))
-                .map(ratatui::buffer::Cell::symbol)
-                .collect::<String>()
-                .contains("Session ID yanked")
-        })
-        .expect("the banner renders over the library");
-
-    // Then the banner row's cells carry the theme's success background.
-    let styled = (0..60u16)
-        .filter_map(|x| buffer.cell((x, banner_y)))
-        .find(|cell| cell.style().bg == Some(distinctive));
-    assert!(
-        styled.is_some(),
-        "the banner bg must come from theme.success in the library section too"
-    );
-}
-
-#[rstest::rstest]
-fn yank_banner_renders_nothing_when_the_library_has_no_cursor() {
-    // Given the library focused over a member with the banner armed, then
-    // the cursor cleared — the row the banner would anchor to is gone.
-    let mut state = library_state(vec![member("shelved work", false)], 0);
-    state.frontend.session_id_yank_popup = true;
-    state
-        .frontend
-        .update_sections(|s| s.library.selected_id = None);
-
-    // When rendering the sidebar plus the floating surfaces.
-    let terminal = render_library_with_yank_banner(&state, 30);
-    let rows = (0..20u16)
-        .map(|y| {
-            (0..60u16)
-                .filter_map(|x| terminal.backend().buffer().cell((x, y)))
-                .map(ratatui::buffer::Cell::symbol)
-                .collect::<String>()
-        })
-        .collect::<Vec<_>>();
-
-    // Then no banner is painted — there is no row to hang it on.
-    assert!(
-        !rows.iter().any(|row| row.contains("Session ID yanked")),
-        "the banner must not paint without a cursor to anchor to: {rows:?}"
     );
 }

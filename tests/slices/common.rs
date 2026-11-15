@@ -8,7 +8,14 @@
 //! the tui crate) because that is the only place a test may depend on
 //! several slice crates at once: `just check` and IDE analysis never
 //! compile integration targets, so the tui crate stays slice-free.
-
+#![expect(
+    clippy::unused_async,
+    reason = "harness fns stay async so every slice test can .await them uniformly even where nothing awaits inside"
+)]
+#![allow(
+    clippy::print_stderr,
+    reason = "harness diagnostics print before a TUI could exist"
+)]
 #![allow(clippy::expect_used, clippy::panic, reason = "test harness")]
 
 use jinn_kernel::AppCore;
@@ -119,6 +126,7 @@ pub async fn launch_for_test(core: AppCore, mut services: jinn_kernel::Services)
         selection: SelectionState::Idle,
         selectable_rects: SelectableRects::default(),
         pending_clipboard: false,
+        clipboard_writer: jinn_tui::clipboard_writer::ClipboardWriter::arboard(),
         config: TuiConfig::default(),
     }
 }
@@ -490,6 +498,9 @@ pub fn activate_theme(services: &mut jinn_kernel::Services) {
 
 /// Activates the cwd slice on the harness services.
 pub fn activate_cwd(services: &mut jinn_kernel::Services) {
+    let actor_deps = jinn_kernel::common::actor_deps::ActorDeps {
+        services: services.clone(),
+    };
     let mut host = jinn_slices::SliceHost::new(
         &services.slices,
         &mut services.viewport,
@@ -497,7 +508,7 @@ pub fn activate_cwd(services: &mut jinn_kernel::Services) {
         &services.key_routes,
         &services.trouper_system,
     );
-    jinn_cwd::activate(&mut host);
+    jinn_cwd::activate(&mut host, actor_deps);
 }
 
 /// Activates the project slice on the harness services.

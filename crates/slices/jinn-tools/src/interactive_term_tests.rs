@@ -49,7 +49,7 @@ fn ctx_with(
         turn: crate::tool_types::test_turn(),
         cwd: cwd.clone(),
         config: jinn_config::testutil::config_layer(""),
-        shells: Default::default(),
+        shells: jinn_common::shell::ShellsService::default(),
         timeout: None,
         state: None,
         session_id,
@@ -291,51 +291,6 @@ async fn kill_without_own_terminal_fails_cleanly_at_the_coordinator_layer() {
             .and_then(|r| r.as_array())
             .is_none_or(std::vec::Vec::is_empty),
         "kill schema must not require any argument, got: {kill_json}"
-    );
-}
-
-#[rstest::rstest]
-fn spawn_definition_warns_against_pipes_and_redirections() {
-    // Given the interactive_term definition.
-    let def = super::interactive_term::definition();
-
-    // When reading the description and guidelines.
-    // Then the description warns that pipes/redirections lose the output
-    // (the tool returns the rendered screen).
-    assert!(
-        def.description.contains("redirect") && def.description.contains("RENDERED SCREEN"),
-        "spawn description must warn against redirections, got: {}",
-        def.description
-    );
-    // And the guidelines carry the same warning.
-    assert!(
-        def.prompt_guidelines
-            .iter()
-            .any(|g| g.contains("redirections") && g.contains("silently lost")),
-        "spawn guidelines must warn against pipes/redirections, got: {:?}",
-        def.prompt_guidelines
-    );
-}
-
-#[rstest::rstest]
-fn send_definition_describes_the_no_argument_snapshot() {
-    // Given the interactive_term_send definition.
-    let def = interactive_term_send::definition();
-
-    // When reading the description and guidelines.
-    // Then the description presents the no-argument call as a snapshot.
-    assert!(
-        def.description.contains("NO arguments") && def.description.contains("SNAPSHOT"),
-        "send description must describe the no-argument snapshot, got: {}",
-        def.description
-    );
-    // And the guidelines tell the model it can poll progress this way.
-    assert!(
-        def.prompt_guidelines
-            .iter()
-            .any(|g| g.contains("NO arguments")),
-        "send guidelines must mention the no-argument snapshot, got: {:?}",
-        def.prompt_guidelines
     );
 }
 

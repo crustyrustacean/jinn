@@ -7,12 +7,12 @@
 //!
 //! A resource's **kind** — and therefore its destination root — comes from its
 //! top-level directory under `res/` (`themes/`, `personas/`, `prompts/`,
-//! `skills/`). Anything beneath that directory is preserved in the destination
-//! path, so a nested structure like `skills/<name>/references/<file>.md`
+//! `skills/`, `smolvm/`). Anything beneath that directory is preserved in the
+//! destination path, so a nested structure like `skills/<name>/references/<file>.md`
 //! installs as itself.
 //!
-//! A file whose top-level directory is none of the four is a hard error, not a
-//! silent skip: silently skipping is the failure this module exists to
+//! A file whose top-level directory is none of the kinds is a hard error, not
+//! a silent skip: silently skipping is the failure this module exists to
 //! eliminate.
 
 use std::path::Path;
@@ -47,6 +47,10 @@ pub(crate) enum Kind {
     Workflow,
     /// A skill, installed to the skills root.
     Skill,
+    /// A smolvm machine manifest, installed to the smolvm root — the
+    /// directory the bundled `smolvm` MCP server resolves its `--smolfile`
+    /// default from.
+    Smolvm,
 }
 
 impl Kind {
@@ -58,6 +62,7 @@ impl Kind {
             Kind::Prompt => "prompts",
             Kind::Workflow => "workflows",
             Kind::Skill => "skills",
+            Kind::Smolvm => "smolvm",
         }
     }
 
@@ -69,11 +74,12 @@ impl Kind {
             Kind::Prompt => destinations.prompts(),
             Kind::Workflow => destinations.workflows(),
             Kind::Skill => destinations.skills(),
+            Kind::Smolvm => destinations.smolvm(),
         }
     }
 
-    /// This kind's position in the install order: themes, then personas, then
-    /// prompts, then workflows, then skills.
+    /// This kind's position in the install order: themes, then personas,
+    /// then prompts, then workflows, then skills, then smolvm.
     const fn rank(self) -> u8 {
         match self {
             Kind::Theme => 0,
@@ -81,6 +87,7 @@ impl Kind {
             Kind::Prompt => 2,
             Kind::Workflow => 3,
             Kind::Skill => 4,
+            Kind::Smolvm => 5,
         }
     }
 }
@@ -188,12 +195,13 @@ fn resource(file: &'static File<'static>) -> Result<Bundled, Report<InstallError
 /// kind; neither does a file sitting directly in `res/`, which has no top-level
 /// directory to name a kind.
 fn split_kind(path: &Path) -> Result<(Kind, &Path), UnknownKind> {
-    const KINDS: [Kind; 5] = [
+    const KINDS: [Kind; 6] = [
         Kind::Theme,
         Kind::Persona,
         Kind::Prompt,
         Kind::Workflow,
         Kind::Skill,
+        Kind::Smolvm,
     ];
 
     KINDS
@@ -244,10 +252,42 @@ mod tests {
             Kind::Prompt,
             Kind::Workflow,
             Kind::Skill,
+            Kind::Smolvm,
         ] {
             let count = catalogue.iter().filter(|b| b.kind == kind).count();
             assert!(count > 0, "kind {kind:?} ships no files");
         }
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn bundled_static_prompt_ships_with_luau_blurb() {
+        // Given the derived catalogue.
+        let catalogue = bundled_catalogue().expect("derive catalogue");
+
+        // When finding the bundled `_static.md` prompt.
+        let entry = catalogue
+            .iter()
+            .find(|b| {
+                b.kind == Kind::Prompt && b.relative.as_path().to_string_lossy() == "_static.md"
+            })
+            .expect("prompts/_static.md must ship in the catalogue");
+
+        // Then its content is non-empty, body-only, and names the Luau
+        // runtime — the harness fact the static section exists to carry.
+        let content = std::str::from_utf8(entry.contents).expect("bundled resources are utf-8");
+        assert!(
+            !content.trim().is_empty(),
+            "static prompt must not be empty"
+        );
+        assert!(
+            !content.trim_start().starts_with("+++"),
+            "static prompt must stay body-only (no frontmatter)"
+        );
+        assert!(
+            content.contains("jinn luau"),
+            "static prompt must name the `jinn luau` runtime"
+        );
     }
 
     #[rstest::rstest]
@@ -291,11 +331,7 @@ mod tests {
     #[case("themes/default.toml", Kind::Theme, "default.toml")]
     #[case("personas/general.md", Kind::Persona, "general.md")]
     #[case("prompts/plan.md", Kind::Prompt, "plan.md")]
-    #[case(
-        "skills/simple-task-loop/SKILL.md",
-        Kind::Skill,
-        "simple-task-loop/SKILL.md"
-    )]
+    #[case("smolvm/alpine.toml", Kind::Smolvm, "alpine.toml")]
     fn top_level_directory_selects_the_kind_and_relative_path(
         #[case] embedded: &str,
         #[case] kind: Kind,

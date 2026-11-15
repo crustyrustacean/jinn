@@ -21,6 +21,11 @@ pub struct GeminiRequest {
     /// Tool declarations.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<serde_json::Value>>,
+    /// Tool configuration: mode `NONE` forbids calls without removing
+    /// the declarations — Gemini's documented way to suppress tool use
+    /// for one request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_config: Option<serde_json::Value>,
 }
 
 /// Builds a [`GeminiRequest`] from protocol types.
@@ -32,6 +37,7 @@ pub fn build_request(
     system_prompt: Option<&str>,
     messages: &[LlmMessage],
     tools: &[ToolDefinition],
+    tool_choice: crate::ToolChoice,
 ) -> GeminiRequest {
     let system_instruction = system_prompt.map(|text| {
         serde_json::json!({
@@ -52,10 +58,23 @@ pub fn build_request(
         })])
     };
 
+    let tool_config = if gemini_tools.is_some() {
+        let mode = match tool_choice {
+            crate::ToolChoice::Auto => "AUTO",
+            crate::ToolChoice::None => "NONE",
+        };
+        Some(serde_json::json!({
+            "functionCallingConfig": { "mode": mode }
+        }))
+    } else {
+        None
+    };
+
     GeminiRequest {
         contents,
         system_instruction,
         tools: gemini_tools,
+        tool_config,
     }
 }
 
@@ -192,12 +211,11 @@ fn tool_definition_to_json(def: &ToolDefinition) -> serde_json::Value {
         .parameters
         .get("required")
         .and_then(|v| v.as_array())
-        .map(|arr| {
+        .map_or_else(Vec::new, |arr| {
             arr.iter()
                 .filter_map(|v| v.as_str().map(std::borrow::ToOwned::to_owned))
                 .collect::<Vec<String>>()
-        })
-        .unwrap_or_default();
+        });
 
     serde_json::json!({
         "name": def.name,
@@ -238,7 +256,7 @@ mod tests {
         }];
 
         // When building request with the system prompt parameter.
-        let req = build_request(Some("Be helpful."), &messages, &[]);
+        let req = build_request(Some("Be helpful."), &messages, &[], crate::ToolChoice::Auto);
 
         // Then systemInstruction is filled and contents are untouched.
         assert!(req.system_instruction.is_some());
@@ -259,11 +277,41 @@ mod tests {
         }];
 
         // When building request with None.
-        let req = build_request(None, &messages, &[]);
+        let req = build_request(None, &messages, &[], crate::ToolChoice::Auto);
 
         // Then the systemInstruction field is absent.
         assert!(req.system_instruction.is_none());
         assert_eq!(req.contents.len(), 1);
+    }
+
+    #[rstest::rstest]
+    fn build_request_none_choice_sets_function_calling_mode_none() {
+        // Given messages and tool declarations, with a None (forbid) choice.
+        let messages = vec![LlmMessage::User {
+            content: "write the recap".into(),
+            attachments: Vec::new(),
+        }];
+        let tools = vec![ToolDefinition {
+            name: "echo".into(),
+            description: "Echo".into(),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+            parameters: serde_json::json!({"type": "object"}),
+            server_tool_type: None,
+        }];
+
+        // When building the request with the forbidding choice.
+        let req = build_request(None, &messages, &tools, crate::ToolChoice::None);
+
+        // Then the declarations stay (prefix continuity) and the config
+        // carries Gemini's documented suppress mode.
+        assert!(req.tools.is_some());
+        let config = req.tool_config.as_ref().expect("tool config present");
+        let json = serde_json::to_value(config).expect("serialize");
+        assert_eq!(
+            json,
+            serde_json::json!({"functionCallingConfig": {"mode": "NONE"}})
+        );
     }
 
     #[rstest::rstest]
@@ -407,7 +455,7 @@ mod tests {
         };
 
         // When building the request.
-        let req = build_request(None, &[message], &[]);
+        let req = build_request(None, &[message], &[], crate::ToolChoice::Auto);
 
         // Then two contents are produced: the function response, then a
         // synthesized user content.

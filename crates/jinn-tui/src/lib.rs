@@ -5,6 +5,7 @@
 
 pub mod app;
 pub mod app_state;
+pub mod clipboard_writer;
 pub mod config;
 pub mod convert;
 pub mod keymap;
@@ -25,7 +26,7 @@ pub use app_state::AppStatus;
 pub use jinn_kernel::AppCore;
 pub use jinn_kernel::Services;
 pub use keymap::KeyCategory;
-pub use launch::{LaunchError, launch, load_compaction_prompt, load_theme};
+pub use launch::{LaunchError, launch, load_handoff_prompt, load_theme};
 pub use msg::handler::MsgHandler;
 pub use run::{TuiRunError, run};
 pub use scope::Scope;

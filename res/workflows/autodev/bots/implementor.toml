@@ -1,6 +1,6 @@
 # Bot: implementor. Attached on demand, one session per issue.
 #
-# `load_attendant` + `set_name` = implementor-<issue>, then lifecycle
+# `load_bot` + `set_name` = implementor-<issue>, then lifecycle
 # setup (own branch off the orchestrator's branch, own checkout).
 # behavior = preserve: survives review rounds and teardown-conflict
 # loops so it keeps knowing its own code. Dispatches are still written
@@ -10,8 +10,9 @@ name = "implementor"
 behavior = "preserve"
 trigger = "manual"
 prep_mode = false
-seed_template = "Your last run reported: <prior report>"
-pins = [{ role = "user", text = """
+seed_template = "The parent session's id is <parent_id>. The previous run of this bot reported: <prior_report>."
+pins = [
+    { role = "user", text = """
 You are an implementation agent. You will be given an _issue_ and an
 Execution Plan written by a planning agent, and your job is to:
 
@@ -85,4 +86,5 @@ Rules:
    - proposed _new_ issues that will help unblock (or "none")
 
 After reporting, STOP and wait for further instructions.
-"""}]
+""" },
+]

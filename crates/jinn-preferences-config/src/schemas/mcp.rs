@@ -36,7 +36,7 @@ use wherror::Error;
 ///   already-running HTTP server at the `url`; it owns no process.
 ///
 /// See [`McpServerConfig`] for the `url` and `command` fields.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TransportKind {
     /// JSON-RPC over the child process's stdin/stdout.
@@ -63,6 +63,16 @@ pub enum TransportKind {
 /// drift out of sync with the key), which is also why this section
 /// declares no entry key: a map's key already matches entries by
 /// identity.
+///
+/// # Behavior: Event-Dependent (the per-server entries) + Frozen (the
+/// session's enabled set).
+///
+/// An edit to a running server's entry (command, url, transport) restarts
+/// that server for its live sessions when the reload event lands; a
+/// deleted entry leaves an already-running connection alone until session
+/// end. Which servers a session enables is stamped at session creation
+/// and never re-seeded — the MCP picker is that set's live-session
+/// control.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct McpServersConfig(
@@ -84,12 +94,23 @@ impl std::ops::Deref for McpServersConfig {
 
 /// One configured MCP server.
 ///
+/// # Behavior: Event-Dependent.
+///
+/// An edit to this entry (command, url, transport) restarts the running
+/// server when the reload event lands; a deleted entry leaves an
+/// already-running connection alone until session end.
+///
 /// Declared in `jinn.toml` under `[mcp.server.<name>]` — the table name IS
 /// the server's identity (the per-session enablement identifier stored in
 /// `SessionCore::enabled_mcp_servers` and the tool-namespace segment
 /// `mcp__<name>__<tool>`); there is no `name` field to drift out of sync
 /// with the key.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// The derived `Hash` is the entry-change detector: the MCP coordinator
+/// hashes each running server's entry and compares on a reload, so a
+/// changed hash is what triggers the auto-restart. A field added here
+/// participates automatically.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct McpServerConfig {
     /// Executable command to launch the server (e.g. `"npx"`).
     ///
@@ -102,7 +123,9 @@ pub struct McpServerConfig {
     /// For [`LocalHttp`](TransportKind::LocalHttp) servers, `<ip>` and `<port>`
     /// replacement tokens are expanded into the configured bind address (parsed
     /// from `url`) and the allocated port respectively (e.g.
-    /// `["server.js", "--port", "<port>", "--host", "<ip>"]`).
+    /// `["server.js", "--port", "<port>", "--host", "<ip>"]`). The
+    /// `<session_cwd>` token is expanded to the enabling session's working
+    /// directory.
     #[serde(default)]
     pub args: Vec<String>,
     /// How jinn connects to this server. Defaults to
@@ -127,9 +150,10 @@ pub struct McpServerConfig {
     /// Off by default (jinn's historical behavior): servers spawn only after
     /// the user enables them in the MCP picker. `true` seeds the server's
     /// name into each new session's enabled set at creation, so its
-    /// connection comes up without a picker visit. Toggle state is owned by
-    /// the session afterwards and persists per-session; this flag never
-    /// re-enables itself on existing sessions.
+    /// connection comes up without a picker visit. The enabled set is
+    /// Frozen — stamped at creation, never re-seeded by a config reload;
+    /// the MCP picker owns a session's toggle state and it persists
+    /// per-session.
     #[serde(default)]
     pub auto_enable: bool,
     /// Serve every session through one shared connection instead of one
@@ -145,6 +169,23 @@ pub struct McpServerConfig {
     /// need this; a per-session server would give each session its own state.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub singleton: bool,
+    /// Environment variables set on the spawned server process
+    /// ([`Stdio`](TransportKind::Stdio) and
+    /// [`LocalHttp`](TransportKind::LocalHttp)).
+    ///
+    /// Applied *additively* over jinn's inherited environment at child spawn:
+    /// a configured key overrides the inherited variable of the same name,
+    /// and every other inherited variable (`PATH`, `HOME`, …) passes through
+    /// untouched — jinn never clears the child's environment. Values may
+    /// embed `${ENV_VAR}` tokens, expanded exactly like header values from
+    /// the key store (an unset or empty resolution aborts the connection,
+    /// naming the variable), and the `<session_cwd>` token, expanded to the
+    /// enabling session's working directory at each spawn. Env names are
+    /// taken literally. Accepted but unused for
+    /// [`RemoteHttp`](TransportKind::RemoteHttp) servers, which jinn never
+    /// spawns.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
     /// HTTP headers sent on `StreamableHTTP` connections
     /// ([`LocalHttp`](TransportKind::LocalHttp) and
     /// [`RemoteHttp`](TransportKind::RemoteHttp)).
@@ -383,6 +424,7 @@ mod tests {
             args: vec![],
             transport: TransportKind::RemoteHttp,
             url: Some("http://localhost:3001/mcp".to_owned()),
+            env: BTreeMap::new(),
             headers: BTreeMap::new(),
             auto_enable: false,
             singleton: false,
@@ -753,5 +795,133 @@ mod tests {
             !serialized.contains("singleton"),
             "default singleton must not serialize; got: {serialized}"
         );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn absent_env_defaults_to_empty() {
+        // Given a config TOML with no env field.
+        let toml = r#"
+            command = "npx"
+            args = ["@excalimate/mcp-server", "--stdio"]
+        "#;
+
+        // When deserializing.
+        let config: McpServerConfig = toml::from_str(toml).expect("parse");
+
+        // Then env is empty (backward-compat regression guard).
+        assert!(config.env.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn env_deserializes_as_map_under_server_entry() {
+        // Given a stdio config declaring environment variables as an inline
+        // table, mirroring the de-facto standard MCP config shape.
+        let toml = r#"
+            command = "npx"
+            args = ["-y", "godot-mcp"]
+
+            [mcp_server.env-table-probe.env]
+            GDA_PROJECT = "/home/dev/my-game"
+            NODE_ENV = "production"
+        "#;
+
+        // When deserializing the enclosing document and reading the server's
+        // env map.
+        #[derive(Deserialize)]
+        struct Probe {
+            mcp_server: BTreeMap<String, McpServerConfig>,
+        }
+        let probe: Probe = toml::from_str(toml).expect("parse");
+        let server = &probe.mcp_server["env-table-probe"];
+
+        // Then both entries survive as configured.
+        assert_eq!(
+            server.env.get("GDA_PROJECT").map(String::as_str),
+            Some("/home/dev/my-game")
+        );
+        assert_eq!(
+            server.env.get("NODE_ENV").map(String::as_str),
+            Some("production")
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn env_round_trips_with_entries() {
+        // Given a config TOML with a populated env map.
+        let toml = r#"
+            command = "npx"
+            env = { GDA_PROJECT = "/home/dev/my-game", TOKEN = "${GDA_TOKEN}" }
+        "#;
+
+        // When deserializing and re-serializing.
+        let config: McpServerConfig = toml::from_str(toml).expect("parse");
+        let serialized = toml::to_string(&config).expect("serialize");
+        let back: McpServerConfig = toml::from_str(&serialized).expect("deserialize");
+
+        // Then every entry is preserved through the round-trip, including a
+        // ${VAR} token value.
+        assert_eq!(
+            back.env.get("GDA_PROJECT").map(String::as_str),
+            Some("/home/dev/my-game")
+        );
+        assert_eq!(
+            back.env.get("TOKEN").map(String::as_str),
+            Some("${GDA_TOKEN}")
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn config_without_env_serializes_without_an_env_key() {
+        // Given a config whose env is the default (empty).
+        let config = McpServerConfig {
+            command: Some("npx".to_owned()),
+            ..Default::default()
+        };
+
+        // When serializing.
+        let serialized = toml::to_string(&config).expect("serialize");
+
+        // Then no `env` key is emitted — documents written before this field
+        // existed stay byte-shaped, so the comment-preserving patcher diff
+        // stays empty for users who never set it.
+        assert!(
+            !serialized.contains("env"),
+            "default env must not serialize; got: {serialized}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn remote_http_entry_accepts_env_map() {
+        // Given a remote_http entry that declares an env map.
+        let toml = r#"
+            [mcp_server.remote-probe]
+            transport = "remote_http"
+            url = "http://localhost:3001/mcp"
+
+            [mcp_server.remote-probe.env]
+            GDA_PROJECT = "/home/dev/my-game"
+        "#;
+
+        // When deserializing.
+        #[derive(Deserialize)]
+        struct Probe {
+            mcp_server: BTreeMap<String, McpServerConfig>,
+        }
+        let probe: Probe = toml::from_str(toml).expect("parse");
+        let server = &probe.mcp_server["remote-probe"];
+
+        // Then the entry parses and carries the map — acceptance is the
+        // config layer's job; ignoring it is the connect path's, exercised
+        // by the transport-routing tests in jinn-mcp-slice.
+        assert_eq!(
+            server.env.get("GDA_PROJECT").map(String::as_str),
+            Some("/home/dev/my-game")
+        );
+        assert_eq!(server.transport, TransportKind::RemoteHttp);
     }
 }

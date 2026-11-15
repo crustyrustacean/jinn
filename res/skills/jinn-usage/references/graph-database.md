@@ -2,7 +2,7 @@
 
 jinn bundles **overgraph**, an embedded graph database that speaks GQL and
 supports semantic (vector) search over its nodes. It ships as a builtin MCP
-server — configured out of the box, disabled per session until enabled; see
+server, configured out of the box, disabled per session until enabled. See
 `mcp-servers.md` for the shipped `[mcp.overgraph]` block and how enabling
 works. Once enabled, its tools are available as `mcp__overgraph__graph_<name>`:
 
@@ -12,15 +12,15 @@ works. Once enabled, its tools are available as `mcp__overgraph__graph_<name>`:
 | `graph_upsert_node`   | Create or update one node by `(label, key)`; `props` replace existing; `embed_text` makes the node findable by semantic search                  |
 | `graph_upsert_edge`   | Create an edge between two existing nodes; a repeat call updates that edge's props and weight                                                   |
 | `graph_vector_search` | Nearest-neighbor search by meaning over nodes carrying an embedding (`k` hits, default 10, max 100; optional `labels` filter)                   |
-| `graph_ingest_file`   | Bulk-load a JSONL batch file of nodes and edges in one call — the move for any dataset bigger than a handful of records                         |
-| `graph_docs`          | The bundled GQL reference, whole or by `section`; call it before writing queries you are unsure of                                              |
+| `graph_ingest_file`   | Bulk-load a JSONL batch file of nodes and edges in one call (the move for any dataset bigger than a handful of records)                         |
+| `graph_docs`          | The bundled GQL reference, whole or by `section`; call it before writing queries you want to double-check                                       |
 
 Data persists under a jinn-managed directory across sessions.
 
-**Separate graphs.** The bundled entry is one shared database. When you want a
-custom graph database, add a new `[mcp.<name>]` entry in `jinn.toml` — jinn
-can add it for you via the configuration protocol (`configuration.md`) — that
-passes the `--db` flag:
+**Separate graphs.** The bundled entry is one shared database. Want a custom
+one? Add a new `[mcp.<name>]` entry in `jinn.toml` (jinn can add it for you
+via the configuration protocol; see `configuration.md`) that passes the
+`--db` flag:
 
 ```toml
 [mcp.project-graph]
@@ -28,19 +28,19 @@ command = "<jinn>"
 args = ["mcp", "overgraph", "--db", "/home/me/graphs/project-x"]
 ```
 
-…and then enable that entry as its own MCP server. Each entry with its own
-`--db` is a fully separate graph, so per-project and per-user graphs are just
-more entries. Use absolute paths.
+…then enable that entry as its own MCP server. Each entry with its own
+`--db` is a fully separate graph, so per-project and per-user graphs are
+just more entries. Use absolute paths.
 
-## Four Example Use-Cases
+## Four ways to use it
 
 ### 1. Agent / user memory
 
-Store entities as nodes — each entity type is a label, the unique name is the
-key, atomic facts are properties — and connect them with typed edges in active
-voice. Identity is `(label, key)`: re-upserting updates in place, never
-duplicates, so memory edits are just re-upserts. A turn's worth of updates
-goes in one batch file (see [Batch ingestion](#batch-ingestion)):
+Store entities as nodes (each entity type is a label, the unique name is
+the key, atomic facts are properties) and connect them with typed edges in
+active voice. Identity is `(label, key)`: re-upserting updates in place.
+Memory edits are just re-upserts. A turn's worth of
+updates goes in one batch file (see [Batch ingestion](#batch-ingestion)):
 
 ```jsonc
 // memory.jsonl
@@ -59,16 +59,17 @@ RETURN type(r) AS relation, labels(other) AS other_label, elementKey(other) AS o
 ```
 
 For "where did I put that", give the entity a searchable phrase via
-`embed_text` (`"prefers vim keybindings in the editor"`) — then
-`graph_vector_search` finds it by meaning rather than by exact key.
+`embed_text` (`"prefers vim keybindings in the editor"`); then
+`graph_vector_search` finds it by meaning alone.
 
 ### 2. Document corpus Q&A
 
 Model a corpus as `Doc` → `HAS_CHUNK` → `Chunk` nodes, with `MENTIONS` edges
 to `Concept` nodes. The chunk text goes in `embed_text`; the edges carry the
-structure that vectors cannot see. bge-small-en-v1.5 truncates at 512 tokens, so
-chunk to ~400 tokens (with a sentence or two of overlap), and prepend a context
-line (doc title + section) so a bare chunk still embeds meaningfully:
+structural facts: chunk order, doc membership, concept links. bge-small-en-v1.5 truncates at 512 tokens,
+so chunk to ~400 tokens (with a sentence or two of overlap), and prepend a
+context line (doc title + section) so each chunk embeds with its context
+attached:
 
 ```jsonc
 // docs.jsonl
@@ -79,7 +80,7 @@ line (doc title + section) so a bare chunk still embeds meaningfully:
 {"edge": {"label": "MENTIONS", "from": "Chunk:design/overgraph#wal", "to": "Concept:wal"}}
 ```
 
-Retrieval is a two-call hybrid: vector search finds the entry point,
+Retrieval is a two-call hybrid. Vector search finds the entry point;
 traversal builds the answer:
 
 ```
@@ -93,9 +94,9 @@ traversal builds the answer:
 
 ### 3. Temporal facts
 
-Edges carry `valid_from`/`valid_to` epoch millis. A new fact is a new edge; an
-old fact's edge gets a `valid_to` (also writable in GQL: `SET validTo(r) = ...`).
-"What was true at time T" is then a query:
+Edges carry `valid_from`/`valid_to` epoch millis. A new fact is a new edge;
+an old fact's edge gets a `valid_to` (also writable in GQL:
+`SET validTo(r) = ...`). "What was true at time T" is then a query:
 
 ```jsonc
 // roles.jsonl — jayson led the team until March, then Alice did
@@ -110,15 +111,15 @@ WHERE validFrom(r) <= 1707206400000 AND coalesce(validTo(r), 9223372036854775807
 RETURN elementKey(p), validFrom(r), validTo(r)
 ```
 
-`validTo` defaults to "no expiry" — hence the `coalesce` against `i64::MAX`.
+`validTo` defaults to "no expiry"; hence the `coalesce` against `i64::MAX`.
 
 ### 4. Hybrid retrieval
 
-The general recipe behind pattern 2: **the vector layer finds
-entry points, the graph layer builds the answer.** Vector search returns
-things that _mean like_ the query; traversal returns things _connected to_
-those things. When a question needs both — find by meaning, then use
-relationships — do the two-step:
+The general recipe behind pattern 2. **The vector layer finds entry points;
+the graph layer builds the answer.** Vector search returns things that _mean
+like_ the query. Traversal returns things _connected to_ those things. When
+a question needs both (find by meaning, then use relationships), do the
+two-step:
 
 1. `graph_vector_search` → take `key` + `labels` from the hits.
 2. `graph_query` with a labeled `MATCH` on that key → walk the edges that
@@ -126,9 +127,9 @@ relationships — do the two-step:
 
 ## Batch ingestion
 
-For any dataset bigger than a handful of records, don't call
-`graph_upsert_node`/`graph_upsert_edge` per record — write a conversion script
-that emits a JSONL file, then call `graph_ingest_file` **once per file**:
+For any dataset bigger than a handful of records, skip the per-record
+calls: write a conversion script that emits a JSONL file, then call
+`graph_ingest_file` **once per file**. A thousand records, one call:
 
 ```jsonc
 // graph_ingest_file { "path": "/home/me/notes.jsonl", "batch_size": 512 }
@@ -139,19 +140,20 @@ that emits a JSONL file, then call `graph_ingest_file` **once per file**:
 `props`/`weight`/`embed_text` (embedded locally, like `graph_upsert_node`).
 Edge lines: `label`, `from`, `to` plus optional `props`/`weight`/`valid_from`/`valid_to`;
 `from`/`to` are `Label:key` strings (split at the first colon, so keys may
-contain colons — labels may not). The engine enforces the contract:
+contain colons; labels may not). The engine enforces the contract:
 
 - **Line order is free.** All nodes are upserted before any edge endpoint
   resolves, so an edge may reference a node declared later in the file or
   already in the database.
-- **Abort names the line.** An edge whose endpoint resolves to nothing aborts
-  the whole file with zero writes, and the response names the missing
-  endpoints with their line numbers. No placeholder nodes are created.
+- **Abort names the line.** An edge whose endpoint names a node absent
+  from the file and the database aborts the whole file with zero writes;
+  the response lists the missing endpoints with their line numbers, and
+  the database stays exactly as it was.
 - **Re-runs are idempotent.** Upserts key on `(label, key)` and edges are
   unique per `(from, to, label)`, so a crashed or partial run is repaired by
   re-running the same file.
-- **`batch_size`** caps each engine write batch (default 512, max 4096);
-  progress lines go to the server's stderr, visible in the picker's preview
+- **`batch_size`** caps each engine write batch (default 512, max 4096).
+  Progress lines go to the server's stderr, visible in the picker's preview
   pane (`<c-t>` in the MCP server picker).
 
 ### Generating the file
@@ -178,7 +180,7 @@ for f in notes/*.md; do
 done > notes.jsonl
 ```
 
-**SQLite → JSONL** (Python — the right tool when the source is a query):
+**SQLite → JSONL** (Python, the right tool when the source is a query):
 
 ```python
 import json, sqlite3
@@ -199,41 +201,41 @@ Then ingest:
 // graph_ingest_file { "path": "/home/me/people.jsonl" }
 ```
 
-When the abort names a line, fix that line in the file (or create the node it
-points at) and re-run — the re-run is idempotent, so re-upserting the
+When the abort names a line, fix that line in the file (or add the node
+it points at) and re-run. The re-run is idempotent, so re-upserting the
 already-written records is harmless.
 
-## When to use what
+## Pick the right tool
 
 | The question looks like…                 | Reach for                                                                                                           |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Exact key, label, or property filter     | `graph_query` alone — no vectors involved                                                                           |
+| Exact key, label, or property filter     | `graph_query` alone, an exact lookup on stored values                                                              |
 | Find by meaning, structure irrelevant    | `graph_vector_search` alone                                                                                         |
 | Find by meaning, then use relationships  | The two-step hybrid (default for corpus questions)                                                                  |
-| Exact dates, names, code identifiers     | GQL property filters, **not** vectors — embeddings are unreliable on exact strings, and there is no full-text index |
+| Exact dates, names, code identifiers     | GQL property filters: property equality on stored values; embeddings are unreliable on exact strings               |
 | "How are X and Y connected?" (many hops) | `graph_query` with bounded paths / `shortestPath`                                                                   |
 
 ## Gotchas
 
-- **A function call is engine metadata; a dot access is a user property.**
+- **Metadata reads as a function; your own properties read as a dot.**
   Read the key with `elementKey(n)`, the weight with `weight(n)`/`weight(r)`,
-  validity with `validFrom(r)`/`validTo(r)`. `n.key` and `n.weight` are plain
-  user properties — null unless you set them yourself. The one legal
+  validity with `validFrom(r)`/`validTo(r)`. `n.key` and `n.weight` are
+  plain user properties, null until you set them. The one legal
   dot-free-looking form is `elementKey` inside a `MATCH`/`MERGE`/`CREATE`
   pattern map (`{elementKey: 'ada'}`).
-- **No unlabeled scans.** Reads run with `allow_full_scan: false`, so every
-  `MATCH` needs a label — `MATCH (n)` is rejected. This is the most common
-  first-query error.
-- **`embed_text` truncates at 512 tokens.** Longer text loses its tail in the
-  embedding without warning; chunk before ingesting, not after.
+- **Every `MATCH` carries a label.** Reads run with `allow_full_scan:
+  false`, so a bare `MATCH (n)` is rejected; name the label. This is the
+  most common first-query error.
+- **`embed_text` truncates at 512 tokens.** Longer text loses its tail in
+  the embedding, silently. Keep each chunk whole and under the cap before
+  you ingest.
 - **Pass absolute paths.** For `--db` in a custom entry and for
   `graph_ingest_file`'s `path`: both resolve against the server process's
-  working directory, not yours.
+  working directory, so absolute paths pin the location.
 - **Embedding model lifecycle.** The first embed downloads ~35MB
   (bge-small-en-v1.5, 384-dim cosine); pre-fetch it headlessly with
-  `jinn mcp overgraph --fetch-model` if desired. The dimension locks
-  into the database at first open, so switching embed models requires
-  a fresh `--db`.
+  `jinn mcp overgraph --fetch-model` if desired. The dimension locks in at
+  first open; switching embed models needs a fresh `--db`.
 - **When unsure, call `graph_docs`** (optionally with `section`) before
-  writing GQL you're not certain of — it serves the full reference from
-  inside the chat.
+  writing the GQL; it serves the full reference from inside the chat, so
+  the query lands right on the first try.

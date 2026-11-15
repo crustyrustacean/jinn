@@ -12,7 +12,8 @@
 use std::collections::BTreeMap;
 
 use jinn_context::env_context::{
-    context_files_section, cwd_section, date_section, persona_section,
+    context_files_section, cwd_section, date_section, handoff_resume_section, persona_section,
+    static_section,
 };
 use jinn_context_assembly_msg::AssemblyInputs;
 use jinn_core_types::LlmMessage;
@@ -59,6 +60,8 @@ pub fn assemble(inputs: &AssemblyInputs, counter: &dyn TokenCounter) -> Assemble
         skill_filter,
         loaded_skills,
         context_files,
+        static_section: static_section_content,
+        handoff_enabled,
     } = inputs;
 
     let persona = persona.as_ref();
@@ -95,10 +98,12 @@ pub fn assemble(inputs: &AssemblyInputs, counter: &dyn TokenCounter) -> Assemble
         .collect();
     let skills_block = format_skills_for_prompt(&filtered, loaded_skills);
 
-    // Compose environment sections. Builders returning an empty section are
-    // omitted entirely.
+    // Compose environment sections. The static section comes first: harness
+    // facts precede persona and project context. Builders returning an empty
+    // section are omitted entirely.
     let env_sections = {
         vec![
+            static_section(static_section_content.as_deref()),
             persona_section(persona),
             context_files_section(context_files),
         ]
@@ -127,6 +132,13 @@ pub fn assemble(inputs: &AssemblyInputs, counter: &dyn TokenCounter) -> Assemble
         if !skills_block.is_empty() {
             system_parts.push(skills_block);
         }
+        // The handoff-resume section rides with the other tail sections;
+        // the builder returns empty (omitted) when handoff is disabled,
+        // so a disabled feature leaves the prompt byte-identical.
+        let handoff_section = handoff_resume_section(*handoff_enabled);
+        if !handoff_section.is_empty() {
+            system_parts.push(handoff_section);
+        }
         system_parts.push(date_section());
         system_parts.push(cwd_section(cwd));
         SystemPrompt::new(system_parts.join("\n\n"))
@@ -149,15 +161,25 @@ pub fn assemble(inputs: &AssemblyInputs, counter: &dyn TokenCounter) -> Assemble
     // trailing tool run so the pins land before the loop's assistant.
     insert_bottom_pins(&mut final_messages, bottom_messages);
 
-    // Count tokens: the system prompt, every conversation message, and the
+    // Count tokens: the constant floor, and every conversation message.
+    // The floor is everything that does not grow with the conversation —
+    // the system prompt (which already carries the skills block) plus the
     // tool schemas actually shipped in the request. Providers bill the
-    // tools array alongside the messages, so leaving it out under-reports
-    // the request the same way the minimap's per-entry counts do not.
-    let estimated_tokens = {
-        let message_tokens = count_messages(&system_prompt, &final_messages, counter);
-        let schema_tokens = tool_schema_tokens_seq(&tool_defs, counter);
-        message_tokens.saturating_add(u32::try_from(schema_tokens).unwrap_or(u32::MAX))
+    // tools array alongside the messages, so leaving it out of the floor
+    // would under-report the request the same way the minimap's per-entry
+    // counts do not, and would let a fixed schema cost sit at a compaction
+    // trigger's fire line, firing on an empty conversation.
+    // The floor's share is counted once here and carried on the result:
+    // consumers computing a work size (assembled minus floor) read the
+    // split instead of recounting.
+    let system_tokens = {
+        let system_text = u32::try_from(system_prompt.as_deref().map_or(0, |c| counter.count(c)))
+            .unwrap_or(u32::MAX);
+        let schema_tokens =
+            u32::try_from(tool_schema_tokens_seq(&tool_defs, counter)).unwrap_or(u32::MAX);
+        system_text.saturating_add(schema_tokens)
     };
+    let estimated_tokens = count_messages(&final_messages, counter).saturating_add(system_tokens);
 
     AssembledPrompt {
         session_id: session_id.clone(),
@@ -165,6 +187,7 @@ pub fn assemble(inputs: &AssemblyInputs, counter: &dyn TokenCounter) -> Assemble
         messages: final_messages,
         tool_definitions: tool_defs,
         estimated_tokens,
+        system_tokens,
     }
 }
 
@@ -221,18 +244,14 @@ fn insert_bottom_pins(final_messages: &mut Vec<LlmMessage>, bottom_messages: Vec
     final_messages.splice(insert_at..insert_at, bottom_messages);
 }
 
-/// Counts tokens across the system prompt and all messages.
+/// Counts tokens across all conversation messages (the system prompt is
+/// counted separately in [`assemble`] and carried on the result).
 ///
 /// Mirrors the per-entry estimator's conventions (`estimate_entry_content_tokens`)
 /// so the assembled estimate always covers the sum of per-entry counts shown in
 /// the minimap: tool-call `name + arguments`, tool-result `name + content`, and
 /// the flat per-image attachment cost are all counted here.
-fn count_messages(
-    system_prompt: &SystemPrompt,
-    messages: &[LlmMessage],
-    counter: &dyn TokenCounter,
-) -> u32 {
-    let system_tokens = system_prompt.as_deref().map_or(0, |c| counter.count(c));
+fn count_messages(messages: &[LlmMessage], counter: &dyn TokenCounter) -> u32 {
     messages
         .iter()
         .map(|msg| match msg {
@@ -253,8 +272,7 @@ fn count_messages(
             }
             LlmMessage::Tool { name, content, .. } => counter.count(name) + counter.count(content),
         })
-        .sum::<usize>()
-        .wrapping_add(system_tokens) as u32
+        .sum::<usize>() as u32
 }
 
 /// Flat per-image cost shared with the per-entry estimator, so the assembled
@@ -326,7 +344,11 @@ mod tests {
         session_id: &SessionId,
         counter: &TiktokenCounter,
     ) -> jinn_slices::AssembledPrompt {
-        let inputs = crate::inputs::build_assembly_inputs(state, session_id);
+        let inputs = crate::inputs::build_assembly_inputs(
+            state,
+            jinn_config::empty_config_layer(),
+            session_id,
+        );
         assemble(&inputs, counter)
     }
 
@@ -364,8 +386,7 @@ mod tests {
     /// message-level tests can assert exact deltas.
     fn count_messages_only(messages: &[LlmMessage]) -> u32 {
         let counter = counter();
-        let system = SystemPrompt::new(String::new());
-        count_messages(&system, messages, &counter)
+        count_messages(messages, &counter)
     }
 
     /// Bridges [`TiktokenCounter`] to the per-entry estimator trait so tests
@@ -875,6 +896,63 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
+    fn assemble_system_tokens_carries_system_text_plus_shipped_schemas() {
+        // Given a state with one registered tool whose schema is shipped in
+        // the request.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
+        let cell = state
+            .read()
+            .tool_registry()
+            .expect("registry cell attached");
+        cell.update(|r| {
+            r.global.insert(
+                "schema-heavy".to_owned(),
+                ToolDefinition {
+                    name: "schema-heavy".to_owned(),
+                    description: "A".repeat(200),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "BBBB".repeat(20)}
+                        }
+                    }),
+                    prompt_snippet: Some("SNIPPET-ONLY-IN-SYSTEM-PROMPT".to_owned()),
+                    prompt_guidelines: vec!["GUIDELINE-ONLY-IN-SYSTEM-PROMPT".to_owned()],
+                    server_tool_type: None,
+                },
+            );
+        });
+
+        // When assembling the prompt.
+        let counter = counter();
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter);
+
+        // Then the reported floor is the system-prompt text plus the shipped
+        // schema tokens — the schemas ride the floor, not the work.
+        let expected = counter.count(result.system_prompt.as_deref().unwrap_or_default()) as u32
+            + tool_schema_tokens_seq(&result.tool_definitions, &counter) as u32;
+        assert_eq!(result.system_tokens(), expected);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn assemble_system_tokens_is_text_only_without_tools() {
+        // Given a session with no tools registered.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("hello world")]);
+
+        // When assembling the prompt.
+        let counter = counter();
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter);
+
+        // Then the reported floor is exactly the system-prompt text.
+        let expected = counter.count(result.system_prompt.as_deref().unwrap_or_default()) as u32;
+        assert_eq!(result.system_tokens(), expected);
+    }
+
+    #[rstest::rstest]
+    #[test]
     fn assemble_prompt_includes_tools() {
         // Given a state with tool definitions.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
@@ -1056,6 +1134,76 @@ mod tests {
         // Then the function tool is still present despite the non-openrouter model.
         assert_eq!(result.tool_definitions.len(), 1);
         assert_eq!(result.tool_definitions[0].name, "bash");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn assemble_prompt_renders_static_section_first_before_persona_and_context() {
+        // Given a state with a discovered static section, an active persona
+        // with a body, and a project context file. The persona cell is
+        // updated before the state write guard is taken: the two locks are
+        // not reentrant.
+        let (state, session_id) = state_with_history(vec![]);
+        {
+            let cell = {
+                state
+                    .read()
+                    .persona_selection()
+                    .expect("persona cell attached")
+            };
+            let () = cell.update(|p| {
+                p.entries.push(jinn_slices::Persona {
+                    name: jinn_core_types::DEFAULT_PERSONA_NAME.to_owned(),
+                    description: "Test persona".to_owned(),
+                    body: "PERSONA MARKER".to_owned(),
+                    handoff_prompt: String::new(),
+                });
+            });
+        }
+        {
+            let mut guard = state.write();
+            guard
+                .active_session_mut()
+                .set_discovered_static_section(Some("STATIC MARKER".to_owned()));
+            guard
+                .active_session_mut()
+                .set_discovered_context_files(vec![ContextFile {
+                    path: jinn_testutil::volume_root()
+                        .join_all(["proj", "AGENTS.md"])
+                        .expect("bare-name join keeps the root absolute"),
+                    content: "CONTEXT MARKER".to_owned(),
+                }]);
+        }
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter());
+
+        // Then the system prompt contains all three sections.
+        let system = result.system_prompt.to_string();
+        assert!(system.contains("STATIC MARKER"));
+        assert!(system.contains("PERSONA MARKER"));
+        assert!(system.contains("CONTEXT MARKER"));
+        // And the static section appears first.
+        let static_at = system.find("STATIC MARKER").expect("static present");
+        let persona_at = system.find("PERSONA MARKER").expect("persona present");
+        let context_at = system.find("CONTEXT MARKER").expect("context present");
+        assert!(static_at < persona_at && static_at < context_at);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn assemble_prompt_omits_static_section_when_none_discovered() {
+        // Given a state with no discovered static section.
+        let (state, session_id) = state_with_history(vec![]);
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter());
+
+        // Then the system prompt renders no `# jinn` section at all.
+        let system = result.system_prompt.to_string();
+        assert!(!system.contains("# jinn"));
     }
 
     #[rstest::rstest]
@@ -1402,6 +1550,7 @@ mod tests {
                     name: "custom".to_owned(),
                     description: "Custom persona".to_owned(),
                     body: "You are a custom persona.".to_owned(),
+                    handoff_prompt: String::new(),
                 });
             });
             let mut guard = state.write();
@@ -1426,6 +1575,59 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
+    fn assemble_prompt_carries_no_compaction_block_into_the_system_prompt() {
+        // Given a session whose persona body contains a compaction block.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
+        {
+            let cell = {
+                state
+                    .read()
+                    .persona_selection()
+                    .expect("persona cell attached")
+            };
+            let () = cell.update(|p| {
+                p.entries.push(jinn_slices::Persona {
+                    name: "blocky".to_owned(),
+                    description: "Blocky persona".to_owned(),
+                    body: "You are a blocky persona.".to_owned(),
+                    handoff_prompt: "Recap the blocky critique headings.".to_owned(),
+                });
+            });
+            let mut guard = state.write();
+            guard
+                .session
+                .get_mut(&session_id)
+                .expect("session exists")
+                .set_persona_name("blocky".to_owned());
+        }
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter());
+
+        // Then the system prompt contains the extracted persona body.
+        let system = result.system_prompt.to_string();
+        assert!(
+            system.contains("You are a blocky persona."),
+            "should contain persona body, got: {system}"
+        );
+        // And neither the tags nor the block text leak into it.
+        assert!(
+            !system.contains("<compaction>"),
+            "opening tag must not reach the system prompt, got: {system}"
+        );
+        assert!(
+            !system.contains("</compaction>"),
+            "closing tag must not reach the system prompt, got: {system}"
+        );
+        assert!(
+            !system.contains("Recap the blocky critique headings."),
+            "handoff block text must not reach the system prompt, got: {system}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
     fn assemble_prompt_falls_back_to_coding_assistant_persona() {
         // Given a session with persona name "nonexistent" but "coding-assistant" is available.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
@@ -1441,6 +1643,7 @@ mod tests {
                     name: "coding-assistant".to_owned(),
                     description: "Default".to_owned(),
                     body: "You are a coding assistant.".to_owned(),
+                    handoff_prompt: String::new(),
                 });
             });
             let mut guard = state.write();
@@ -1531,6 +1734,7 @@ mod tests {
                 name: "custom".to_owned(),
                 description: "Custom persona".to_owned(),
                 body: "ORDER-MARK-PERSONA".to_owned(),
+                handoff_prompt: String::new(),
             });
         });
         let mut guard = state.write();

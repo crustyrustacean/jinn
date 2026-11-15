@@ -64,7 +64,7 @@ stall detector it is. Events do the actual waking.
 ## Bot seed files
 
 One file per role, TOML, living beside the workflow (loaded by absolute
-path via `load_attendant`; the same shape as an `[[bot.entry]]`
+path via `load_bot`; the same shape as an `[[bot.entry]]`
 block in `jinn.toml`, but workflow-scoped — it cannot be saved to user
 config). Load one file **K times to get K workers of that role**; a
 pool is one seed loaded repeatedly, not K files.
@@ -75,7 +75,8 @@ name = "implementor"
 behavior = "reset"          # reset | preserve — context across dispatches
 trigger = "manual"          # ALWAYS manual for dispatch-driven roles
 prep_mode = false
-seed_template = "Your last run reported: <prior report>"
+seed_template = "The parent session's id is <parent_id>. The previous run of this bot reported: <prior_report>."
+
 pins = [{ role = "user", text = """ ...standing instructions... """ }]
 ```
 
@@ -83,7 +84,7 @@ Fields that matter:
 
 - **`trigger`** — `"manual"` for anything the orchestrator dispatches. A completion trigger fires on every parent turn end, which is the opposite of dispatch-driven work: a manual-trigger bot runs only when messaged, so idle workers cost nothing.
 - **`behavior`** — `"reset"` wipes context at each dispatch: the run sees its pins plus the one dispatch, so dispatches must be self-contained. Right for fungible workers. `"preserve"` keeps the conversation, so the session's exploration (a repo map, a codebase orientation) survives across dispatches. Right for specialists whose value compounds — and it comes with a hygiene rule: state in the pin what persists (geography, maps) and what must not (verdicts, judgments about past work), or the session starts assuming from its own history.
-- **`seed_template`** — the standing text prepended to every dispatch. The `<prior report>` token is the **only** way a `conclude` report re-enters context. Put the token in a template only when the bot's conclusions arrive in an order that makes the previous one relevant (one work unit per run: a worker). Leave it out otherwise (a reviewer judging many issues in arbitrary order) — a template without the token never receives reports. A template with no token still needs its own text: it is what the bot reads first on every dispatch.
+- **`seed_template`** — the standing text prepended to every dispatch. Include `<parent_id>` to reference the parent session ID so the bot can communicate back to the parent. The `<prior_report>` token is the **only** way a `conclude` report re-enters context. Put the token in a template only when the bot's conclusions arrive in an order that makes the previous one relevant (one work unit per run: a worker). Leave it out otherwise (a reviewer judging many issues in arbitrary order) — a template without the token never receives reports. A template with no token still needs its own text: it is what the bot reads first on every dispatch.
 - **`pins`** — the bot's standing instructions: role, what it must never do, how it reports. Written for a stranger; every dispatch assumes the pins are all the context there is (reset) or the durable part of it (preserve).
 
 A seed's pins should always carry: the role in one sentence, the hard
@@ -98,7 +99,7 @@ lets information travel any other way.
 playback of what setup recorded. Together they are the workflow's
 checkout machine — use them fully or not at all:
 
-- **Spawning a worker = `load_attendant` the seed → lifecycle setup → dispatch.** The bot call creates the session and stamps it; the setup is issued **by the orchestrator, targeting the new session's id**, immediately after — the worker wakes up already sitting in its own checkout or worktree. There is no standing pool to pre-open seats for: on-demand spawn per unit of work keeps every seat owned by a live session, and teardown retires it.
+- **Spawning a worker = `load_bot` the seed → lifecycle setup → dispatch.** The bot call creates the session and stamps it; the setup is issued **by the orchestrator, targeting the new session's id**, immediately after — the worker wakes up already sitting in its own checkout or worktree. There is no standing pool to pre-open seats for: on-demand spawn per unit of work keeps every seat owned by a live session, and teardown retires it.
 - **Landing = lifecycle teardown.** The script's teardown command does the merge-back, the commit, the checkout removal, and the branch retirement, replaying setup's recorded coordinates (session id only — the args are remembered). Because teardown is the cleanup, cleanup cannot be skipped, forgotten, or aimed at the wrong run's seat: a session that never existed holds no coordinates, so there is nothing to mis-teardown.
 - **Order teardown's steps so conflicts fail before anything irreversible.** Both `fossil merge` and `git merge` exit 0 on conflict — gate on markers/unmerged paths and exit nonzero _before_ the branch close/delete. Everything before that point is retryable (a re-run's merges are no-ops); a closed branch cannot accept the retry. A conflicted teardown should leave the worker session alive: it knows the code, so the fix dispatch goes to it, and teardown is re-issued after its report.
 - **Never nest `bash -c` in a lifecycle command.** The runner already executes every command through `bash -c`; a wrapper spawns a second shell for nothing, and its single quotes clash with the shell-quoted values the runner substitutes for placeholders.

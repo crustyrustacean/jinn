@@ -18,6 +18,9 @@ pub mod persona_picker_render;
 mod persona_picker_routes;
 #[cfg(test)]
 mod persona_picker_tests;
+pub mod persona_rescan_actor;
+#[cfg(test)]
+mod persona_rescan_actor_tests;
 pub use jinn_persona_msg::persona_picker_scope;
 
 pub use jinn_persona_msg::Personas;
@@ -54,10 +57,7 @@ pub fn activate(
     personas_dir: &MarkedPathBuf<Absolute>,
 ) -> Personas {
     let entries = scan(personas_dir);
-    let scanned = Personas {
-        entries,
-        ..Default::default()
-    };
+    let scanned = Personas { entries };
     let cell = host
         .slices()
         .reader::<Personas>(&personas_slot())

@@ -151,7 +151,8 @@ fn format_exit_result(
             .ok()
             .and_then(std::process::ExitStatus::code)
             .map_or_else(|| "unknown (signal)".to_owned(), |code| code.to_string());
-        content.push_str(&format!("Command exited with code {code}"));
+        content.push_str("Command exited with code ");
+        content.push_str(&code);
     }
 
     let truncation_result = truncate_tail(&content, max_lines, max_bytes);
@@ -230,7 +231,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         // The PowerShell executable, resolved at launch. A machine with no
         // PowerShell is a real state, and the model reads why the command
         // could not run.
-        let powershell = match ctx.shells.powershell() {
+        let powershell = match ctx.shells.read().powershell() {
             Ok(shell) => shell.program().to_owned(),
             Err(error) => {
                 return failed(call.id, call.name, error.to_string());

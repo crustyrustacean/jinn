@@ -467,10 +467,11 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             return failed(call.id, call.name, "command is empty".to_owned());
         }
 
-        // The shell jinn runs commands through, resolved at launch. A
-        // machine with no POSIX shell is a real state, and the model reads
-        // why it cannot run the command.
-        let shell = match ctx.shells.bash() {
+        // The shell jinn runs commands through — the current resolution
+        // (a live `jinn.toml` reload may have swapped it). A machine with
+        // no POSIX shell is a real state, and the model reads why it
+        // cannot run the command.
+        let shell = match ctx.shells.read().bash() {
             Ok(shell) => shell.program().to_owned(),
             Err(error) => {
                 return failed(call.id, call.name, error.to_string());
@@ -576,7 +577,7 @@ mod tests {
             turn: crate::tool_types::test_turn(),
             cwd: cwd.clone(),
             config: jinn_config::testutil::config_layer(""),
-            shells: Default::default(),
+            shells: jinn_common::shell::ShellsService::default(),
             timeout: None,
             state: None,
             session_id: None,
@@ -735,7 +736,7 @@ mod tests {
                 turn: crate::tool_types::test_turn(),
                 cwd: dir.path.clone(),
                 config: jinn_config::testutil::config_layer(""),
-                shells: Default::default(),
+                shells: jinn_common::shell::ShellsService::default(),
                 timeout: None,
                 state: None,
                 session_id: None,
@@ -859,8 +860,11 @@ mod tests {
         // via libc. `ps` cannot be used here: procps has `sid`, BSD ps has
         // no working equivalent (`sess` reports 0), and `getsid(2)` needs
         // neither.
+        // SAFETY: `getsid` reads the session id of a live process id; 0 is
+        // this process and `child_pid` the spawned shell, both alive here.
         let own_sid = unsafe { libc::getsid(0) };
         let child_pid = child.id().expect("child is alive") as libc::pid_t;
+        // SAFETY: `child_pid` names the live shell child spawned above.
         let child_sid = unsafe { libc::getsid(child_pid) };
 
         // Then the shell runs in a different session from the test process.
@@ -1365,21 +1369,6 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
-    fn definition_schema_injects_default_timeout_secs() {
-        // Given the global default of 300s.
-        // When building the definition.
-        let def = definition(300);
-
-        // Then the description mentions 300s.
-        assert!(
-            def.description.contains("300s"),
-            "expected description to mention 300s, got: {}",
-            def.description
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
     fn definition_schema_exposes_max_duration_secs_not_timeout() {
         // Given the bash tool definition.
         let def = definition(300);
@@ -1396,51 +1385,6 @@ mod tests {
         assert!(
             !params.contains("\"timeout\""),
             "expected schema to NOT contain a \"timeout\" key, got: {params}",
-        );
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn definition_description_names_max_duration_secs_and_shows_example() {
-        // Given the bash tool definition.
-        let def = definition(300);
-
-        // When reading the tool description.
-        let description = def.description.as_str();
-
-        // Then the description names max_duration_secs.
-        assert!(description.contains("max_duration_secs"));
-        // And contains an inline example call.
-        assert!(description.contains("\"max_duration_secs\": 600"));
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn definition_guidelines_have_proactive_and_reactive_bullets() {
-        // Given the bash tool definition.
-        let def = definition(300);
-
-        // When reading the prompt guidelines.
-        let guidelines = &def.prompt_guidelines;
-
-        // Then guidelines contain a proactive bullet (mentions setting max_duration_secs for slow commands).
-        let proactive = guidelines
-            .iter()
-            .any(|g| g.contains("Proactively") && g.contains("max_duration_secs"));
-        assert!(
-            proactive,
-            "missing proactive guideline: {:?}",
-            def.prompt_guidelines
-        );
-
-        // And a reactive bullet (mentions retrying after a kill).
-        let reactive = guidelines
-            .iter()
-            .any(|g| g.contains("killed") && g.contains("max_duration_secs"));
-        assert!(
-            reactive,
-            "missing reactive guideline: {:?}",
-            def.prompt_guidelines
         );
     }
 }

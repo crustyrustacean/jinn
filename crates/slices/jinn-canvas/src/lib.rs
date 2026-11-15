@@ -1,6 +1,7 @@
 //! The canvas slice — one HTML artifact, served inside the running jinn
-//! over loopback HTTP with embedded vendored visualization libraries and
-//! WebSocket live reload.
+//! over HTTP (on whatever interface the `[canvas] bind` config names;
+//! loopback by default) with embedded vendored visualization libraries
+//! and WebSocket live reload.
 //!
 //! The agent writes an artifact file with its ordinary file tools and
 //! serves it through the `canvas` tool, which asks this slice's actor.
@@ -55,8 +56,9 @@ use crate::canvas_actor::CanvasActorDeps;
 /// the first `canvas` tool call asks it to serve an artifact.
 ///
 /// `config` is the same `jinn.toml` layer every slice receives — the
-/// bind is read here, at activation; a changed bind takes effect on the
-/// next jinn start. `set_handle` receives the tool-facing
+/// bind is read here, at activation, and re-read on every config
+/// reload: dormant the new bind is adopted, serving it applies when
+/// the last browser closes the page. `set_handle` receives the tool-facing
 /// [`jinn_canvas_msg::CanvasServerHandle`]: the kernel owns the slot it
 /// lands in, the slice owns the actor behind it, and neither names the
 /// other's internals.
@@ -79,7 +81,14 @@ pub fn activate(
         .attach("failed to read the [canvas] config section")?;
     let bind = canvas_config.parse_bind()?;
     let system: ActorSystem = host.system().clone();
-    let path = CanvasActor::spawn(&system, &CanvasActorDeps { bind, bus });
+    let path = CanvasActor::spawn(
+        &system,
+        &CanvasActorDeps {
+            bind,
+            config: config.clone(),
+            bus,
+        },
+    );
     set_handle(canvas_actor::canvas_server_handle(system, path));
     Ok(())
 }

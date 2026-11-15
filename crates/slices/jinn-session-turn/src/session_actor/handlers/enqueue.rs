@@ -19,6 +19,7 @@ use jinn_kernel::protocol::{ChatEntry, ChatEntryKind};
 use jinn_session_history_msg::PushChatEntry;
 
 use super::super::SessionPersistenceActor;
+use super::handoff_dispatch::HandoffBoundary;
 use jinn_context::PromptTemplateStore;
 use jinn_context::attachment_path::{PathResolveContext, PendingPath};
 use jinn_llm_support::image_convert::ResolveOutcome;
@@ -82,16 +83,13 @@ fn render_canvas_metrics_block(events: &[jinn_canvas_msg::CanvasMetricEvent]) ->
 /// artifact. Falls back to the full string when the path carries no
 /// file name (`file_name()` is `None` on empty and odd strings).
 fn render_artifact_tag(events: &[jinn_canvas_msg::CanvasMetricEvent]) -> String {
-    events
-        .last()
-        .map(|event| {
-            std::path::Path::new(&event.artifact)
-                .file_name()
-                .map_or(event.artifact.clone(), |name| {
-                    name.to_string_lossy().into_owned()
-                })
-        })
-        .unwrap_or_default()
+    events.last().map_or_default(|event| {
+        std::path::Path::new(&event.artifact)
+            .file_name()
+            .map_or(event.artifact.clone(), |name| {
+                name.to_string_lossy().into_owned()
+            })
+    })
 }
 
 /// One numbered line, oldest first: `N. name`, plus the event's props
@@ -190,6 +188,20 @@ impl SessionPersistenceActor {
 
         match action {
             EnqueueAction::DispatchDirectly => {
+                // Handoff gate: every model-request boundary passes
+                // through here. A fire swaps this entry for the nudge —
+                // the user entry waits at the queue front and
+                // re-dispatches through the ordinary idle drain after
+                // the fold. The nudge dispatches as an ordinary fresh
+                // turn below.
+                let handoff_entry = self.handoff_nudge_if_gated(
+                    &payload.session_id,
+                    HandoffBoundary::IdleDirect,
+                    Some(jinn_turn_dispatch_msg::QueueItem::UserMessage(Box::new(
+                        entry.clone(),
+                    ))),
+                );
+                let entry = handoff_entry.unwrap_or(entry);
                 // Admission before the entry lands: a user message mints a
                 // fresh turn (`FreshTurn`), so the only refusal is a cancel
                 // drain in progress — in which case history stays untouched
@@ -235,7 +247,7 @@ impl SessionPersistenceActor {
 
                 self.publish(ChatEntrySubmitted {
                     session_id: payload.session_id.clone(),
-                    entry: payload.entry.clone(),
+                    entry: entry.clone(),
                 })
                 .await;
 
@@ -486,6 +498,20 @@ impl SessionPersistenceActor {
             return;
         }
 
+        // Handoff gate: a resume's dispatch is a model-request boundary
+        // like any other. The marker entry is constructed up front so a
+        // fire can hold it at the queue front (its UI role survives the
+        // fold) and dispatch the nudge as an ordinary fresh turn instead.
+        let marker = ChatEntry::system("\u{21bb} session resumed");
+        let handoff_entry = self.handoff_nudge_if_gated(
+            &payload.session_id,
+            HandoffBoundary::IdleDirect,
+            Some(jinn_turn_dispatch_msg::QueueItem::UserMessage(Box::new(
+                marker.clone(),
+            ))),
+        );
+        let marker = handoff_entry.unwrap_or(marker);
+
         // Admission first: a resume is a fresh turn (a turn the cancel
         // killed stays dead), so `FreshTurn`. Refused → the marker never
         // lands and nothing dispatches.
@@ -506,8 +532,7 @@ impl SessionPersistenceActor {
             return;
         }
 
-        // Push UI-only resume marker.
-        let marker = ChatEntry::system("\u{21bb} session resumed");
+        // Push the resume marker (or the handoff nudge that replaced it).
         self.state.with_session(|view| {
             view.session
                 .map()

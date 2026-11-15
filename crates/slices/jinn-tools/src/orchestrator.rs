@@ -32,10 +32,12 @@ use jinn_kernel::common::services::bus_service::BusService;
 use jinn_kernel::common::state::State;
 use jinn_mcp_msg::McpConnectionStatus;
 use jinn_session_msg::SessionClosed;
+use jinn_tools_msg::dump::{DUMP_PREVIEW_BYTES, apply_dump, extract_dump_path};
 use jinn_tools_msg::{CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools};
 use jinn_tools_msg::{
     ProviderVisibilityChanged, ToolExecutionCompleted, ToolsRegistered, ToolsUnregistered,
 };
+use marked_path::MarkedPathAccess as _;
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::registry::RegistryError;
@@ -210,6 +212,10 @@ fn build_openrouter_web_search_definition(config: &WebSearchConfig) -> ToolDefin
 pub const ORCHESTRATOR_PATH: &str = "jinn.tools.orchestrator";
 
 impl ServiceActor for ToolOrchestratorActor {
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "ServiceActor::init is async by trait contract; this impl never awaits"
+    )]
     async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: spawned via `init_with` (typed deps cannot ride
         // JSON args).
@@ -224,6 +230,10 @@ impl ToolOrchestratorActor {
     /// Registration of builtins happens in
     /// [`initialize`](Self::initialize); the spawn returns once the actor
     /// is subscribed, so composition can order MCP-after-orchestrator.
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "actor spawn consumes its deps per the codebase's spawn convention; the init closure receives a clone"
+    )]
     pub fn spawn(system: &trouper::system::ActorSystem, deps: ToolOrchestratorActorDeps) {
         let path = ActorPath::new(ORCHESTRATOR_PATH);
         trouper::builder::spawn_service_builder::<Self>(system)
@@ -386,8 +396,7 @@ impl MsgHandler<CancelToolBatch> for ToolOrchestratorActor {
 
 impl MsgHandler<ToolExecutionCompleted> for ToolOrchestratorActor {
     async fn handle(&mut self, msg: &ToolExecutionCompleted, _ctx: &mut MsgCtx<'_>) {
-        self.handle_tool_execution_completed(msg.session_id.clone(), msg.result.clone(), msg.turn)
-            .await;
+        Self::handle_tool_execution_completed(&msg.session_id, &msg.result, msg.turn);
     }
 }
 
@@ -425,6 +434,10 @@ impl MsgHandler<ToolsUnregistered> for ToolOrchestratorActor {
 }
 
 impl MsgHandler<ProviderVisibilityChanged> for ToolOrchestratorActor {
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "MsgHandler::handle is async by trait contract; this impl never awaits"
+    )]
     async fn handle(&mut self, msg: &ProviderVisibilityChanged, _ctx: &mut MsgCtx<'_>) {
         // Given a session's view of a globally-registered provider changing
         // (a singleton the session disabled or re-enabled).
@@ -483,6 +496,7 @@ impl ToolOrchestratorActor {
                 ),
                 ToolRegistration::Actor { .. } => None,
             })
+            .map(jinn_llm_support::tool_prompt::with_reserved_arguments)
             .collect();
         self.cache_registered_tools(&definitions, None);
         let bus = self.deps.services.bus.clone();
@@ -578,6 +592,14 @@ impl ToolOrchestratorActor {
         definitions: &[ToolDefinition],
         session_id: Option<SessionId>,
     ) {
+        // Mirror copies carry the reserved arguments; the stored registrations
+        // keep the definitions as the actor provided them (dispatch source of
+        // truth — the peek at dispatch works regardless).
+        let mirrored: Vec<ToolDefinition> = definitions
+            .iter()
+            .cloned()
+            .map(jinn_llm_support::tool_prompt::with_reserved_arguments)
+            .collect();
         for def in definitions {
             let registration = ToolRegistration::Actor {
                 definition: def.clone(),
@@ -596,10 +618,10 @@ impl ToolOrchestratorActor {
             }
         }
 
-        self.cache_registered_tools(definitions, session_id.as_ref());
+        self.cache_registered_tools(&mirrored, session_id.as_ref());
         self.publish(ToolsRegistered {
             provider: provider.to_owned(),
-            definitions: definitions.to_vec(),
+            definitions: mirrored,
             session_id,
         })
         .await;
@@ -1016,12 +1038,20 @@ impl ToolOrchestratorActor {
 
                 // Read the same truncation limits builtins use so MCP results
                 // are bounded identically. `build_tool_context` does the same
-                // read for the builtin path.
+                // read for the builtin path. The cwd rides too so the MCP
+                // actor can resolve the reserved `dump_to_disk` path.
                 let tools = self
                     .services
                     .config
                     .get::<ToolsConfig>()
                     .unwrap_or_default();
+                let cwd = {
+                    let guard = self.state.read();
+                    guard.session.get(&session_id).map_or_else(
+                        || guard.session.default_cwd().clone(),
+                        |session| session.cwd().clone(),
+                    )
+                };
                 self.publish(ExecuteTool {
                     session_id: session_id.clone(),
                     turn,
@@ -1029,6 +1059,7 @@ impl ToolOrchestratorActor {
                     dispatched_at,
                     max_output_lines: tools.max_output_lines,
                     max_output_bytes: tools.max_output_bytes,
+                    cwd: Some(cwd.to_string_lossy().into_owned()),
                 })
                 .await;
             }
@@ -1135,10 +1166,12 @@ impl ToolOrchestratorActor {
     /// actor — the consumer that acts on the close's settlement. This
     /// actor's remaining job is the `pending` map's abort handles, which
     /// `handle_cancel_tool_batch` drains.
-    async fn handle_tool_execution_completed(
-        &mut self,
-        session_id: SessionId,
-        result: ToolResult,
+    ///
+    /// An associated function: it reads no actor state, so it takes no
+    /// receiver.
+    fn handle_tool_execution_completed(
+        session_id: &SessionId,
+        result: &ToolResult,
         turn: jinn_core_types::turn_identity::TurnToken,
     ) {
         tracing::debug!(
@@ -1224,11 +1257,21 @@ pub(crate) fn extract_max_duration(arguments: &str) -> Option<u64> {
 ///
 /// On timeout the returned `ToolResult` carries a failure message that names
 /// `max_duration_secs` and shows an example call so the model can retry with a larger budget.
+///
+/// A successful result is also run through the reserved `dump_to_disk`
+/// intercept: a call carrying that argument has its output written to the
+/// named file and the in-context result replaced by a pointer stub. Timeout
+/// results are never dumped — the failure narrative is the result.
 async fn run_builtin_with_timeout(
     tool_call: ToolCall,
     tool_ctx: ToolContext,
     execute_fn: fn(ToolCall, ToolContext) -> BoxedToolFuture,
 ) -> ToolResult {
+    // Peeked before the move into `execute_fn`: the dump intercept runs on
+    // whatever the tool returns, and the timeout arm's failure narrative is
+    // exempt by construction (a failed result is never dumped).
+    let dump_path = extract_dump_path(&tool_call.arguments);
+    let cwd = tool_ctx.cwd.clone();
     let call_id = tool_call.id.clone();
     let call_name = tool_call.name.clone();
     let effective = match extract_max_duration(&tool_call.arguments) {
@@ -1236,7 +1279,7 @@ async fn run_builtin_with_timeout(
         Some(secs) => Some(std::time::Duration::from_secs(secs)),
         None => tool_ctx.timeout,
     };
-    match effective {
+    let mut result = match effective {
         Some(dur) => match tokio::time::timeout(dur, execute_fn(tool_call, tool_ctx)).await {
             Ok(r) => r,
             Err(_) => ToolResult {
@@ -1254,7 +1297,11 @@ async fn run_builtin_with_timeout(
             },
         },
         None => execute_fn(tool_call, tool_ctx).await,
+    };
+    if let Some(dump_path) = dump_path {
+        apply_dump(&mut result, &dump_path, cwd.as_path(), DUMP_PREVIEW_BYTES);
     }
+    result
 }
 
 #[cfg(test)]
@@ -1267,6 +1314,7 @@ mod timeout_tests {
     use jinn_kernel::common::app_paths::AppPaths;
     use jinn_preferences_config::schemas::ToolsConfig;
     use marked_path::Absolute;
+    use marked_path::MarkedPathAccess as _;
     use marked_path::MarkedPathBuf;
 
     fn make_call() -> ToolCall {
@@ -1284,7 +1332,7 @@ mod timeout_tests {
             turn: crate::tool_types::test_turn(),
             cwd: dir.clone(),
             config: jinn_config::testutil::config_layer(""),
-            shells: Default::default(),
+            shells: jinn_common::shell::ShellsService::default(),
             timeout: None,
             state: None,
             session_id: None,
@@ -1512,6 +1560,69 @@ mod timeout_tests {
         assert!(!result.success);
         assert!(result.content.contains("max_duration_secs"));
     }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn dump_to_disk_call_writes_file_and_stubs_result() {
+        // Given a call carrying dump_to_disk and a tool that completes.
+        let dir = jinn_testutil::tempdir();
+        let mut call = make_call();
+        call.arguments = r#"{"dump_to_disk":"research/page.md"}"#.to_owned();
+
+        // When running the tool.
+        let result = run_builtin_with_timeout(call, empty_ctx(&dir.path), fast_execute).await;
+
+        // Then the file exists with the tool's original output.
+        let written = std::fs::read_to_string(dir.path.as_path().join("research/page.md"))
+            .expect("dump file written");
+        assert_eq!(written, "done");
+
+        // And the in-context result is a pointer stub carrying the meta
+        // (the stub spells the path with native separators).
+        assert!(
+            result
+                .content
+                .contains(&"research/page.md".replace('/', std::path::MAIN_SEPARATOR_STR)),
+            "{}",
+            result.content
+        );
+        assert!(result.truncation.is_some());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn call_without_dump_to_disk_is_unchanged() {
+        // Given a call without the reserved argument.
+        let dir = jinn_testutil::tempdir();
+
+        // When running the tool.
+        let result =
+            run_builtin_with_timeout(make_call(), empty_ctx(&dir.path), fast_execute).await;
+
+        // Then the result is the tool's plain output, untouched.
+        assert_eq!(result.content, "done");
+        assert!(result.truncation.is_none());
+        assert!(result.full_content.is_none());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn timed_out_result_is_never_dumped() {
+        // Given a call carrying dump_to_disk whose tool exceeds the global timeout.
+        let dir = jinn_testutil::tempdir();
+        let mut call = make_call();
+        call.arguments = r#"{"dump_to_disk":"page.md"}"#.to_owned();
+        let mut ctx = empty_ctx(&dir.path);
+        ctx.timeout = Some(Duration::from_millis(50));
+
+        // When running the slow tool.
+        let result = run_builtin_with_timeout(call, ctx, slow_execute).await;
+
+        // Then the timeout narrative stays in context and no file is written.
+        assert!(!result.success);
+        assert!(result.content.contains("max_duration_secs"));
+        assert!(!dir.path.as_path().join("page.md").exists());
+    }
 }
 
 #[cfg(test)]
@@ -1554,7 +1665,7 @@ mod panic_safety_tests {
                 turn: crate::tool_types::test_turn(),
                 cwd: dir.path.clone(),
                 config: jinn_config::testutil::config_layer(""),
-                shells: Default::default(),
+                shells: jinn_common::shell::ShellsService::default(),
                 timeout: None,
                 state: None,
                 session_id: None,
@@ -2050,6 +2161,7 @@ mod mcp_dispatch_gate_tests {
         // configured singleton, and its status written to the singleton
         // bucket — not under this session's id.
         let (harness, services, session_id, dispatched) = {
+            use jinn_preferences_config::schemas::McpServersConfig as SeedConfig;
             let state = State::new(AppState::default());
             let session_id = SessionId::new();
             state
@@ -2057,10 +2169,9 @@ mod mcp_dispatch_gate_tests {
                 .session
                 .get_or_create(&session_id)
                 .enable_mcp_server("stub");
-            let (harness, services) = spawn_orchestrator(&state).await;
             // The gate reads singleton-ness from the config layer, so the seed
             // goes through the same path production reads.
-            use jinn_preferences_config::schemas::McpServersConfig as SeedConfig;
+            let (harness, services) = spawn_orchestrator(&state).await;
             services
                 .config
                 .put::<SeedConfig>(&SeedConfig(

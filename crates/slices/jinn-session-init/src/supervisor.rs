@@ -18,6 +18,7 @@
 //! session — that publish, not `EnvironmentLoaded`, is what arms the
 //! initial session's discovery.
 
+use jinn_boot_msg::ResourcesChanged;
 use trouper::actor::{ActorPath, MsgHandler, ServiceActor};
 use trouper::context::MsgCtx;
 use trouper::envelope::Address;
@@ -73,7 +74,7 @@ impl SessionInitSupervisor {
     /// Panics if the topic subscription fails, which can only happen on
     /// a broken actor system; the activate-before-first-trigger
     /// ordering relies on the cursor being registered.
-    pub fn spawn(system: &ActorSystem, state: State) -> ActorPath {
+    pub fn spawn(system: &ActorSystem, state: &State) -> ActorPath {
         trouper::builder::spawn_service_builder::<Self>(system)
             .at(ActorPath::new(crate::SUPERVISOR_PATH))
             .init_with({
@@ -93,6 +94,9 @@ impl SessionInitSupervisor {
             .handles::<SessionSetupCompleted>()
             .handles::<SessionLoadCompleted>()
             .handles::<SessionCwdChanged>()
+            // Live resources: a theme/persona/skill edit re-runs every
+            // live session's discovery.
+            .handles::<ResourcesChanged>()
             .handles::<ScanSkills>()
             .handles::<RescanPromptTemplates>()
             .handles::<ScanContextFiles>()
@@ -157,6 +161,10 @@ impl MsgHandler<SessionSetupCompleted> for SessionInitSupervisor {
 }
 
 impl MsgHandler<SessionLoadCompleted> for SessionInitSupervisor {
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "trait contract: the handler is sync in body (state read + gated_run)"
+    )]
     async fn handle(&mut self, msg: &SessionLoadCompleted, ctx: &mut MsgCtx<'_>) {
         let cwd = self
             .state
@@ -173,6 +181,33 @@ impl MsgHandler<SessionLoadCompleted> for SessionInitSupervisor {
 impl MsgHandler<SessionCwdChanged> for SessionInitSupervisor {
     async fn handle(&mut self, msg: &SessionCwdChanged, ctx: &mut MsgCtx<'_>) {
         self.gated_run(ctx, &msg.session_id, &msg.cwd);
+    }
+}
+
+// Live resources: skills, prompts, and workflows are files the user can
+// edit while jinn runs. A `ResourcesChanged` event re-runs discovery for
+// every live session so the next context assembly sees the new set —
+// the same full scan a session's own triggers run, keyed per session,
+// so an in-flight scan for one session never blocks another's.
+impl MsgHandler<ResourcesChanged> for SessionInitSupervisor {
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "trait contract: the handler is sync in body (state read + gated_run loop)"
+    )]
+    async fn handle(&mut self, _msg: &ResourcesChanged, ctx: &mut MsgCtx<'_>) {
+        let sessions: Vec<(SessionId, MarkedPathBuf<Absolute>)> = {
+            let state = self.state.read();
+            state
+                .session
+                .iter()
+                .map(|(id, session)| (id.clone(), session.cwd().clone()))
+                .collect()
+        };
+        // Given a resource directory whose contents just changed.
+        for (session_id, cwd) in sessions {
+            // Then each live session re-runs its full discovery.
+            self.gated_run(ctx, &session_id, &cwd);
+        }
     }
 }
 

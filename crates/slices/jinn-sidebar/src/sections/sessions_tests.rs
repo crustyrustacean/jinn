@@ -8,9 +8,11 @@
 )]
 
 use crate::sections::section_trait::{EnterFrom, SectionNavResult, SidebarIntent, SidebarSection};
+use crate::sections::sessions::receive_cursor;
+use crate::sections::sessions::state::sorted_open_sessions;
 use crate::sections::sessions::{
     SessionCloseError, SessionsSection, handle_session_activate, handle_session_close_arm,
-    navigate, receive_cursor, sorted_open_sessions, validate_session_close,
+    navigate, validate_session_close,
 };
 use crate::sections::testing::{state_with_message_sessions, state_with_session_ids};
 use jinn_kernel::common::app_state::AppState;
@@ -21,13 +23,13 @@ use ratatui::style::Color;
 
 /// Helper: get a session title from the live session map via a tree entry.
 fn complete_removed_session(state: &mut AppState, removed_id: &jinn_core_types::SessionId) {
-    complete_removed_session_from(state, removed_id, false)
+    complete_removed_session_from(state, removed_id, false);
 }
 
 /// As [`complete_removed_session`], for the case where the removed session was
 /// the one the user was reading.
 fn complete_active_session(state: &mut AppState, removed_id: &jinn_core_types::SessionId) {
-    complete_removed_session_from(state, removed_id, true)
+    complete_removed_session_from(state, removed_id, true);
 }
 
 fn complete_removed_session_from(
@@ -38,7 +40,7 @@ fn complete_removed_session_from(
     let removed_parent = state
         .session
         .get(removed_id)
-        .and_then(|session| session.parent_session().as_ref().cloned());
+        .and_then(|session| session.parent_session().clone());
     crate::sections::sessions::update_visual_parents_on_removal(state, removed_id);
     // Recorded the way the pre-render pass does, before the row is gone.
     crate::sections::capture_rows::capture_sessions_cursor_row(state);
@@ -56,17 +58,12 @@ fn entry_title(state: &AppState, id: &jinn_core_types::SessionId) -> String {
     state
         .session
         .get(id)
-        .map(|s| s.title().unwrap_or("Untitled Session").to_owned())
-        .unwrap_or_default()
+        .map_or_default(|s| s.title().unwrap_or("Untitled Session").to_owned())
 }
 
 /// Helper: get a session's created_at from the live session map.
 fn entry_created_at(state: &AppState, id: &jinn_core_types::SessionId) -> jiff::Timestamp {
-    state
-        .session
-        .get(id)
-        .map(|s| *s.created_at())
-        .unwrap_or_default()
+    state.session.get(id).map_or_default(|s| *s.created_at())
 }
 
 /// Helper: check if the session's last entry is an error.
@@ -451,18 +448,15 @@ fn sorted_sessions_orders_by_created_at_descending() {
     let a = state
         .session
         .get(&sessions[0].id)
-        .map(|s| *s.created_at())
-        .unwrap_or_default();
+        .map_or_default(|s| *s.created_at());
     let b = state
         .session
         .get(&sessions[1].id)
-        .map(|s| *s.created_at())
-        .unwrap_or_default();
+        .map_or_default(|s| *s.created_at());
     let c = state
         .session
         .get(&sessions[2].id)
-        .map(|s| *s.created_at())
-        .unwrap_or_default();
+        .map_or_default(|s| *s.created_at());
     assert!(a >= b);
     assert!(b >= c);
 }
@@ -527,7 +521,7 @@ fn settled_turn_returns_to_idle() {
     assert!(sessions[0].is_idle);
 }
 
-use jinn_testutil::{empty_routes, empty_slices, setup_term};
+use jinn_testutil::{empty_slices, setup_term};
 
 fn render_rows(
     section: &mut SessionsSection,
@@ -1035,7 +1029,7 @@ fn teardown_only_is_noop_without_lifecycle_teardown() {
     let result = super::sessions::handle_session_teardown(&mut state, &config);
 
     // Then no commands are emitted (no teardown command to run).
-    assert!(result.message_names.is_empty());
+    assert_eq!(result.message_names, [] as [&str; 0]);
 }
 
 #[rstest::rstest]
@@ -1063,7 +1057,7 @@ fn teardown_only_is_noop_when_session_busy() {
     let result = super::sessions::handle_session_teardown(&mut state, &config);
 
     // Then no commands are emitted (validation gates on busy state).
-    assert!(result.message_names.is_empty());
+    assert_eq!(result.message_names, [] as [&str; 0]);
 }
 
 // ---------------------------------------------------------------------------
@@ -1740,11 +1734,11 @@ fn archiving_root_does_not_create_visual_parents_for_orphaned_children() {
         .iter()
         .position(|s| entry_title(&state, &s.id).contains("root a"))
         .expect("root a");
-    let _root_a_id = sessions[root_a_index].id.clone();
+    let root_a_id = sessions[root_a_index].id.clone();
     cursor_to_row(&mut state, root_a_index);
 
     // When closing root_a (no loaded ancestor to reparent to).
-    complete_removed_session(&mut state, &_root_a_id);
+    complete_removed_session(&mut state, &root_a_id);
 
     // Then the visual_parents index should be empty (root has no loaded ancestor).
     assert!(
@@ -2415,7 +2409,7 @@ fn archive_tree_arm_sets_confirm_prompt_with_subtree_count() {
         })
     );
     // And no commands were emitted.
-    assert!(result.message_names.is_empty());
+    assert_eq!(result.message_names, [] as [&str; 0]);
 }
 
 #[rstest::rstest]
@@ -2444,7 +2438,7 @@ fn archive_tree_arm_sets_busy_prompt_when_subtree_busy() {
         Some(ArchiveTreePrompt::Busy)
     );
     // And no commands were emitted.
-    assert!(result.message_names.is_empty());
+    assert_eq!(result.message_names, [] as [&str; 0]);
 }
 
 #[rstest::rstest]
@@ -2567,7 +2561,7 @@ fn archive_tree_invalid_context_leaves_no_prompt() {
 
     // Then no prompt is armed and no commands are emitted.
     assert_eq!(state.frontend.archive_tree_prompt, None);
-    assert!(result.message_names.is_empty());
+    assert_eq!(result.message_names, [] as [&str; 0]);
 }
 
 #[rstest::rstest]
@@ -2594,7 +2588,7 @@ fn teardown_tree_arm_sets_confirm_prompt_with_action() {
         })
     );
     // And no commands were emitted.
-    assert!(result.message_names.is_empty());
+    assert_eq!(result.message_names, [] as [&str; 0]);
 }
 
 #[rstest::rstest]
@@ -2623,7 +2617,7 @@ fn teardown_tree_arm_sets_busy_prompt_when_subtree_busy() {
         Some(ArchiveTreePrompt::Busy)
     );
     // And no commands were emitted.
-    assert!(result.message_names.is_empty());
+    assert_eq!(result.message_names, [] as [&str; 0]);
 }
 
 #[rstest::rstest]
@@ -3139,34 +3133,41 @@ fn session_yank_dispatch_stashes_the_selected_sessions_id() {
         jinn_slices::empty_config_layer(),
     );
 
-    // Then the clipboard signal carries that session's UUID string.
+    // Then the clipboard signal carries that session's UUID string under
+    // the session-id label.
     assert_eq!(
         state.frontend.signals_snapshot().yank_text,
-        Some(root_id.to_string()),
+        Some(jinn_slices::ClipboardRequest::new(
+            root_id.to_string(),
+            "session id"
+        )),
         "`y` must stash the highlighted session's ID on the yank signal"
     );
 }
 
 #[rstest::rstest]
-fn session_yank_dispatch_arms_the_confirmation_banner() {
-    // Given the sessions section focused with a session highlighted.
+fn session_yank_writes_no_hint_itself() {
+    // Given the sessions section focused with a session highlighted and a
+    // seeded status-bar cell.
     let (mut state, _) = state_with_archive_tree();
     focus_sessions_and_select(&mut state, "tree root");
+    let slices = seed_status_bar();
 
     // When handling the yank intent the `y` key produces.
     let _result = IntentHandler::handle(
         &yank_intent(),
         &mut state,
-        &empty_slices(),
+        &slices,
         &sidebar_routes(),
         jinn_slices::empty_config_layer(),
     );
 
-    // Then the "Session ID yanked" banner is armed.
-    assert!(
-        state.frontend.session_id_yank_popup,
-        "`y` must arm the yank banner"
-    );
+    // Then the slice wrote no copied-phrasing hint — the clipboard writer
+    // raises the hint after the write resolves.
+    let hint = slices
+        .reader::<jinn_status_bar::StatusBarState>(&jinn_status_bar::status_bar_slot())
+        .map(|cell| cell.read().hint.clone());
+    assert_eq!(hint, Some(None), "the cell exists and carries no hint");
 }
 
 #[rstest::rstest]
@@ -3186,9 +3187,20 @@ fn session_yank_over_no_selection_is_a_no_op() {
         jinn_slices::empty_config_layer(),
     );
 
-    // Then nothing happened: no clipboard signal, no banner.
+    // Then nothing happened: no clipboard signal.
     assert!(state.frontend.signals_snapshot().yank_text.is_none());
-    assert!(!state.frontend.session_id_yank_popup);
+}
+
+/// Helper: an empty `Slices` with the status-bar cell seeded, so the
+/// yank tests can assert the slice writes no hint of its own.
+fn seed_status_bar() -> jinn_slices::Slices {
+    let slices = jinn_slices::Slices::new();
+    jinn_kernel::common::render_test::seed_cell(
+        &slices,
+        &jinn_status_bar::status_bar_slot(),
+        jinn_status_bar::StatusBarState::default(),
+    );
+    slices
 }
 
 #[rstest::rstest]
@@ -3206,74 +3218,8 @@ fn session_yank_outside_the_sessions_section_is_a_no_op() {
         jinn_slices::empty_config_layer(),
     );
 
-    // Then nothing happened: no clipboard signal, no banner.
+    // Then nothing happened: no clipboard signal.
     assert!(state.frontend.signals_snapshot().yank_text.is_none());
-    assert!(!state.frontend.session_id_yank_popup);
-}
-
-#[rstest::rstest]
-fn any_keypress_after_a_yank_hides_the_banner() {
-    // Given the banner armed by a yank press.
-    let (mut state, _) = state_with_archive_tree();
-    focus_sessions_and_select(&mut state, "tree root");
-    IntentHandler::handle(
-        &yank_intent(),
-        &mut state,
-        &empty_slices(),
-        &sidebar_routes(),
-        jinn_slices::empty_config_layer(),
-    );
-
-    // When handling an unrelated, unmapped intent (NoOp).
-    let _result = IntentHandler::handle(
-        &KernelIntent::NoOp,
-        &mut state,
-        &empty_slices(),
-        &empty_routes(),
-        jinn_slices::empty_config_layer(),
-    );
-
-    // Then the banner is hidden.
-    assert!(
-        !state.frontend.session_id_yank_popup,
-        "the banner must hide on any subsequent keypress"
-    );
-}
-
-#[rstest::rstest]
-fn yank_after_a_dismissal_rearms_the_banner() {
-    // Given the banner was armed and then dismissed by another keypress.
-    let (mut state, _) = state_with_archive_tree();
-    focus_sessions_and_select(&mut state, "tree root");
-    IntentHandler::handle(
-        &yank_intent(),
-        &mut state,
-        &empty_slices(),
-        &sidebar_routes(),
-        jinn_slices::empty_config_layer(),
-    );
-    IntentHandler::handle(
-        &KernelIntent::NoOp,
-        &mut state,
-        &empty_slices(),
-        &empty_routes(),
-        jinn_slices::empty_config_layer(),
-    );
-
-    // When handling the yank intent again.
-    let _result = IntentHandler::handle(
-        &yank_intent(),
-        &mut state,
-        &empty_slices(),
-        &sidebar_routes(),
-        jinn_slices::empty_config_layer(),
-    );
-
-    // Then the banner is armed again.
-    assert!(
-        state.frontend.session_id_yank_popup,
-        "pressing `y` again must re-arm the banner"
-    );
 }
 
 /// The dynamic intent the sidebar's bots-scope yank route row mints for the
@@ -3346,10 +3292,14 @@ fn bot_section_yank_stashes_the_bots_session_id() {
         jinn_slices::empty_config_layer(),
     );
 
-    // Then the clipboard signal carries the bot's session UUID.
+    // Then the clipboard signal carries the bot's session UUID under the
+    // session-id label.
     assert_eq!(
         state.frontend.signals_snapshot().yank_text,
-        Some(bot_id.to_string()),
+        Some(jinn_slices::ClipboardRequest::new(
+            bot_id.to_string(),
+            "session id"
+        )),
         "`y` in the bots section must stash the bot's session ID"
     );
     // And nothing was published — yanking is a signal, not a command.
@@ -3357,27 +3307,6 @@ fn bot_section_yank_stashes_the_bots_session_id() {
         result.message_names.is_empty(),
         "a yank must not publish a bus message, published: {:?}",
         result.message_names
-    );
-}
-
-#[rstest::rstest]
-fn bot_section_yank_arms_the_confirmation_banner() {
-    // Given the bots section focused with its cursor on a bot.
-    let (mut state, _bot_id) = state_with_bots_cursor_on_bot();
-
-    // When handling the yank intent the `y` key produces there.
-    let _result = IntentHandler::handle(
-        &bot_yank_intent(),
-        &mut state,
-        &empty_slices(),
-        &sidebar_routes(),
-        jinn_slices::empty_config_layer(),
-    );
-
-    // Then the "Session ID yanked" banner is armed.
-    assert!(
-        state.frontend.session_id_yank_popup,
-        "`y` in the bots section must arm the yank banner"
     );
 }
 
@@ -3396,10 +3325,14 @@ fn library_section_yank_stashes_the_members_session_id() {
         jinn_slices::empty_config_layer(),
     );
 
-    // Then the clipboard signal carries the member's session UUID.
+    // Then the clipboard signal carries the member's session UUID under the
+    // session-id label.
     assert_eq!(
         state.frontend.signals_snapshot().yank_text,
-        Some(member_id.to_string()),
+        Some(jinn_slices::ClipboardRequest::new(
+            member_id.to_string(),
+            "session id"
+        )),
         "`y` in the library must stash the member's session ID"
     );
     // And nothing was published — yanking is a signal, not a command.
@@ -3407,28 +3340,6 @@ fn library_section_yank_stashes_the_members_session_id() {
         result.message_names.is_empty(),
         "a yank must not publish a bus message, published: {:?}",
         result.message_names
-    );
-}
-
-#[rstest::rstest]
-fn library_section_yank_arms_the_confirmation_banner() {
-    // Given the library section focused with its cursor on a member.
-    let member_id = jinn_core_types::SessionId::new();
-    let mut state = state_with_library_cursor_on(&member_id);
-
-    // When handling the yank intent the `y` key produces there.
-    let _result = IntentHandler::handle(
-        &library_yank_intent(),
-        &mut state,
-        &empty_slices(),
-        &sidebar_routes(),
-        jinn_slices::empty_config_layer(),
-    );
-
-    // Then the "Session ID yanked" banner is armed.
-    assert!(
-        state.frontend.session_id_yank_popup,
-        "`y` in the library must arm the yank banner"
     );
 }
 
@@ -3455,7 +3366,10 @@ fn yanking_an_archived_library_member_yanks_from_the_cursor_alone() {
     // Then the yank still succeeds — the cursor carries the id itself.
     assert_eq!(
         state.frontend.signals_snapshot().yank_text,
-        Some(archived_id.to_string()),
+        Some(jinn_slices::ClipboardRequest::new(
+            archived_id.to_string(),
+            "session id"
+        )),
         "an archived member must yank from its cursor alone"
     );
     // And no load/unarchive was requested — copying an id is not opening it.
@@ -3486,122 +3400,12 @@ fn yank_in_a_section_whose_cursor_names_no_session_is_a_no_op() {
         jinn_slices::empty_config_layer(),
     );
 
-    // Then nothing happened: no clipboard signal, no banner, no message.
+    // Then nothing happened: no clipboard signal, no message.
     assert!(state.frontend.signals_snapshot().yank_text.is_none());
-    assert!(!state.frontend.session_id_yank_popup);
     assert!(
         result.message_names.is_empty(),
         "a refused yank must not publish, published: {:?}",
         result.message_names
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Session ID yank - render
-// ---------------------------------------------------------------------------
-
-/// Helper: renders the sessions section then the yank banner overlay (the
-/// same two-pass render jinn-tui performs) and returns the terminal, so a
-/// test can read both the rows and the cells' styles. Goes through the
-/// `Sidebar` container so the sessions section gets the same bottom-anchored
-/// sub-rect the production render gives it.
-fn render_sessions_with_yank_banner(state: &AppState, sidebar_width: u16) -> Terminal<TestBackend> {
-    let (width, height) = (60, 20);
-    let frame_area = ratatui::layout::Rect {
-        x: 0,
-        y: 0,
-        width,
-        height,
-    };
-    let sidebar_rect = ratatui::layout::Rect {
-        x: width - sidebar_width,
-        y: 0,
-        width: sidebar_width,
-        height,
-    };
-    let mut sidebar = crate::sections::Sidebar::default();
-    sidebar.register(Box::new(SessionsSection::new()));
-    render_draw_with_ctx(
-        state,
-        &jinn_slices::Slices::new(),
-        width,
-        height,
-        |frame, _area, ctx| {
-            sidebar.render(frame, sidebar_rect, ctx);
-            crate::sections::sessions::render_session_id_yank_popup_for_state(
-                frame,
-                sidebar_rect,
-                frame_area,
-                ctx,
-            );
-        },
-    )
-}
-
-#[rstest::rstest]
-fn yank_banner_renders_the_confirmation_text() {
-    // Given a focused selection with the yank banner armed.
-    let (mut state, _) = state_with_archive_tree();
-    focus_sessions_and_select(&mut state, "tree root");
-    state.frontend.session_id_yank_popup = true;
-
-    // When rendering the sessions section plus the banner overlay.
-    let rows = buffer_rows(&render_sessions_with_yank_banner(&state, 30), 60, 20);
-
-    // Then the confirmation text appears.
-    assert!(
-        rows.iter().any(|row| row.contains("Session ID yanked")),
-        "rendered: {rows:?}"
-    );
-}
-
-#[rstest::rstest]
-fn yank_banner_background_tracks_the_theme_success_key() {
-    // Given a focused selection with the banner armed and a distinctive
-    // success color no other surface uses.
-    let (mut state, _) = state_with_archive_tree();
-    focus_sessions_and_select(&mut state, "tree root");
-    state.frontend.session_id_yank_popup = true;
-    let distinctive = Color::Rgb(12, 200, 34);
-    state.frontend.theme.success = distinctive;
-
-    // When rendering the sessions section plus the banner overlay.
-    let terminal = render_sessions_with_yank_banner(&state, 30);
-    let rows = buffer_rows(&terminal, 60, 20);
-
-    // Then the banner row's cells carry the theme's success color as their
-    // background — the banner reads the theme key, not a hardcoded color.
-    let banner_row = rows
-        .iter()
-        .position(|row| row.contains("Session ID yanked"))
-        .expect("banner is rendered");
-    let last_banner_cell = terminal
-        .backend()
-        .buffer()
-        .cell((59, banner_row as u16))
-        .expect("banner reaches the frame's right edge");
-    assert_eq!(
-        last_banner_cell.style().bg,
-        Some(distinctive),
-        "banner bg must come from theme.success"
-    );
-}
-
-#[rstest::rstest]
-fn yank_banner_renders_nothing_when_the_sessions_section_is_not_focused() {
-    // Given the banner flag armed but the chat pane holding focus (the
-    // floating-surface draw runs every frame regardless of focus).
-    let (mut state, _) = state_with_archive_tree();
-    cursor_to_row(&mut state, 0);
-    state.frontend.session_id_yank_popup = true;
-
-    // When rendering the sessions section plus the banner overlay.
-    let rows = buffer_rows(&render_sessions_with_yank_banner(&state, 30), 60, 20);
-
-    // Then no banner is painted.
-    assert!(
-        !rows.iter().any(|row| row.contains("Session ID yanked")),
-        "the banner must not paint while the chat pane is focused: {rows:?}"
     );
 }
 
@@ -4256,7 +4060,7 @@ mod navigation_preview_requests {
 
         // Then the sidebar is told the section is exhausted, with nothing to publish.
         assert_eq!(result, SectionNavResult::Exhausted);
-        assert!(emitted.message_names.is_empty());
+        assert_eq!(emitted.message_names, [] as [&str; 0]);
     }
 
     #[rstest::rstest]
@@ -4554,7 +4358,10 @@ fn remove_from_library_restores_sessions_row() {
     if let Some(session) = state.session.get_mut(&ids[0]) {
         session.set_in_library(true);
     }
-    assert!(sorted_open_sessions(&state).is_empty());
+    assert_eq!(
+        sorted_open_sessions(&state),
+        [] as [jinn_sidebar_msg::SessionEntry; 0]
+    );
 
     // When the library flag is cleared.
     if let Some(session) = state.session.get_mut(&ids[0]) {

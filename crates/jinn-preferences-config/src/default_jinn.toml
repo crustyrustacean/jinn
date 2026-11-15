@@ -104,6 +104,30 @@ tool_entry_max_lines = 6
 min_collapse_count = 3
 #
 # ###########################################################################
+# Graphics
+# ###########################################################################
+[graphics]
+#
+# > Render images in the chat log as actual pictures in terminals that
+# > support a graphics protocol (kitty, ghostty, ...). Attached images
+# > (the green `@path` tokens) draw below the message; `read_image`
+# > tool results draw in place of the text summary. Terminals without
+# > graphics support keep the plain-text placeholders regardless of
+# > this setting.
+enabled = true
+#
+# > Force a specific graphics protocol instead of trusting detection. One of:
+# > "auto" (trust detection), "kitty", "sixel", "iterm2", "halfblocks". Forcing
+# > a protocol the terminal cannot actually speak degrades to the plain-text
+# > placeholders.
+protocol = "auto"
+#
+# > Absolute cap on the rows one image may occupy in the chat log.
+# > Default 16; additionally clamped to half the viewport height,
+# > never below 4 rows. Uncomment to override.
+# max_image_rows = 16
+
+# ###########################################################################
 # Skills
 # ###########################################################################
 [skills]
@@ -115,14 +139,152 @@ skill_filter = { mode = "deny", names = ["phased-task-loop"] }
 # ###########################################################################
 # Canvas
 # ###########################################################################
+[canvas]
 # > Where the canvas server binds when the agent serves an artifact with
 # > the `canvas` tool. Host:port as one value. Port 0 (the default) asks
 # > the OS for an ephemeral port, so two running jinn instances never
 # > fight over one port; the resolved URL comes back in the tool result.
 # >
-# > The bind must be a loopback address — the canvas server has no
-# > authentication, so it never listens on an exposed interface.
+# > The bind is taken as configured — point it at any interface you
+# > like; securing that endpoint is your responsibility. The default
+# > listens on loopback only, which is safe on a single-user machine.
 bind = "127.0.0.1:0"
+
+# ###########################################################################
+# Applets (saved artifacts)
+# ###########################################################################
+[applets]
+# > Where the saved-applet server binds when you open an applet from the applets
+# > picker (<leader>sa). Host:port as one value. Port 0 (the default) asks
+# > the OS for an ephemeral port, so two running jinn instances never
+# > fight over one port; the resolved port is what the opened URL carries.
+# >
+# > The bind is taken as configured — point it at any interface you
+# > like; securing that endpoint is your responsibility. The default
+# > listens on loopback only, which is safe on a single-user machine.
+bind = "127.0.0.1:0"
+
+# > `<c-enter>` in the applets picker opens the applet in a kiosk window —
+# > full-screen, chromeless. By default jinn finds a Chromium-family
+# > browser (Chrome, Chromium, Edge, Brave) on its own and launches it
+# > with a jinn-owned profile, so the kiosk opens even while your normal
+# > browser is running. Set this key to launch a specific browser
+# > instead: the whole command REPLACES the built-in launcher and runs
+# > through your shell (sh on Linux/macOS, cmd on Windows).
+# >
+# > Four placeholders are substituted verbatim — jinn adds no quoting,
+# > you write the quotes ({profile} and {title} must be quoted by you):
+# >   {url}      the applet URL, carrying the ?kiosk=1 marker
+# >   {profile}  a jinn-owned browser profile directory
+# >   {id}       the applet's directory id
+# >   {title}    the applet's display title
+# >
+# > Chromium example (single-quoted TOML literal string, so nothing is
+# > escaped):
+# kiosk_command = 'chromium --kiosk --app="{url}" --user-data-dir="{profile}"'
+
+# ###########################################################################
+# Dictation (local voice input)
+# ###########################################################################
+[dictation]
+# > Local speech-to-text for the chat input. alt-i toggles recording;
+# > committed utterances append to the input of whichever session holds
+# > focus. The model runs entirely on this machine — no cloud path.
+#
+# > Whether dictation is active. Disabled (the default) keeps the actor
+# > offline: alt-i reports "disabled", nothing downloads, the meter
+# > never shows. Config changes take effect on the next jinn start.
+enabled = false
+#
+# > The capture device to open, matched exactly against the input
+# > device names. Omit it to use the system default input. A name that
+# > matches nothing refuses to arm and lists the available inputs.
+# device = "USB Microphone"
+#
+# > Which model to run. Currently supported:
+# >
+# >   parakeet-tdt-0.6b-v2   NVIDIA Parakeet TDT 0.6B v2, English,
+# >                          int8 ONNX (the shipped default)
+#
+# > An unknown value fails the actor into an error state naming the
+# > valid set.
+model = "parakeet-tdt-0.6b-v2"
+#
+# > Denoise the capture before transcription (recommended; the filter
+# > runs at the device's native rate before the model's 16 kHz
+# > resample).
+noise_reduction = true
+#
+# > --- Endpointing tuning (applied on the next jinn start) ----------
+# >
+# > The voice-activity detector decides when you have finished an
+# > utterance and the words should land in the input. These four keys
+# > shape that decision.
+#
+# > How certain the detector must be that a sound is speech
+# > (0.0-1.0). Lower catches quieter, mumblier speech; higher
+# > demands clearer speech and ignores more background noise.
+# vad_threshold = 0.5
+#
+# > Seconds of silence that close an utterance — the main "how long
+# > after I stop talking does text land" knob. Lower (0.3) delivers
+# > mid-sentence fragments faster; higher (0.8) holds out for natural
+# > sentence ends and delivers fewer, longer chunks.
+# min_silence_duration = 0.5
+#
+# > Seconds of speech required before a segment counts as an
+# > utterance; shorter blips ("mm", clicks) are dropped.
+# min_speech_duration = 0.25
+#
+# > Seconds of continuous speech at which a segment force-closes even
+# > without a pause — a safety valve for rambling without stops; text
+# > arrives in chunks of at most this length.
+# max_speech_duration = 20.0
+#
+# > --- Decode tuning (applied on the next jinn start) ---------------
+#
+# > The decoder's search strategy. "modified_beam_search" (the
+# > default) is more accurate at the cost of CPU; "greedy_search" is
+# > faster and a little less accurate.
+# decoding_method = "modified_beam_search"
+#
+# > Beam width for modified_beam_search (ignored by greedy). Higher
+# > is marginally more accurate, linearly more CPU.
+# max_active_paths = 4
+#
+# > Penalty on blank tokens during decoding; higher biases against
+# > long silences inside words.
+# blank_penalty = 0.0
+#
+# > ONNX Runtime threads per model. More decodes faster at higher
+# > CPU cost.
+# num_threads = 2
+#
+# > Path to a hotwords file (one phrase per line) the decoder boosts —
+# > names, jargon, product terms the base model mangles. Needs
+# > modified_beam_search to take effect.
+# hotwords_file = ""
+#
+# > Boost score for hotwords; higher biases harder toward them.
+# hotwords_score = 1.5
+#
+# > Paths to inverse-text-normalization FSTs (spoken numbers to
+# > digits, currency, dates), colon-separated.
+# rule_fsts = ""
+
+# ###########################################################################
+# Remote control surface
+# ###########################################################################
+[remote]
+# > Where the external control surface binds so `jinn remote` (or plain
+# > curl) can deliver a message into a live session of a running
+# > instance. Host:port as one value. Port 0 (the default) asks the OS
+# > for an ephemeral port, so two running jinn instances never fight
+# > over one port; the resolved port is listed by `jinn remote
+# > instances`.
+# >
+# > The bind must be a loopback address — the control surface has no
+# > authentication, so it never listens on an exposed interface.
 
 # ###########################################################################
 # Session lifecycle commands
@@ -159,28 +321,34 @@ description = "Open a new checkout + branch"
 setup_command = "mkdir <branch> && cd <branch> && fossil open ../<repo>.fossil && fossil commit -m 'Open <branch>' --branch <branch> --allow-empty && echo ./<branch>"
 teardown_command = "fossil merge trunk --force && fossil addremove && fossil commit -m 'Bring in latest trunk' && fossil update trunk && fossil merge <branch> && fossil addremove && fossil commit -m 'Merge <branch>' && fossil branch close <branch> && cd .. && rm -rfv <branch>"
 
-# >Git worktrees. Project directory should be a parent folder of the repo:
+# > Git worktrees. Project directory should be a parent folder of the repo:
 #
-# >my_project/        <-- configured as the project directory in jinn
-# >   repo/           <-- your actual repo
-# >      .git/
-# >   worktrees_will_go_here_as_siblings/
-# >      .git/
-# >
-# >Setup opens the worktree as a sibling of the repo. Teardown lands the
-# >branch on `main` as a single commit (flat history), reusing the FIRST
-# >commit on the branch as the landed commit's author — so a branch whose
-# >first commit carries a contributor's identity (e.g. applied from a
-# >patch) keeps that attribution after landing. The branch is expected to
-# >contain `main` in its history; the rebase rewrites the branch.
-# >Symlink-safe: paths are captured before any `cd`, so a repo reached
-# >through a symlink still lands its worktree beside the repo (not in the
-# >symlink target's parent).
+# > my_project/        <-- configured as the project directory in jinn
+# >    repo/           <-- your actual repo
+# >       .git/
+# >    worktrees_will_go_here_as_siblings/
+# >       .git/
+# > 
+# > Setup opens the worktree as a sibling of the repo. Teardown lands the
+# > branch on `main` as a single commit (flat history), reusing the FIRST
+# > commit on the branch as the landed commit's author — so a branch whose
+# > first commit carries a contributor's identity (e.g. applied from a
+# > patch) keeps that attribution after landing. The branch is expected to
+# > contain `main` in its history; the rebase rewrites the branch.
+# > Symlink-safe: paths are captured before any `cd`, so a repo reached
+# > through a symlink still lands its worktree beside the repo (not in the
+# > symlink target's parent).
 [[session_lifecycle.script]]
-name = "git worktree"
-description = "Open a git worktree + branch (flat-history teardown: collapses the branch into one commit on main, preserving the first commit's Author; symlink-safe)"
+name = "git worktree (rebase + squash)"
+description = "Open a git worktree + branch (teardown: squash branch to ONE commit, flat history)"
 setup_command = """[ -d "<repo>" ] || { echo "repo dir '<repo>' not found under the project dir" >&2; exit 1; } && git -C "<repo>" worktree add -q -b "<branch>" "$(pwd)/<branch>" && echo "$(pwd)/<branch>\""""
 teardown_command = """[ -z "$(git status --porcelain)" ] || { echo "TEARDOWN-DIRTY: uncommitted changes; commit or clean first" >&2; exit 1; } && wt="$(pwd)" && main="$(cd .. && pwd)/<repo>" && git rebase main && [ -z "$(git diff --name-only --diff-filter=U)" ] || { echo "TEARDOWN-CONFLICT: rebase conflicts; resolve and re-run" >&2; exit 1; } && landed=$(git rev-list --reverse main..HEAD | head -1) && { [ -z "$landed" ] || { git reset --soft main && git commit -q -C "$landed"; }; } && git -C "$main" merge --ff-only -q <branch> && git worktree remove "$wt" && git -C "$main" branch -d <branch>"""
+
+[[session_lifecycle.script]]
+name = "git worktree (branch + merge commit)"
+description = "Open a git worktree + branch (teardown: merge into main; one merge commit per branch)"
+setup_command = """[ -d "<repo>" ] || { echo "repo dir '<repo>' not found under the project dir" >&2; exit 1; } && git -C "<repo>" worktree add -q -b "<branch>" "$(pwd)/<branch>" && echo "$(pwd)/<branch>\""""
+teardown_command = """[ -z "$(git status --porcelain)" ] || { echo "TEARDOWN-DIRTY: uncommitted changes; commit or clean first" >&2; exit 1; } && wt="$(pwd)" && main="$(cd .. && pwd)/<repo>" && { git merge main --no-edit || { git merge --abort 2>/dev/null; echo "TEARDOWN-CONFLICT: resolve 'git merge main' here in the worktree, then re-run teardown" >&2; exit 1; }; } && git -C "$main" merge --no-ff --no-edit <branch> && git worktree remove "$wt" && git -C "$main" branch -d <branch>"""
 
 # ###########################################################################
 # Projects
@@ -256,6 +424,32 @@ teardown_command = """[ -z "$(git status --porcelain)" ] || { echo "TEARDOWN-DIR
 # Authorization = "Bearer ${MY_API_KEY}"
 # X-Api-Key = "${OTHER_KEY}"
 
+# > Environment variables set on the spawned server process (stdio and
+# > local_http only; ignored on remote_http). Applied additively over jinn's
+# > own environment: a configured key overrides the inherited variable of
+# > the same name, and everything else (PATH, HOME, ...) passes through.
+# > Values may embed ${ENV_VAR} tokens — expanded once at startup exactly
+# > like header values (an unset variable blocks the connection and names
+# > the variable; values are never logged). This is the same `env` block
+# > other MCP clients use, so existing server configs paste in unchanged.
+#
+# [mcp.foo.env]
+# GDA_PROJECT = "/home/dev/my-game"
+# GODOT_TOKEN = "${GODOT_TOKEN}"
+
+# > Replacement tokens usable in `args` (and, unless noted, env values):
+# >
+# >   <port> / <ip>   local_http only — the jinn-allocated port and the
+# >                   bind address parsed from `url`
+# >   <jinn>          the running jinn executable's path
+# >   <session_cwd>   the enabling session's working directory, expanded at
+# >                   each per-session spawn — one static entry (e.g.
+# >                   GDA_PROJECT = "<session_cwd>") serves every worktree
+# >                   with no per-project config edits. A `singleton = true`
+# >                   entry referencing the token refuses to connect: one
+# >                   shared process cannot answer "which session's
+# >                   directory"; pin an absolute path instead.
+
 # > Singleton servers. A server marked `singleton = true` spawns one instance
 # > that has a shared connection across all sessions. Use this for servers that
 # > consume a lot of resources, or are already designed to support multiple clients.
@@ -277,7 +471,10 @@ teardown_command = """[ -z "$(git status --porcelain)" ] || { echo "TEARDOWN-DIR
 # Bundled servers
 # ---------------------------------------------------------------------------
 #
-# > jinn ships one builtin server: overgraph, an embedded graph database
+# > jinn ships two builtin servers. Overgraph is the first; `smolvm` is
+# > the second, described below.
+#
+# > Overgraph: an embedded graph database
 # > speaking GQL. The entry is active (no config needed) but disabled per
 # > session by default — enable it in the MCP picker. `<jinn>` in `command`
 # > or `args` expands to the running jinn executable, so the entry works no
@@ -315,27 +512,44 @@ args = ["mcp", "overgraph"]
 singleton = true
 auto_enable = false
 
-# > Compaction command + auto compaction.
-[context_curation.compaction]
-# > Provider/model used for compaction summarization. Falls back to the session model
-# > when unset.
-# model = "openrouter/deepseek/deepseek-v4.1-flash"
+# > Smolvm: a sandboxed Linux microVM per session. Enabling it boots one
+# > disposable Alpine machine with this session's working directory
+# > mounted read-write at /workspace inside the guest, and serves two
+# > tools: vm_run (run a shell command in the guest, capture
+# > stdout/stderr/exit code) and vm_info (machine manifest + live guest
+# > facts). The VM is ephemeral — it lives and dies with the server
+# > process, so disabling the server or quitting jinn discards the guest
+# > disk; writes to the mounted session directory on the host persist.
+# > Requires hardware virtualization (KVM on Linux, HVF on macOS, WHP on
+# > Windows); without it the server fails to connect and names the
+# > missing piece. First boot needs the network (the toolchain installs
+# > from Alpine's package index) and downloads the VM engine on first
+# > use — progress shows in the connection failure message. Machine
+# > manifests seed into ~/.config/jinn/smolvm/ (alpine.toml ships;
+# > jinn never overwrites your edits) and every boot reads the file from
+# > disk: the server refuses to start without it. To run a different
+# > manifest, add a second entry with `--smolfile` pointing at it — each
+# > `[mcp.<name>]` entry is its own per-session machine.
+[mcp.smolvm]
+command = "<jinn>"
+args = ["mcp", "smolvm", "--cwd", "<session_cwd>"]
+auto_enable = false
+
+# > Handoff compaction: at each model-request boundary whose accumulated work
+# > reaches `workset_trigger_tokens`, the active session model writes a handoff
+# > recap in-conversation.
+[context_curation.handoff_compaction]
+enabled = true
+
+# > This much context must accumulate in the "working set". The working set
+# > does not include the assembled system prompt. So if your system prompt is
+# > 10k, and your `workset_trigger_tokens` is 50k, then compaction will trigger
+# > at 60k context usage.
 #
-# > Automatically compact the conversation when the used context window exceeds
-# > this usage percentage. Recommend no higher than 0.85 to account for drift in
-# > token calculations between models and providers (jinn applies a single token
-# > calculation across the board).
-threshold = 0.7
-
-# > Number of tokens to reserve during compaction. This will keep up to the
-# > `reserve_tokens` worth of recent messages so the model doesn't lose track of
-# > what it was working on.
-reserve_tokens = 20000
-
-# > Fallback context window size (in tokens) when the provider does not report one.
-# > Note that if the provider doesn't report the size that you can configure it
-# > manually in `providers.toml` (highly recommended)
-fallback_context_window = 150000
+# > This value should _always_ be higher than context_curation.auto_prune.accumulation_threshold_tokens.
+# > Setting this to a value _lower_ than the accumulation_threshold_tokens effectively disables all
+# > auto-pruners because compaction will trigger before the auto-pruners do.
+workset_trigger_tokens = 200000
 
 # > Policy for retrying failed provider requests.
 [provider.request_retry]
@@ -406,6 +620,20 @@ max_restarts = 3
 # > accumulator that increments on fail and decrements on success. So the
 # > failures may or may not be consecutive.
 max_failures = 6
+
+# > Monitors for degenerate repetition loops — a response whose reasoning,
+# > prose, or tool-call arguments repeat the same text over and over.
+[watchdog.stuck_loop]
+# > Detected loops retried before the turn is cancelled. A response that
+# > completes without a detected loop debits the count.
+max_failures = 3
+
+# > Retries a turn whose provider stream failed with a transient error.
+[watchdog.provider_error]
+# > Seconds to wait before each successive retry. Attempt N waits the Nth
+# > entry; a failure past the list ends the turn as an ordinary error. Every
+# > entry has a one-second floor; an empty list disables the watchdog.
+waits_secs = [10, 30, 60]
 
 # ###########################################################################
 # Interactive terminal panes
@@ -599,7 +827,7 @@ skill_filter = { mode = "allow", names = [] }
 # > until the sum of the queued chat entries reaches this token threshold. This
 # > queueing is to keep cache hits high in order to take advantage of cache
 # > pricing.
-accumulation_threshold_tokens = 150000
+accumulation_threshold_tokens = 170000
 
 # ---------------------------------------------------------------------------
 # > Prunes `edit` and `write` tool results that precede a `read` of the same file.

@@ -12,9 +12,9 @@ A TUI agent harness with multi-session support and Vim-style keybinds.
 
 Run any number of concurrent sessions, with live preview session navigation.
 
-- First-class forking and subagent support
-- Inter-session communication via the `tell_session` tool, so agents can hand work between sessions
-- Cache hit %, tokens up/down, context usage/max, total spend, and number of turns tracked per session and aggregated across forks, subagents, and bots.
+- Session forking, subagents, [bots](#bots)
+- Inter-session communication via the `tell_session` tool, so agents can hand work between sessions.
+- Cache hit %, tokens up/down, context usage/max, total spend, and number of turns tracked per session. Aggregated across forks, subagents, and bots.
 
 ![Multisession](doc/screenshots/multi-session.png)
 
@@ -43,15 +43,15 @@ Quickly navigate and change things via Telescope-inspired pickers:
 
 ### Bots
 
-Attach "bots" to sessions that fire when their parent session turn ends (or manually with `G`). Things that bots can do:
+Add "bots" that can fire when their parent session turn ends (or manually with `G`). Things that bots can do:
 
 - Restarting a session if it stops mid-task (shipped by default as `auto-nudge`)
 - Ensure implementation is actually done (shipped by default as `gap-check`)
 - Code quality gate
 
-They can be created entirely in-app by typing in the instructions in the bot session and then turning it on. Bots can be optionally saved to your `jinn.toml` via keybind so you can attach them to any session.
+They can be created entirely in-app by typing in the instructions in the bot session and then turning it on. Bots can be optionally saved to your `jinn.toml` via keybind so you can spawn them on-demand.
 
-![Bots](doc/screenshots/bot.png)
+Bots can be configured to reset their context on each invocation which makes them useful for repeatable tasks.
 
 ### Workflows
 
@@ -71,11 +71,47 @@ Included workflows:
 
 ![Workflows](doc/screenshots/workflow.png)
 
+### Canvas
+
+`jinn` hosts a web server which includes embedded JavaScript libraries so an agent can make interactive illustrations, guides, charts, presentations, etc.
+
+Ask to "show me" something, and it will create a web page with an appropriate visual. Examples:
+
+- "chart these benchmark numbers"
+- "diagram the request lifecycle"
+- "show me a 3D surface of this equation"
+- "make an interactive quiz to test me on this chapter"
+- "animate how this sorting algorithm works".
+
+Embedded libraries include:
+
+- [Chart.js](https://www.chartjs.org)
+- [uPlot](https://github.com/leeoniya/uPlot)
+- [Vega](https://vega.github.io/vega) / [Vega-Lite](https://vega.github.io/vega-lite) / [vega-embed](https://github.com/vega/vega-embed)
+- [Observable Plot](https://observablehq.com/plot)
+- [D3](https://d3js.org)
+- [Mermaid](https://mermaid.js.org)
+- [KaTeX](https://katex.org)
+- [p5.js](https://p5js.org)
+- [three.js](https://threejs.org)
+- [matter.js](https://brm.io/matter-js/)
+- [Vue](https://vuejs.org)
+- [Preact + htm](https://preactjs.com)
+- [highlight.js](https://highlightjs.org)
+
+#### Applets
+
+If you have a [canvas](#canvas) page you want to reuse, ask `jinn` turn it into an applet so you can open it again later anytime from a picker.
+
 ### Task/todo list
 
 Agent-managed task list with task search.
 
 ![Task List](doc/screenshots/task-list.png)
+
+### Dictation
+
+Speech-to-text capability activated with `<alt-i>` with live audio meter. Analysis performed locally by `parakeet-tdt-0.6b-v2` (file an issue if you want more model support).
 
 ### Interactive term
 
@@ -89,23 +125,32 @@ Run TUI apps in a separate task that an agent can interact with.
 
 ### Comprehensive context management
 
-- Background workers continuously manage the context while sessions are in-progress. Changes are buffered(configurable) to take advantage of prefix cache pricing.
+- Background workers continuously manage the context while sessions are in-progress. Changes are buffered to take advantage of prefix cache pricing.
 - Individual chat entries can toggled in and out of context using `x`, good for when you send a message but then change your mind to avoid context poisoning.
 - Pin messages with `p` to keep them in context indefinitely, with coarse positioning (start/mid/end).
-- Made a plan and want to implement it? Use keybind `gci` on the plan message to "isolate" it, which excludes everything except the selected message and pins. No spawning of dedicated subagents or session forking needed.
-- Auto compaction exists as an emergency backstop and should _almost never_ fire when doing anything even remotely related to building software. If your sessions get compacted _at all_ while coding, please **open an issue** describing your workflow and provide your `[auto_prune*]` and `[compaction]` sections from your `jinn.toml` file along with the model you used.
+- Made a plan and want to implement it? Use keybind `gci` on the plan message to "isolate" it, which excludes everything except the selected plan message and pins. No spawning of dedicated subagents nor session forking needed.
+- Compaction at a configurable threshold, with customizable compaction prompts per [persona](#persona).
 - Cache hit rate indicator should floor at 98% _during agentic coding loops_ (usually 99%). Anything lower than 98% means your configuration should be adjusted.
-
-### System prompt configuration
-
-Almost all of the "system prompt" / prefix can be configured, with the main driving being customizable personas. See [System Prompt](#system-prompt) for details.
-
-![Personas](doc/screenshots/personas.png)
 
 ### etc
 
-- Standard agent harness-y things like `AGENTS.md`, `~/.agents` skill discovery, custom prompts, MCP server support, subagents/tasks, concurrent execution, intersession messaging, usage display.
-- Subagents/tasks are regular sessions that are linked together in a tree, so you can steer an in-progress subagent or fork a new session from it.
+`jinn` support many standard agent harness-y things, including:
+
+- `AGENTS.md` and `~/.agents` skill discovery
+- Live configuration reload
+- Custom prompts inlined with `#prompt-name`
+- [System prompt](#system-prompt) configuration
+- MCP server support (`stdout`, local HTTP, and remote HTTP transports)
+- [`smolvm`](https://github.com/smol-machines/smolvm) integration
+- Session search
+- Agent-powered user guide
+  - Ask `jinn` anything about a `jinn` feature, or how to do something, or have it update a config, or build a custom workflow
+- Subagents/tasks as first-class citizens
+  - They are regular sessions linked to a parent. So they can be steered in realtime, searched, viewed, canceled, forked from, etc.
+- Image input
+- Deterministic stream abort via regex
+- Automatic continuation on intermittent errors
+- SCM-aware (`git` worktrees) via [lifecycle scripts](#lifecycle-scripts)
 
 ## Usage
 
@@ -210,10 +255,7 @@ Use this when you want a `plan` -> `implement` -> `verify` workflow with control
 2. Type `#plan` (to load the planning prompt) followed by what you want to do. The agent will ask questions to clarify things that are ambiguous, and then eventually propose a plan in the chat.
 3. You can continue to refine the plan or push back on certain elements of the plan until it looks good. Once ready, send an `#approve-plan` message to approve the plan.
    - Using the `#approve-plan` prompt causes the agent to write a detailed plan that includes code samples and the reasoning behind particular choices. This helps the implementer avoid taking a shortcut like "Oh, we can just do `foo` instead" because the plan will specifically mention why `foo` was _not_ chosen.
-4. Tell the agent to use `micro-task-loop` or `simple-task-loop` skill to implement the plan. Also tell the agent to use whatever other project or language-specific skills you like using in the same prompt.
-   - `micro-task-loop` runs all phases back to back with no builds, tests, or commits mid-loop; tests, lints, and a single commit happen once at the end. Use it for simple, low-risk plans where per-phase verification would just burn wall-clock time (e.g. slow builds).
-   - `simple-task-loop` verifies and commits after each phase. _It's recommended to use this for most features_.
-   - You don't _have_ to use one of these skills to begin the coding loop, but it's recommended because they include instructions about periodically getting the latest code to reduce merge conflicts, and also how to properly manage the task list. The skills are SCM and language-agnostic and have been tested on `git`, `Fossil`, `Rust`, `Kotlin`, `Android`, and Shell scripts.
+4. Tell the agent to use `micro-task-loop` skill to implement the plan. Also tell the agent to use whatever other project or language-specific skills you like using in the same prompt.
 5. After implementation is complete, you can optionally submit a `#gap-analysis` message.
    - Using the `#gap-analysis` prompt tells the agent to confirm that the implementation meets the acceptance criteria. It will produce a report explaining the acceptance criteria, if it was met, and potential resolutions for gaps.
 6. Merge your branch back into main/trunk using `X`.
@@ -229,7 +271,8 @@ Use this when you want a `plan` -> `implement` -> `verify` workflow with control
 - `#judge <a thing>`: determine if one thing is any good
 - `#falsify <a thing>`: find the ways something goes wrong
 - `#metaprompt <repeatable 1-shot task>`: generate a new prompt which can be used to perform some task. This is meant for smaller tasks that can be completed in 1-2 prompts.
-- `#research <topic>`: search the web and produce a report
+- `#research <topic>`: search the web and produce a report after answering a few anchoring questions
+- `#lookup <request>`: get a comprehensive, cited answer to a question directly in chat
 - `#generate-persona <description>`: make a new `jinn` persona. Examples: `ruthless article editor`, `pedantic code reviewer`
 
 ### Code-specific
@@ -357,6 +400,32 @@ The current date (`YYYY-MM-DD`), injected at assembly time.
 The session's working directory.
 
 **Change it:** `<leader>cd`, or `<M-c>`/`<M-d>` to pick a new directory starting from the session's project or your home directory.
+
+## Builtin Personas
+
+As indicated in the [persona](#persona) section, personas describe how the agent should behave in general for a given task (where "task" is broad like "write code" or "classify the inputs").
+
+### coding-assistant
+
+The default persona tuned for coding or step-by-step tasks. It will explore codebases to gather information, provides needed context when asked about features, and is critical of ideas (it will recommend _against_ an implementation if it has obvious issues or doesn't follow the existing codebase style).
+
+You should still follow the [agentic coding](#agentic-coding) guidelines while using this persona.
+
+### general
+
+The general persona is "You are a helpful assistant." with a few extra lines instructing it to be efficient with tool calls. Use this for general chat or as a base to hand-write your own persona.
+
+### learning-tutor
+
+`learning-tutor` teaches you a topic. It spawns a [bot](#bots) in the background to research the topic in order to reduce hallucinations and to stay grounded in accurate and updated information. It will also generate visual guides and examples, and pick different teaching methodologies to help maximize learning.
+
+You can ask for different teaching styles or tell it where you struggle and it will tune the curriculum as needed.
+
+To get the most out of this persona, include your thoughts while answering. You can "think out loud" using [dictation](#dictation), and/or provide long answers in your response. The agent will use this additional information to determine if you need more help in a specific area and to gauge your understanding for dynamically updating the curriculum.
+
+### brainstorm
+
+This persona helps you discover, validate, or refine ideas. Tell it that you want to do `foo`, and it will tell you everything wrong with it, forcing you to look at other perspectives or to defend it. It will never ultimately tell you what to pick or what to do. The purpose is to help you help yourself decide what thing is best for your particular situation.
 
 ## Security
 

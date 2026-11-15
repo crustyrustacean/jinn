@@ -14,6 +14,7 @@
 //! comments, key order, sibling sections, and any table this layer does
 //! not model.
 
+use marked_path::MarkedPathAccess as _;
 use marked_path::{Absolute, MarkedPathBuf};
 use std::sync::Arc;
 
@@ -64,7 +65,12 @@ struct RegisteredSection {
 
 /// The type-erased "does this table deserialize" check a registered
 /// section carries, so `validate` never has to name the section's type.
-type SectionCheck = Arc<dyn Fn(&toml::Table) -> Result<(), ConfigSectionError> + Send + Sync>;
+///
+/// Public because [`ConfigLayer::register_raw_check`] hands the same
+/// shape to a domain: a closure receiving the table at its key, failing
+/// with a [`ConfigSectionError`] when the configuration as a whole is
+/// inconsistent.
+pub type SectionCheck = Arc<dyn Fn(&toml::Table) -> Result<(), ConfigSectionError> + Send + Sync>;
 
 impl std::fmt::Debug for RegisteredSection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -108,6 +114,13 @@ pub enum ConfigError {
         /// The patcher's complaint.
         detail: String,
     },
+    /// The document parses, but a registered section check rejected the
+    /// candidate as a whole — the values are internally inconsistent.
+    #[error("config values rejected: {detail}")]
+    Rejected {
+        /// The section check's complaint, naming the section.
+        detail: String,
+    },
 }
 
 /// Reads and writes the configuration document.
@@ -126,6 +139,28 @@ pub trait ConfigDocumentStorage: Send + Sync + 'static {
     /// Returns [`ConfigError::Storage`] when the read fails, and
     /// [`ConfigError::Malformed`] when the bytes are not valid TOML.
     fn read(&self) -> Result<DocumentMut, Report<ConfigError>>;
+
+    /// Reads the document, requiring it to exist.
+    ///
+    /// The live-reload path uses this: a document that vanished since
+    /// launch is a refusal, not a reset to defaults. [`Self::read`]
+    /// treats a missing file as a fresh install, which is the right
+    /// contract at launch — there is nothing to preserve — and the
+    /// wrong one at reload, where dropping the snapshot would silently
+    /// revert the running program's configuration.
+    ///
+    /// The default delegates to [`Self::read`], which suits the
+    /// in-memory backends whose document is always present; the
+    /// filesystem backend overrides it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::Storage`] when the document does not
+    /// exist or cannot be read, and [`ConfigError::Malformed`] when
+    /// the bytes are not valid TOML.
+    fn read_existing(&self) -> Result<DocumentMut, Report<ConfigError>> {
+        self.read()
+    }
 
     /// Persists the document.
     ///
@@ -193,6 +228,19 @@ impl ConfigDocumentStorage for FilesystemConfigStorage {
             .change_context(ConfigError::Malformed {
                 detail: format!("{} is not valid TOML", self.path),
             })
+    }
+
+    fn read_existing(&self) -> Result<DocumentMut, Report<ConfigError>> {
+        // Missing at reload time is a refusal: whatever removed the file
+        // (a sync client mid-flight, an rm) must not cost the running
+        // program its configuration. The empty-document default belongs
+        // to the launch path only.
+        if !self.path.as_path().exists() {
+            return Err(Report::new(ConfigError::Storage {
+                detail: format!("{} is gone; refusing to reload to defaults", self.path),
+            }));
+        }
+        self.read()
     }
 
     fn write(&self, doc: &DocumentMut) -> Result<(), Report<ConfigError>> {
@@ -295,6 +343,28 @@ impl ConfigLayer {
             key: T::KEY,
             type_name: std::any::type_name::<T>(),
             check: Arc::new(check),
+        });
+        self
+    }
+
+    /// Registers a cross-section check under an umbrella key.
+    ///
+    /// A raw check rides the same registry a [`Configurable`] section
+    /// does — [`Self::validate`] and [`Self::reload_validated`] run it
+    /// in registration order, exactly like a section check — but its
+    /// closure names no section type: it receives the table at `key`
+    /// whole, so one function may read several sibling sections and
+    /// reject the configuration as a whole. The layer stays ignorant of
+    /// what the check compares; the domain that owns both sections
+    /// registers the rule.
+    ///
+    /// An absent `key` skips the check, the same absence-is-a-default
+    /// contract a section follows.
+    pub fn register_raw_check(&self, key: &'static str, check: SectionCheck) -> &Self {
+        self.inner.registry.write().push(RegisteredSection {
+            key,
+            type_name: "<raw check>",
+            check,
         });
         self
     }
@@ -595,11 +665,40 @@ impl ConfigLayer {
     pub fn validate(&self) -> Result<(), ConfigSectionError> {
         let doc = self.inner.doc.read().clone();
         let registry = self.inner.registry.read().clone();
-        for section in &registry {
-            if let Some(table) = section_table(&doc, section.key)? {
-                (section.check)(&table)?;
-            }
-        }
+        validate_document(&doc, &registry)
+    }
+
+    /// Re-reads the document, validates the candidate, and only then
+    /// atomically replaces the in-memory snapshot.
+    ///
+    /// This is the reload a live config-watch uses. [`Self::reload`]
+    /// swaps unconditionally — fine for tests, wrong for a watcher: a
+    /// malformed or shape-invalid edit must not blank the running
+    /// program's configuration. Here the registered section checks run
+    /// against the *candidate* document before the swap, so on any
+    /// failure the old snapshot stays live and the error is returned.
+    ///
+    /// The section registry is *not* re-run or rebuilt: registration
+    /// persists across reloads, and the checks are the same ones
+    /// [`Self::validate`] applies at launch.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::Storage`] or [`ConfigError::Malformed`]
+    /// when the document cannot be re-read or parsed — including the
+    /// case where the document has been deleted, which refuses rather
+    /// than reloading to defaults — and [`ConfigError::Rejected`] with
+    /// the first [`ConfigSectionError`] a registered section reports
+    /// against the candidate.
+    pub fn reload_validated(&self) -> Result<(), Report<ConfigError>> {
+        let candidate = self.inner.storage.read().read_existing()?;
+        let registry = self.inner.registry.read().clone();
+        validate_document(&candidate, &registry).map_err(|section| {
+            Report::new(ConfigError::Rejected {
+                detail: section.to_string(),
+            })
+        })?;
+        *self.inner.doc.write() = candidate;
         Ok(())
     }
 
@@ -641,6 +740,24 @@ impl ConfigLayer {
         *self.inner.doc.write() = doc;
         Ok(())
     }
+}
+
+/// Runs every registered section's check against `doc`.
+///
+/// Shared by [`ConfigLayer::validate`] (the launch snapshot) and
+/// [`ConfigLayer::reload_validated`] (a live-reload candidate): an
+/// absent section is fine, a present-but-malformed one fails with the
+/// first error in registration order.
+fn validate_document(
+    doc: &DocumentMut,
+    registry: &[RegisteredSection],
+) -> Result<(), ConfigSectionError> {
+    for section in registry {
+        if let Some(table) = section_table(doc, section.key)? {
+            (section.check)(&table)?;
+        }
+    }
+    Ok(())
 }
 
 /// Resolves a section's table by its dotted key.
@@ -1775,6 +1892,135 @@ mod tests {
 
     #[rstest::rstest]
     #[test]
+    fn reload_validated_picks_up_a_valid_edit() {
+        // Given a layer with a registered section whose backing document
+        // is edited behind its back to a still-valid value.
+        let (layer, storage) = layer("[watchdog.stall]\ntimeout_secs = 1\n");
+        layer.register::<WatchdogCfg>();
+        storage
+            .write(&doc("[watchdog.stall]\ntimeout_secs = 321\n"))
+            .expect("external write");
+
+        // When reloading through the validated path.
+        layer.reload_validated().expect("candidate validates");
+
+        // Then the next read sees the edit.
+        let value = layer.get::<WatchdogCfg>().expect("section reads");
+        assert_eq!(
+            value.timeout_secs, 321,
+            "validated reload observed the edit"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn reload_validated_leaves_the_snapshot_intact_when_a_section_fails_validation() {
+        // Given a layer with a registered section whose backing document
+        // is edited to a shape the section rejects.
+        let (layer, storage) = layer("[watchdog.stall]\ntimeout_secs = 1\n");
+        layer.register::<WatchdogCfg>();
+        storage
+            .write(&doc("[watchdog.stall]\ntimeout_secs = \"soon\"\n"))
+            .expect("external write");
+
+        // When reloading through the validated path.
+        let result = layer.reload_validated();
+
+        // Then the reload reports failure.
+        assert!(
+            result.is_err(),
+            "a validation-refused edit fails the reload"
+        );
+
+        // And the layer still holds the last good snapshot.
+        let value = layer.get::<WatchdogCfg>().expect("section still reads");
+        assert_eq!(
+            value.timeout_secs, 1,
+            "a refused candidate must not blank the running snapshot"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn reload_validated_reports_a_rejected_candidate_as_rejected_not_malformed() {
+        // Given a layer with a registered section whose backing document
+        // is edited to a shape the section rejects.
+        let (layer, storage) = layer("[watchdog.stall]\ntimeout_secs = 1\n");
+        layer.register::<WatchdogCfg>();
+        storage
+            .write(&doc("[watchdog.stall]\ntimeout_secs = \"soon\"\n"))
+            .expect("external write");
+
+        // When reloading through the validated path.
+        let error = layer
+            .reload_validated()
+            .expect_err("a validation-refused edit fails the reload");
+
+        // Then the refusal is a semantic rejection — the document parsed,
+        // its values did not agree — not a TOML parse failure.
+        let rejection = error.downcast_ref::<ConfigError>().expect("config error");
+        assert!(
+            matches!(rejection, ConfigError::Rejected { detail } if detail.contains("watchdog.stall")),
+            "expected Rejected naming the section, got: {rejection}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn reload_validated_ignores_an_unregistered_section() {
+        // Given a layer whose registry does not cover the section the
+        // candidate adds.
+        let (layer, storage) = layer("[watchdog.stall]\ntimeout_secs = 1\n");
+        layer.register::<WatchdogCfg>();
+        storage
+            .write(&doc("[other]\nkey = \"arbitrary\"\n"))
+            .expect("external write");
+
+        // When reloading through the validated path.
+        let result = layer.reload_validated();
+
+        // Then the swap lands — registration is what opts a section in.
+        assert!(result.is_ok(), "an unregistered section is not a refusal");
+        // And the candidate dropped the registered section, so it now
+        // reads its default: absence is a default, not a refusal.
+        let value = layer.get::<WatchdogCfg>().expect("section still reads");
+        assert_eq!(value.timeout_secs, 0);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn reload_validated_refuses_when_the_document_is_deleted() {
+        // Given a layer whose filesystem-backed document exists, holding
+        // a live value.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = temp.path().join("jinn.toml");
+        std::fs::write(&path, "[watchdog.stall]\ntimeout_secs = 7\n").expect("seed the document");
+        let storage: Arc<dyn ConfigDocumentStorage> = Arc::new(FilesystemConfigStorage::new(
+            MarkedPathBuf::<Absolute>::new(&path).expect("absolute path"),
+        ));
+        let layer = ConfigLayer::load(storage).expect("layer loads");
+        layer.register::<WatchdogCfg>();
+
+        // When the document is deleted and a reload is attempted.
+        std::fs::remove_file(&path).expect("delete");
+        let result = layer.reload_validated();
+
+        // Then the reload is refused, not swapped to an empty document.
+        assert!(
+            result.is_err(),
+            "a deleted document must refuse, not reload to defaults"
+        );
+
+        // And the layer still holds the last good snapshot.
+        let value = layer.get::<WatchdogCfg>().expect("section still reads");
+        assert_eq!(
+            value.timeout_secs, 7,
+            "the deleted file's absence must not blank the running snapshot"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
     fn validate_rejects_a_malformed_registered_section() {
         // Given a registered section whose document table is malformed.
         let (layer, _storage) = layer("[watchdog.stall]\ntimeout_secs = \"soon\"\n");
@@ -1815,6 +2061,93 @@ mod tests {
 
         // Then validation passes — registration is what opts a section in.
         assert!(result.is_ok(), "an unregistered section is not validated");
+    }
+
+    /// A raw check rejecting the configuration whenever the stall section
+    /// is enabled — a stand-in for a cross-section rule that reads a
+    /// value out of an umbrella's child table.
+    fn stall_enabled_rejects(table: &toml::Table) -> Result<(), ConfigSectionError> {
+        let cfg = WatchdogCfg::from_table(table)?;
+        if cfg.stall.enabled {
+            return Err(ConfigSectionError::Invalid {
+                key: WatchdogCfg::KEY,
+                detail: "the stall must stay disabled".to_owned(),
+            });
+        }
+        Ok(())
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn validate_runs_a_raw_check_registered_under_an_umbrella() {
+        // Given a document whose child section trips a raw check.
+        let (layer, _storage) = layer("[watchdog.stall]\nenabled = true\n");
+        layer.register_raw_check("watchdog", Arc::new(stall_enabled_rejects));
+
+        // When validating.
+        let result = layer.validate();
+
+        // Then the raw check rejects the configuration with Invalid.
+        assert!(matches!(
+            result,
+            Err(ConfigSectionError::Invalid { key, .. }) if key == "watchdog.stall"
+        ));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn validate_skips_a_raw_check_whose_key_is_absent() {
+        // Given a document that does not carry the raw check's umbrella.
+        let (layer, _storage) = layer("[other]\nkey = 1\n");
+        layer.register_raw_check("watchdog", Arc::new(stall_enabled_rejects));
+
+        // When validating.
+        let result = layer.validate();
+
+        // Then absence is fine, the same contract a section follows.
+        assert!(result.is_ok(), "an absent umbrella skips its raw check");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn validate_passes_when_a_raw_check_holds() {
+        // Given a document whose child section satisfies the raw check.
+        let (layer, _storage) = layer("[watchdog.stall]\nenabled = false\n");
+        layer.register_raw_check("watchdog", Arc::new(stall_enabled_rejects));
+
+        // When validating.
+        let result = layer.validate();
+
+        // Then the configuration as a whole validates.
+        assert!(result.is_ok(), "a satisfied raw check is not a refusal");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn reload_validated_refuses_a_candidate_a_raw_check_rejects() {
+        // Given a layer with a registered raw check whose live snapshot
+        // satisfies it.
+        let (layer, storage) = layer("[watchdog.stall]\nenabled = false\n");
+        layer.register_raw_check("watchdog", Arc::new(stall_enabled_rejects));
+        storage
+            .write(&doc("[watchdog.stall]\nenabled = true\n"))
+            .expect("external write");
+
+        // When reloading through the validated path.
+        let result = layer.reload_validated();
+
+        // Then the reload reports failure.
+        assert!(
+            result.is_err(),
+            "a raw-check-violating candidate fails the reload"
+        );
+
+        // And the layer still holds the last good snapshot.
+        let value = layer.get::<WatchdogCfg>().expect("section still reads");
+        assert!(
+            !value.stall.enabled,
+            "a refused candidate must not blank the running snapshot"
+        );
     }
 
     #[rstest::rstest]

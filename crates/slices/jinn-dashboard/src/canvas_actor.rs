@@ -57,6 +57,10 @@ pub struct DashboardCanvasActor {
 }
 
 impl ServiceActor for DashboardCanvasActor {
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "ServiceActor::init is async by trait contract; this impl never awaits"
+    )]
     async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
         // Never called: the spawn helper injects the cell via `init_with`.
         Err(
@@ -143,6 +147,10 @@ impl DashboardCanvasActor {
     }
 
     /// Folds a [`DashboardNav`] into the cell.
+    #[expect(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "&self signature is the established helper shape; DashboardNav is 1 byte"
+    )]
     fn apply_nav(&self, msg: &DashboardNav) {
         self.cell.update(|s| match msg {
             DashboardNav::Up => s.select_prev(),
@@ -190,9 +198,11 @@ fn apply_service_update(dashboard: &mut DashboardState, update: &ServiceStatusUp
     if let Some(message) = &update.status_message {
         dashboard.set_status_message(&update.name, Some(message.clone()));
     }
-    if let Some(tone) = update.note_tone {
-        dashboard.set_note_tone(&update.name, tone);
-    }
+    // Every update expresses a tone: a toneless note is an ordinary one
+    // (`Muted`), which is also how a feature un-flags an earlier error
+    // — the config-watch row must stop reading red once it reloads
+    // cleanly.
+    dashboard.set_note_tone(&update.name, update.note_tone.unwrap_or_default());
 }
 
 #[cfg(test)]
@@ -270,6 +280,10 @@ mod tests {
         fn manifest() -> trouper::schema::ActorManifest {
             trouper::schema::ActorManifest::new()
         }
+        #[expect(
+            clippy::unused_async_trait_impl,
+            reason = "ServiceActor::init is async by trait contract; this probe never awaits"
+        )]
         async fn init(
             _args: &trouper::json::Json,
         ) -> Result<Self, error_stack::Report<trouper::registry::RegistryError>> {
@@ -827,6 +841,50 @@ mod tests {
             ActorLifecycle::Running,
             "a feature cannot declare its own actor dead"
         );
+    }
+
+    /// A toneless follow-up un-flags an earlier error: a feature saying
+    /// "this is ordinary now" (e.g. the config-watch row reloading
+    /// cleanly after a refused edit) must stop the row reading red.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn a_toneless_update_clears_an_earlier_error_tone() {
+        // Given a wired actor whose row carries an error-toned note.
+        let fabric = TestFabric::new();
+        let cell = wire_actor(&fabric);
+        fabric.send_to_topic(running("config")).await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "config").is_some()
+        })
+        .await;
+        fabric
+            .send_to_topic(ServiceStatusUpdate {
+                name: "config".to_owned(),
+                description: None,
+                status_message: Some("refused: [skills] is malformed".to_owned()),
+                note_tone: Some(NoteTone::Error),
+            })
+            .await;
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "config").is_some_and(|r| r.tone == NoteTone::Error)
+        })
+        .await;
+
+        // When a later, toneless update lands (the clean reload).
+        fabric
+            .send_to_topic(ServiceStatusUpdate {
+                name: "config".to_owned(),
+                description: None,
+                status_message: Some("reloaded jinn.toml".to_owned()),
+                note_tone: None,
+            })
+            .await;
+
+        // Then the row reads ordinary again.
+        jinn_testutil::wait::wait_for(std::time::Duration::from_secs(2), || {
+            row(&cell, "config").is_some_and(|r| r.tone == NoteTone::Muted)
+        })
+        .await;
     }
 
     #[rstest::rstest]

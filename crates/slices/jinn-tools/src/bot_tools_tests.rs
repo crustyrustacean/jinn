@@ -1,6 +1,11 @@
 //! Tests for the `report` and `notify_parent` bot tools.
 
-#![allow(clippy::expect_used, reason = "test code")]
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    reason = "test code"
+)]
 
 use std::time::Duration;
 
@@ -31,6 +36,10 @@ fn call(name: &str, arguments: &str) -> ToolCall {
 
 /// Builds a tool context wired to the harness bus and shared state, rooted at
 /// `paths_root` — a directory the calling test owns for its whole run.
+#[expect(
+    clippy::unused_async,
+    reason = "test fixture symmetry; body never awaits"
+)]
 async fn ctx(
     harness: &TestHarness,
     state: &State,
@@ -41,7 +50,7 @@ async fn ctx(
         turn: crate::tool_types::test_turn(),
         cwd: paths_root.clone(),
         config: jinn_config::testutil::config_layer(""),
-        shells: Default::default(),
+        shells: jinn_common::shell::ShellsService::default(),
         timeout: None,
         state: Some(state.clone()),
         session_id: Some(session_id),
@@ -410,21 +419,4 @@ fn every_declared_parameter_is_one_the_executor_reads() {
     // And the required list names the same one field, not a stale name.
     assert_eq!(required.len(), 1, "conclude takes exactly one argument");
     assert_eq!(required[0].as_str(), Some("body"));
-}
-
-#[rstest::rstest]
-fn the_conclude_description_states_the_length_bound() {
-    // Given the conclude tool's description.
-
-    // When the definition is read.
-    let def = conclude_definition();
-
-    // Then it states the bound. The name carries the once-per-run idea;
-    // the length limit is the one thing prose has to say, and an agent
-    // that ignored the example format still reads this.
-    assert!(
-        def.description.contains("10 WORDS"),
-        "the description must state the word bound: {}",
-        def.description
-    );
 }

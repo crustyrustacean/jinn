@@ -66,7 +66,27 @@ impl AppStateActor {
                 }
             })
             .handles::<UpdateAppState>()
+            // Live theme resources: the theme rescan actor publishes
+            // this AFTER re-seeding the entries cell, so handling it
+            // re-resolves the persisted name against the fresh scan —
+            // an edited theme repaints and a removed one falls back —
+            // with no race against the rescan itself.
+            .handles::<jinn_theme_msg::ThemeEntriesReloaded>()
             .start()
+    }
+
+    /// Re-syncs the frontend from the persisted state without a save.
+    ///
+    /// A `ThemeEntriesReloaded` event lands only after the theme rescan
+    /// actor has re-seeded the theme-entries cell, so re-running the
+    /// sync path re-resolves the persisted theme name against the fresh
+    /// scan: an edited theme repaints, a removed one falls back to the
+    /// embedded default through the same resolver a preference save
+    /// uses. Nothing persists — `state.toml` is unchanged by a file
+    /// edit.
+    pub(crate) fn handle_resource_rescan(&self) {
+        let state = self.services.app_state_storage.read();
+        self.sync_state(&state);
     }
 
     /// Apply state updates, persist, and sync the frontend fields.
@@ -122,22 +142,6 @@ impl AppStateActor {
             cell.update(jinn_chat_log_view_msg::EntryLineCache::clear);
         }
 
-        // Sync active_persona when persona_name changes (persona
-        // selection lives in the persona slice's cell).
-        if let Some(ref persona_name) = updated.persona_name
-            && let Some(cell) = self
-                .services
-                .slices
-                .reader::<jinn_persona_msg::Personas>(&jinn_persona_msg::personas_slot())
-        {
-            let present = cell.read().entries.iter().any(|p| p.name == *persona_name);
-            if present {
-                cell.update(|selection| {
-                    selection.active = Some(persona_name.clone());
-                });
-            }
-        }
-
         // The skills picker caches its preview lines already rendered in the
         // old theme's colors, so a theme switch must drop them or the open
         // menu keeps showing stale text. The cache lives in the skills slice's
@@ -168,6 +172,17 @@ impl AppStateActor {
 impl MsgHandler<UpdateAppState> for AppStateActor {
     async fn handle(&mut self, msg: &UpdateAppState, _ctx: &mut MsgCtx<'_>) {
         self.handle_update(msg);
+    }
+}
+
+impl MsgHandler<jinn_theme_msg::ThemeEntriesReloaded> for AppStateActor {
+    async fn handle(&mut self, _msg: &jinn_theme_msg::ThemeEntriesReloaded, _ctx: &mut MsgCtx<'_>) {
+        // The event carries no payload: declarants read the freshly
+        // re-seeded entries cell under the well-known slot. The sync is
+        // a pure re-resolve of unchanged persisted state against that
+        // cell — idempotent when the persisted name still resolves to
+        // the same colors.
+        self.handle_resource_rescan();
     }
 }
 
@@ -354,48 +369,6 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn sync_state_sets_correct_persona() {
-        // If the condition were flipped, the wrong persona would be set.
-        // Given an app-state actor with two personas in the persona cell.
-        let (actor, _services) = create_actor().await;
-        let cell = actor
-            .services
-            .slices
-            .reader::<jinn_persona_msg::Personas>(&jinn_persona_msg::personas_slot())
-            .expect("test: persona cell seeded");
-        cell.update(|selection| {
-            selection.entries = vec![
-                jinn_slices::Persona {
-                    name: "coder".to_owned(),
-                    description: String::new(),
-                    body: String::new(),
-                },
-                jinn_slices::Persona {
-                    name: "writer".to_owned(),
-                    description: String::new(),
-                    body: String::new(),
-                },
-            ];
-        });
-
-        // When syncing AppStateFile with persona_name = "writer".
-        let app_state = AppStateFile {
-            persona_name: Some("writer".to_owned()),
-            ..AppStateFile::default()
-        };
-        actor.sync_state(&app_state);
-
-        // Then the active persona is "writer", not "coder".
-        let active = cell
-            .read()
-            .active
-            .clone()
-            .expect("should have active persona");
-        assert_eq!(active, "writer");
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
     async fn sync_state_resolves_default_theme_when_none() {
         // Given an app-state actor.
         let (actor, _services) = create_actor().await;
@@ -465,5 +438,98 @@ mod tests {
         // Then the frontend keeps the embedded default theme.
         let applied = actor.state.read().frontend.theme.focus_accent;
         assert_eq!(applied, jinn_theme::default_theme().focus_accent);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn resource_rescan_re_resolves_a_rewritten_theme() {
+        // Given an app-state actor whose persisted theme is "dracula",
+        // applied with its original accent — the user picked it from a
+        // scan that contained it, then edited the file on disk.
+        let (mut actor, _services) = create_actor().await;
+        actor.handle_update(&UpdateAppState {
+            updates: vec![AppStateUpdate::SetTheme(Some("dracula".to_owned()))],
+        });
+        let mut original = jinn_theme::default_theme();
+        original.focus_accent = ratatui::style::Color::Red;
+        let entries_cell = actor
+            .services
+            .slices
+            .reader::<jinn_theme_msg::ThemeEntries>(&jinn_theme_msg::theme_entries_slot())
+            .expect("the catalog registers the theme entries cell");
+        entries_cell.update(|entries| {
+            entries.entries = vec![jinn_theme_msg::NamedTheme {
+                name: "dracula".to_owned(),
+                theme: original,
+            }];
+        });
+        actor.handle_resource_rescan();
+        assert_eq!(
+            actor.state.read().frontend.theme.focus_accent,
+            ratatui::style::Color::Red
+        );
+
+        // When the theme file is rewritten on disk and the rescan
+        // actor's ThemeEntriesReloaded lands (the cell is re-seeded
+        // before the event, so handling it sees the fresh palette).
+        let mut rewritten = jinn_theme::default_theme();
+        rewritten.focus_accent = ratatui::style::Color::Cyan;
+        entries_cell.update(|entries| {
+            entries.entries = vec![jinn_theme_msg::NamedTheme {
+                name: "dracula".to_owned(),
+                theme: rewritten,
+            }];
+        });
+        actor.handle_resource_rescan();
+
+        // Then the frontend theme is the rewritten palette.
+        assert_eq!(
+            actor.state.read().frontend.theme.focus_accent,
+            ratatui::style::Color::Cyan
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn resource_rescan_falls_back_when_the_theme_file_is_removed() {
+        // Given an app-state actor whose persisted theme is "dracula",
+        // applied from a scan that contained it.
+        let (mut actor, _services) = create_actor().await;
+        actor.handle_update(&UpdateAppState {
+            updates: vec![AppStateUpdate::SetTheme(Some("dracula".to_owned()))],
+        });
+        let mut scanned = jinn_theme::default_theme();
+        scanned.focus_accent = ratatui::style::Color::Red;
+        actor
+            .services
+            .slices
+            .reader::<jinn_theme_msg::ThemeEntries>(&jinn_theme_msg::theme_entries_slot())
+            .expect("the catalog registers the theme entries cell")
+            .update(|entries| {
+                entries.entries = vec![jinn_theme_msg::NamedTheme {
+                    name: "dracula".to_owned(),
+                    theme: scanned,
+                }];
+            });
+        actor.handle_resource_rescan();
+
+        // When the file is removed and the next ThemeEntriesReloaded
+        // lands — the re-scan no longer holds the name.
+        actor
+            .services
+            .slices
+            .reader::<jinn_theme_msg::ThemeEntries>(&jinn_theme_msg::theme_entries_slot())
+            .expect("the catalog registers the theme entries cell")
+            .update(|entries| {
+                entries.entries.clear();
+            });
+        actor.handle_resource_rescan();
+
+        // Then the frontend falls back to the embedded default, the same
+        // resolver a preference save uses — no panic, no stale palette.
+        assert_eq!(
+            actor.state.read().frontend.theme.focus_accent,
+            jinn_theme::default_theme().focus_accent
+        );
     }
 }

@@ -19,7 +19,6 @@ serde_json = { workspace = true }
 error-stack = { workspace = true }
 jiff = { workspace = true }
 wherror = { workspace = true }
-tracing = { workspace = true }
 
 # The `testing` feature is consumed by jinn-kernel test code.
 # (tests use rstest for the workspace-wide timeout; see .cargo/config.toml)
@@ -35,3 +34,6 @@ testing = []
 # (apply_migrations_inner, the format renderers).
 jinn-session-schema = { path = ".", features = ["testing"] }
 rstest = { workspace = true }
+
+[lints]
+workspace = true

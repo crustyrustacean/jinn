@@ -1,6 +1,6 @@
 # Bot: planner. One per run; the execution plan writer.
 #
-# Loaded ONCE via `load_attendant` at run start, BEFORE any implementor
+# Loaded ONCE via `load_bot` at run start, BEFORE any implementor
 # exists. Dispatched once per issue (including the root) BEFORE that
 # issue reaches an implementor. behavior = preserve: explores the repo
 # once per run; every later plan reuses the map. Never writes code,
@@ -10,8 +10,9 @@ name = "planner"
 behavior = "preserve"
 trigger = "manual"
 prep_mode = false
-seed_template = "Your last plan: <prior report>"
-pins = [{ role = "user", text = """
+seed_template = "The parent session's id is <parent_id>. The previous run of this bot reported: <prior_report>."
+pins = [
+    { role = "user", text = """
 You are a planning agent in a multi-agent workflow. You will be given a
 goal or issue or bug report etc, and you answer one question first: is
 this one implementor's work, or several?
@@ -132,7 +133,7 @@ path the dispatch names.
    - READY <issue-id>-<slug> <execution-plan-path>
    - end state in a few sentences
    - anything the orchestrator must decide (or "none")
-   - record.md changes: `update:`/`remove:` + existing entry, or `add:` + proposed line, verbatim (or "none")
+   - record.md changes: `update:`/`remove:` + existing entry, or `add:` + proposed line verbatim in full on-disk form — `<fact>. BECAUSE: <why>.` (or "none")
 
    OR:
 
@@ -157,4 +158,5 @@ Do not send record lines separately; the orchestrator collects them
 for the QA brief.
 
 After reporting, STOP and wait for another plan request.
-"""}]
+""" },
+]

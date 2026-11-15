@@ -66,6 +66,55 @@ test-failures:
 test-one FILTER:
     cargo test --workspace --no-fail-fast {{FILTER}}
 
+# Cross-build the Windows test exes for running in the VM against the shared checkout.
+build-tests-windows:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Exes land in target/x86_64-pc-windows-msvc/debug/deps/ - one per
+    # crate, hash-suffixed. Rebuilds leave stale-hash copies behind, so the
+    # exact fresh set is also written to win-test-suites.txt (via cargo's
+    # JSON message stream, which names each test executable) for the VM's
+    # run-windows-tests.ps1 to read. The exes are CRT-static, so the VM
+    # needs nothing installed: run them from the same cwd the Linux side
+    # uses.
+    if ! command -v cargo-xwin >/dev/null 2>&1; then
+        echo "Error: cargo-xwin is not installed." >&2
+        echo "  Run: just setup-windows-cross" >&2
+        exit 1
+    fi
+    export XWIN_ARCH=x86_64
+    export CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=lld-link
+    # Same flags as the release tarball: crt-static so the exes run bare
+    # in the VM (no VC++ redistributable), /ignore:4099 for the static
+    # CRT libs' never-distributed PDBs.
+    export RUSTFLAGS="-Ctarget-feature=+crt-static -Clink-arg=/ignore:4099"
+    cargo xwin test --workspace --no-run --message-format=json \
+        --target x86_64-pc-windows-msvc \
+        | jq -r --arg repo "$PWD" \
+            'select(.executable != null) | .executable | sub("^" + $repo + "/"; "")' \
+        | sed "s|^$PWD/||" \
+        | sort -u > /tmp/win-test-suites.candidate
+    # A fully cached run re-emits no artifact messages, so an empty candidate
+    # means nothing compiled: keep a previous manifest if one exists, else
+    # fall back to the deps glob. Entries are repo-relative POSIX paths
+    # (target/x86_64-pc-windows-msvc/debug/deps/<crate>-<hash>.exe) — the
+    # VM's run-windows-tests.ps1 anchors on the target/ prefix, never on the
+    # build host's filesystem layout.
+    if [ -s /tmp/win-test-suites.candidate ]; then
+        mv /tmp/win-test-suites.candidate win-test-suites.txt
+    elif [ ! -f win-test-suites.txt ]; then
+        (cd target/x86_64-pc-windows-msvc/debug/deps && ls -1 *.exe) \
+            | grep -E -- '-[0-9a-f]+\.exe$' \
+            | sed 's|^|target/x86_64-pc-windows-msvc/debug/deps/|' \
+            > win-test-suites.txt
+    else
+        rm -f /tmp/win-test-suites.candidate
+        echo "==> nothing recompiled; win-test-suites.txt kept from the previous build"
+    fi
+    echo "==> Windows test exes in target/x86_64-pc-windows-msvc/debug/deps/:"
+    echo "    (exact suite list: win-test-suites.txt)"
+    ls -1 target/x86_64-pc-windows-msvc/debug/deps/*.exe | sed 's/^/    /'
+
 # Fast compile check of the whole workspace (no codegen).
 check:
     cargo check --workspace
@@ -138,8 +187,8 @@ lint-path-guard:
    ALLOWLIST = set()
    SKIP_DIRS = {"target", "vendor"}
 
-   # The five shipped res/ kind directories.
-   KIND = r"(themes|personas|prompts|workflows|skills)"
+   # The six shipped res/ kind directories.
+   KIND = r"(themes|personas|prompts|workflows|skills|smolvm)"
 
    # 1. Lookup/comparison positions: the kind-slash literal sits directly
    #    inside a string-keyed lookup or comparison call. The `(`-adjacent

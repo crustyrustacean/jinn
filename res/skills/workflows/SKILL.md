@@ -34,11 +34,11 @@ decides everything: **what the orchestrator does while the worker
 works.**
 
 - **`spawn_subagent` — blocking.** Spawns a one-shot subagent; the call does not return until the child finishes, and the child's final message comes back as the tool result. The orchestrator is **frozen** for the whole child run: no other work, no mid-flight steering, and anything the child queues is lost. Subagents are isolation, not compression — they start from an empty context and see nothing but the prompt. Use when the next orchestrator action depends on the result (sequential steps).
-- **Bots — concurrent.** Standing child sessions created by `load_attendant` from a TOML seed. The call returns immediately; the orchestrator goes on with its turn (usually by ending it) and the bot's report arrives **later**, as a queued message that starts the orchestrator's next turn. Several bots run at once; each survives across dispatches (see seed fields below). Use when work can proceed while the orchestrator does other things, or when the same session must handle multiple dispatches over time (event-driven workers and specialists).
+- **Bots — concurrent.** Standing child sessions created by `load_bot` from a TOML seed. The call returns immediately; the orchestrator goes on with its turn (usually by ending it) and the bot's report arrives **later**, as a queued message that starts the orchestrator's next turn. Several bots run at once; each survives across dispatches (see seed fields below). Use when work can proceed while the orchestrator does other things, or when the same session must handle multiple dispatches over time (event-driven workers and specialists).
 
 Never substitute one for the other: a `spawn_subagent` call where a bot
 belongs freezes the orchestrator and silently discards the bot's
-seed; a bot where the result is needed *now* leaves the
+seed; a bot where the result is needed _now_ leaves the
 orchestrator ending its turn with nothing in hand.
 
 The channels both ride:
@@ -53,7 +53,7 @@ sleeps is a turn whose queued reports never arrive.
 
 Supporting tools:
 
-- **`conclude`** — a bot records one summary per run into a history log. Its text re-enters context **only** through the `<prior report>` token in the seed template; a template without the token never sees reports (right for roles whose conclusions arrive out of order, like a reviewer).
+- **`conclude`** — a bot records one summary per run into a history log. Its text re-enters context **only** through the `<prior_report>` token in the seed template; a template without the token never sees reports (right for roles whose conclusions arrive out of order, like a reviewer).
 - **Session lifecycle scripts** — a TOML of setup/teardown commands run via `run_lifecycle`. Setup is one-shot per session and adopts the last path the script prints as the session's working directory; teardown replays the recorded coordinates (session id only) — which is what makes it the cleanup mechanism. Placeholders are filled from named args, shell-quoted. Use the pair fully or not at all.
 - **`save_plan`** — persists a file that survives context compaction. The right vehicle for any artifact a later dispatch must read.
 
@@ -73,11 +73,11 @@ is the first authoring decision — it changes the directory layout, the
 execution model, and what the session must supervise.
 
 - **Sequential** — steps run one after another; each step is one unit of work; when it's done, the next starts. Use when the flow is a pipeline: research → draft → review → fix → deliver. Execution: the orchestrator dispatches each step to a fresh subagent with the `spawn_subagent` tool.
-- **Event-driven** — named worker sessions run concurrently and react to events: messages between sessions, turn completions, task completion. Use when the flow has concurrency, recursion, or long-lived workers: fanout, an issue queue that spawns more issues, workers that report back asynchronously. Execution: the orchestrator attaches **bots** with `load_attendant` (workflow-local session seeds), dispatches them with `tell_session`, and receives their reports via `notify_parent`.
+- **Event-driven** — named worker sessions run concurrently and react to events: messages between sessions, turn completions, task completion. Use when the flow has concurrency, recursion, or long-lived workers: fanout, an issue queue that spawns more issues, workers that report back asynchronously. Execution: the orchestrator attaches **bots** with `load_bot` (workflow-local session seeds), dispatches them with `tell_session`, and receives their reports via `notify_parent`.
 
 When both fit, prefer sequential — it is simpler to author and to debug.
 Event-driven earns its cost only when the flow genuinely needs
-concurrency or recursion. The worked examples: `res/workflows/autodev/`
+concurrency or recursion. The worked examples: `~/.config/jinn/workflows/autodev/`
 is the reference event-driven workflow (an autonomous development loop —
 the most sophisticated workflow that ships with jinn); the sketches in
 `references/workflow-format.md` are the reference sequential shape.
@@ -163,8 +163,8 @@ the loop count if the flow iterated.
 
 ## Where to look next
 
-| File                                       | Covers                                                                                                                                                                              |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `references/workflow-format.md`            | Sequential architecture, full spec: `workflow.md` fields, step-file anatomy, loop/conditional notation, naming rules, the authoring dialogue expanded, dispatch-prompt assembly, anti-patterns |
-| `references/event-driven-workflows.md`     | Event-driven architecture: session topology, bot seed files (behavior, trigger, pins, templates), the turn-boundary wake model, lifecycle scripts (setup/teardown as the whole checkout contract), state files, the orchestrator instructions pattern, failure and stall handling, anti-patterns |
-| `res/workflows/autodev/`                   | The shipped worked example — event-driven: orchestrator instructions, five stage procedures, three bot seeds (planner/implementor/reviewer), an SCM crib sheet, lifecycle scripts (on-demand implementors; setup branches the feature branch, teardown merges back; contracts record a pre-existing-failure baseline that gates measure against; work-item ids carry title slugs everywhere). Read it before authoring anything with concurrency or recursion |
+| File                                   | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `references/workflow-format.md`        | Sequential architecture, full spec: `workflow.md` fields, step-file anatomy, loop/conditional notation, naming rules, the authoring dialogue expanded, dispatch-prompt assembly, anti-patterns                                                                                                                                                                                                                                                                |
+| `references/event-driven-workflows.md` | Event-driven architecture: session topology, bot seed files (behavior, trigger, pins, templates), the turn-boundary wake model, lifecycle scripts (setup/teardown as the whole checkout contract), state files, the orchestrator instructions pattern, failure and stall handling, anti-patterns                                                                                                                                                              |
+| `~/.config/jinn/workflows/autodev/`    | The shipped worked example — event-driven: orchestrator instructions, five stage procedures, three bot seeds (planner/implementor/reviewer), an SCM crib sheet, lifecycle scripts (on-demand implementors; setup branches the feature branch, teardown merges back; contracts record a pre-existing-failure baseline that gates measure against; work-item ids carry title slugs everywhere). Read it before authoring anything with concurrency or recursion |

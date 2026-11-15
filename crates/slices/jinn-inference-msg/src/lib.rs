@@ -127,6 +127,25 @@ pub struct SendToLlmProvider {
     /// The stream this dispatch starts, minted alongside `turn`.
     #[serde(default)]
     pub stream: jinn_core_types::turn_identity::StreamId,
+    /// The tool-choice constraint for this request. `None` (the
+    /// default) sends no field: every provider applies its own default
+    /// (`auto`), which is today's behavior byte-for-byte. The handoff
+    /// compaction turn sends `NoneChoice` — tools stay defined (prefix
+    /// continuity) but the API layer forbids calls.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<ToolChoiceKind>,
+}
+
+/// The tool-choice constraint a dispatch can request, across providers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum ToolChoiceKind {
+    /// No constraint: the provider default (`auto`). The default, and
+    /// today's behavior.
+    #[default]
+    Auto,
+    /// Tools stay defined but calling them is forbidden. The handoff
+    /// compaction recap request's constraint.
+    None,
 }
 
 impl jinn_slices::BusMessage for SendToLlmProvider {}
@@ -171,6 +190,15 @@ pub enum StreamCompletedReason {
     /// own. A consumer that reads an intercept as a cancel would end the
     /// turn; one that reads a cancel as an intercept would retry it.
     RuleIntercept,
+    /// The repetition detector matched the output: the stream stopped
+    /// because the model was repeating itself verbatim.
+    ///
+    /// Distinct from [`StreamCompletedReason::Canceled`] (the user ended
+    /// the turn) and from [`StreamCompletedReason::RuleIntercept`]
+    /// (guidance was injected and read by the model): a loop is retried
+    /// *silently* — the model is never told it looped — so consumers that
+    /// would surface guidance on an intercept must not on this reason.
+    RepetitionLoop,
 }
 
 /// Streaming response completed for a session.
@@ -232,6 +260,11 @@ pub struct StreamCompleted {
     /// The stream this completion retires.
     #[serde(default)]
     pub stream: jinn_core_types::turn_identity::StreamId,
+    /// Whether a watchdog may retry this failed generation. `false` for
+    /// config, auth, and deterministic provider errors; `true` for
+    /// transient ones. Serde default `false` keeps old wire messages inert.
+    #[serde(default)]
+    pub retryable: bool,
 }
 
 impl jinn_slices::BusMessage for StreamCompleted {}
@@ -312,6 +345,7 @@ mod tests {
             origin: StreamOrigin::User,
             turn: jinn_core_types::turn_identity::TurnToken::from_counter(1),
             stream: jinn_core_types::turn_identity::StreamId::from_counter(1),
+            tool_choice: None,
         };
 
         // When serializing and deserializing.
@@ -322,6 +356,23 @@ mod tests {
         assert_eq!(back.session_id, original.session_id);
         assert_eq!(back.estimated_tokens, 10);
         assert_eq!(back.origin, StreamOrigin::User);
+        // And the unconstrained choice roundtrips as None.
+        assert_eq!(back.tool_choice, None);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn tool_choice_none_roundtrips_through_omission() {
+        // Given a payload deserialized from JSON with no tool_choice key —
+        // the shape every pre-existing producer emits.
+        let back: SendToLlmProvider = serde_json::from_str(&format!(
+            r#"{{"session_id":"{}","messages":[],"dispatched_at":"2026-01-01T00:00:00Z"}}"#,
+            SessionId::new()
+        ))
+        .expect("deserialize");
+
+        // Then the choice defaults to the unconstrained Auto.
+        assert_eq!(back.tool_choice, None);
     }
 
     #[rstest::rstest]
@@ -334,6 +385,9 @@ mod tests {
         assert_eq!(json, r#""tool_use""#);
         let json = serde_json::to_string(&StreamCompletedReason::Canceled).expect("serialize");
         assert_eq!(json, r#""canceled""#);
+        let json =
+            serde_json::to_string(&StreamCompletedReason::RepetitionLoop).expect("serialize");
+        assert_eq!(json, r#""repetition_loop""#);
     }
 
     #[rstest::rstest]
@@ -354,6 +408,27 @@ mod tests {
         assert!(back.tool_calls.is_none());
         assert!(back.cost.is_none());
         assert!(back.model_used.is_none());
+        // And the retry stamp defaults to inert.
+        assert!(!back.retryable);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn stream_completed_defaults_retryable_false_for_old_wire_messages() {
+        // Given JSON for a StreamCompleted shaped as before the retryable
+        // field existed (an error completion from an older publisher).
+        let json = format!(
+            r#"{{"session_id":"{}","reason":"error","dispatched_at":"1970-01-01T00:00:00Z"}}"#,
+            SessionId::new()
+        );
+
+        // When deserializing.
+        let back: StreamCompleted = serde_json::from_str(&json).expect("deserialize");
+
+        // Then the completion deserializes with retryable false, so the
+        // watchdog treats it exactly as today's path does.
+        assert_eq!(back.reason, StreamCompletedReason::Error);
+        assert!(!back.retryable);
     }
 
     #[rstest::rstest]

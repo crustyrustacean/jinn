@@ -179,6 +179,10 @@ impl WorkerDeps {
 }
 
 impl ServiceActor for SessionDiscoveryWorker {
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "trait contract: init is never called (entities spawn via the partition factory's init_with)"
+    )]
     async fn init(_args: &trouper::json::Json) -> Result<Self, error_stack::Report<RegistryError>> {
         // State cannot ride JSON args; entities spawn via the partition
         // factory's `init_with` closure (see `spawn`).
@@ -253,27 +257,22 @@ impl SessionDiscoveryWorker {
     /// the settle budget, naming it as delayed — and the notifier
     /// posts the summary entry (the old coordinator's safety-net
     /// behavior for `RescanPromptTemplates` and friends).
-    fn rescan_one(&mut self, scanned: Resource, cwd: MarkedPathBuf<Absolute>) {
+    fn rescan_one(&mut self, scanned: Resource, cwd: &MarkedPathBuf<Absolute>) {
         let run = self.run.fetch_add(1, Ordering::AcqRel) + 1;
         // Positional: skills, prompts, context, workflows — exactly what
         // `spawn_settle_waiter` expects.
         let (skills, prompts, context, workflows) = match scanned {
-            Resource::Skills => (
-                self.spawn_skills_task(&cwd),
-                skipped(),
-                skipped(),
-                skipped(),
-            ),
+            Resource::Skills => (self.spawn_skills_task(cwd), skipped(), skipped(), skipped()),
             Resource::Prompts => (
                 skipped(),
-                self.spawn_prompts_task(&cwd),
+                self.spawn_prompts_task(cwd),
                 skipped(),
                 skipped(),
             ),
             Resource::Context => (
                 skipped(),
                 skipped(),
-                self.spawn_context_task(&cwd),
+                self.spawn_context_task(cwd),
                 skipped(),
             ),
             // Workflows are launch-global: no cwd gate, and the command's
@@ -345,6 +344,20 @@ impl SessionDiscoveryWorker {
         let session_id = self.session_id.clone();
         let user_dir = self.user_prompts_dir.clone();
         tokio::spawn(async move {
+            // The static section rides this scan: one small read from the
+            // same user prompts dir the watcher covers, written before the
+            // store handling so a broken template store never swallows it.
+            let static_section = tokio::task::spawn_blocking({
+                let user_dir = user_dir.clone();
+                move || scans::load_static_section(&user_dir)
+            })
+            .await
+            .unwrap_or_else(|join_error| {
+                tracing::error!("static-section read panicked: {join_error}");
+                None
+            });
+            write_static_section(&state, &session_id, static_section);
+
             let joined =
                 tokio::task::spawn_blocking(move || scans::load_prompts(&user_dir, &project_dirs))
                     .await;
@@ -516,7 +529,7 @@ impl SessionDiscoveryWorker {
             let waiter = SettleWaiter {
                 finished: Arc::clone(&finished),
             };
-            let waited = tokio::time::timeout(settle_budget, async {
+            let settle = tokio::time::timeout(settle_budget, async {
                 tokio::join!(
                     waiter.join(Resource::Skills, skills),
                     waiter.join(Resource::Prompts, prompts),
@@ -531,9 +544,9 @@ impl SessionDiscoveryWorker {
                 return;
             }
 
-            let (snapshot, delayed) = match waited {
+            let (snapshot, delayed) = match settle {
                 Ok((skills, prompts, context, workflows)) => {
-                    (snapshot_of(skills, prompts, context, workflows), None)
+                    (snapshot_of(&skills, &prompts, &context, &workflows), None)
                 }
                 Err(_elapsed) => {
                     // The budget fired: settle now with the outcomes
@@ -620,10 +633,10 @@ impl SettleWaiter {
 
 /// Folds the four outcomes into the settle snapshot.
 fn snapshot_of(
-    skills: ResourceOutcome,
-    prompts: ResourceOutcome,
-    context: ResourceOutcome,
-    workflows: ResourceOutcome,
+    skills: &ResourceOutcome,
+    prompts: &ResourceOutcome,
+    context: &ResourceOutcome,
+    workflows: &ResourceOutcome,
 ) -> DiscoverySnapshot {
     DiscoverySnapshot {
         skill_count: skills.count(),
@@ -646,14 +659,13 @@ fn snapshot_of_finished(finished: &Mutex<Vec<(Resource, ResourceOutcome)>>) -> D
             .lock()
             .iter()
             .find(|(done, _)| *done == resource)
-            .map(|(_, outcome)| outcome.clone())
-            .unwrap_or(ResourceOutcome::Skipped)
+            .map_or(ResourceOutcome::Skipped, |(_, outcome)| outcome.clone())
     };
     snapshot_of(
-        pull(Resource::Skills),
-        pull(Resource::Prompts),
-        pull(Resource::Context),
-        pull(Resource::Workflows),
+        &pull(Resource::Skills),
+        &pull(Resource::Prompts),
+        &pull(Resource::Context),
+        &pull(Resource::Workflows),
     )
 }
 
@@ -721,6 +733,18 @@ fn write_prompts(state: &State, session_id: &SessionId, store: &PromptTemplateSt
     });
 }
 
+/// Writes the static system-prompt section into the session.
+///
+/// Same write family as [`write_prompts`]; `None` clears the section (the
+/// file was deleted or emptied — omission, not an error).
+fn write_static_section(state: &State, session_id: &SessionId, section: Option<String>) {
+    state.with_session(|view| {
+        if let Some(session) = view.session.map().get_mut(session_id) {
+            session.set_discovered_static_section(section);
+        }
+    });
+}
+
 /// Writes the discovered context files into the session.
 fn write_context(state: &State, session_id: &SessionId, files: &[ContextFile]) {
     state.with_session(|view| {
@@ -778,19 +802,19 @@ impl MsgHandler<RunDiscovery> for SessionDiscoveryWorker {
 
 impl MsgHandler<RescanSkills> for SessionDiscoveryWorker {
     async fn handle(&mut self, msg: &RescanSkills, _ctx: &mut MsgCtx<'_>) {
-        self.rescan_one(Resource::Skills, msg.cwd.clone());
+        self.rescan_one(Resource::Skills, &msg.cwd);
     }
 }
 
 impl MsgHandler<RescanPrompts> for SessionDiscoveryWorker {
     async fn handle(&mut self, msg: &RescanPrompts, _ctx: &mut MsgCtx<'_>) {
-        self.rescan_one(Resource::Prompts, msg.cwd.clone());
+        self.rescan_one(Resource::Prompts, &msg.cwd);
     }
 }
 
 impl MsgHandler<RescanContext> for SessionDiscoveryWorker {
     async fn handle(&mut self, msg: &RescanContext, _ctx: &mut MsgCtx<'_>) {
-        self.rescan_one(Resource::Context, msg.cwd.clone());
+        self.rescan_one(Resource::Context, &msg.cwd);
     }
 }
 
@@ -798,6 +822,6 @@ impl MsgHandler<RescanWorkflows> for SessionDiscoveryWorker {
     async fn handle(&mut self, msg: &RescanWorkflows, _ctx: &mut MsgCtx<'_>) {
         // The cwd rides the command for shape parity; workflows scan the
         // worker's configured dir regardless.
-        self.rescan_one(Resource::Workflows, msg.cwd.clone());
+        self.rescan_one(Resource::Workflows, &msg.cwd);
     }
 }

@@ -28,7 +28,7 @@ members = ["crates/jinn-*", "crates/slices/*", "vendor/*"]
 
 
 [workspace.package]
-version = "1.15.0"
+version = "1.24.0"
 edition = "2024"
 publish = false
 
@@ -91,7 +91,14 @@ jinn-context-assembly = { workspace = true }
 jinn-theme-slice = { workspace = true }
 jinn-cli = { workspace = true }
 jinn-canvas = { workspace = true }
+jinn-config-watch = { workspace = true }
+jinn-applets = { workspace = true }
+jinn-applets-msg = { workspace = true }
+jinn-remote = { workspace = true }
+jinn-remote-msg = { workspace = true }
 jinn-mcp-overgraph = { workspace = true }
+jinn-mcp-smolvm = { workspace = true }
+jinn-luau = { workspace = true }
 jinn-chat-input = { workspace = true }
 jinn-chat-log-view = { workspace = true }
 jinn-scope-focus = { workspace = true }
@@ -114,6 +121,7 @@ jinn-model-market = { workspace = true }
 jinn-dashboard = { workspace = true }
 jinn-discord = { workspace = true }
 jinn-discord-msg = { workspace = true }
+jinn-dictation = { workspace = true }
 jinn-quake-bar = { workspace = true }
 jinn-status-bar = { workspace = true }
 jinn-session-msg = { workspace = true }
@@ -148,13 +156,15 @@ nu-ansi-term = { workspace = true }
 clap = { workspace = true }
 clap-verbosity-flag = { workspace = true }
 ratatui-which-key = { workspace = true }
-ratatui-spatial-splits = { workspace = true }
 
 dotenvy = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
 mockito = { workspace = true }
+# The slice-composition tests' dying-stream factory builds tool streams;
+# the provider's stream types are `futures::Stream` aliases.
+futures = { workspace = true }
 toml = { workspace = true }
 sha2 = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
@@ -237,6 +247,7 @@ jinn-session-msg = { path = "crates/jinn-session-msg" }
 jinn-session-state = { path = "crates/jinn-session-state" }
 jinn-boot = { path = "crates/slices/jinn-boot" }
 jinn-boot-msg = { path = "crates/slices/jinn-boot-msg" }
+jinn-config-watch = { path = "crates/slices/jinn-config-watch" }
 jinn-bot-msg = { path = "crates/slices/jinn-bot-msg" }
 jinn-bot = { path = "crates/slices/jinn-bot" }
 jinn-session-store = { path = "crates/slices/jinn-session-store" }
@@ -273,14 +284,27 @@ jinn-provider = { path = "crates/jinn-provider" }
 jinn-tui = { path = "crates/jinn-tui" }
 jinn-canvas = { path = "crates/slices/jinn-canvas" }
 jinn-canvas-msg = { path = "crates/slices/jinn-canvas-msg" }
+jinn-applets = { path = "crates/slices/jinn-applets" }
+jinn-applets-msg = { path = "crates/slices/jinn-applets-msg" }
+jinn-remote = { path = "crates/slices/jinn-remote" }
+jinn-remote-msg = { path = "crates/slices/jinn-remote-msg" }
 jinn-cli = { path = "crates/jinn-cli" }
 jinn-selection-widget = { path = "crates/jinn-selection-widget" }
 jinn-picker = { path = "crates/jinn-picker" }
 jinn-testutil = { path = "crates/jinn-testutil" }
+jinn-dictation-backend = { path = "crates/jinn-dictation-backend" }
+jinn-dictation-msg = { path = "crates/slices/jinn-dictation-msg" }
+jinn-dictation = { path = "crates/slices/jinn-dictation" }
 
 jinn-theme = { path = "crates/jinn-theme" }
 jinn-mcp = { path = "crates/jinn-mcp" }
 jinn-mcp-overgraph = { path = "crates/jinn-mcp-overgraph" }
+jinn-mcp-smolvm = { path = "crates/jinn-mcp-smolvm" }
+jinn-luau = { path = "crates/jinn-luau" }
+# Embedded Luau scripting behind `jinn luau`. `default-features = false`
+# drops mlua's async + macos-event features so exactly one VM (the vendored
+# Luau) enters the graph; the runtime is sync and blocking by design.
+mlua = { version = "0.12", default-features = false, features = ["luau"] }
 jinn-mcp-slice = { path = "crates/slices/jinn-mcp-slice" }
 jinn-chat-input-msg = { path = "crates/slices/jinn-chat-input-msg" }
 jinn-chat-log-view-msg = { path = "crates/slices/jinn-chat-log-view-msg" }
@@ -353,6 +377,12 @@ rmcp = { version = "3.0.0-beta.2", features = [
     "transport-streamable-http-client-reqwest",
 ] }
 
+# Embedded microVM engine behind the builtin smolvm MCP server
+# (`crates/jinn-mcp-smolvm`). One SDK generation pins one engine release:
+# the crate PATH-looks-up only engines of this exact generation, and a
+# version bump here changes which engine is fetched on first boot.
+smolmachines = "~1.32"
+
 # Async / channels
 tokio = { version = "1", features = ["full"] }
 kanal = "0.1"
@@ -372,20 +402,28 @@ portable-pty = "0.9"
 vt100 = "0.15"
 
 # UI
-ratatui = { version = "0.30.0", default-features = false, features = [
+ratatui = { version = "0.30.1", default-features = false, features = [
     "unstable-rendered-line-info",
 ] }
+# Terminal graphics (kitty protocol etc.) for inline chat-log images.
+# default-features = false drops `chafa-dyn` (a pkg-config + system-libchafa
+# dependency that breaks the `cargo xwin` Windows cross-check) and
+# `image-defaults` (this workspace already controls the `image` feature set).
 crossterm = { version = "0.29", features = ["event-stream"] }
+ratatui-image = { version = "11", default-features = false, features = [
+    "crossterm",
+] }
 ratatui-which-key = "0.14.0"
-ratatui-spatial-splits = "0.2.0"
 throbber-widgets-tui = "0.11"
+# Bounded decode cache for chat-log image display (already resolved transitively).
+lru = "0.18"
 
 
 # State
 parking_lot = "0.12"
 
 # Binary discovery
-which = "7"
+which = { version = "7" }
 
 
 # Time
@@ -410,7 +448,7 @@ dirs = "6"
 toml = "0.8"
 toml_edit = "0.22"
 dotenvy = "0.15"
-unicode-segmentation = "1"
+unicode-segmentation = { version = "1" }
 unicode-width = "0.2"
 strip-ansi-escapes = "0.2"
 textwrap = "0.16"
@@ -471,10 +509,15 @@ csv = "1.3"
 # `default-formats`: the magic-byte sniffer classifies everything except
 # BMP/TIFF/HEIC-family as native (attached as-is) or not-an-image (degraded),
 # so only BMP and TIFF decode here; `png` is required to re-encode to PNG.
+# The chat-log image display (kitty-graphics) decodes the formats the
+# attachment layer passes through natively: jpeg, gif, webp.
 image = { version = "0.25", default-features = false, features = [
     "bmp",
     "tiff",
     "png",
+    "jpeg",
+    "gif",
+    "webp",
 ] }
 # Database
 daow = "0.2.0"
@@ -607,3 +650,6 @@ use_debug = "warn"
 verbose_file_reads = "warn"
 
 indexing_slicing = "deny"
+
+[lints]
+workspace = true

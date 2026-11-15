@@ -240,6 +240,22 @@ impl AppPaths {
             .expect("name join keeps the base absolute")
     }
 
+    /// Kiosk browser profile directory (`~/.local/share/jinn/kiosk-profile`).
+    ///
+    /// The kiosk launcher's `--user-data-dir`: one jinn-owned Chromium
+    /// profile, persistent across launches — a per-launch temp dir would
+    /// leak one directory per launch (jinn spawns the browser detached
+    /// and cannot clean up), and reusing the user's real profile would
+    /// break the kiosk itself: Chromium silently ignores `--kiosk` when
+    /// the profile is already in use by a running browser, so isolation
+    /// from the user's own browser is what makes the flag work at all.
+    #[must_use]
+    pub fn kiosk_profile_dir(&self) -> MarkedPathBuf<Absolute> {
+        self.data_dir
+            .join_all([APP_NAME, "kiosk-profile"])
+            .expect("name joins keep the base absolute")
+    }
+
     /// Prompt templates directory (`~/.config/jinn/prompts`).
     #[must_use]
     pub fn prompts_dir(&self) -> MarkedPathBuf<Absolute> {
@@ -279,6 +295,21 @@ impl AppPaths {
     pub fn workflows_dir(&self) -> MarkedPathBuf<Absolute> {
         self.config_dir
             .join_all([APP_NAME, "workflows"])
+            .expect("name joins keep the base absolute")
+    }
+
+    /// smolvm machine-manifest directory (`~/.config/jinn/smolvm`).
+    ///
+    /// Holds the machine manifests the bundled `smolvm` MCP server boots
+    /// from: one lowercase-named manifest per machine profile, seeded by
+    /// the reconciler (the `res/smolvm` family) and edited by the user —
+    /// the server reads the file from disk at boot and refuses to start
+    /// without it. Configuration the user edits, so it lives under the
+    /// config dir like personas and workflows.
+    #[must_use]
+    pub fn smolvm_dir(&self) -> MarkedPathBuf<Absolute> {
+        self.config_dir
+            .join_all([APP_NAME, "smolvm"])
             .expect("name joins keep the base absolute")
     }
 
@@ -325,6 +356,21 @@ impl AppPaths {
     pub fn bundled_files_manifest_path(&self) -> MarkedPathBuf<Absolute> {
         self.state_dir
             .join_all([APP_NAME, "bundled-files.toml"])
+            .expect("name joins keep the base absolute")
+    }
+
+    /// Instance registry (`~/.local/state/jinn/remote-instances.json` on
+    /// Linux) — where each running jinn advertises the external control
+    /// surface it serves (pid, bound port, working directory).
+    ///
+    /// Machine-local bookkeeping like the manifest above: readers prune
+    /// dead entries, so the file never needs manual curation. The file
+    /// name is owned by `jinn-remote-msg`'s registry module; keep the
+    /// two in step.
+    #[must_use]
+    pub fn remote_instances_path(&self) -> MarkedPathBuf<Absolute> {
+        self.state_dir
+            .join_all([APP_NAME, "remote-instances.json"])
             .expect("name joins keep the base absolute")
     }
 
@@ -395,6 +441,19 @@ impl AppPaths {
             .expect("name joins keep the base absolute")
     }
 
+    /// Saved applets directory (`~/.local/share/jinn/applets`).
+    ///
+    /// One directory per saved applet (an agent-built HTML page the user
+    /// pinned), with the `applets.json` catalog at the root. User data the
+    /// user expects to survive jinn and its sessions, so it lives under
+    /// the data dir, not cache or state.
+    #[must_use]
+    pub fn applets_dir(&self) -> MarkedPathBuf<Absolute> {
+        self.data_dir
+            .join_all([APP_NAME, "applets"])
+            .expect("name joins keep the base absolute")
+    }
+
     /// OpenRouter market cache directory (`~/.cache/jinn/openrouter`).
     ///
     /// Holds the model-market's TTL disk caches: the models listing and
@@ -415,6 +474,20 @@ impl AppPaths {
     pub fn embed_models_dir(&self) -> MarkedPathBuf<Absolute> {
         self.cache_dir
             .join_all([APP_NAME, "embed-models"])
+            .expect("name joins keep the base absolute")
+    }
+
+    /// Dictation-model cache directory (`~/.cache/jinn/dictation-models`).
+    ///
+    /// Holds the dictation backend's model weights, downloaded from
+    /// HuggingFace on first use and reused offline after that.
+    /// Re-downloadable content, so it lives under the cache dir. The
+    /// HuggingFace client's default cache location is overridden to
+    /// this directory — nothing lands in `~/.cache/huggingface`.
+    #[must_use]
+    pub fn dictation_models_dir(&self) -> MarkedPathBuf<Absolute> {
+        self.cache_dir
+            .join_all([APP_NAME, "dictation-models"])
             .expect("name joins keep the base absolute")
     }
 }
@@ -563,6 +636,26 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn smolvm_dir_sits_beside_workflows_under_config() {
+        // Given an AppPaths rooted at a temp tree.
+        let root = jinn_testutil::tempdir();
+        let paths = AppPaths::new_in(&root.path.as_marked_path());
+
+        // When resolving the smolvm manifest dir.
+        let dir = paths.smolvm_dir();
+
+        // Then it is the config dir's smolvm folder, beside workflows.
+        assert_eq!(
+            dir,
+            root.path
+                .join_all(["config", "jinn", "smolvm"])
+                .expect("root joins bare names")
+        );
+        // And it is a sibling of the workflows dir.
+        assert_eq!(dir.parent(), paths.workflows_dir().parent());
+    }
+
+    #[rstest::rstest]
     fn new_in_epoch_cache_dir_is_under_root_cache() {
         // Given an AppPaths created with new_in.
         let root = jinn_testutil::tempdir();
@@ -684,6 +777,27 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn remote_instances_path_sits_beside_the_state_file() {
+        // Given an AppPaths rooted in a temp dir.
+        let root = jinn_testutil::tempdir();
+        let paths = AppPaths::new_in(&root.path.as_marked_path());
+
+        // When reading the remote instance registry path.
+        let registry_path = paths.remote_instances_path();
+
+        // Then it is root/state/jinn/remote-instances.json — the state
+        // dir, the same home as state.toml and jinn.log.
+        assert_eq!(
+            registry_path,
+            root.path
+                .join_all(["state", "jinn"])
+                .expect("root joins bare names")
+                .join("remote-instances.json")
+                .expect("typed parent joins a bare name"),
+        );
+    }
+
+    #[rstest::rstest]
     fn log_path_filename_is_app_name_dot_log() {
         // Given an AppPaths.
         let root = jinn_testutil::tempdir();
@@ -718,6 +832,25 @@ mod tests {
             headless,
             root.path
                 .join("data/jinn/browser-profile/headless")
+                .expect("temp root joins a bare name")
+        );
+    }
+
+    #[rstest::rstest]
+    fn applets_dir_lands_under_data_base() {
+        // Given an AppPaths rooted at a temp dir.
+        let root = jinn_testutil::tempdir();
+        let paths = AppPaths::new_in(&root.path.as_marked_path());
+
+        // When resolving the saved-applets directory.
+        let dir = paths.applets_dir();
+
+        // Then it is data/jinn/applets — the data dir, the same base as the
+        // session store and the graph databases.
+        assert_eq!(
+            dir,
+            root.path
+                .join("data/jinn/applets")
                 .expect("temp root joins a bare name")
         );
     }

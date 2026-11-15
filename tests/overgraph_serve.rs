@@ -5,6 +5,10 @@
 //! path production uses when the `[mcp.overgraph]` entry enables. Asserts
 //! the tools are advertised over the wire and that graph data persists
 //! across child processes on the same database directory.
+#![allow(
+    clippy::expect_used,
+    reason = "integration test: a failed spawn or IO step is the test's failure channel"
+)]
 
 use marked_path::{Absolute, MarkedPathAccess, MarkedPathBuf};
 
@@ -37,6 +41,7 @@ async fn connect(bin: &std::path::Path, db: &MarkedPathBuf<Absolute>) -> McpClie
             "--db".to_owned(),
             db.to_string_lossy().into_owned(),
         ],
+        env: Vec::new(),
     };
     McpClient::connect(&command)
         .await

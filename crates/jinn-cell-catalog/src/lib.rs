@@ -76,7 +76,7 @@ pub fn register_all_cells(slices: &Slices) {
 /// The `jinn-slices` infrastructure slots are not counted: they are
 /// registered lazily by the first caller that resolves one, and a harness
 /// that never renders never creates them.
-const EXPECTED_CELL_COUNT: usize = 44;
+const EXPECTED_CELL_COUNT: usize = 49;
 
 // ── The catalog ─────────────────────────────────────────────────────
 //
@@ -138,6 +138,15 @@ fn register_catalog(slices: &Slices) -> usize {
         jinn_chat_log_view_msg::entry_line_cache_slot(),
         jinn_chat_log_view_msg::EntryLineCache::default()
     );
+    // The terminal-graphics state: picker from the startup query, per-image
+    // protocol state, decode cache. Written by the render pass and jinn-tui's
+    // startup/suspend paths.
+    register!(
+        slices,
+        count,
+        jinn_chat_log_view_msg::chat_log_graphics_slot(),
+        jinn_chat_log_view_msg::GraphicsState::new()
+    );
 
     // jinn-chat-input — the per-session input draft and the `@path` popup.
     register!(
@@ -159,6 +168,22 @@ fn register_catalog(slices: &Slices) -> usize {
         count,
         jinn_cwd_msg::cwds_slot(),
         jinn_cwd_msg::CwdInputState::default()
+    );
+
+    // jinn-applets — the saved-app catalog (store-actor-written) and the
+    // picker's UI state (sync-written on open, repainted from the
+    // catalog cell).
+    register!(
+        slices,
+        count,
+        jinn_applets_msg::applets_catalog_slot(),
+        jinn_applets_msg::AppletsCatalog::default()
+    );
+    register!(
+        slices,
+        count,
+        jinn_applets_msg::applets_picker_slot(),
+        jinn_applets_msg::AppletsPickerState::default()
     );
 
     // jinn-bot — the bot properties popup, the report history
@@ -436,6 +461,21 @@ fn register_catalog(slices: &Slices) -> usize {
         count,
         jinn_stream_rule_picker_msg::stream_rule_picker_slot(),
         jinn_stream_rule_picker_msg::StreamRulePickerState::default()
+    );
+
+    // jinn-dictation — the lifecycle state and the recording meter's
+    // live level, both written only by the dictation actor.
+    register!(
+        slices,
+        count,
+        jinn_dictation_msg::dictation_state_slot(),
+        jinn_dictation_msg::DictationState::default()
+    );
+    register!(
+        slices,
+        count,
+        jinn_dictation_msg::dictation_level_slot(),
+        jinn_dictation_msg::DictationLevel::default()
     );
 
     count

@@ -57,6 +57,10 @@ struct ActorFixture {
     /// The library cell, from the same `Slices` as the actor's own handle —
     /// the same reason as `status_bar`.
     library_cell: jinn_slices::cell::TypedCell<jinn_session_store_msg::LibraryState>,
+    /// The personas cell, from the same `Slices` — the startup seed
+    /// normalizes the persisted persona against it, so a test asserting
+    /// that seed reads the same cell the actor reads.
+    personas: jinn_slices::cell::TypedCell<jinn_persona_msg::Personas>,
 }
 
 impl ActorFixture {
@@ -69,6 +73,11 @@ impl ActorFixture {
     /// the seeded builder reads.
     fn services_config(&self) -> &jinn_config::ConfigLayer {
         &self.config
+    }
+
+    /// The personas cell.
+    fn personas_cell(&self) -> jinn_slices::cell::TypedCell<jinn_persona_msg::Personas> {
+        self.personas.clone()
     }
 }
 
@@ -108,6 +117,10 @@ async fn actor_fixture() -> ActorFixture {
         .slices
         .reader::<jinn_session_store_msg::LibraryState>(&jinn_session_store_msg::library_slot())
         .expect("the cell catalog registers the library slot");
+    let personas = services
+        .slices
+        .reader::<jinn_persona_msg::Personas>(&jinn_persona_msg::personas_slot())
+        .expect("the cell catalog registers the personas slot");
     let state = State::new(AppState::default());
     let app_state_storage = services.app_state_storage.clone();
     let config = services.config.clone();
@@ -134,6 +147,7 @@ async fn actor_fixture() -> ActorFixture {
         work_time,
         actor_path,
         library_cell,
+        personas,
     }
 }
 
@@ -3322,6 +3336,279 @@ fn seed_persisted_preferences(fixture: &ActorFixture) -> jinn_core_types::ModelS
     model
 }
 
+/// Seeds the persisted persona the startup seed reads.
+fn seed_persisted_persona(fixture: &ActorFixture, persona: &str) {
+    let mut app_state = fixture.app_state_storage.read();
+    app_state.persona_name = Some(persona.to_owned());
+    fixture
+        .app_state_storage
+        .save(&app_state)
+        .expect("persist persona");
+}
+
+/// Puts `names` into the personas cell, as the persona slice's scan would.
+///
+/// The cell comes from the fixture's own `Slices` — the same registry the
+/// actor reads the catalog through, which is what makes the seed's
+/// normalization observable.
+fn seed_persona_catalog(fixture: &ActorFixture, names: &[&str]) {
+    fixture.personas_cell().update(|personas| {
+        personas.replace_entries(
+            names
+                .iter()
+                .map(|name| jinn_slices::Persona {
+                    name: (*name).to_owned(),
+                    description: String::new(),
+                    body: String::new(),
+                    handoff_prompt: String::new(),
+                })
+                .collect(),
+        );
+    });
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn welcome_session_seeds_persisted_persona() {
+    // Given a persisted persona and a catalog that carries it.
+    let fixture = actor_fixture().await;
+    seed_persona_catalog(&fixture, &["coding-assistant", "general"]);
+    seed_persisted_persona(&fixture, "general");
+
+    // When startup runs.
+    fixture
+        .harness
+        .publish(EnvironmentLoaded {
+            config: empty_providers_config(),
+        })
+        .await;
+    jinn_testutil::wait::await_inbox_drained(
+        fixture.harness.system(),
+        &fixture.actor_path,
+        Duration::from_secs(10),
+    )
+    .await;
+
+    // Then the welcome session carries the persisted persona.
+    assert_eq!(
+        fixture.state.read().active_session().persona_name(),
+        "general"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn welcome_session_seed_normalizes_a_persona_the_catalog_lacks() {
+    // Given a persisted persona the catalog no longer carries.
+    let fixture = actor_fixture().await;
+    seed_persona_catalog(&fixture, &["coding-assistant"]);
+    seed_persisted_persona(&fixture, "deleted-persona");
+
+    // When startup runs.
+    fixture
+        .harness
+        .publish(EnvironmentLoaded {
+            config: empty_providers_config(),
+        })
+        .await;
+    jinn_testutil::wait::await_inbox_drained(
+        fixture.harness.system(),
+        &fixture.actor_path,
+        Duration::from_secs(10),
+    )
+    .await;
+
+    // Then the welcome session carries the default persona instead.
+    assert_eq!(
+        fixture.state.read().active_session().persona_name(),
+        "coding-assistant"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn hydrate_normalizes_unknown_session_persona() {
+    // Given a stored session whose persona the catalog no longer carries —
+    // deleted from disk while jinn was closed — and a running actor.
+    let fixture = actor_fixture().await;
+    seed_persona_catalog(&fixture, &["coding-assistant"]);
+    let session_id = SessionId::new();
+    let mut stored = ChatSessionState::new();
+    stored.set_session_id(session_id.clone());
+    stored.set_persona_name("deleted-persona".to_owned());
+    stored.push_entry(jinn_core_types::ChatEntry::user("older work"));
+    fixture
+        .store
+        .save(&stored.capture_snapshot())
+        .await
+        .expect("save session");
+
+    // When the session is hydrated back.
+    fixture
+        .harness
+        .publish(SessionLoadRequested {
+            session_id: session_id.clone(),
+            content_width: Some(60),
+        })
+        .await;
+    let loaded = jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        fixture.state.read().session.contains(&session_id)
+    })
+    .await;
+    assert!(loaded, "the session should have hydrated");
+
+    // Then the live session carries the default persona, not the dead name.
+    let session = fixture
+        .state
+        .read()
+        .session
+        .get(&session_id)
+        .expect("hydrated session")
+        .clone();
+    assert_eq!(session.persona_name(), "coding-assistant");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn hydrate_announces_a_blockless_persona_with_an_error_entry() {
+    // Given a stored session whose persona carries no compaction block,
+    // and a running actor.
+    let fixture = actor_fixture().await;
+    seed_persona_catalog(&fixture, &["coding-assistant"]);
+    let session_id = SessionId::new();
+    let mut stored = ChatSessionState::new();
+    stored.set_session_id(session_id.clone());
+    stored.set_persona_name("coding-assistant".to_owned());
+    stored.push_entry(jinn_core_types::ChatEntry::user("older work"));
+    fixture
+        .store
+        .save(&stored.capture_snapshot())
+        .await
+        .expect("save session");
+
+    // When the session is hydrated back.
+    fixture
+        .harness
+        .publish(SessionLoadRequested {
+            session_id: session_id.clone(),
+            content_width: Some(60),
+        })
+        .await;
+    jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        fixture.state.read().session.contains(&session_id)
+    })
+    .await;
+
+    // Then the live session's history carries the missing-block error.
+    let session = fixture
+        .state
+        .read()
+        .session
+        .get(&session_id)
+        .expect("hydrated session")
+        .clone();
+    let expected = jinn_persona_msg::missing_compaction_block_message("coding-assistant");
+    assert!(
+        session
+            .history()
+            .iter()
+            .any(|entry| entry.kind_str() == "error" && entry.text() == expected),
+        "expected the missing-block error, got: {:?}",
+        session
+            .history()
+            .iter()
+            .map(|entry| (entry.kind_str(), entry.text()))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn hydrate_does_not_duplicate_a_persisted_missing_block_error() {
+    // Given a stored session whose history already carries the exact
+    // missing-block error a persona switch persisted.
+    let fixture = actor_fixture().await;
+    seed_persona_catalog(&fixture, &["coding-assistant"]);
+    let session_id = SessionId::new();
+    let mut stored = ChatSessionState::new();
+    stored.set_session_id(session_id.clone());
+    stored.set_persona_name("coding-assistant".to_owned());
+    stored.push_entry(jinn_core_types::ChatEntry::user("older work"));
+    stored.push_entry(jinn_core_types::ChatEntry::error(
+        jinn_persona_msg::missing_compaction_block_message("coding-assistant"),
+    ));
+    fixture
+        .store
+        .save(&stored.capture_snapshot())
+        .await
+        .expect("save session");
+
+    // When the session is hydrated back.
+    fixture
+        .harness
+        .publish(SessionLoadRequested {
+            session_id: session_id.clone(),
+            content_width: Some(60),
+        })
+        .await;
+    jinn_testutil::wait::poll_until_async_fn(Duration::from_secs(2), || async {
+        fixture.state.read().session.contains(&session_id)
+    })
+    .await;
+
+    // Then the history still holds exactly one copy of the message.
+    let session = fixture
+        .state
+        .read()
+        .session
+        .get(&session_id)
+        .expect("hydrated session")
+        .clone();
+    let expected = jinn_persona_msg::missing_compaction_block_message("coding-assistant");
+    let copies = session
+        .history()
+        .iter()
+        .filter(|entry| entry.kind_str() == "error" && entry.text() == expected)
+        .count();
+    assert_eq!(copies, 1, "the persisted copy must not be duplicated");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn welcome_session_seed_announces_a_blockless_persona() {
+    // Given a persisted persona the catalog carries without a block.
+    let fixture = actor_fixture().await;
+    seed_persona_catalog(&fixture, &["coding-assistant"]);
+    seed_persisted_persona(&fixture, "coding-assistant");
+
+    // When startup runs.
+    fixture
+        .harness
+        .publish(EnvironmentLoaded {
+            config: empty_providers_config(),
+        })
+        .await;
+    jinn_testutil::wait::await_inbox_drained(
+        fixture.harness.system(),
+        &fixture.actor_path,
+        Duration::from_secs(10),
+    )
+    .await;
+
+    // Then the welcome session carries the missing-block error entry.
+    let expected = jinn_persona_msg::missing_compaction_block_message("coding-assistant");
+    assert!(
+        fixture
+            .state
+            .read()
+            .active_session()
+            .history()
+            .iter()
+            .any(|entry| entry.kind_str() == "error" && entry.text() == expected),
+        "the seeded welcome session must announce the missing block"
+    );
+}
+
 /// Inserts one live listed session, saves it to the store, and returns its id.
 async fn insert_listed_session(fixture: &ActorFixture, title: &str) -> SessionId {
     let session_id = SessionId::new();
@@ -3776,4 +4063,242 @@ async fn the_repair_publishes_enablement_only_when_the_seed_auto_enables_servers
         .expect("one event names the listed session");
     let enabled: std::collections::BTreeSet<_> = ["alpha".to_owned()].into();
     assert_eq!(repaired.enabled, enabled);
+}
+
+// ---------------------------------------------------------------------------
+// The Frozen policy, pinned: picker-backed config (tool filter, skill
+// filter, MCP enablement) is stamped into a session at creation and no
+// reload event re-seeds a live session. These tests run through the real
+// bus — `JinnTomlReloaded` is published on the harness fabric and the
+// store actor processes it like production — so the assertion is on the
+// session state after the event lands, not on the seed helper in
+// isolation.
+// ---------------------------------------------------------------------------
+
+/// Spawns the store actor with the config sections the seed reads already
+/// written, publishes `EnvironmentLoaded` so the welcome session is
+/// seeded, and returns the fixture.
+async fn frozen_fixture_with_sections(
+    seed_tools: &jinn_preferences_config::schemas::ToolsConfig,
+    seed_skills: &jinn_preferences_config::schemas::SkillsConfig,
+    seed_mcp: &jinn_preferences_config::schemas::mcp::McpServersConfig,
+) -> ActorFixture {
+    let fixture = actor_fixture().await;
+    fixture
+        .services_config()
+        .put(seed_tools)
+        .expect("write tools config");
+    fixture
+        .services_config()
+        .put(seed_skills)
+        .expect("write skills config");
+    fixture
+        .services_config()
+        .put(seed_mcp)
+        .expect("write mcp config");
+    fixture
+        .harness
+        .publish(EnvironmentLoaded {
+            config: empty_providers_config(),
+        })
+        .await;
+    jinn_testutil::wait::await_inbox_drained(
+        fixture.harness.system(),
+        &fixture.actor_path,
+        Duration::from_secs(10),
+    )
+    .await;
+    fixture
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_jinn_toml_reload_leaves_the_live_sessions_skill_filter_untouched() {
+    // Given a live store actor whose welcome session was seeded with a
+    // `[skills]` deny on `that-voice`.
+    let tools = jinn_preferences_config::schemas::ToolsConfig::default();
+    let skills = jinn_preferences_config::schemas::SkillsConfig {
+        skill_filter: Some(jinn_core_types::NameFilter::deny(["that-voice"])),
+    };
+    let mcp = jinn_preferences_config::schemas::mcp::McpServersConfig::default();
+    let fixture = frozen_fixture_with_sections(&tools, &skills, &mcp).await;
+    let seeded = fixture
+        .state
+        .read()
+        .session
+        .active_session()
+        .skill_filter()
+        .cloned();
+    assert_eq!(
+        seeded.map(|f| f.mode),
+        Some(jinn_core_types::FilterMode::Deny),
+        "the welcome session must have been seeded from the file first"
+    );
+
+    // When a reload event lands after the config flipped to no filter —
+    // the edit that, if any subscriber re-seeded, would move the session.
+    let empty = jinn_preferences_config::schemas::SkillsConfig::default();
+    fixture.services_config().put(&empty).expect("flip skills");
+    fixture
+        .harness
+        .publish(jinn_boot_msg::JinnTomlReloaded)
+        .await;
+    jinn_testutil::wait::await_inbox_drained(
+        fixture.harness.system(),
+        &fixture.actor_path,
+        Duration::from_secs(10),
+    )
+    .await;
+
+    // Then the live session still carries the deny it was created under:
+    // no reload re-seeds a live session — the picker is its control.
+    let after = fixture
+        .state
+        .read()
+        .session
+        .active_session()
+        .skill_filter()
+        .cloned();
+    assert_eq!(
+        after.map(|f| f.mode),
+        Some(jinn_core_types::FilterMode::Deny),
+        "the live session's skill_filter must not move on a reload"
+    );
+    // And a session created after the reload carries the new value: the
+    // seed reads the layer afresh at creation.
+    let fresh = jinn_session_msg::SessionSeed::from_config(&fixture.config.clone());
+    assert!(
+        fresh.skill_filter.is_none(),
+        "a session created after the reload carries the flipped file's value"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_jinn_toml_reload_leaves_the_live_sessions_tool_filter_untouched() {
+    // Given a live store actor whose welcome session was seeded with a
+    // `[tools]` deny on `bash`.
+    let tools = jinn_preferences_config::schemas::ToolsConfig {
+        tool_filter: Some(jinn_core_types::NameFilter::deny(["bash"])),
+        ..Default::default()
+    };
+    let skills = jinn_preferences_config::schemas::SkillsConfig::default();
+    let mcp = jinn_preferences_config::schemas::mcp::McpServersConfig::default();
+    let fixture = frozen_fixture_with_sections(&tools, &skills, &mcp).await;
+    let seeded = fixture
+        .state
+        .read()
+        .session
+        .active_session()
+        .tool_filter()
+        .cloned();
+    assert_eq!(
+        seeded.map(|f| f.mode),
+        Some(jinn_core_types::FilterMode::Deny),
+        "the welcome session must have been seeded from the file first"
+    );
+
+    // When a reload event lands after the config flipped to no filter.
+    let empty = jinn_preferences_config::schemas::ToolsConfig::default();
+    fixture.services_config().put(&empty).expect("flip tools");
+    fixture
+        .harness
+        .publish(jinn_boot_msg::JinnTomlReloaded)
+        .await;
+    jinn_testutil::wait::await_inbox_drained(
+        fixture.harness.system(),
+        &fixture.actor_path,
+        Duration::from_secs(10),
+    )
+    .await;
+
+    // Then the live session still carries the deny it was created under.
+    let after = fixture
+        .state
+        .read()
+        .session
+        .active_session()
+        .tool_filter()
+        .cloned();
+    assert_eq!(
+        after.map(|f| f.mode),
+        Some(jinn_core_types::FilterMode::Deny),
+        "the live session's tool_filter must not move on a reload"
+    );
+    // And the post-reload seed reads the flipped file.
+    let fresh = jinn_session_msg::SessionSeed::from_config(&fixture.config.clone());
+    assert!(
+        fresh.tool_filter.is_none(),
+        "a session created after the reload carries the flipped file's value"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn a_jinn_toml_reload_leaves_the_live_sessions_enabled_mcp_untouched() {
+    // Given a live store actor whose welcome session was seeded with an
+    // auto-enabled `alpha` server.
+    let tools = jinn_preferences_config::schemas::ToolsConfig::default();
+    let skills = jinn_preferences_config::schemas::SkillsConfig::default();
+    let mcp = jinn_preferences_config::schemas::mcp::McpServersConfig(
+        [(
+            "alpha".to_owned(),
+            jinn_preferences_config::schemas::mcp::McpServerConfig {
+                auto_enable: true,
+                ..Default::default()
+            },
+        )]
+        .into(),
+    );
+    let fixture = frozen_fixture_with_sections(&tools, &skills, &mcp).await;
+    let seeded = fixture
+        .state
+        .read()
+        .session
+        .active_session()
+        .enabled_mcp_servers()
+        .clone();
+    assert_eq!(
+        seeded.len(),
+        1,
+        "the welcome session must have been seeded with the auto-enabled server first"
+    );
+
+    // When a reload event lands after the file dropped `auto_enable`.
+    let cleared = jinn_preferences_config::schemas::mcp::McpServersConfig(
+        [(
+            "alpha".to_owned(),
+            jinn_preferences_config::schemas::mcp::McpServerConfig::default(),
+        )]
+        .into(),
+    );
+    fixture
+        .services_config()
+        .put(&cleared)
+        .expect("clear auto_enable");
+    fixture
+        .harness
+        .publish(jinn_boot_msg::JinnTomlReloaded)
+        .await;
+    jinn_testutil::wait::await_inbox_drained(
+        fixture.harness.system(),
+        &fixture.actor_path,
+        Duration::from_secs(10),
+    )
+    .await;
+
+    // Then the live session's enabled set is exactly what it was created
+    // with: no reload re-seeds a live session — the MCP picker is its
+    // control.
+    let after = fixture
+        .state
+        .read()
+        .session
+        .active_session()
+        .enabled_mcp_servers()
+        .clone();
+    assert_eq!(
+        after, seeded,
+        "the live session's enabled_mcp_servers must not move on a reload"
+    );
 }

@@ -12,7 +12,10 @@
 //!
 //! It lives in the root crate's `tests/` because it is the only place a test
 //! may depend on the session-turn slice and the chat-log slice at once.
-
+#![allow(
+    clippy::indexing_slicing,
+    reason = "integration test: buffer rows asserted at known fixture offsets"
+)]
 #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
 
 use std::time::Duration;
@@ -73,6 +76,7 @@ async fn live_session() -> (BusService, State) {
             counter: jinn_llm_support::token_estimator::TiktokenCounter::o200k_base(),
             token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache::default(),
             image_converter: jinn_llm_support::image_convert::ImageConverterService::unavailable(),
+            handoff_prompt: String::new(),
         },
     );
     settle(&state).await;

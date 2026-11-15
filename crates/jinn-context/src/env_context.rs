@@ -1,9 +1,10 @@
 //! Environment context sections - per-section builders for the system prompt.
 //!
 //! Each builder renders exactly one environment section of the assembled
-//! system prompt: the active persona, project context files
-//! (AGENTS.md/CLAUDE.md), current date, and working directory. Sections that
-//! have no content return an empty string so the assembler can omit them.
+//! system prompt: the static `_static.md` section, the active persona,
+//! project context files (AGENTS.md/CLAUDE.md), current date, and working
+//! directory. Sections that have no content return an empty string so the
+//! assembler can omit them.
 
 // The context-file loaders join a fixed candidate filename onto a directory
 // already typed `Absolute`; a bare-name join cannot make the result
@@ -21,6 +22,20 @@ use marked_path::{Absolute, MarkedPath, MarkedPathAccess, MarkedPathBuf};
 /// Candidates for project context files, checked in order.
 const CONTEXT_FILE_CANDIDATES: &[&str] = &["AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
 
+/// Renders the static system-prompt section: the user's `_static.md`
+/// content under a `# jinn` heading, verbatim.
+///
+/// This is where harness facts reach every prompt without a skill load.
+/// Empty string when there is no content (`None`) or it is blank, so the
+/// assembler omits the section entirely.
+#[must_use]
+pub fn static_section(content: Option<&str>) -> String {
+    let Some(content) = content.map(str::trim).filter(|c| !c.is_empty()) else {
+        return String::new();
+    };
+    format!("# jinn\n\n{content}")
+}
+
 /// Renders the persona section: the active persona body (identity + guidelines).
 ///
 /// Empty string when no persona is active or the persona body is empty.
@@ -29,6 +44,34 @@ pub fn persona_section(persona: Option<&Persona>) -> String {
     persona
         .filter(|p| !p.body.is_empty())
         .map_or(String::new(), |p| p.body.clone())
+}
+
+/// Renders the handoff-resume section — how to continue working from a
+/// compacted context and what a handoff recap must contain.
+///
+/// Empty string when handoff compaction is disabled, so the section is
+/// omitted entirely from the assembled prompt (the reference
+/// implementation ships the
+/// variable "empty without compaction").
+#[must_use]
+pub fn handoff_resume_section(enabled: bool) -> String {
+    const SECTION: &str = "# Handoff Compaction\n\n\
+        This session uses handoff compaction: when the working context grows\n\
+        past its limit, you will be asked to stop and write a handoff recap\n\
+        (objective, established facts, applied changes, verification, dead\n\
+        ends, remaining plan). The conversation then folds down to the\n\
+        user's messages, pinned context, and your most recent recap — older\n\
+        tool output and prose is summarized into that recap, not kept.\n\n\
+        When resuming after a fold, treat the most recent recap as your\n\
+        working state: continue from its remaining plan, trust its\n\
+        established facts, and never re-derive what it records. Re-read a\n\
+        file with a tool before editing it if the recap does not state its\n\
+        current contents.";
+
+    if !enabled {
+        return String::new();
+    }
+    SECTION.to_owned()
 }
 
 /// Renders the project context files section (AGENTS.md/CLAUDE.md contents).
@@ -224,7 +267,50 @@ mod tests {
             name: "test".to_owned(),
             description: "Test persona".to_owned(),
             body: body.to_owned(),
+            handoff_prompt: String::new(),
         }
+    }
+
+    #[rstest::rstest]
+    fn static_section_renders_content_under_jinn_heading() {
+        // Given static section content from `_static.md`.
+        let content = "jinn carries its own Luau runtime (`jinn luau`).";
+
+        // When building the static section.
+        let result = static_section(Some(content));
+
+        // Then the content is rendered verbatim under the `# jinn` heading.
+        assert_eq!(result, format!("# jinn\n\n{content}"));
+    }
+
+    #[rstest::rstest]
+    fn static_section_is_empty_without_content() {
+        // Given no static section content.
+        // When building the static section.
+        let result = static_section(None);
+
+        // Then no section is rendered.
+        assert_eq!(result, "");
+    }
+
+    #[rstest::rstest]
+    fn static_section_is_empty_when_content_blank() {
+        // Given blank static section content.
+        // When building the static section.
+        let result = static_section(Some("  \n\t "));
+
+        // Then no section is rendered — blank is absent, never a bare heading.
+        assert_eq!(result, "");
+    }
+
+    #[rstest::rstest]
+    fn static_section_trims_surrounding_whitespace_only() {
+        // Given static content with surrounding padding but real body text.
+        // When building the static section.
+        let result = static_section(Some("\n  body line  \n"));
+
+        // Then only the outer padding is trimmed; the body stays verbatim.
+        assert_eq!(result, "# jinn\n\nbody line");
     }
 
     #[rstest::rstest]
@@ -259,6 +345,43 @@ mod tests {
 
         // Then the section is empty.
         assert_eq!(result, "");
+    }
+
+    #[rstest::rstest]
+    fn persona_section_contains_no_compaction_block() {
+        // Given a parsed persona whose handoff_prompt holds block text.
+        let mut persona = test_persona("You are a helpful assistant.");
+        persona.handoff_prompt = "Recap the critique headings.".to_owned();
+
+        // When building the persona section.
+        let result = persona_section(Some(&persona));
+
+        // Then the section is exactly the body — no tag, no block text.
+        assert_eq!(result, "You are a helpful assistant.");
+        assert!(!result.contains("<compaction>"));
+        assert!(!result.contains("Recap the critique headings."));
+    }
+
+    #[rstest::rstest]
+    fn handoff_resume_section_is_empty_when_disabled() {
+        // Given handoff compaction disabled.
+        // When building the resume section.
+        let result = handoff_resume_section(false);
+
+        // Then the section is empty.
+        assert_eq!(result, "");
+    }
+
+    #[rstest::rstest]
+    fn handoff_resume_section_teaches_resume_when_enabled() {
+        // Given handoff compaction enabled.
+        // When building the resume section.
+        let result = handoff_resume_section(true);
+
+        // Then the section names the recap structure and the resume rule.
+        assert!(result.contains("# Handoff Compaction"));
+        assert!(result.contains("recap"));
+        assert!(result.contains("remaining plan"));
     }
 
     #[rstest::rstest]

@@ -53,9 +53,16 @@ pub struct AssembledPrompt {
     pub messages: Vec<LlmMessage>,
     /// Tool definitions to include in the API request.
     pub tool_definitions: Vec<ToolDefinition>,
-    /// Estimated token count (tiktoken o200k_base) of the system prompt and
-    /// all messages.
+    /// Estimated token count (tiktoken o200k_base) of the system prompt,
+    /// all messages, and the shipped tool schemas.
     pub estimated_tokens: u32,
+    /// The constant floor's share of [`Self::estimated_tokens`], computed in
+    /// the same counting pass: system-prompt text (which carries the skills
+    /// block) plus the shipped tool-schema tokens. Consumers subtracting it
+    /// from the total get the request's work size — the conversation
+    /// content alone — without recounting.
+    #[serde(default)]
+    pub system_tokens: u32,
 }
 
 impl AssembledPrompt {
@@ -63,5 +70,11 @@ impl AssembledPrompt {
     #[must_use]
     pub fn estimated_tokens(&self) -> u32 {
         self.estimated_tokens
+    }
+
+    /// The system prompt's token share of the estimate.
+    #[must_use]
+    pub fn system_tokens(&self) -> u32 {
+        self.system_tokens
     }
 }

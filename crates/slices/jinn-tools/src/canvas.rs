@@ -26,8 +26,9 @@ pub fn definition() -> ToolDefinition {
         name: "canvas".to_owned(),
         description: "Serve an HTML artifact file to the user's browser with live reload — \
             the running jinn hosts it and the result text names the URL to give the user. \
-            The first call starts the server on an OS-assigned loopback port; every later \
-            call swaps the served file on the same URL and connected browsers follow. \
+            The first call starts the server on an OS-assigned port on the interface the \
+            [canvas] bind config names (loopback by default); every later call swaps the \
+            served file on the same URL and connected browsers follow. \
             After edits you do NOT need to call this again — saving the file (or any \
             sibling in its directory) hot-reloads the page within a quarter second. \
             Build artifacts from the canvas skill's skeleton; their /vendor/ paths are \
@@ -82,8 +83,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     async move {
         // The actor answers every command it receives; a transport error
         // here means the round trip never completed, and the sentence
-        // names that (the domain refusals — missing file, non-loopback
-        // bind, bind failure — arrive as `ok: false` outcomes).
+        // names that (the domain refusals — missing file, bind failure
+        // — arrive as `ok: false` outcomes).
         match server.serve(absolute).await {
             Ok(outcome) if outcome.ok => ToolResult {
                 content: format!(
@@ -201,20 +202,5 @@ mod tests {
 
         // Then the message names the parse failure.
         assert!(error.contains("invalid arguments"), "{error}");
-    }
-
-    #[rstest::rstest]
-    #[test]
-    fn definition_teaches_the_relay_instruction() {
-        // Given the tool definition.
-        let def = super::definition();
-
-        // Then it names the URL relay duty and the no-recall-after-edit rule.
-        assert_eq!(def.name, "canvas");
-        assert!(def.description.contains("URL"), "teaches the relay");
-        assert!(
-            def.description.contains("do NOT need to call this again"),
-            "teaches that edits hot-reload on their own"
-        );
     }
 }

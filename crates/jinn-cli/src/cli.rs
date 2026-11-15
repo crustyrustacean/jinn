@@ -37,6 +37,14 @@ pub struct Cli {
     #[arg(long, value_hint = clap::ValueHint::FilePath)]
     pub log_file: Option<PathBuf>,
 
+    /// Trim the log file to its last N complete lines at startup.
+    ///
+    /// `0` keeps everything: the file is never trimmed and grows unbounded
+    /// across restarts. When the flag is omitted, the historical default
+    /// (10,000 lines) applies.
+    #[arg(long, value_name = "N")]
+    pub log_tail_lines: Option<usize>,
+
     /// Path to the `jinn.toml` configuration file. Defaults to the platform's
     /// config directory (e.g. `~/.config/jinn/jinn.toml` on Linux).
     ///
@@ -83,8 +91,12 @@ impl Cli {
     }
 
     /// Debug-build guard: `--db-path` is required unless the command is a
-    /// bundled MCP server (`jinn mcp …`), which never opens the session
-    /// store. Release builds always pass.
+    /// bundled MCP server (`jinn mcp …`, which never opens the session
+    /// store), the external-remote client (`jinn remote …`, an HTTP
+    /// client that needs no session store), a dictation utility
+    /// (`jinn dictation …`, which reads the audio host, not the store),
+    /// or the Luau runner (`jinn luau …`, a scripting runtime that needs
+    /// no session store). Release builds always pass.
     ///
     /// # Errors
     ///
@@ -92,7 +104,15 @@ impl Cli {
     pub fn debug_db_path_required(&self) -> Result<(), DebugDbPathError> {
         if cfg!(debug_assertions)
             && self.db_path.is_none()
-            && !matches!(self.command, Some(Commands::Mcp { .. }))
+            && !matches!(
+                self.command,
+                Some(
+                    Commands::Mcp { .. }
+                        | Commands::Remote { .. }
+                        | Commands::Dictation { .. }
+                        | Commands::Luau { .. }
+                )
+            )
         {
             return Err(DebugDbPathError);
         }
@@ -148,6 +168,13 @@ pub enum Commands {
         subcommand: FetchCommands,
     },
 
+    /// Dictation utilities.
+    Dictation {
+        /// The dictation subcommand to run.
+        #[command(subcommand)]
+        subcommand: DictationCommands,
+    },
+
     /// Manage user configuration files.
     Config {
         /// The config subcommand to run.
@@ -166,6 +193,110 @@ pub enum Commands {
         #[command(subcommand)]
         subcommand: McpCommands,
     },
+
+    /// Talk to a running jinn instance from outside.
+    ///
+    /// Discovers instances through the registry file each running jinn
+    /// maintains (pid, port, working directory) and delivers a message
+    /// into a live session. Not a TUI command: a short-lived HTTP
+    /// client that needs no config or session store.
+    Remote {
+        /// The remote subcommand to run.
+        #[command(subcommand)]
+        subcommand: RemoteCommands,
+    },
+
+    /// Run an embedded Luau script.
+    ///
+    /// jinn carries its own Lua interpreter (the vendored Luau VM), so a
+    /// script can run on a host with no python, node, or jq — and with no
+    /// jinn config, session store, or running instance. Scripts reach
+    /// capabilities through the injected `jinn` table (`jinn.fs`,
+    /// `jinn.env`, `jinn.http`, `jinn.proc`, `jinn.stdio`, `jinn.json`,
+    /// `jinn.toml`, `jinn.sleep`, `jinn.exit`, `jinn.args`) plus
+    /// file-based `require` rooted at the script's directory. Not a TUI
+    /// command.
+    ///
+    /// Trailing arguments after `--` become the script's `jinn.args`.
+    Luau {
+        /// Evaluate a code string instead of running a script file.
+        ///
+        /// A subcommand given alongside wins (files-win ordering is decided
+        /// in the runner, not the parser — clap cannot name a subcommand
+        /// field in `conflicts_with`).
+        #[arg(long)]
+        eval: Option<String>,
+
+        /// Wall-clock budget for the script, in seconds. 0 disables the
+        /// timeout entirely; the default is 30.
+        #[arg(long)]
+        timeout: Option<u64>,
+
+        /// The luau subcommand to run (run/check/version). When given,
+        /// `--eval` is ignored (they are mutually exclusive by the
+        /// conflict group; the group exists so the help says so).
+        #[command(subcommand)]
+        subcommand: Option<LuauCommands>,
+    },
+}
+
+/// Embedded-Luau subcommands.
+#[derive(Debug, Clone, Subcommand)]
+pub enum LuauCommands {
+    /// Run a Luau script file; everything after `--` becomes `jinn.args`.
+    Run {
+        /// The script to run.
+        script: PathBuf,
+
+        /// Trailing arguments handed to the script through `jinn.args`.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+
+    /// Syntax-check script files without executing them.
+    ///
+    /// Prints `path:line: message` per failure and exits non-zero when
+    /// any file fails to compile. Syntax only — the Luau type checker is
+    /// not part of this gate.
+    Check {
+        /// The scripts to check.
+        scripts: Vec<PathBuf>,
+    },
+
+    /// Print the jinn and vendored Luau versions.
+    Version,
+}
+
+/// External-remote client subcommands.
+#[derive(Debug, Clone, Subcommand)]
+pub enum RemoteCommands {
+    /// Deliver a message into a live session of a running jinn.
+    Send {
+        /// The target session's id (`jinn remote sessions` lists them).
+        #[arg(long)]
+        session: String,
+
+        /// Queue the message behind any in-flight turn (the default).
+        #[arg(long, group = "remote_mode")]
+        queue: bool,
+
+        /// Steer the running turn at its next prompt-assembly boundary.
+        /// A steer aimed at an idle session is delivered as a queue
+        /// message instead.
+        #[arg(long, group = "remote_mode")]
+        steer: bool,
+
+        /// The target instance's pid (`jinn remote instances` lists
+        /// them). Omit to target the most recently launched instance.
+        #[arg(long)]
+        instance: Option<u32>,
+
+        /// The message text.
+        message: String,
+    },
+
+    /// List the running jinn instances a client can reach.
+    Instances,
 }
 
 /// MCP server subcommands.
@@ -195,6 +326,21 @@ pub enum McpCommands {
         #[arg(long)]
         fetch_model: bool,
     },
+    /// Serve the builtin smolvm microVM server over stdio MCP.
+    ///
+    /// Boots one ephemeral machine per invocation, mounts `--cwd`
+    /// read-write at `/workspace` in the guest, and serves until the
+    /// client disconnects.
+    Smolvm {
+        /// The host directory mounted at `/workspace` in the guest (the
+        /// shipped MCP entry expands `<session_cwd>` into this).
+        #[arg(long)]
+        cwd: Option<std::path::PathBuf>,
+        /// Machine manifest to boot; defaults to the jinn-managed seed
+        /// (`~/.config/jinn/smolvm/alpine.toml`).
+        #[arg(long)]
+        smolfile: Option<std::path::PathBuf>,
+    },
 }
 
 /// Headless subcommands.
@@ -217,6 +363,25 @@ pub enum HeadlessCommands {
 pub enum FetchCommands {
     /// Fetch model metadata from models.dev and save locally.
     Models,
+
+    /// Download the dictation model into jinn's own cache directory.
+    ///
+    /// Fetches regardless of `[dictation] enabled` — fetching is a
+    /// network operation, enabling is a config decision. Exits
+    /// non-zero on platforms without a real backend.
+    DictationModel,
+}
+
+/// Dictation subcommands.
+#[derive(Debug, Subcommand)]
+pub enum DictationCommands {
+    /// List the capture input devices, marking the system default.
+    ///
+    /// The printed names are exactly what a `[dictation] device`
+    /// value must equal — matching is strict, not fuzzy. Runs
+    /// regardless of `[dictation] enabled`. Exits non-zero on
+    /// platforms without a real backend.
+    ListDevices,
 }
 
 /// Config subcommands.
@@ -242,7 +407,11 @@ pub enum ConfigCommands {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        reason = "test code: assertions use expect/panic to state what went wrong"
+    )]
     use super::*;
     use clap::Parser;
     use marked_path::MarkedPathAccess;
@@ -290,6 +459,73 @@ mod tests {
 
         // Then Cli.log_file captures the override.
         assert_eq!(cli.log_file.as_deref(), Some(expected.as_path()));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn log_tail_lines_defaults_to_none() {
+        // Given a temp-rooted --db-path and no --log-tail-lines argument.
+        let dir = jinn_testutil::tempdir();
+        let db_path = dir
+            .path
+            .join("test.db")
+            .expect("temp root joins a bare name")
+            .to_string();
+
+        // When parsing.
+        let cli = Cli::parse_from(["jinn", "--db-path", db_path.as_str()]);
+
+        // Then Cli.log_tail_lines is None (the historical default applies).
+        assert!(cli.log_tail_lines.is_none());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn log_tail_lines_zero_parses_as_keep_everything() {
+        // Given a temp-rooted --db-path and --log-tail-lines 0.
+        let dir = jinn_testutil::tempdir();
+        let db_path = dir
+            .path
+            .join("test.db")
+            .expect("temp root joins a bare name")
+            .to_string();
+
+        // When parsing.
+        let cli = Cli::parse_from([
+            "jinn",
+            "--db-path",
+            db_path.as_str(),
+            "--log-tail-lines",
+            "0",
+        ]);
+
+        // Then the zero survives as Some(0) — absent and 0 are distinct
+        // values, and 0 means keep everything.
+        assert_eq!(cli.log_tail_lines, Some(0));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn log_tail_lines_rejects_non_numeric_values() {
+        // Given a temp-rooted --db-path and a non-numeric --log-tail-lines.
+        let dir = jinn_testutil::tempdir();
+        let db_path = dir
+            .path
+            .join("test.db")
+            .expect("temp root joins a bare name")
+            .to_string();
+
+        // When parsing.
+        let result = Cli::try_parse_from([
+            "jinn",
+            "--db-path",
+            db_path.as_str(),
+            "--log-tail-lines",
+            "many",
+        ]);
+
+        // Then clap rejects it (usize value parsing).
+        assert!(result.is_err());
     }
 
     #[rstest::rstest]
@@ -492,6 +728,210 @@ mod tests {
     #[cfg(debug_assertions)]
     #[rstest::rstest]
     #[test]
+    fn debug_guard_admits_remote_subcommands_without_db_path() {
+        // Given no --db-path flag and the external remote client.
+        // When parsing and running the debug guard.
+        let cli = Cli::parse_from(["jinn", "remote", "instances"]);
+        let result = cli.debug_db_path_required();
+
+        // Then the guard passes: the client never opens the session store.
+        assert!(result.is_ok());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn remote_send_parses_with_an_explicit_mode() {
+        // Given a send argv naming the mode and the session.
+        // When parsing.
+        let cli = Cli::parse_from([
+            "jinn",
+            "remote",
+            "send",
+            "--session",
+            "abc",
+            "--steer",
+            "do the thing",
+        ]);
+
+        // Then the variant carries the mode and the message.
+        let Some(Commands::Remote {
+            subcommand:
+                RemoteCommands::Send {
+                    session,
+                    queue,
+                    steer,
+                    instance,
+                    message,
+                },
+        }) = cli.command
+        else {
+            panic!("remote send should parse");
+        };
+        assert_eq!(session, "abc");
+        assert!(!queue);
+        assert!(steer);
+        assert_eq!(instance, None);
+        assert_eq!(message, "do the thing");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn remote_send_defaults_to_queue_when_no_mode_flag_is_given() {
+        // Given a send argv with neither mode flag.
+        // When parsing.
+        let cli = Cli::parse_from(["jinn", "remote", "send", "--session", "abc", "hello"]);
+
+        // Then neither flag is set; the client reads that as queue.
+        let Some(Commands::Remote {
+            subcommand: RemoteCommands::Send { queue, steer, .. },
+        }) = cli.command
+        else {
+            panic!("remote send should parse");
+        };
+        assert!(!queue);
+        assert!(!steer);
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn remote_send_rejects_both_mode_flags() {
+        // Given a send argv carrying both --queue and --steer.
+        // When parsing.
+        let result = Cli::try_parse_from([
+            "jinn",
+            "remote",
+            "send",
+            "--session",
+            "abc",
+            "--queue",
+            "--steer",
+            "hello",
+        ]);
+
+        // Then parsing fails: the caller must pick one mode.
+        assert!(result.is_err());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn remote_send_requires_the_session_flag() {
+        // Given a send argv with no --session.
+        // When parsing.
+        let result = Cli::try_parse_from(["jinn", "remote", "send", "hello"]);
+
+        // Then parsing fails naming the missing flag.
+        assert!(result.is_err());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn mcp_smolvm_parses_the_cwd_and_leaves_the_manifest_default() {
+        // Given an `mcp smolvm` argv carrying --cwd.
+        // When parsing.
+        let result = Cli::try_parse_from([
+            "jinn",
+            "mcp",
+            "smolvm",
+            "--cwd",
+            "/home/me/worktrees/feature",
+        ]);
+
+        // Then the cwd is carried raw for the server crate to type, and no
+        // manifest override was given.
+        let cli = result.expect("parse");
+        let Some(Commands::Mcp {
+            subcommand: McpCommands::Smolvm { cwd, smolfile },
+        }) = cli.command
+        else {
+            panic!("expected the smolvm subcommand");
+        };
+        assert_eq!(
+            cwd.as_deref().map(std::path::Path::new),
+            Some(std::path::Path::new("/home/me/worktrees/feature"))
+        );
+        assert!(smolfile.is_none());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn mcp_smolvm_parses_an_optional_smolfile_override() {
+        // Given an `mcp smolvm` argv carrying both flags.
+        // When parsing.
+        let result = Cli::try_parse_from([
+            "jinn",
+            "mcp",
+            "smolvm",
+            "--cwd",
+            "/worktree",
+            "--smolfile",
+            "/home/me/.config/jinn/smolvm/custom.toml",
+        ]);
+
+        // Then both values ride through untouched.
+        let cli = result.expect("parse");
+        let Some(Commands::Mcp {
+            subcommand: McpCommands::Smolvm { cwd, smolfile },
+        }) = cli.command
+        else {
+            panic!("expected the smolvm subcommand");
+        };
+        assert_eq!(
+            cwd.as_deref().map(std::path::Path::new),
+            Some(std::path::Path::new("/worktree"))
+        );
+        assert_eq!(
+            smolfile.as_deref().map(std::path::Path::new),
+            Some(std::path::Path::new(
+                "/home/me/.config/jinn/smolvm/custom.toml"
+            ))
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn remote_send_parses_an_instance_pid() {
+        // Given a send argv targeting an explicit instance.
+        // When parsing.
+        let cli = Cli::parse_from([
+            "jinn",
+            "remote",
+            "send",
+            "--session",
+            "abc",
+            "--instance",
+            "4242",
+            "hello",
+        ]);
+
+        // Then the pid rides the variant.
+        let Some(Commands::Remote {
+            subcommand: RemoteCommands::Send { instance, .. },
+        }) = cli.command
+        else {
+            panic!("remote send should parse");
+        };
+        assert_eq!(instance, Some(4242));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn remote_instances_parses_bare() {
+        // Given the listing argv.
+        // When parsing.
+        let cli = Cli::parse_from(["jinn", "remote", "instances"]);
+
+        // Then the variant matches.
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Remote {
+                subcommand: RemoteCommands::Instances
+            })
+        ));
+    }
+
+    #[cfg(debug_assertions)]
+    #[rstest::rstest]
+    #[test]
     fn debug_guard_passes_with_db_path_provided() {
         // Given --db-path and a session-store command. The value is never
         // read, only presence — a relative name keeps the test portable.
@@ -539,5 +979,152 @@ mod tests {
                 subcommand: McpCommands::Overgraph { .. }
             })
         ));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn dictation_list_devices_parses() {
+        // Given the dictation list-devices argv shape.
+        // When parsing.
+        let cli = Cli::parse_from(["jinn", "dictation", "list-devices"]);
+
+        // Then the variant matches.
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Dictation {
+                subcommand: DictationCommands::ListDevices
+            })
+        ));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn dictation_command_needs_no_db_path() {
+        // Given a dictation command with no --db-path (it reads the
+        // audio host, never the session store).
+        let cli = Cli::parse_from(["jinn", "dictation", "list-devices"]);
+
+        // When the debug-build guard runs.
+        // Then it passes: dictation joins the MCP/remote exemption.
+        cli.debug_db_path_required().expect("dictation is exempt");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn luau_version_parses() {
+        // Given the luau version argv shape.
+        // When parsing.
+        let cli = Cli::parse_from(["jinn", "luau", "version"]);
+
+        // Then the variant matches with no subcommand fields set.
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Luau {
+                eval: None,
+                timeout: None,
+                subcommand: Some(LuauCommands::Version)
+            })
+        ));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn luau_run_parses_with_trailing_args() {
+        // Given a luau run argv with script args after the separator.
+        // When parsing.
+        let cli = Cli::parse_from(["jinn", "luau", "run", "s.luau", "--", "--flag", "value"]);
+
+        // Then the script and the post-`--` argv both land.
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Luau {
+                subcommand: Some(LuauCommands::Run { args, .. }),
+                ..
+            }) if args == vec!["--flag".to_owned(), "value".to_owned()]
+        ));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn luau_eval_parses_with_a_timeout() {
+        // Given a luau --eval argv carrying a timeout.
+        // When parsing.
+        let cli = Cli::parse_from(["jinn", "luau", "--timeout", "5", "--eval", "return 1"]);
+
+        // Then the eval string and the explicit timeout both land.
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Luau {
+                eval: Some(source),
+                timeout: Some(5),
+                subcommand: None,
+            }) if source == "return 1"
+        ));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn luau_check_parses_multiple_scripts() {
+        // Given a luau check argv naming two scripts.
+        // When parsing.
+        let cli = Cli::parse_from(["jinn", "luau", "check", "a.luau", "b.luau"]);
+
+        // Then both scripts land in the check subcommand.
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Luau {
+                subcommand: Some(LuauCommands::Check { scripts }),
+                ..
+            }) if scripts.len() == 2
+        ));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn luau_bare_parses_with_no_subcommand_and_no_eval() {
+        // Given a bare `jinn luau` (an error exit is the runner's choice,
+        // not the parser's).
+        // When parsing.
+        let cli = Cli::parse_from(["jinn", "luau"]);
+
+        // Then the variant matches with everything unset.
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Luau {
+                eval: None,
+                timeout: None,
+                subcommand: None,
+            })
+        ));
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn luau_command_needs_no_db_path() {
+        // Given a luau command with no --db-path (a scripting runtime
+        // that never opens the session store).
+        let cli = Cli::parse_from(["jinn", "luau", "version"]);
+
+        // When the debug-build guard runs.
+        // Then it passes: luau joins the MCP/remote/dictation exemption.
+        cli.debug_db_path_required().expect("luau is exempt");
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn luau_eval_with_a_subcommand_parses_and_the_subcommand_wins_at_the_runner() {
+        // Given both --eval and a subcommand on one argv.
+        // When parsing.
+        let cli = Cli::parse_from(["jinn", "luau", "--eval", "return 1", "version"]);
+
+        // Then the parse succeeds; files-win ordering is the runner's call.
+        let Some(Commands::Luau {
+            eval, subcommand, ..
+        }) = cli.command
+        else {
+            panic!("luau variant expected");
+        };
+        assert_eq!(eval.as_deref(), Some("return 1"));
+        assert!(matches!(subcommand, Some(LuauCommands::Version)));
     }
 }

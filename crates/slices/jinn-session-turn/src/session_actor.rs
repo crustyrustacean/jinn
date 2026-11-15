@@ -41,7 +41,9 @@ use jinn_session_history_msg::CitationsReceived;
 use jinn_session_history_msg::SubmitHistoryMutations;
 use jinn_session_history_msg::TaskListUpdated;
 use jinn_session_history_msg::{ChatEntryPinChanged, PinChatEntry, PushChatEntry, UnpinChatEntry};
-use jinn_session_msg::{MarkSessionInteracted, RetryStalledSession, TurnCompleted};
+use jinn_session_msg::{
+    GiveUpProviderRetries, MarkSessionInteracted, RetryStalledSession, TurnCompleted,
+};
 use jinn_skills_msg::SkillsLoaded;
 use jinn_tools_msg::{
     ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolExecutionOutput,
@@ -86,6 +88,9 @@ pub struct SessionPersistenceActor {
     /// Image converter (ImageMagick) for transcoding non-native image
     /// attachments. Wraps a trait object so tests inject fakes.
     image_converter: jinn_llm_support::image_convert::ImageConverterService,
+    /// The handoff recap prompt: the launch copy, re-read at point of use
+    /// with this as the last-good fallback.
+    handoff_prompt: String,
 }
 
 impl BusPublish for SessionPersistenceActor {
@@ -102,6 +107,10 @@ pub struct SessionPersistenceActorDeps {
     /// Auto-pruner entry token cache for the accumulation gate.
     pub token_cache: jinn_token_count_msg::HistoryWorkerChatEntryTokenCache,
     pub image_converter: jinn_llm_support::image_convert::ImageConverterService,
+    /// The handoff-compaction recap prompt, loaded at launch and re-read
+    /// at each handoff with this copy as the last-good fallback. Empty in
+    /// test constructors that do not exercise the handoff path.
+    pub handoff_prompt: String,
 }
 
 impl ServiceActor for SessionPersistenceActor {
@@ -148,6 +157,7 @@ impl SessionPersistenceActor {
                             counter: deps.counter,
                             token_cache: deps.token_cache,
                             image_converter: deps.image_converter,
+                            handoff_prompt: deps.handoff_prompt,
                         })
                     })
                 }
@@ -160,6 +170,9 @@ impl SessionPersistenceActor {
             .handles::<SubmitHistoryMutations>()
             .handles::<MarkSessionInteracted>()
             .handles::<RetryStalledSession>()
+            // The provider-error watchdog's surrender: settle the turn a
+            // retryable provider error deferred once the schedule exhausts.
+            .handles::<GiveUpProviderRetries>()
             // The actor arms the in-flight-stream guard on dispatch receipt —
             // the single write point covering every `SendToLlmProvider`
             // publisher (user, queued/steered, direct, tool-loop, stall-retry).
@@ -256,6 +269,12 @@ impl MsgHandler<SubmitHistoryMutations> for SessionPersistenceActor {
 impl MsgHandler<RetryStalledSession> for SessionPersistenceActor {
     async fn handle(&mut self, msg: &RetryStalledSession, _ctx: &mut MsgCtx<'_>) {
         self.on_retry_stalled_session(msg).await;
+    }
+}
+
+impl MsgHandler<GiveUpProviderRetries> for SessionPersistenceActor {
+    async fn handle(&mut self, msg: &GiveUpProviderRetries, _ctx: &mut MsgCtx<'_>) {
+        self.on_give_up_provider_retries(msg).await;
     }
 }
 

@@ -68,8 +68,78 @@ impl SessionStoreActor {
         snapshot.restore_live_above(floor)
     }
 
+    /// Rewrites a loaded session's persona against the persona catalog.
+    ///
+    /// A session whose persona was deleted from disk while jinn was closed
+    /// comes back carrying the default persona rather than a name nothing
+    /// resolves. A catalog that is not there (the persona slice not
+    /// activated) degrades to leaving the session unchanged.
+    fn normalize_loaded_persona(&self, session: &mut ChatSessionState) {
+        let Some(cell) = self
+            .services
+            .slices
+            .reader::<jinn_persona_msg::Personas>(&jinn_persona_msg::personas_slot())
+        else {
+            return;
+        };
+        let normalized = cell.read().normalize_name(
+            session.persona_name(),
+            jinn_core_types::DEFAULT_PERSONA_NAME,
+        );
+        session.set_persona_name(normalized);
+    }
+
+    /// Pushes the missing-compaction-block error into `session` when its
+    /// persona resolves in the catalog but carries no `<compaction>` block.
+    ///
+    /// A block-less persona is a loud error, not a silent downgrade: the
+    /// entry names the persona and states that handoff compaction will use
+    /// the shipped default handoff prompt. A missing catalog (the persona
+    /// slice not activated) or a persona name the catalog does not resolve
+    /// degrades to no emission — an unresolvable name is
+    /// [`Self::normalize_loaded_persona`]'s concern, not an announcement
+    /// about blocks.
+    ///
+    /// Skipped when the history already carries the identical error: the
+    /// persona-picker switch path persists one entry at confirm time, and
+    /// this load-time re-emit must not stack a duplicate beside it.
+    ///
+    /// Call right after [`Self::normalize_loaded_persona`] — the persona
+    /// name must be one the catalog resolves first.
+    pub(crate) fn emit_missing_compaction_error(&self, session: &mut ChatSessionState) {
+        let Some(cell) = self
+            .services
+            .slices
+            .reader::<jinn_persona_msg::Personas>(&jinn_persona_msg::personas_slot())
+        else {
+            return;
+        };
+        let blockless = cell
+            .read()
+            .persona(session.persona_name())
+            .is_some_and(|persona| persona.handoff_prompt.is_empty());
+        if !blockless {
+            return;
+        }
+        let message = jinn_persona_msg::missing_compaction_block_message(session.persona_name());
+        let already_present = session
+            .history()
+            .iter()
+            .any(|entry| entry.kind_str() == "error" && entry.text() == message);
+        if already_present {
+            return;
+        }
+        session.push_entry(ChatEntry::error(&message));
+    }
+
     /// Inserts a loaded session and returns its ID.
-    pub(crate) fn insert_loaded_session(&self, session: ChatSessionState) -> SessionId {
+    ///
+    /// The stored persona is normalized first — see
+    /// [`Self::normalize_loaded_persona`] — and its block-less condition is
+    /// announced — see [`Self::emit_missing_compaction_error`].
+    pub(crate) fn insert_loaded_session(&self, mut session: ChatSessionState) -> SessionId {
+        self.normalize_loaded_persona(&mut session);
+        self.emit_missing_compaction_error(&mut session);
         let session_id = session.session_id().clone();
         self.state.with_session(|view| {
             view.session.map().insert(session);
@@ -190,6 +260,11 @@ impl SessionStoreActor {
         // The snapshot may have been taken while the session was archived. Loading it
         // makes it live again, and the sidebar lists only `Loaded` sessions.
         session.set_session_state(SessionState::Loaded);
+        // The persona is normalized before the map insert, exactly as a
+        // startup-hydrated session's is — both are load-from-disk
+        // insertion points, and neither may resurrect a dead persona name.
+        self.normalize_loaded_persona(&mut session);
+        self.emit_missing_compaction_error(&mut session);
         let original_cwd = session.cwd().clone();
 
         // Everything the measurement needs, taken while the session is still

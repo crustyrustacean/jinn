@@ -1,5 +1,205 @@
 **(Note to agents: CHANGELOG.md is human-authored only. Agents do not make edits)**
 
+## 2026-11-14 v1.24.0
+
+- Add autocomplete to CWD picker (`cd`) using fuzzy matching. Press `TAB` to complete the proposed directory.
+- Removed background compactor.
+- Personas now carry their own compaction prompts enclosed in a `<compaction></compaction>` block.
+  - Compaction blocks are now required for all personas.
+- Add new "handoff compaction" automated compaction method. Compaction will now occur occasionally (versus almost never).
+
+```toml
+[context_curation.handoff_compaction]
+enabled = true
+# Triggers when the _chat context_ (workset) is at 200000.
+# This ignores system prompt length.
+workset_trigger_tokens = 200000
+```
+
+- (`jinn.toml`): `workset_trigger_tokens` triggers an error if less than `accumulation_threshold_tokens`.
+- Set default `accumulation_threshold_tokens` to 170k (up from 150k).
+- Update `learning-tutor` persona:
+  - Now maintains a glossary
+  - Provides a primary source at session end for further exploration
+  - Should adjust difficulty based on the zone of proximal development
+  - Should now use simpler and more direct phrasing
+- Add "kiosk" mode to applet launcher using `<c-enter>`, defaulting to a Chrome-based browser.
+
+```toml
+[applets]
+# override the builtin command.
+kiosk_command = 'chromium --kiosk --app="{url}" --user-data-dir="{profile}"'
+```
+
+- OpenRouter model market cursor no longer "sticks" at the bottom when scrolling. Now stays centered when scrollable content is still available.
+- Add terminal image support for protocols: kitty, sixel, iterm2, halfblocks.
+
+```toml
+[graphics]
+enabled = true
+protocol = "auto" # auto | kitty | sixel | iterm2 | halfblocks
+# max height of an image (in rows)
+max_image_rows = 16
+```
+
+- Add `smolvm` builtin MCP server, defaulting to Alpine Linux.
+  - Primary use-case is to ship a stable environment across multiple platforms.
+
+```toml
+[mcp.smolvm]
+command = "<jinn>"
+args = ["mcp", "smolvm", "--cwd", "<session_cwd>"]
+auto_enable = false
+```
+
+- Add embedded `luau` support, invoked with `jinn luau`.
+- Add new `_static.md` prompt to the system prompt to instruct about the builtin Lua engine.
+  - This is used to carry additional always-available information.
+  - Editing it is OK. `jinn` will not overwrite your edits.
+
+## 2026-11-10 v1.23.0
+
+- Applet picker now shows the bind address for the applet server.
+- Applet server now has an index page at `/`.
+- Add experimental "task restatement" and "failure escalation" sections to `coding-assistant` persona.
+- Add `env` support for MCP server configuration.
+- Add `<session_cwd>` token to MCP server configuration.
+
+## 2026-11-07 v1.22.0
+
+- Massive overhaul of `load_bot` tool description. Agents should now sometimes spawn bots instead of subagents.
+- Add `dump_to_disk` parameter globally to all tools so agents can inspect large tool results or save entire web pages without blowing up context.
+- Add `--log-tail-lines` CLI flag to keep a specific number of log lines (truncates to 10k by default).
+  - Setting to `0` will keep all log file lines.
+
+## 2026-11-06 v1.21.0
+
+- Update `RECORD.md` templates to now contain a `BECAUSE:` clause to explain _why_ a fact exists.
+- Add anti-hedging instructions to `#lookup` and `#research` prompts.
+- Remove `simple-task-loop` skill.
+- `micro-task-loop` skill now defers check/test/commit cadence to plan if available.
+- Minimap context usage display is now only shown when in Normal mode.
+- `#gap-analysis` report should be much shorter
+- Applet and canvas bind address is no longer limited to loopback.
+- Add additional documentation to `jinn-usage` skill specifically about where things are in the UI and what they mean.
+- Add additional `jinn-usage` docs for personas.
+- `README.md` tweaks.
+- Live reload: `jinn.toml`, `providers.toml`, `stream_rules.toml` all reload when edited.
+  - Not all configuration values take effect instantly.
+  - Reloaded values fall into three categories
+    - New session only: new sessions get updated, but existing sessions don't get the update at all. This is to protect existing picker/session configurations. Impacts tool and skills configuration.
+    - Re-read at next use: some items read the config on-demand, so the change takes effect immediately.
+    - Deferred update: items that require internally rebuilding some object or rely on a network connection will update on their next rebuild/connect. For example, an MCP server needs to reconnect, so it will only update the next time the connection gets accessed. For provider updates, the configuration will update the next time a stream opens.
+  - Ask `jinn` about a specific configuration item if you want more details.
+
+- Add new watchdog to abort + retry streams where the LLM is stuck in a loop.
+
+```toml
+# jinn.toml
+[watchdog.stuck_loop]
+# Abort the stream after this many failures accumulate. Successful responses
+# decrement the counter.
+max_failures = 3
+```
+
+- Add new watchdog to restart streams if an error occurs _during streaming_.
+  - The existing `provider.request_retry` is similar, but only handles failed _connection attempts_.
+
+```toml
+# jinn.toml
+[watchdog.provider_error]
+# Retry 3 times, waiting this many seconds between the attempts.
+waits_secs = [10, 30, 60]
+```
+
+## 2026-11-04 v0.20.0
+
+- Update `#research` prompt to generate a more comprehensive report.
+- Add `#lookup` prompt to do a quick web search.
+
+## 2026-11-04 v0.19.0
+
+- Add branch + merge commit lifecycle script for git in default `jinn.toml`.
+- Yanking now displays a status bar message.
+  - Yanking a session ID now uses the status bar instead of a popup.
+- Audio thread is now fed correctly sized audio chunks to prevent a decoding crash.
+
+## 2026-11-03 v0.18.0
+
+- Add "applet" feature.
+
+## 2026-11-03 v0.17.0
+
+- Canceling a long-running tool call now properly terminates the call + changes the session state.
+- Add "interrupt" mode to `tell_session` tool. This uses the steering buffer to deliver a message quickly instead of waiting for turn end.
+- Persona picker + sidebar will now always stay synced.
+- Creating new sessions will always inherit the persona of the most recent active session.
+- Add dictation via `<M-i>` keybind (disabled by default). Currently `parakeet-tdt-06b-v2` is supported.
+  - Add CLI command `jinn dictation list-devices` to list available audio capture devices for dictation.
+  - Add CLI command `jinn fetch dictation-model` to download `parakeet-tdt-06b-v2`
+  - Dictation model will download automatically if dictation is enabled.
+- Add basic remote messaging functionality (also `curl` accessible, see below).
+  - `jinn remote instances` lists running `jinn` instances
+  - `jinn remote send` sends a message to a running `jinn` session. Defaults to the most recently opened instance.
+    - A session ID to receive the message is required. Use existing `y` keybind to copy a session ID for use with `jinn remote send`.
+
+### Dictation
+
+Enabling dictation and available configuration options.
+
+```toml
+[dictation]
+enabled = true
+model = "parakeet-tdt-0.6b-v2"
+noise_reduction = true
+# There are many other options for adjusting noise thresholds and segmentation lengths.
+# Documentation is in the default jinn.toml file. Run `jinn config init sample.toml`
+# to create a default TOML if you want to see everything.
+```
+
+### Remote Messaging
+
+Remote messaging is currently fire-and-forget. More functionality will be added over time.
+
+```bash
+$ jinn remote instances
+PID      PORT   STARTED              CWD
+1953660  36913  2026-11-03T07:40:25Z /home/jayson_nvme/500g/buildcache/jinn
+
+curl http://127.0.0.1:36913/health
+# {"pid":1953660,"version":"1.16.0","port":36913}
+
+curl http://127.0.0.1:36913/sessions
+# {"sessions":[{"id":"01a1a05a-f0f3-77d6-8521-b48c3e420f40","title":null,"phase":"idle","bot":false}]}
+
+curl -X POST http://127.0.0.1:36913/send \
+  -H 'Content-Type: application/json' \
+  -d '{"session_id":"01a1a05a-f0f3-77d6-8521-b48c3e420f40","text":"hello via curl"}'
+# {"status":"queued","session_id":"01a1a05a-…","fell_back":false}
+
+curl -X POST http://127.0.0.1:36913/send -H 'Content-Type: application/json' \
+  -d '{"session_id":"01a1a05a-…","text":"steer try","mode":"steer"}'
+# {"status":"queued","session_id":"01a1a05a-…","fell_back":true}   ← idle target
+# {"status":"steered","session_id":"01a1a05a-…","fell_back":false} ← busy target
+
+
+# Send a message to the first session
+PORT=$(jinn remote instances | awk 'NR==2{print $2}')
+SESS=$(curl -s http://127.0.0.1:$PORT/sessions | jq -r '.sessions[0].id')
+curl -s -X POST http://127.0.0.1:$PORT/send -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"$SESS\",\"text\":\"build finished\"}"
+```
+
+## 2026-11-01 v1.16.0
+
+- Renamed `load_attendant` to `load_bot`
+- `load_bot` now accepts a bot config inline w/o require a file write
+- Changes to `learning-tutor`
+  - It now spawns a research bot in the background to help gather data for teaching
+  - It might ask 1-2 intake/grounding questions before starting
+  - It now generates and dynamically updates a curriculum file
+  - All responses get logged to build a learner profile which should (hopefully) keep the model aware of the learner's strengths/weaknesses.
+
 ## 2026-11-01 v1.15.0
 
 - Add a metrics script to `canvas` injection which reports interactions back to the agent.

@@ -3,7 +3,7 @@
 //! The [`Ctx`] carries the shared state, the services container, and the
 //! values a few slices cannot construct for themselves: the prune-worker
 //! list (built from the config layer, which the root reads), the
-//! compaction prompt, and the session actor's dependency bundle.
+//! handoff prompt, and the session actor's dependency bundle.
 //!
 //! It carries no producer state. The three values later activations read
 //! are resolved from the registry by slot key, so list order expresses
@@ -16,7 +16,7 @@ use jinn_kernel::State;
 pub struct Ctx<'a> {
     state: &'a State,
     services: &'a mut Services,
-    compaction_prompt: String,
+    handoff_prompt: String,
     token_counter: jinn_llm_support::token_estimator::TiktokenCounter,
     image_converter: jinn_llm_support::image_convert::ImageConverterService,
 }
@@ -24,16 +24,17 @@ pub struct Ctx<'a> {
 impl<'a> Ctx<'a> {
     /// Assembles the context for one boot.
     ///
-    /// `compaction_prompt` is read here, at startup, and carried on the
-    /// struct. The shell is not carried here: it was resolved at launch
-    /// and rides on the services container, so every consumer reads the
-    /// same resolved value.
+    /// `handoff_prompt` is read at startup and carried on the struct as
+    /// the last-good fallback its point-of-use reload falls back to. The
+    /// shell is not carried here: it was resolved at launch and rides on
+    /// the services container, so every consumer reads the same resolved
+    /// value.
     #[must_use]
-    pub fn new(state: &'a State, services: &'a mut Services, compaction_prompt: String) -> Self {
+    pub fn new(state: &'a State, services: &'a mut Services, handoff_prompt: String) -> Self {
         Self {
             state,
             services,
-            compaction_prompt,
+            handoff_prompt,
             token_counter: jinn_llm_support::token_estimator::TiktokenCounter::o200k_base(),
             image_converter: jinn_llm_support::image_convert::ImageConverterService::system(),
         }
@@ -78,11 +79,20 @@ impl<'a> Ctx<'a> {
     /// The three producers at the top of the boot list register these
     /// cells, so a missing one means a consumer ran before its producer —
     /// a wiring bug, not a runtime condition.
-    pub(crate) fn cell<T>(&self, slot: jinn_slices::SlotKey) -> jinn_slices::cell::TypedCell<T>
+    ///
+    /// # Panics
+    ///
+    /// Panics when the cell was not registered at boot — a wiring bug,
+    /// not a runtime condition, and one a silent `Option` would hide.
+    #[expect(
+        clippy::panic,
+        reason = "a missing boot cell is a wiring bug; failing loudly here beats an Option every caller must unwrap"
+    )]
+    pub(crate) fn cell<T>(&self, slot: &jinn_slices::SlotKey) -> jinn_slices::cell::TypedCell<T>
     where
         T: Send + Sync + 'static,
     {
-        match self.services.slices.reader::<T>(&slot) {
+        match self.services.slices.reader::<T>(slot) {
             Some(cell) => cell,
             None => {
                 panic!("cell not registered at boot: {slot}");
@@ -106,6 +116,12 @@ impl<'a> Ctx<'a> {
             ReadEditAutoPruneWorker, RegexAutoPruneWorker, TodoAutoPruneWorker,
             ToolAgeWindowAutoPruneWorker, TrivialAssistantAutoPruneWorker,
         };
+        use jinn_preferences_config::schemas::auto_prune::{
+            AnchoredAssistantAutoPruneConfig, BrokenEditAutoPruneConfig,
+            ConsecutiveReadsAutoPruneConfig, DoubleEditAutoPruneConfig, EditReadAutoPruneConfig,
+            ReadEditAutoPruneConfig, TodoAutoPruneConfig, ToolAgeWindowAutoPruneConfig,
+            TrivialAssistantAutoPruneConfig,
+        };
         use jinn_token_count_msg::HistoryWorkerChatEntryTokenCache;
 
         let config = self.services.config.clone();
@@ -114,35 +130,35 @@ impl<'a> Ctx<'a> {
         vec![
             Box::new(ReadEditAutoPruneWorker {
                 layer: config.clone(),
-                config: Default::default(),
+                config: ReadEditAutoPruneConfig::default(),
             }),
             Box::new(EditReadAutoPruneWorker {
                 layer: config.clone(),
-                config: Default::default(),
+                config: EditReadAutoPruneConfig::default(),
             }),
             Box::new(BrokenEditAutoPruneWorker {
                 layer: config.clone(),
-                config: Default::default(),
+                config: BrokenEditAutoPruneConfig::default(),
             }),
             Box::new(DoubleEditAutoPruneWorker {
                 layer: config.clone(),
-                config: Default::default(),
+                config: DoubleEditAutoPruneConfig::default(),
             }),
             Box::new(ConsecutiveReadsAutoPruneWorker {
                 layer: config.clone(),
-                config: Default::default(),
+                config: ConsecutiveReadsAutoPruneConfig::default(),
             }),
             Box::new(ToolAgeWindowAutoPruneWorker {
                 layer: config.clone(),
-                config: Default::default(),
+                config: ToolAgeWindowAutoPruneConfig::default(),
             }),
             Box::new(TodoAutoPruneWorker {
                 layer: config.clone(),
-                config: Default::default(),
+                config: TodoAutoPruneConfig::default(),
             }),
             Box::new(TrivialAssistantAutoPruneWorker {
                 layer: config.clone(),
-                config: Default::default(),
+                config: TrivialAssistantAutoPruneConfig::default(),
                 token_cache: entry_token_cache.clone(),
                 counter: self.token_counter,
             }),
@@ -150,24 +166,12 @@ impl<'a> Ctx<'a> {
                 // The anchor radius and the trivial-assistant floor are
                 // both read live; this seed only describes the shape.
                 layer: config.clone(),
-                config: Default::default(),
+                config: AnchoredAssistantAutoPruneConfig::default(),
                 token_cache: entry_token_cache,
                 counter: self.token_counter,
             }),
             Box::new(RegexAutoPruneWorker::new(config)),
         ]
-    }
-
-    /// The compaction actor's dependencies.
-    pub(crate) fn compaction_deps(
-        &self,
-    ) -> jinn_context_curation::compaction_actor::CompactionActorDeps {
-        jinn_context_curation::compaction_actor::CompactionActorDeps {
-            services: self.services.clone(),
-            state: self.state.clone(),
-            handle: self.services.handle.clone(),
-            compaction_prompt: self.compaction_prompt.clone(),
-        }
     }
 
     /// The session-turn reducer's dependencies.
@@ -190,10 +194,9 @@ impl<'a> Ctx<'a> {
             },
             state: self.state.clone(),
             counter: self.token_counter,
-            token_cache: token_cache
-                .map(|cell| cell.read().clone())
-                .unwrap_or_default(),
+            token_cache: token_cache.map_or_default(|cell| cell.read().clone()),
             image_converter: self.image_converter.clone(),
+            handoff_prompt: self.handoff_prompt.clone(),
         }
     }
 }

@@ -2,7 +2,7 @@
 name = "jinn-canvas"
 version.workspace = true
 edition.workspace = true
-description = "The canvas slice: the serving actor — one HTML artifact per process over loopback HTTP with embedded vendored viz libraries and WebSocket live reload."
+description = "The canvas slice: the serving actor — one HTML artifact per process over HTTP (loopback by default) with embedded vendored viz libraries and WebSocket live reload."
 
 [dependencies]
 # The canvas slice is a leaf: jinn-preferences-config ([canvas] schema),
@@ -14,6 +14,8 @@ jinn-preferences-config = { workspace = true }
 jinn-slices = { workspace = true }
 jinn-canvas-msg = { workspace = true }
 jinn-config = { workspace = true }
+# The live-reload trigger: a jinn.toml change re-reads [canvas] bind.
+jinn-boot-msg = { workspace = true }
 axum = { version = "0.8", features = ["ws"] }
 notify = "8.2"
 parking_lot = { workspace = true }

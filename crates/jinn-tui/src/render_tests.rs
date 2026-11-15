@@ -142,7 +142,7 @@ async fn minimap_arrow_is_yellow_when_normal_scope() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn minimap_arrow_is_darkgray_when_input_scope() {
+async fn minimap_arrow_is_not_rendered_in_input_scope() {
     // Given a TuiApp rendered with Input scope and one chat entry.
     let mut app = render_test_app().await;
     app.core
@@ -164,12 +164,48 @@ async fn minimap_arrow_is_darkgray_when_input_scope() {
         })
         .unwrap();
 
-    // Then the minimap arrow is DarkGray (border_unfocused).
+    // Then the minimap arrow cell is blank — no glyph, no token counts.
     let layout = AppLayout::new(frame_area(80, 24), 1, 12, 30);
     let (x, y) = arrow_cell_position(&layout);
     let buffer = terminal.backend().buffer();
     let cell = buffer.cell((x, y)).expect("minimap arrow cell");
-    assert_eq!(cell.fg, Color::DarkGray);
+    assert_eq!(cell.symbol(), " ");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn minimap_strip_still_renders_in_input_scope() {
+    // Given a TuiApp rendered with Input scope and one entry with a token
+    // count, so the strip paints a block for it.
+    let mut app = render_test_app().await;
+    app.core
+        .state
+        .write()
+        .frontend
+        .scope_push(FocusScope::Input);
+    {
+        let mut state = app.core.state.write();
+        let mut entry = ChatEntry::user("hello");
+        entry.token_count = Some(100);
+        state.active_session_mut().push_entry(entry);
+    }
+    let (mut terminal, _area) = setup_term(80, 24);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // Then the minimap column still carries strip content in Input scope.
+    let layout = AppLayout::new(frame_area(80, 24), 1, 12, 30);
+    let buffer = terminal.backend().buffer();
+    let strip_has_content = (0..layout.minimap.height)
+        .map(|dy| (layout.minimap.x, layout.minimap.y + dy))
+        .filter_map(|(x, y)| buffer.cell((x, y)))
+        .any(|cell| cell.symbol() != " ");
+    assert!(strip_has_content);
 }
 
 #[rstest::rstest]
@@ -203,6 +239,9 @@ async fn cwd_input_popup_renders_and_is_selectable() {
     let mut app = render_test_app().await;
     {
         let services = &mut app.services;
+        let actor_deps = jinn_kernel::common::actor_deps::ActorDeps {
+            services: services.clone(),
+        };
         let mut host = jinn_slices::SliceHost::new(
             &services.slices,
             &mut services.viewport,
@@ -210,7 +249,7 @@ async fn cwd_input_popup_renders_and_is_selectable() {
             &services.key_routes,
             &services.trouper_system,
         );
-        jinn_cwd::activate(&mut host);
+        jinn_cwd::activate(&mut host, actor_deps);
     }
     app.core
         .state
@@ -460,6 +499,8 @@ fn fill_preview_cache(app: &crate::TuiApp) {
         paired_status: None,
         is_streaming: false,
         is_waiting_on_subagent: false,
+        graphics: Default::default(),
+        session_id: jinn_core_types::SessionId::new(),
     };
     let lines = jinn_chat_log_view::kernel_element::render_preview(
         state.active_session().history(),
@@ -509,6 +550,108 @@ fn rows_of_text(buffer: &ratatui::buffer::Buffer, popup: Rect, chat_right: u16) 
                 .collect::<String>()
         })
         .collect()
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn the_meter_strip_dispatches_on_chat_frames_at_the_layout_rect() {
+    // Given a TuiApp whose DictationMeter region holds a test-local
+    // sentinel slot, and a chat frame (default tab).
+    let mut app = render_test_app().await;
+    let dispatches = meter_dispatch_probe::install(&app.services.slices);
+
+    let (mut terminal, _area) = setup_term(80, 24);
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // Then the sentinel painted at exactly the layout's strip rect: the
+    // minimap column from the indicator row to the terminal bottom.
+    let layout = AppLayout::new(frame_area(80, 24), 1, 12, 30);
+    let strip = layout.meter_strip;
+    let buffer = terminal.backend().buffer();
+    for y in strip.y..(strip.y + strip.height) {
+        let cell = buffer.cell((strip.x, y)).expect("strip cell");
+        assert_eq!(
+            cell.symbol(),
+            meter_dispatch_probe::GLYPH,
+            "the meter slot must paint the strip rect, row {y}"
+        );
+    }
+    // And it dispatched exactly once — one dispatch per frame.
+    assert_eq!(
+        dispatches.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "the meter slot must dispatch exactly once per chat frame"
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn the_meter_strip_never_dispatches_on_a_full_width_tab() {
+    // Given a TuiApp whose DictationMeter region holds a sentinel slot,
+    // focused on a registered tab scope (full-width framing).
+    let mut app = render_test_app().await;
+    let dispatches = meter_dispatch_probe::install(&app.services.slices);
+    let tab = jinn_slices::SliceScopeId::new("tests", "full-width-tab");
+    app.services.slices.register_tab_scope(
+        tab.clone(),
+        jinn_slices::SlotKey::builtin("tests", "full-width-tab"),
+    );
+    app.core
+        .state
+        .write()
+        .frontend
+        .scope_swap_base(jinn_slices::FocusScope::Dynamic(tab));
+
+    let (mut terminal, _area) = setup_term(80, 24);
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // Then the sentinel never ran: the tab path has no strip to hand it.
+    assert_eq!(
+        dispatches.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "full-width tabs must not dispatch the DictationMeter region"
+    );
+}
+
+/// A test-local draw slot for the `DictationMeter` region: paints a
+/// glyph down the target rect and counts dispatches. Same pattern as
+/// the chat-log/chat-input render-region registrations above — the
+/// production slot belongs to the dictation slice, which does not
+/// activate in this test harness.
+mod meter_dispatch_probe {
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+
+    use jinn_kernel::AppState;
+
+    pub(super) const GLYPH: &str = "M";
+
+    /// Registers the sentinel draw function and returns its counter.
+    pub(super) fn install(slices: &jinn_slices::Slices) -> Arc<AtomicUsize> {
+        let dispatches = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&dispatches);
+        slices.register_render_slot::<AppState>(
+            jinn_slices::Region::DictationMeter,
+            Arc::new(move |frame, target, _ctx, _rects| {
+                for y in target.area.y..(target.area.y + target.area.height) {
+                    if let Some(cell) = frame.buffer_mut().cell_mut((target.area.x, y)) {
+                        cell.set_symbol(GLYPH);
+                    }
+                }
+                counter.fetch_add(1, Ordering::SeqCst);
+            }),
+        );
+        dispatches
+    }
 }
 
 #[rstest::rstest]

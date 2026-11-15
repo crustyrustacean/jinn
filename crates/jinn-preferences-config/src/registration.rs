@@ -14,10 +14,11 @@
 use jinn_config::ConfigLayer;
 
 use crate::schemas::{
-    AutoPruneConfig, CanvasConfig, ChatLogConfig, CompactionConfig, CwdSelectorConfig,
-    DiscordConfig, InteractiveTermPrefs, MaintenanceConfig, McpServersConfig, MinimapConfig,
+    AppletsConfig, AutoPruneConfig, CanvasConfig, ChatLogConfig, CwdSelectorConfig,
+    DictationConfig, DiscordConfig, GraphicsConfig, HandoffCompactionConfig, InteractiveTermPrefs,
+    MaintenanceConfig, McpServersConfig, MinimapConfig, ProviderErrorWatchdogConfig, RemoteConfig,
     RequestRetryConfig, ShellConfig, SkillsConfig, StallWatchdogConfig, StreamRuleWatchdogConfig,
-    ToolCallWatchdogConfig, ToolsConfig, WebSearchConfig,
+    StuckLoopWatchdogConfig, ToolCallWatchdogConfig, ToolsConfig, WebSearchConfig,
 };
 
 /// Registers every `jinn.toml` section that can be validated at launch.
@@ -52,17 +53,27 @@ use crate::schemas::{
 pub fn register_all_sections(config: &ConfigLayer) {
     config.register::<ToolsConfig>();
     config.register::<ChatLogConfig>();
+    config.register::<GraphicsConfig>();
     config.register::<SkillsConfig>();
     config.register::<CanvasConfig>();
-    config.register::<CompactionConfig>();
+    config.register::<AppletsConfig>();
+    config.register::<RemoteConfig>();
+    config.register::<HandoffCompactionConfig>();
     config.register::<RequestRetryConfig>();
     config.register::<WebSearchConfig>();
     config.register::<CwdSelectorConfig>();
+    config.register::<DictationConfig>();
     config.register::<MinimapConfig>();
     config.register::<StallWatchdogConfig>();
     config.register::<ToolCallWatchdogConfig>();
+    config.register::<StuckLoopWatchdogConfig>();
     config.register::<StreamRuleWatchdogConfig>();
+    config.register::<ProviderErrorWatchdogConfig>();
     config.register::<AutoPruneConfig>();
+    // The cross-section checks run last in the umbrella they read, so a
+    // malformed child table is reported by its own section first and a
+    // cross-section rejection is about values, not shapes.
+    crate::cross_checks::register_cross_checks(config);
     config.register::<InteractiveTermPrefs>();
     config.register::<ShellConfig>();
     config.register::<McpServersConfig>();
@@ -148,6 +159,49 @@ mod tests {
 
         // Then validation passes, since an absent section is not an error.
         assert!(result.is_ok());
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn cross_section_violation_fails_launch_validation() {
+        // Given a document whose enabled handoff trigger sits below the
+        // accumulation threshold.
+        let config = config_layer(
+            "[context_curation.handoff_compaction]\nenabled = true\nworkset_trigger_tokens = 100000\n",
+        );
+
+        // When the roster is registered and the layer validated.
+        register_all_sections(&config);
+        let result = config.validate();
+
+        // Then validation fails with the cross-section complaint.
+        let Err(error) = result else {
+            panic!("expected the cross-section check to reject");
+        };
+        let ConfigSectionError::Invalid { key, detail } = error else {
+            panic!("expected Invalid, got {error:?}");
+        };
+        assert_eq!(key, "context_curation.handoff_compaction");
+        assert!(
+            detail.contains("context pruners are disabled"),
+            "the guidance message must reach the user: {detail}"
+        );
+    }
+
+    #[rstest::rstest]
+    #[test]
+    fn cross_section_check_passes_a_disabled_handoff() {
+        // Given a document whose handoff is disabled at a violating value.
+        let config = config_layer(
+            "[context_curation.handoff_compaction]\nenabled = false\nworkset_trigger_tokens = 100000\n",
+        );
+
+        // When the roster is registered and the layer validated.
+        register_all_sections(&config);
+        let result = config.validate();
+
+        // Then validation passes — disabled is inert, per the schema's contract.
+        assert!(result.is_ok(), "a disabled handoff must not block launch");
     }
 
     #[rstest::rstest]

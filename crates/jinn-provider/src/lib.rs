@@ -41,13 +41,29 @@ pub use jinn_core_types::llm_message::LlmMessage;
 pub use jinn_core_types::reasoning::ReasoningEffort;
 pub use jinn_core_types::tool_types::{ServerToolType, ToolCall, ToolDefinition, ToolResult};
 pub use jinn_core_types::url_citation::UrlCitation;
+
+/// The tool-choice constraint a request can carry, in provider terms.
+///
+/// Converted from `jinn_inference_msg::ToolChoiceKind` at the dispatch
+/// boundary; `None` keeps tool definitions in the request while the API
+/// layer forbids calls (prefix-cache continuity for the handoff recap).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolChoice {
+    /// The provider default (`auto`).
+    Auto,
+    /// Tools defined, calls forbidden.
+    None,
+}
 pub use no_providers::NoProvidersAvailableFactory;
 pub use openai_compat::{
     EndpointInfo, OpenAiCompatibleFactory, OpenAiCompatibleService, PricingOverride,
     ProviderConfig, list_endpoints, list_endpoints_default_client,
 };
 pub use sample::SampleLlmServiceFactory;
-pub use service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory, ToolStream};
+pub use service::{
+    ChatStream, LlmService, LlmServiceError, LlmServiceFactory, ToolStream,
+    stream_error_is_retryable,
+};
 pub use stream_event::{StopReason, StreamEvent, StreamUsage};
 
 pub use retry::{NoOpOnRetry, OnRetry, RetryConfig, RetryingLlmService};
