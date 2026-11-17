@@ -47,7 +47,10 @@ pub fn inject(lua: &Lua, jinn: &Table) -> mlua::Result<()> {
 }
 
 /// Converts a Lua value into a JSON value, applying the array heuristic.
-fn to_json(value: &Value) -> mlua::Result<serde_json::Value> {
+///
+/// Shared with the `jinn.tool` family, which serializes raw-form input
+/// schemas through the same array/object policy.
+pub(crate) fn to_json(value: &Value) -> mlua::Result<serde_json::Value> {
     let json = match value {
         Value::Nil => serde_json::Value::Null,
         Value::Boolean(b) => serde_json::Value::Bool(*b),
@@ -115,7 +118,7 @@ fn table_to_json(table: &Table) -> mlua::Result<serde_json::Value> {
 }
 
 /// Converts a JSON value into a Lua value (arrays 1-indexed, null nil).
-fn from_json(lua: &Lua, json: &serde_json::Value) -> mlua::Result<Value> {
+pub(crate) fn from_json(lua: &Lua, json: &serde_json::Value) -> mlua::Result<Value> {
     let value = match json {
         serde_json::Value::Null => Value::Nil,
         serde_json::Value::Bool(b) => Value::Boolean(*b),

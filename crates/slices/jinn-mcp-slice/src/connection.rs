@@ -216,8 +216,11 @@ impl McpActorDeps {
 /// shipped builtin-server entries name jinn itself. The `<session_cwd>`
 /// token expands to `session_cwd` when one is attached (per-session
 /// spawns); with `None` the token is left literal and the connect path
-/// refuses first (see [`references_session_cwd`]). `<ip>`/`<port>` stay
-/// local_http-only (see `connect_for_transport`).
+/// refuses first (see [`references_session_cwd`]). The `<scripts>` token
+/// expands to `scripts_dir` unconditionally — the universal scripts
+/// directory is always resolvable, singleton or not (see
+/// [`expand_scripts_dir_token`]). `<ip>`/`<port>` stay local_http-only
+/// (see `connect_for_transport`).
 ///
 /// # Panics
 ///
@@ -230,6 +233,7 @@ impl McpActorDeps {
 pub(crate) fn server_command(
     config: &McpServerConfig,
     session_cwd: Option<&MarkedPathBuf<Absolute>>,
+    scripts_dir: &MarkedPathBuf<Absolute>,
 ) -> ServerCommand {
     // current_exe failure (exotic sandbox) leaves the token unexpanded; the
     // spawn then fails naming the literal `<jinn>`, which is legible.
@@ -237,10 +241,11 @@ pub(crate) fn server_command(
         .ok()
         .and_then(|raw| MarkedPathBuf::<Absolute>::new(raw).ok());
     let expand = |value: String| -> String {
-        // Expand <jinn> first, then <session_cwd>. The two token texts are
-        // disjoint, so order is unobservable; a missing cwd leaves the cwd
-        // token literal (the connect-time refusal names the conflict before
-        // any spawn attempt).
+        // Expand <jinn> first, then <session_cwd>, then <scripts>. The three
+        // token texts are disjoint, so order is unobservable; a missing cwd
+        // leaves the cwd token literal (the connect-time refusal names the
+        // conflict before any spawn attempt), while the scripts token always
+        // resolves — it derives from AppPaths, never from the session.
         let value = match &jinn_exe {
             Some(path) => jinn_mcp::transport::expand_jinn_token(&value, path),
             None => {
@@ -251,10 +256,11 @@ pub(crate) fn server_command(
                 value
             }
         };
-        match session_cwd {
+        let value = match session_cwd {
             Some(cwd) => jinn_mcp::transport::expand_session_cwd_token(&value, cwd),
             None => value,
-        }
+        };
+        jinn_mcp::transport::expand_scripts_dir_token(&value, scripts_dir)
     };
     ServerCommand {
         program: expand(
@@ -291,7 +297,9 @@ pub(crate) fn server_command(
 /// Fails with [`McpSingletonTokenError`] when a singleton entry references
 /// `<session_cwd>` (command, args, or env values) and no session cwd is
 /// available — one shared process cannot answer "which session's directory".
-/// Env/header token-resolution failures propagate as [`McpClientError`].
+/// `<scripts>` never arms this refusal: the universal scripts directory
+/// resolves from `AppPaths` regardless of session. Env/header token-resolution
+/// failures propagate as [`McpClientError`].
 #[expect(
     clippy::expect_used,
     reason = "invariants: url/command documented per transport kind"
@@ -317,14 +325,18 @@ pub(crate) async fn connect_for_transport(
             )));
     }
 
+    // The universal scripts directory derives from AppPaths, never from the
+    // session, so it expands on singleton and per-session spawns alike.
+    let scripts_dir = services.paths.scripts_dir();
+
     // Resolve env pairs once per connect: expand <session_cwd> in each value
     // (per-session spawn), then expand ${VAR} tokens against the key store.
     // Fails fast naming the variable; values never leak.
-    let env = expand_server_env(services, server, session_cwd)?;
+    let env = expand_server_env(services, server, session_cwd, &scripts_dir)?;
 
     match server.transport {
         TransportKind::Stdio => {
-            let mut cmd = server_command(server, session_cwd);
+            let mut cmd = server_command(server, session_cwd, &scripts_dir);
             cmd.env = env;
             McpClient::connect(&cmd).await
         }
@@ -383,9 +395,11 @@ const SESSION_CWD_TOKEN: &str = "<session_cwd>";
 ///
 /// Env **names** pass through literally; only values expand. Each value is
 /// first expanded for the `<session_cwd>` token (when a session cwd is
-/// attached), then for `${VAR}` tokens against the startup-seeded key store.
-/// Failure means some referenced variable is missing/empty — propagated so
-/// the error names the variable and nothing else.
+/// attached), then for the always-resolvable `<scripts>` token (the
+/// universal scripts directory), then for `${VAR}` tokens against the
+/// startup-seeded key store. Failure means some referenced variable is
+/// missing/empty — propagated so the error names the variable and nothing
+/// else.
 ///
 /// # Errors
 ///
@@ -395,13 +409,17 @@ pub(crate) fn expand_server_env(
     services: &Services,
     server: &McpServerConfig,
     session_cwd: Option<&MarkedPathBuf<Absolute>>,
+    scripts_dir: &MarkedPathBuf<Absolute>,
 ) -> Result<Vec<(String, String)>, Report<McpClientError>> {
     let expanded_values = server
         .env
         .values()
-        .map(|value| match session_cwd {
-            Some(cwd) => jinn_mcp::transport::expand_session_cwd_token(value, cwd),
-            None => value.clone(),
+        .map(|value| {
+            let value = match session_cwd {
+                Some(cwd) => jinn_mcp::transport::expand_session_cwd_token(value, cwd),
+                None => value.clone(),
+            };
+            jinn_mcp::transport::expand_scripts_dir_token(&value, scripts_dir)
         })
         .collect::<Vec<String>>();
     let template = server
@@ -441,21 +459,23 @@ fn expand_server_headers(
 /// list its tools. Test path: use the injected `client_override` and list its
 /// tools — no child process is spawned.
 ///
-/// On failure returns `Err(Some(client))` where `client` is half-open (
-/// connected but list failed) and must be shut down by the caller; returns
-/// `Err(None)` when the failure was at connect time (nothing to shut down).
+/// On failure returns `Err((Some(client), String::new()))` where `client` is
+/// half-open (connected but list failed) and must be shut down by the caller;
+/// returns `Err((None, tail))` when the failure was at connect time, with the
+/// child's captured stderr tail (empty when nothing was captured) so the
+/// caller can surface the startup diagnosis.
 /// On success returns the client and its mapped tool definitions together.
 #[expect(
     clippy::result_large_err,
     reason = "the Err carries the live client back to the caller on failed handshake; boxing would complicate the reconnect path"
 )]
-async fn acquire_client(
+pub(crate) async fn acquire_client(
     services: &Services,
     name: &str,
     server: &McpServerConfig,
     session_cwd: Option<&MarkedPathBuf<Absolute>>,
     client_override: Option<McpClient>,
-) -> Result<(McpClient, Vec<ToolDefinition>), Option<McpClient>> {
+) -> Result<(McpClient, Vec<ToolDefinition>), (Option<McpClient>, String)> {
     let client = match client_override {
         Some(injected) => injected,
         None => match connect_for_transport(services, server, session_cwd).await {
@@ -466,8 +486,17 @@ async fn acquire_client(
                     error = %report,
                     "MCP actor: failed to connect to server"
                 );
-                // Connect failed before any client existed.
-                return Err(None);
+                // Connect failed before any client existed. The stderr
+                // attachment (child startup output) rides the report as a
+                // plain `String` attachment.
+                let tail = report
+                    .frames()
+                    .find_map(error_stack::Frame::downcast_ref::<String>)
+                    .filter(|s| s.starts_with("server stderr:"))
+                    .map_or_else(String::new, |s| {
+                        s.strip_prefix("server stderr:\n").unwrap_or(s).to_owned()
+                    });
+                return Err((None, tail));
             }
         },
     };
@@ -488,7 +517,7 @@ async fn acquire_client(
             );
             // Half-open: connected but list failed. Return the client so the
             // caller can shut it down.
-            Err(Some(client))
+            Err((Some(client), String::new()))
         }
     }
 }
@@ -613,11 +642,16 @@ async fn start_mcp(args: McpActorDeps) -> Result<McpActor, std::convert::Infalli
     .await
     {
         Ok(ready) => ready,
-        Err(half_open) => {
+        Err((half_open, connect_failure_stderr)) => {
             if let Some(mut half_open) = half_open {
                 half_open.shutdown().await;
             }
             publish_status(&deps, &session_id, &name, McpConnectionStatus::Dead).await;
+            // A connect-time failure usually means the child died at
+            // startup; its captured stderr is the only diagnosis the
+            // picker can show. `acquire_client`'s connect arm returns the
+            // transport's tail so this failure path can surface it.
+            publish_log(&deps, &session_id, &name, &connect_failure_stderr).await;
             return Ok(McpActor {
                 deps,
                 session_id,
@@ -1191,6 +1225,18 @@ mod tests {
 
     use super::*;
 
+    /// A fake absolute scripts dir for token-expansion assertions, shaped
+    /// for the target platform: `MarkedPathBuf<Absolute>` rejects a
+    /// POSIX-only path on Windows (see `session_cwd_tests::cwd`).
+    fn scripts_dir() -> MarkedPathBuf<Absolute> {
+        let path = if cfg!(windows) {
+            r"C:\data\jinn\scripts".to_owned()
+        } else {
+            "/tmp/data/jinn/scripts".to_owned()
+        };
+        MarkedPathBuf::<Absolute>::new(path).expect("absolute scripts dir")
+    }
+
     #[rstest::rstest]
     #[test]
     fn format_result_content_joins_text_blocks() {
@@ -1268,7 +1314,7 @@ mod tests {
         };
 
         // When building the command.
-        let cmd = server_command(&config, None);
+        let cmd = server_command(&config, None, &scripts_dir());
 
         // Then the program and args are copied.
         assert_eq!(cmd.program, "npx");
@@ -1291,7 +1337,7 @@ mod tests {
         };
 
         // When building the command.
-        let cmd = server_command(&config, None);
+        let cmd = server_command(&config, None, &scripts_dir());
 
         // Then every <jinn> occurrence is the running executable's path.
         let exe = std::env::current_exe().expect("test binary has an exe path");
@@ -1313,7 +1359,7 @@ mod tests {
         };
 
         // When building the command.
-        let cmd = server_command(&config, None);
+        let cmd = server_command(&config, None, &scripts_dir());
 
         // Then nothing changes and no token remains anywhere.
         assert_eq!(cmd.program, "npx");

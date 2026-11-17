@@ -111,6 +111,7 @@ impl Cli {
                         | Commands::Remote { .. }
                         | Commands::Dictation { .. }
                         | Commands::Luau { .. }
+                        | Commands::Browser { .. }
                 )
             )
         {
@@ -206,6 +207,20 @@ pub enum Commands {
         subcommand: RemoteCommands,
     },
 
+    /// Manage the browser daemon — the single owner of the headed
+    /// Chrome the browser tools drive.
+    ///
+    /// The daemon starts on its own the first time a browser tool needs
+    /// it and keeps running after jinn exits; these subcommands are the
+    /// explicit control surface. Client subcommands touch only the
+    /// registry file under the state dir — never the config or the
+    /// session store.
+    Browser {
+        /// The browser subcommand to run.
+        #[command(subcommand)]
+        subcommand: BrowserCommands,
+    },
+
     /// Run an embedded Luau script.
     ///
     /// jinn carries its own Lua interpreter (the vendored Luau VM), so a
@@ -240,12 +255,59 @@ pub enum Commands {
     },
 }
 
+/// Browser-daemon subcommands.
+#[derive(Debug, Clone, Subcommand)]
+pub enum BrowserCommands {
+    /// Run the daemon itself: resolve the browser, launch headed Chrome,
+    /// bind the loopback API, register, and serve until stopped.
+    ///
+    /// Refuses when the registry already shows a live daemon. Reads the
+    /// `[browser]` section of jinn.toml (honoring `--config`), nothing
+    /// else from it. Not a client command: this is the child the
+    /// auto-start path spawns.
+    Daemon {
+        /// Path to an alternative jinn.toml for the `[browser]` section.
+        #[arg(long)]
+        config: Option<PathBuf>,
+    },
+
+    /// Start the daemon if none is live (the auto-start path, explicit).
+    Start,
+
+    /// Ask the running daemon to exit (graceful HTTP shutdown).
+    Stop,
+
+    /// Print the daemon's status and resolved binary, or "not running".
+    Status,
+
+    /// Stop, then start: the apply path for a `[browser]` config edit.
+    Restart,
+}
+
 /// Embedded-Luau subcommands.
 #[derive(Debug, Clone, Subcommand)]
 pub enum LuauCommands {
     /// Run a Luau script file; everything after `--` becomes `jinn.args`.
     Run {
         /// The script to run.
+        script: PathBuf,
+
+        /// Trailing arguments handed to the script through `jinn.args`.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+
+    /// Serve a script's `jinn.tool` registrations as an MCP server on
+    /// stdio; trailing args become `jinn.args`.
+    ///
+    /// The script runs once at startup to collect registrations, then the
+    /// process serves `tools/list` and `tools/call` until the client
+    /// disconnects. Configuration rides the ordinary `[mcp.x]` machinery:
+    /// `command = "<jinn>"`, `args = ["luau", "serve", "<script>"]`. The
+    /// parent `--timeout` flag is the per-call budget (default 60s, `0`
+    /// disables).
+    Serve {
+        /// The script whose `jinn.tool` registrations to serve.
         script: PathBuf,
 
         /// Trailing arguments handed to the script through `jinn.args`.
@@ -326,6 +388,13 @@ pub enum McpCommands {
         #[arg(long)]
         fetch_model: bool,
     },
+    /// Serve the builtin browser MCP server over stdio MCP.
+    ///
+    /// A thin client of the standalone browser daemon (`jinn browser
+    /// daemon`): every tool call rides the daemon's loopback HTTP API,
+    /// and the server process itself holds no Chrome connection, so a
+    /// config-edit restart never recycles the browser.
+    Browser,
     /// Serve the builtin smolvm microVM server over stdio MCP.
     ///
     /// Boots one ephemeral machine per invocation, mounts `--cwd`

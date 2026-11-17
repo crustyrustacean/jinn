@@ -15,6 +15,7 @@
 //! execution is single-threaded and mlua's `create_function` accepts
 //! non-`Send` captures, so no locking exists anywhere on this path.
 
+pub mod browser;
 pub mod env;
 pub mod fs;
 pub mod http;
@@ -23,6 +24,7 @@ pub mod proc;
 pub mod stdio;
 pub mod time;
 pub mod toml;
+pub mod tool;
 
 use std::path::Path;
 use std::rc::Rc;
@@ -110,11 +112,36 @@ pub fn resolve_path_against(
 /// families never touch the global environment directly, so the sandbox's
 /// globals proxy stays the only writable surface.
 ///
+/// The `tool` family rides a caller-supplied registration: run/eval
+/// injection passes the inert default (so `jinn.tool` fails loudly naming
+/// the serve subcommand), while serve injection passes the table it will
+/// seal after the script loads.
+///
 /// # Errors
 ///
 /// Propagates any registration failure; the caller turns it into a
 /// [`crate::LuauError::Harness`].
 pub fn inject_all(lua: &Lua, caps: &Rc<Caps>) -> mlua::Result<()> {
+    inject_all_with_tool_registration(
+        lua,
+        caps,
+        &Rc::new(std::cell::RefCell::new(tool::Registration::plain_run())),
+    )
+}
+
+/// [`inject_all`] with the caller's `jinn.tool` registration.
+///
+/// Serve mode passes its own registration here to collect tools.
+///
+/// # Errors
+///
+/// Propagates any registration failure; the caller turns it into a
+/// [`crate::LuauError::Harness`].
+pub fn inject_all_with_tool_registration(
+    lua: &Lua,
+    caps: &Rc<Caps>,
+    tool_registration: &Rc<std::cell::RefCell<tool::Registration>>,
+) -> mlua::Result<()> {
     let jinn = lua.create_table()?;
 
     // jinn.args: the argv after `--`, as a 1-indexed array of strings.
@@ -127,15 +154,20 @@ pub fn inject_all(lua: &Lua, caps: &Rc<Caps>) -> mlua::Result<()> {
     fs::inject(lua, &jinn, caps)?;
     env::inject(lua, &jinn)?;
     http::inject(lua, &jinn, caps)?;
+    browser::inject(lua, &jinn, caps)?;
     proc::inject(lua, &jinn, caps)?;
     stdio::inject(lua, &jinn)?;
     json::inject(lua, &jinn)?;
     toml::inject(lua, &jinn)?;
     time::inject(lua, &jinn)?;
+    tool::inject(lua, &jinn, tool_registration)?;
 
     lua.globals().raw_set("jinn", jinn)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod browser_tests;
 
 #[cfg(test)]
 mod tests {
